@@ -1,0 +1,80 @@
+erDiagram
+    accounts {
+        ObjectId _id
+        ISODate expiredAt
+        ISODate createdAt
+    }
+
+    users {
+        ObjectId _id
+        ObjectId accountId
+        String username
+        String password
+        String name
+        Boolean isAccountOwner
+        ISODate createdAt
+        ISODate updatedAt
+    }
+
+    profiles {
+        ObjectId _id
+        ObjectId userId
+        String name
+        JSON preferences
+        Number radius
+        ISODate createdAt
+        ISODate updatedAt
+    }
+
+    tagAffinities {
+        ObjectId _id
+        ObjectId profileId
+        String tag
+        Number affinity
+        ISODate updatedAt
+    }
+
+    events {
+        ObjectId _id
+        String title
+        ISODate dateTime
+        String location
+        Number cost
+        Number numOfExpectedAttendees
+        String recurrence
+        Array[String] tags
+        ISODate updatedAt
+    }
+
+    userEvents {
+        ObjectId _id
+        ObjectId userId
+        ObjectId eventId
+        Boolean attended
+        Number rating
+        String note
+        ISODate updatedAt
+    }
+
+    urls {
+        ObjectId _id
+        String url
+        JSON params
+        ISODate updatedAt
+    }
+
+    crawls {
+        ObjectId _id
+        ObjectId url_id
+        ISODate last_parsed_date
+        JSON parse_status
+        Array[String] errors_encountered
+        ISODate updatedAt
+    }
+
+    accounts ||--o{ users: ""
+    users ||--o{ profiles: ""
+    profiles ||--o{ tagAffinities: ""
+    users ||--o{ userEvents: ""
+    events ||--o{ userEvents: ""
+    urls ||--o{ crawls: ""
