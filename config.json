@@ -1,0 +1,8 @@
+
+{
+    "mongo_uri": "mongodb://localhost:27017",
+    "db_name": "event_management_system",
+    "app_port": 6000,
+    "log_level": "info",
+    "environment": "development"
+}

@@ -21,7 +21,7 @@ erDiagram
         ObjectId userId
         String name
         JSON preferences
-        Number radius
+        Integer radiusMiles
         ISODate createdAt
         ISODate updatedAt
     }
@@ -30,17 +30,18 @@ erDiagram
         ObjectId _id
         ObjectId profileId
         String tag
-        Number affinity
+        Integer affinity
         ISODate updatedAt
     }
 
     events {
         ObjectId _id
+        String url
         String title
         ISODate dateTime
         String location
         Number cost
-        Number numOfExpectedAttendees
+        Integer numOfExpectedAttendees
         String recurrence
         Array[String] tags
         ISODate updatedAt
@@ -51,7 +52,7 @@ erDiagram
         ObjectId userId
         ObjectId eventId
         Boolean attended
-        Number rating
+        Integer rating
         String note
         ISODate updatedAt
     }

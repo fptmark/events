@@ -1,0 +1,144 @@
+openapi: 3.0.0
+info:
+  title: Event Management API
+  version: 1.0.0
+components:
+  schemas:
+    ObjectId:
+      type: string
+      description: MongoDB ObjectId
+    ISODate:
+      type: string
+      format: date-time
+      description: ISO formatted date-time
+    Account:
+      type: object
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        expiredAt:
+          $ref: '#/components/schemas/ISODate'
+        createdAt:
+          $ref: '#/components/schemas/ISODate'
+    User:
+      type: object
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        accountId:
+          $ref: '#/components/schemas/ObjectId'
+        username:
+          type: string
+        password:
+          type: string
+        name:
+          type: string
+        isAccountOwner:
+          type: boolean
+        createdAt:
+          $ref: '#/components/schemas/ISODate'
+        updatedAt:
+          $ref: '#/components/schemas/ISODate'
+    Profile:
+      type: object
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        userId:
+          $ref: '#/components/schemas/ObjectId'
+        name:
+          type: string
+        preferences:
+          type: object
+          additionalProperties: true
+        radiusMiles:
+          type: integer
+        createdAt:
+          $ref: '#/components/schemas/ISODate'
+        updatedAt:
+          $ref: '#/components/schemas/ISODate'
+    TagAffinity:
+      type: object
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        profileId:
+          $ref: '#/components/schemas/ObjectId'
+        tag:
+          type: string
+        affinity:
+          type: integer
+        updatedAt:
+          $ref: '#/components/schemas/ISODate'
+    Event:
+      type: object
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        url:
+          type: string
+        title:
+          type: string
+        dateTime:
+          $ref: '#/components/schemas/ISODate'
+        location:
+          type: string
+        cost:
+          type: number
+        numOfExpectedAttendees:
+          type: integer
+        recurrence:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        updatedAt:
+          $ref: '#/components/schemas/ISODate'
+    UserEvent:
+      type: object
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        userId:
+          $ref: '#/components/schemas/ObjectId'
+        eventId:
+          $ref: '#/components/schemas/ObjectId'
+        attended:
+          type: boolean
+        rating:
+          type: integer
+        note:
+          type: string
+        updatedAt:
+          $ref: '#/components/schemas/ISODate'
+    URL:
+      type: object
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        url:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+        updatedAt:
+          $ref: '#/components/schemas/ISODate'
+    Crawl:
+      type: object
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        url_id:
+          $ref: '#/components/schemas/ObjectId'
+        last_parsed_date:
+          $ref: '#/components/schemas/ISODate'
+        parse_status:
+          type: object
+          additionalProperties: true
+        errors_encountered:
+          type: array
+          items:
+            type: string
+        updatedAt:
+          $ref: '#/components/schemas/ISODate'
