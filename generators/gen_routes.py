@@ -9,7 +9,7 @@ ROUTES_DIR = Path("app/routes")
 RESERVED_TYPES = {"ISODate", "ObjectId"}
 
 
-def generate_routes(schema_path):
+def generate_routes(schema_path, path_root):
     # Load the YAML schema
     with open(schema_path, "r") as file:
         schema = yaml.safe_load(file)
@@ -19,11 +19,13 @@ def generate_routes(schema_path):
     entity_names = [name for name in schemas.keys() if name not in RESERVED_TYPES]
 
     # Ensure the routes directory exists
-    ROUTES_DIR.mkdir(parents=True, exist_ok=True)
+    # output_dir = path_root + '/' + ROUTES_DIR
+    output_dir = Path(path_root) / ROUTES_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     for entity in entity_names:
         # Convert entity name to lowercase for file naming
-        route_file = ROUTES_DIR / f"{entity.lower()}_routes.py"
+        route_file = output_dir / f"{entity.lower()}_routes.py"
 
         # Generate route content
         lines = [
@@ -84,11 +86,11 @@ def generate_routes(schema_path):
             route.write("\n".join(lines) + "\n")
         print(f">>> Generated {route_file}")
 
-
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python routes_generator.py <schema.yaml>")
+    if len(sys.argv) < 3:
+        print("Usage: python gen_db.py <schema.yaml> <path_root")
         sys.exit(1)
 
     schema_file = sys.argv[1]
-    generate_routes(schema_file)
+    path_root = sys.argv[2]
+    generate_routes(schema_file, path_root)

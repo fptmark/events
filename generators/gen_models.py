@@ -4,9 +4,13 @@ import sys
 
 # Paths
 MODELS_DIR = Path("app/models")
+RESERVED_TYPES = {"ISODate", "ObjectId"}  # Reserved types to skip
 
 
-def generate_models(schema_path):
+def generate_models(schema_path, path_root):
+    """
+    Generate Pydantic/Beanie models for the provided schema.
+    """
     # Load the YAML schema
     with open(schema_path, "r") as file:
         schema = yaml.safe_load(file)
@@ -15,18 +19,22 @@ def generate_models(schema_path):
     schemas = schema.get("components", {}).get("schemas", {})
 
     # Ensure the models directory exists
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir = Path(path_root) / MODELS_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     for entity_name, entity_schema in schemas.items():
+        if entity_name in RESERVED_TYPES:
+            continue  # Skip reserved types
+
         # Convert entity name to lowercase for file naming
-        model_file = MODELS_DIR / f"{entity_name.lower()}_model.py"
+        model_file = output_dir / f"{entity_name.lower()}_model.py"
 
         # Start building the model content
         lines = [
             "from beanie import Document",
             "from pydantic import Field",
-            "from datetime import datetime",
             "from typing import Optional, List, Dict",
+            "from datetime import datetime",
             "",
             f"class {entity_name}(Document):",
         ]
@@ -45,11 +53,13 @@ def generate_models(schema_path):
                 "object": "Dict",
             }.get(prop_type, "Any")
 
-            # Handle special formats
+            # Handle special formats (e.g., date-time)
             if prop_format == "date-time":
                 python_type = "datetime"
-            elif prop_format == "ObjectId":
-                python_type = "str"
+
+            # Skip reserved formats
+            if prop_format in RESERVED_TYPES:
+                continue
 
             # Add the field to the model
             field_def = f"    {prop_name}: Optional[{python_type}] = Field(None"
@@ -65,9 +75,10 @@ def generate_models(schema_path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python models_generator.py <schema.yaml>")
+    if len(sys.argv) < 3:
+        print("Usage: python gen_models.py <schema.yaml> <path_root")
         sys.exit(1)
 
     schema_file = sys.argv[1]
-    generate_models(schema_file)
+    path_root = sys.argv[2]
+    generate_models(schema_file, path_root)

@@ -7,7 +7,7 @@ MAIN_FILE = Path("app/main.py")
 RESERVED_TYPES = {"ISODate", "ObjectId"}  # Reserved types to skip
 
 
-def generate_main(schema_path):
+def generate_main(schema_path, path_root):
     # Load the YAML schema
     with open(schema_path, "r") as file:
         schema = yaml.safe_load(file)
@@ -81,16 +81,17 @@ def generate_main(schema_path):
     ])
 
     # Save main.py
-    MAIN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(MAIN_FILE, "w") as main_file:
+    outfile = Path(path_root) / MAIN_FILE
+    outfile.parent.mkdir(parents=True, exist_ok=True)
+    with open(outfile, "w") as main_file:
         main_file.write("\n".join(lines) + "\n")
-    print(f">>> Generated {MAIN_FILE}")
-
+    print(f">>> Generated {outfile}")
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python gen_main.py <schema.yaml>")
+    if len(sys.argv) < 3:
+        print("Usage: python gen_main.py <schema.yaml> <path_root")
         sys.exit(1)
 
     schema_file = sys.argv[1]
-    generate_main(schema_file)
+    path_root = sys.argv[2]
+    generate_main(schema_file, path_root)

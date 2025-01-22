@@ -7,7 +7,10 @@ DB_FILE = Path("app/utils/db.py")
 RESERVED_TYPES = {"ISODate", "ObjectId"}  # Reserved types to skip
 
 
-def generate_db(schema_path):
+def generate_db(schema_path, path_root):
+    """
+    Generate the db.py file for MongoDB connection and Beanie initialization.
+    """
     # Load the YAML schema
     with open(schema_path, "r") as file:
         schema = yaml.safe_load(file)
@@ -21,6 +24,14 @@ def generate_db(schema_path):
         "from motor.motor_asyncio import AsyncIOMotorClient",
         "from beanie import init_beanie",
         "from app.utils.helpers import load_config",
+        "",
+    ]
+
+    # Dynamically add imports for each model
+    for model in model_names:
+        db_lines.append(f"from app.models.{model.lower()}_model import {model}")
+
+    db_lines.extend([
         "",
         "# MongoDB connection string",
         "client = None",
@@ -45,19 +56,23 @@ def generate_db(schema_path):
         '        raise Exception("Database client is not initialized. Call init_db() first.")',
         "    config = load_config()",
         "    return client[config['db_name']]",
-    ]
+    ])
 
-    # Save db.py
-    DB_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(DB_FILE, "w") as db_file:
+    # Ensure the directory exists
+    outfile = Path(path_root) / DB_FILE
+    outfile.parent.mkdir(parents=True, exist_ok=True)
+
+    # Write the db.py file
+    with open(outfile, "w") as db_file:
         db_file.write("\n".join(db_lines) + "\n")
-    print(f">>> Generated {DB_FILE}")
+    print(f">>> Generated {outfile}")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python gen_db.py <schema.yaml>")
+    if len(sys.argv) < 3:
+        print("Usage: python gen_db.py <schema.yaml> <path_root")
         sys.exit(1)
 
     schema_file = sys.argv[1]
-    generate_db(schema_file)
+    path_root = sys.argv[2]
+    generate_db(schema_file, path_root)
