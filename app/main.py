@@ -8,7 +8,6 @@ from fastapi import FastAPI
 from app.utils.db import init_db
 from app.utils.helpers import load_config
 
-
 from app.routes.account_routes import router as account_router
 from app.routes.user_routes import router as user_router
 from app.routes.profile_routes import router as profile_router
@@ -45,15 +44,7 @@ if __name__ == '__main__':
     import uvicorn
 
     # Load configuration
-    try:
-        config = load_config()
-    except FileNotFoundError as e:
-        print(f'Error loading configuration: {e}')
-        config = {
-            'environment': 'production',
-            'host': '0.0.0.0',
-            'app_port': 8000,
-        }
+    config = load_config()
 
     # Determine runtime mode
     is_dev = config.get('environment', 'production') == 'development'
@@ -65,5 +56,5 @@ if __name__ == '__main__':
         port=config.get('app_port', 8000),
         reload=is_dev,  # Enable reload only in development mode
         reload_dirs=['app'] if is_dev else None,
-        log_level='debug' if is_dev else 'info',
+        log_level=config.get('log_level', 'info'),
     )

@@ -1,7 +1,7 @@
 from beanie import Document
 from pydantic import Field
-from datetime import datetime
 from typing import Optional, List, Dict
+from datetime import datetime
 
 class Profile(Document):
     _id: Optional[str] = Field(None, alias="_id")

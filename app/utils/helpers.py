@@ -1,7 +1,7 @@
+import json
 from pathlib import Path
 from bson.objectid import ObjectId
 from typing import Dict, Any
-import json
 
 # Path to the configuration file
 CONFIG_FILE = Path('app/config.json')
@@ -9,20 +9,19 @@ CONFIG_FILE = Path('app/config.json')
 def load_config():
     """
     Load and return the configuration from config.json.
+    If the file is not found, return default configuration values.
     """
     if not CONFIG_FILE.exists():
-        print(f'Configuration file not found: {CONFIG_FILE}')
-        config = {
-            'environment': 'production',
-            'host': '127.0.0.1',
+        print(f'Warning: Configuration file {CONFIG_FILE} not found. Using defaults.')
+        return {
+            'mongo_uri': 'mongodb://localhost:27017',
+            'db_name': 'default_db',
             'app_port': 8000,
-            "mongo_uri": "mongodb://localhost:27017",
-            "db_name": "event_management_system",
-            "log_level": "warning",
+            'environment': 'production',
+            'log_level': 'info',
         }
-        return config
-    with open(CONFIG_FILE, 'r') as file:
-        return json.load(file)
+    with open(CONFIG_FILE, 'r') as config_file:
+        return json.load(config_file)
 
 def serialize_mongo_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     """

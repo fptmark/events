@@ -1,9 +1,6 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
-from bson.objectid import ObjectId
-from typing import Dict, Any, Optional
 from app.utils.helpers import load_config
-
 
 from app.models.account_model import Account
 from app.models.user_model import User
@@ -15,7 +12,7 @@ from app.models.url_model import URL
 from app.models.crawl_model import Crawl
 
 # MongoDB connection string
-client: Optional[AsyncIOMotorClient] = None
+client = None
 
 async def init_db():
     """
