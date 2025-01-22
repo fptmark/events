@@ -1,4 +1,4 @@
-all: code setup er test 
+all: er setup code test 
 
 clean: 
 	rm -rf backup/app
@@ -21,8 +21,5 @@ er: schema.mmd
 
 app/main.py: schema.yaml
 
-test: setup app/main.py
-	echo "open app: http:/127.0.0.1:8000"
-	echo "Swagger: http:/127.0.0.1:8000/docs"
-	echo "Redoc: http:/127.0.0.1:8000/redoc"
-	PYTHONPATH=. uvicorn app.main:app --reload
+test: app/main.py
+	PYTHONPATH=. python app/main.py

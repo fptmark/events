@@ -2,20 +2,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 from bson.objectid import ObjectId
 from typing import Dict, Any, Optional
-import json
-from pathlib import Path
+from app.utils.helpers import load_config
 
-# Path to the config file
-CONFIG_FILE = Path('app/config.json')
-
-def load_config():
-    """
-    Load and return the configuration from config.json.
-    """
-    if not CONFIG_FILE.exists():
-        raise FileNotFoundError(f'Configuration file not found: {CONFIG_FILE}')
-    with open(CONFIG_FILE, 'r') as config_file:
-        return json.load(config_file)
 
 from app.models.account_model import Account
 from app.models.user_model import User

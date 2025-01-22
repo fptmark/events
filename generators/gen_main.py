@@ -18,22 +18,15 @@ def generate_main(schema_path):
 
     # Start building the main.py content
     lines = [
-        "from fastapi import FastAPI",
-        "from app.utils.db import init_db",
-        "import json",
+        "import sys",
         "from pathlib import Path",
         "",
-        "# Path to the configuration file",
-        "CONFIG_FILE = Path('app/config.json')",
+        "# Add the project root to PYTHONPATH",
+        "sys.path.append(str(Path(__file__).resolve().parent.parent))",
         "",
-        "def load_config():",
-        '    """',
-        "    Load and return the configuration from config.json.",
-        '    """',
-        "    if not CONFIG_FILE.exists():",
-        "        raise FileNotFoundError(f'Configuration file not found: {CONFIG_FILE}')",
-        "    with open(CONFIG_FILE, 'r') as file:",
-        "        return json.load(file)",
+        "from fastapi import FastAPI",
+        "from app.utils.db import init_db",
+        "from app.utils.helpers import load_config",
         "",
     ]
 
@@ -48,7 +41,10 @@ def generate_main(schema_path):
         "",
         "@app.on_event('startup')",
         "async def startup_event():",
-        "    await init_db()  # Initialize MongoDB connection",
+        "    print('Startup event called')",
+        "    config = load_config()",
+        "    print(f\"Running in {'development' if config.get('environment', 'production') == 'development' else 'production'} mode\")",
+        "    await init_db()",
         "",
         "# Include routers",
     ])
@@ -66,20 +62,21 @@ def generate_main(schema_path):
         "",
         "if __name__ == '__main__':",
         "    import uvicorn",
-        "    try:",
-        "        config = load_config()",
-        "    except FileNotFoundError:",
-        "        config = {",
-        "            'host': '0.0.0.0',",
-        "            'app_port': 8000,",
-        "            'reload_dirs': ['app'],",
-        "        }",
-        f"    uvicorn.run(",
-        "        app,",
+        "",
+        "    # Load configuration",
+        "    config = load_config()",
+        "",
+        "    # Determine runtime mode",
+        "    is_dev = config.get('environment', 'production') == 'development'",
+        "",
+        "    # Run Uvicorn",
+        "    uvicorn.run(",
+        "        'app.main:app',  # Use the import string for proper reload behavior",
         "        host=config.get('host', '0.0.0.0'),",
         "        port=config.get('app_port', 8000),",
-        "        reload=True,",
-        "        reload_dirs=config.get('reload_dirs', ['app']),",
+        "        reload=is_dev,  # Enable reload only in development mode",
+        "        reload_dirs=['app'] if is_dev else None,",
+        "        log_level=config.get('log_level', 'info'),",
         "    )",
     ])
 
@@ -92,7 +89,7 @@ def generate_main(schema_path):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python main_generator.py <schema.yaml>")
+        print("Usage: python gen_main.py <schema.yaml>")
         sys.exit(1)
 
     schema_file = sys.argv[1]

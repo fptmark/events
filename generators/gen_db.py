@@ -4,10 +4,7 @@ import sys
 
 # Paths
 DB_FILE = Path("app/utils/db.py")
-HELPERS_FILE = Path("app/utils/helpers.py")
-
-# Reserved types that should not be treated as models
-RESERVED_TYPES = {"ISODate", "ObjectId"}
+RESERVED_TYPES = {"ISODate", "ObjectId"}  # Reserved types to skip
 
 
 def generate_db(schema_path):
@@ -23,33 +20,10 @@ def generate_db(schema_path):
     db_lines = [
         "from motor.motor_asyncio import AsyncIOMotorClient",
         "from beanie import init_beanie",
-        "from bson.objectid import ObjectId",
-        "from typing import Dict, Any, Optional",
-        "import json",
-        "from pathlib import Path",
-        "",
-        "# Path to the config file",
-        "CONFIG_FILE = Path('app/config.json')",
-        "",
-        "def load_config():",
-        '    """',
-        "    Load and return the configuration from config.json.",
-        '    """',
-        "    if not CONFIG_FILE.exists():",
-        "        raise FileNotFoundError(f'Configuration file not found: {CONFIG_FILE}')",
-        "    with open(CONFIG_FILE, 'r') as config_file:",
-        "        return json.load(config_file)",
-        "",
-    ]
-
-    # Dynamically import valid models
-    for model in model_names:
-        db_lines.append(f"from app.models.{model.lower()}_model import {model}")
-
-    db_lines.extend([
+        "from app.utils.helpers import load_config",
         "",
         "# MongoDB connection string",
-        "client: Optional[AsyncIOMotorClient] = None",
+        "client = None",
         "",
         "async def init_db():",
         '    """',
@@ -71,7 +45,7 @@ def generate_db(schema_path):
         '        raise Exception("Database client is not initialized. Call init_db() first.")',
         "    config = load_config()",
         "    return client[config['db_name']]",
-    ])
+    ]
 
     # Save db.py
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -79,30 +53,10 @@ def generate_db(schema_path):
         db_file.write("\n".join(db_lines) + "\n")
     print(f">>> Generated {DB_FILE}")
 
-    # Generate helpers.py
-    helpers_lines = [
-        "from bson.objectid import ObjectId",
-        "from typing import Dict, Any",
-        "",
-        "def serialize_mongo_document(doc: Dict[str, Any]) -> Dict[str, Any]:",
-        '    """',
-        "    Serialize MongoDB document for JSON response.",
-        "    Convert ObjectId to string.",
-        '    """',
-        "    if '_id' in doc and isinstance(doc['_id'], ObjectId):",
-        "        doc['_id'] = str(doc['_id'])",
-        "    return doc",
-    ]
-
-    # Save helpers.py
-    with open(HELPERS_FILE, "w") as helpers_file:
-        helpers_file.write("\n".join(helpers_lines) + "\n")
-    print(f">>> Generated {HELPERS_FILE}")
-
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python db_generator.py <schema.yaml>")
+        print("Usage: python gen_db.py <schema.yaml>")
         sys.exit(1)
 
     schema_file = sys.argv[1]
