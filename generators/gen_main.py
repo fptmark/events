@@ -1,6 +1,7 @@
 import yaml
 from pathlib import Path
 import sys
+import gen_helpers
 
 # Paths
 MAIN_FILE = Path("app/main.py")
@@ -17,74 +18,27 @@ def generate_main(schema_path, path_root):
     entity_names = [name for name in schemas.keys() if name not in RESERVED_TYPES]
 
     # Start building the main.py content
-    lines = [
-        "import sys",
-        "from pathlib import Path",
-        "",
-        "# Add the project root to PYTHONPATH",
-        "sys.path.append(str(Path(__file__).resolve().parent.parent))",
-        "",
-        "from fastapi import FastAPI",
-        "from app.utils.db import init_db",
-        "from app.utils.helpers import load_config",
-        "",
-    ]
+    lines = gen_helpers.read_file_to_array("generators/templates/main1.txt")
 
     # Import routes dynamically for valid entities
     for entity in entity_names:
-        lines.append(f"from app.routes.{entity.lower()}_routes import router as {entity.lower()}_router")
+        lines.append(f"from app.routes.{entity.lower()}_routes import router as {entity.lower()}_router\n")
 
     # Initialize FastAPI app
-    lines.extend([
-        "",
-        "app = FastAPI()",
-        "",
-        "@app.on_event('startup')",
-        "async def startup_event():",
-        "    print('Startup event called')",
-        "    config = load_config()",
-        "    print(f\"Running in {'development' if config.get('environment', 'production') == 'development' else 'production'} mode\")",
-        "    await init_db()",
-        "",
-        "# Include routers",
-    ])
+    lines.extend( gen_helpers.read_file_to_array("generators/templates/main2.txt") )
 
     # Register routes dynamically
     for entity in entity_names:
-        lines.append(f"app.include_router({entity.lower()}_router, prefix='/{entity.lower()}', tags=['{entity}'])")
+        lines.append(f"app.include_router({entity.lower()}_router, prefix='/{entity.lower()}', tags=['{entity}'])\n")
 
     # Add root endpoint
-    lines.extend([
-        "",
-        "@app.get('/')",
-        "def read_root():",
-        "    return {'message': 'Welcome to the Event Management System'}",
-        "",
-        "if __name__ == '__main__':",
-        "    import uvicorn",
-        "",
-        "    # Load configuration",
-        "    config = load_config()",
-        "",
-        "    # Determine runtime mode",
-        "    is_dev = config.get('environment', 'production') == 'development'",
-        "",
-        "    # Run Uvicorn",
-        "    uvicorn.run(",
-        "        'app.main:app',  # Use the import string for proper reload behavior",
-        "        host=config.get('host', '0.0.0.0'),",
-        "        port=config.get('app_port', 8000),",
-        "        reload=is_dev,  # Enable reload only in development mode",
-        "        reload_dirs=['app'] if is_dev else None,",
-        "        log_level=config.get('log_level', 'info'),",
-        "    )",
-    ])
+    lines.extend( gen_helpers.read_file_to_array("generators/templates/main3.txt") )
 
     # Save main.py
     outfile = Path(path_root) / MAIN_FILE
     outfile.parent.mkdir(parents=True, exist_ok=True)
     with open(outfile, "w") as main_file:
-        main_file.write("\n".join(lines) + "\n")
+        main_file.writelines(lines) 
     print(f">>> Generated {outfile}")
 
 if __name__ == "__main__":

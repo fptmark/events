@@ -1,0 +1,27 @@
+import sys
+from pathlib import Path
+from app.utils.helpers import load_config 
+
+import logging
+LOG_FILE = "app.log"
+config = load_config()
+is_dev = config.get('environment', 'production') == 'development' 
+my_log_level = config.get('log_level', 'info' if is_dev else 'warning').upper() 
+
+logging.basicConfig(
+    level=my_log_level,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),  # Output to console
+        logging.FileHandler(LOG_FILE, mode="a"),  # Write to a log file
+    ],
+)
+logger = logging.getLogger(__name__)
+
+# Add the project root to PYTHONPATH
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from fastapi import FastAPI
+from app.utils.db import init_db
+from app.utils.helpers import load_config
+
