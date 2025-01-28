@@ -2,12 +2,15 @@
 
 all: er setup code test 
 
+gen: code move test
+
 clean: 
 	rm -rf backup/app
 	mv app backup
 
 move:
-	rm -rf app
+	rm -rf backup/app
+	mv app backup
 	mv code/app app
 	cp -f config.json app
 
@@ -15,13 +18,14 @@ save:
 	rm -rf backup/app
 	mv app backup || true
 
-code: 
+
+code: generators/*.py schema.yaml generators/templates/* 
 	rm -rf code
 	python generators/gen_models.py schema.yaml code
 	python generators/gen_routes.py schema.yaml code
 	python generators/gen_main.py schema.yaml code
 	python generators/gen_db.py schema.yaml code
-	python generators/gen_helpers.py code
+	cp utilities/config.py code/app/utils
 
 setup: requirements.txt
 	pip install -r requirements.txt

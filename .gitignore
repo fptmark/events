@@ -1,3 +1,6 @@
 backup/
 __pycache__/
 .DS_Store
+app.log
+code/
+app/config.json

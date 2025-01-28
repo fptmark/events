@@ -35,10 +35,7 @@ def generate_main(schema_path, path_root):
     lines.extend( helpers.read_file_to_array(TEMPLATE, 3))
 
     # Save main.py
-    outfile = Path(path_root) / MAIN_FILE
-    outfile.parent.mkdir(parents=True, exist_ok=True)
-    with open(outfile, "w") as main_file:
-        main_file.writelines(lines) 
+    outfile = helpers.generate_file(path_root, MAIN_FILE, lines)
     print(f">>> Generated {outfile}")
 
 if __name__ == "__main__":

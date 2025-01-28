@@ -1,11 +1,12 @@
 import yaml
 from pathlib import Path
 import sys
+import helpers
 
 # Paths
 DB_FILE = Path("app/utils/db.py")
 RESERVED_TYPES = {"ISODate", "ObjectId"}  # Reserved types to skip
-
+TEMPLATE = "generators/templates/db/db.txt"
 
 def generate_db(schema_path, path_root):
     """
@@ -21,50 +22,24 @@ def generate_db(schema_path, path_root):
 
     # Generate db.py
     db_lines = [
-        "from motor.motor_asyncio import AsyncIOMotorClient",
-        "from beanie import init_beanie",
-        "from app.utils.helpers import load_config",
-        "",
+        "from motor.motor_asyncio import AsyncIOMotorClient\n",
+        "from beanie import init_beanie\n",
+        "import logging\n",
+        "\n",
     ]
 
     # Dynamically add imports for each model
     for model in model_names:
-        db_lines.append(f"from app.models.{model.lower()}_model import {model}")
+        db_lines.append(f"from app.models.{model.lower()}_model import {model}\n")
 
-    db_lines.extend([
-        "",
-        "# MongoDB connection string",
-        "client = None",
-        "",
-        "async def init_db():",
-        '    """',
-        "    Initialize MongoDB connection and Beanie models.",
-        '    """',
-        "    global client",
-        "    config = load_config()",
-        "    client = AsyncIOMotorClient(config['mongo_uri'])",
-        "    db = client[config['db_name']]",
-        "",
-        "    # Initialize Beanie models",
-        f"    await init_beanie(database=db, document_models=[{', '.join(model_names)}])",
-        "",
-        "def get_db():",
-        '    """',
-        "    Get a direct connection to the MongoDB database.",
-        '    """',
-        "    if client is None:",
-        '        raise Exception("Database client is not initialized. Call init_db() first.")',
-        "    config = load_config()",
-        "    return client[config['db_name']]",
-    ])
+    template = helpers.read_file_to_array(TEMPLATE)
+    models = ', '.join(model_names)
+    template = [ line.replace("{models}", models) for line in template]
+
+    db_lines.extend(template)
 
     # Ensure the directory exists
-    outfile = Path(path_root) / DB_FILE
-    outfile.parent.mkdir(parents=True, exist_ok=True)
-
-    # Write the db.py file
-    with open(outfile, "w") as db_file:
-        db_file.write("\n".join(db_lines) + "\n")
+    outfile = helpers.generate_file(path_root, DB_FILE, db_lines)
     print(f">>> Generated {outfile}")
 
 
