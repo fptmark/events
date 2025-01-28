@@ -1,12 +1,12 @@
 import yaml
 from pathlib import Path
 import sys
-import gen_helpers
+import helpers
 
 # Paths
 MAIN_FILE = Path("app/main.py")
 RESERVED_TYPES = {"ISODate", "ObjectId"}  # Reserved types to skip
-
+TEMPLATE = "generators/templates/main/main"
 
 def generate_main(schema_path, path_root):
     # Load the YAML schema
@@ -18,21 +18,21 @@ def generate_main(schema_path, path_root):
     entity_names = [name for name in schemas.keys() if name not in RESERVED_TYPES]
 
     # Start building the main.py content
-    lines = gen_helpers.read_file_to_array("generators/templates/main1.txt")
+    lines = helpers.read_file_to_array(TEMPLATE, 1)
 
     # Import routes dynamically for valid entities
     for entity in entity_names:
         lines.append(f"from app.routes.{entity.lower()}_routes import router as {entity.lower()}_router\n")
 
     # Initialize FastAPI app
-    lines.extend( gen_helpers.read_file_to_array("generators/templates/main2.txt") )
+    lines.extend( helpers.read_file_to_array(TEMPLATE, 2))
 
     # Register routes dynamically
     for entity in entity_names:
         lines.append(f"app.include_router({entity.lower()}_router, prefix='/{entity.lower()}', tags=['{entity}'])\n")
 
     # Add root endpoint
-    lines.extend( gen_helpers.read_file_to_array("generators/templates/main3.txt") )
+    lines.extend( helpers.read_file_to_array(TEMPLATE, 3))
 
     # Save main.py
     outfile = Path(path_root) / MAIN_FILE

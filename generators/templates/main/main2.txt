@@ -4,6 +4,6 @@ app = FastAPI()
 async def startup_event():
     logger.info('Startup event called')
     logger.info(f"Running in {'development' if config.get('environment', 'production') == 'development' else 'production'} mode")
-    await init_db(config['mongo_uri'], config['db_name']) ### ADDED
+    await init_db(config['mongo_uri'], config['db_name']) 
 
 # Include routers
