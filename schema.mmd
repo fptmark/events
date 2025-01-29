@@ -1,15 +1,15 @@
 erDiagram
-    accounts {
+    Account {
         ObjectId _id
         ISODate expiredAt
         ISODate createdAt
     }
-    %% @validation accounts
+    %% @validation Account
     %% _id: { type: ObjectId, required: true }
     %% expiredAt: { type: ISODate, required: false }
     %% createdAt: { type: ISODate, required: true }
 
-    users {
+    User {
         ObjectId _id
         ObjectId accountId
         String username
@@ -19,7 +19,7 @@ erDiagram
         ISODate createdAt
         ISODate updatedAt
     }
-    %% @validation users
+    %% @validation User
     %% _id: { type: ObjectId, required: true }
     %% accountId: { type: ObjectId, required: true }
     %% username: { type: String, required: true, minLength: 3, maxLength: 50 }
@@ -29,7 +29,7 @@ erDiagram
     %% createdAt: { type: ISODate, required: true }
     %% updatedAt: { type: ISODate, required: true }
 
-    profiles {
+    Profile {
         ObjectId _id
         ObjectId userId
         String name
@@ -38,7 +38,7 @@ erDiagram
         ISODate createdAt
         ISODate updatedAt
     }
-    %% @validation profiles
+    %% @validation Profile
     %% _id: { type: ObjectId, required: true }
     %% userId: { type: ObjectId, required: true }
     %% name: { type: String, required: true, maxLength: 100 }
@@ -47,21 +47,21 @@ erDiagram
     %% createdAt: { type: ISODate, required: true }
     %% updatedAt: { type: ISODate, required: true }
 
-    tagAffinities {
+    TagAffinity {
         ObjectId _id
         ObjectId profileId
         String tag
         Integer affinity
         ISODate updatedAt
     }
-    %% @validation tagAffinities
+    %% @validation TagAffinity
     %% _id: { type: ObjectId, required: true }
     %% profileId: { type: ObjectId, required: true }
     %% tag: { type: String, required: true, maxLength: 50 }
     %% affinity: { type: Integer, required: true, min: -100, max: 100 }
     %% updatedAt: { type: ISODate, required: true }
 
-    events {
+    Event {
         ObjectId _id
         String url
         String title
@@ -73,7 +73,7 @@ erDiagram
         Array[String] tags
         ISODate updatedAt
     }
-    %% @validation events
+    %% @validation Event
     %% _id: { type: ObjectId, required: true }
     %% url: { type: String, required: true, pattern: ^https?://[^\s]+$ }
     %% title: { type: String, required: true, maxLength: 200 }
@@ -85,7 +85,7 @@ erDiagram
     %% tags: { type: Array[String], required: false }
     %% updatedAt: { type: ISODate, required: true }
 
-    userEvents {
+    UserEvent {
         ObjectId _id
         ObjectId userId
         ObjectId eventId
@@ -94,7 +94,7 @@ erDiagram
         String note
         ISODate updatedAt
     }
-    %% @validation userEvents
+    %% @validation UserEvent
     %% _id: { type: ObjectId, required: true }
     %% userId: { type: ObjectId, required: true }
     %% eventId: { type: ObjectId, required: true }
@@ -103,19 +103,19 @@ erDiagram
     %% note: { type: String, required: false, maxLength: 500 }
     %% updatedAt: { type: ISODate, required: true }
 
-    urls {
+    Url {
         ObjectId _id
         String url
         JSON params
         ISODate updatedAt
     }
-    %% @validation urls
+    %% @validation Url
     %% _id: { type: ObjectId, required: true }
     %% url: { type: String, required: true, pattern: ^https?://[^\s]+$ }
     %% params: { type: JSON, required: false }
     %% updatedAt: { type: ISODate, required: true }
 
-    crawls {
+    Crawl {
         ObjectId _id
         ObjectId url_id
         ISODate last_parsed_date
@@ -123,7 +123,7 @@ erDiagram
         Array[String] errors_encountered
         ISODate updatedAt
     }
-    %% @validation crawls
+    %% @validation Crawl
     %% _id: { type: ObjectId, required: true }
     %% url_id: { type: ObjectId, required: true }
     %% last_parsed_date: { type: ISODate, required: false }
@@ -131,9 +131,9 @@ erDiagram
     %% errors_encountered: { type: Array[String], required: false }
     %% updatedAt: { type: ISODate, required: true }
 
-    accounts ||--o{ users: ""
-    users ||--o{ profiles: ""
-    profiles ||--o{ tagAffinities: ""
-    users ||--o{ userEvents: ""
-    events ||--o{ userEvents: ""
-    urls ||--o{ crawls: ""
+    Account ||--o{ User: ""
+    User ||--o{ Profile: ""
+    Profile ||--o{ TagAffinity: ""
+    User ||--o{ UserEvent: ""
+    Event ||--o{ UserEvent: ""
+    Url ||--o{ Crawl: ""

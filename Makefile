@@ -4,6 +4,8 @@ all: setup code test
 
 gen: code move test
 
+schema: schema.yaml schema.png
+
 clean: 
 	rm -rf backup/app
 	mv app backup
@@ -30,7 +32,7 @@ code: generators/*.py schema.yaml generators/templates/*
 setup: requirements.txt
 	pip install -r requirements.txt
 
-schema.yaml: schema.mmd
+schema.yaml: schema.mmd schemaConvert.py
 	python schemaConvert.py
 
 schema.png: schema.mmd

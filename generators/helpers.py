@@ -1,6 +1,8 @@
 from pathlib import Path
 import sys
 
+import yaml
+
 def generate_file(path_root: str, file_name: Path, lines: list[str])-> Path:
     outfile = Path(path_root) / file_name
     outfile.parent.mkdir(parents=True, exist_ok=True)
@@ -32,3 +34,22 @@ def read_file_to_array(template: str, num=0)-> list[str]:
 
 # Example usage:
 #file_content = read_file_to_array('example.txt')
+# Function to convert plural entity names to singular (basic rule-based approach)
+
+def singularize(name):
+    if name.endswith("ies"):  # e.g., categories → category
+        return name[:-3] + "y"
+    elif name.endswith("s") and not name.endswith("ss"):  # e.g., users → user (but not addresses)
+        return name[:-1]
+    return name  # Default: leave it unchanged
+
+RESERVED_TYPES = {"ISODate", "ObjectId", "_relationships"}
+def get_schema(schema_path: str, reserved_types=RESERVED_TYPES)-> dict:
+    with open(schema_path, "r") as file:
+        schema = yaml.safe_load(file)
+
+    # Extract entity schemas, skipping reserved types and metadata keys
+    entity_schemas = {
+        name: details for name, details in schema.items() if name not in reserved_types and isinstance(details, dict)
+    }
+    return entity_schemas

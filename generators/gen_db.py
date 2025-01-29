@@ -13,12 +13,13 @@ def generate_db(schema_path, path_root):
     Generate the db.py file for MongoDB connection and Beanie initialization.
     """
     # Load the YAML schema
-    with open(schema_path, "r") as file:
-        schema = yaml.safe_load(file)
+    entity_schemas = helpers.get_schema(schema_path)
+    # with open(schema_path, "r") as file:
+    #     schema = yaml.safe_load(file)
 
-    # Extract model names
-    schemas = schema.get("components", {}).get("schemas", {})
-    model_names = [name for name in schemas.keys() if name not in RESERVED_TYPES]
+    # # Extract model names
+    # schemas = schema.get("components", {}).get("schemas", {})
+    # model_names = [name for name in schemas.keys() if name not in RESERVED_TYPES]
 
     # Generate db.py
     db_lines = [
@@ -29,12 +30,15 @@ def generate_db(schema_path, path_root):
     ]
 
     # Dynamically add imports for each model
-    for model in model_names:
-        db_lines.append(f"from app.models.{model.lower()}_model import {model}\n")
+    models = ""
+    for model, _ in entity_schemas.items():
+        singular = helpers.singularize(model.lower())
+        model_name = model.capitalize()
+        db_lines.append(f"from app.models.{singular}_model import {model_name}\n")
+        models += f"{model}, "
 
     template = helpers.read_file_to_array(TEMPLATE)
-    models = ', '.join(model_names)
-    template = [ line.replace("{models}", models) for line in template]
+    template = [ line.replace("{models}", models[:-1]) for line in template]
 
     db_lines.extend(template)
 

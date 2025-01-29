@@ -9,26 +9,29 @@ RESERVED_TYPES = {"ISODate", "ObjectId"}  # Reserved types to skip
 TEMPLATE = "generators/templates/main/main"
 
 def generate_main(schema_path, path_root):
-    # Load the YAML schema
-    with open(schema_path, "r") as file:
-        schema = yaml.safe_load(file)
 
-    # Extract entity names from the schema
-    schemas = schema.get("components", {}).get("schemas", {})
-    entity_names = [name for name in schemas.keys() if name not in RESERVED_TYPES]
+    entity_schemas = helpers.get_schema(schema_path)
+    # with open(schema_path, "r") as file:
+    #     schema = yaml.safe_load(file)
+
+    # # Extract entity names from the schema
+    # schemas = schema.get("components", {}).get("schemas", {})
+    # entity_names = [name for name in schemas.keys() if name not in RESERVED_TYPES]
 
     # Start building the main.py content
     lines = helpers.read_file_to_array(TEMPLATE, 1)
 
     # Import routes dynamically for valid entities
-    for entity in entity_names:
-        lines.append(f"from app.routes.{entity.lower()}_routes import router as {entity.lower()}_router\n")
+    for entity, _ in entity_schemas.items():
+        entity_lower = entity.lower()
+        print(f"from app.routes.{entity_lower}_routes import router as {entity_lower}_router\n")
+        lines.append(f"from app.routes.{entity_lower}_routes import router as {entity_lower}_router\n")
 
     # Initialize FastAPI app
     lines.extend( helpers.read_file_to_array(TEMPLATE, 2))
 
     # Register routes dynamically
-    for entity in entity_names:
+    for entity, _ in entity_schemas.items():
         lines.append(f"app.include_router({entity.lower()}_router, prefix='/{entity.lower()}', tags=['{entity}'])\n")
 
     # Add root endpoint
