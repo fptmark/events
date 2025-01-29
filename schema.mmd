@@ -4,6 +4,10 @@ erDiagram
         ISODate expiredAt
         ISODate createdAt
     }
+    %% @validation accounts
+    %% _id: { type: ObjectId, required: true }
+    %% expiredAt: { type: ISODate, required: false }
+    %% createdAt: { type: ISODate, required: true }
 
     users {
         ObjectId _id
@@ -15,6 +19,15 @@ erDiagram
         ISODate createdAt
         ISODate updatedAt
     }
+    %% @validation users
+    %% _id: { type: ObjectId, required: true }
+    %% accountId: { type: ObjectId, required: true }
+    %% username: { type: String, required: true, minLength: 3, maxLength: 50 }
+    %% password: { type: String, required: true, minLength: 8 }
+    %% name: { type: String, required: false, maxLength: 100 }
+    %% isAccountOwner: { type: Boolean, required: true }
+    %% createdAt: { type: ISODate, required: true }
+    %% updatedAt: { type: ISODate, required: true }
 
     profiles {
         ObjectId _id
@@ -25,6 +38,14 @@ erDiagram
         ISODate createdAt
         ISODate updatedAt
     }
+    %% @validation profiles
+    %% _id: { type: ObjectId, required: true }
+    %% userId: { type: ObjectId, required: true }
+    %% name: { type: String, required: true, maxLength: 100 }
+    %% preferences: { type: JSON, required: false }
+    %% radiusMiles: { type: Integer, required: false, min: 0 }
+    %% createdAt: { type: ISODate, required: true }
+    %% updatedAt: { type: ISODate, required: true }
 
     tagAffinities {
         ObjectId _id
@@ -33,6 +54,12 @@ erDiagram
         Integer affinity
         ISODate updatedAt
     }
+    %% @validation tagAffinities
+    %% _id: { type: ObjectId, required: true }
+    %% profileId: { type: ObjectId, required: true }
+    %% tag: { type: String, required: true, maxLength: 50 }
+    %% affinity: { type: Integer, required: true, min: -100, max: 100 }
+    %% updatedAt: { type: ISODate, required: true }
 
     events {
         ObjectId _id
@@ -46,6 +73,17 @@ erDiagram
         Array[String] tags
         ISODate updatedAt
     }
+    %% @validation events
+    %% _id: { type: ObjectId, required: true }
+    %% url: { type: String, required: true, pattern: ^https?://[^\s]+$ }
+    %% title: { type: String, required: true, maxLength: 200 }
+    %% dateTime: { type: ISODate, required: true }
+    %% location: { type: String, required: false, maxLength: 200 }
+    %% cost: { type: Number, required: false, min: 0 }
+    %% numOfExpectedAttendees: { type: Integer, required: false, min: 0 }
+    %% recurrence: { type: String, required: false, enum: [daily, weekly, monthly, yearly] }
+    %% tags: { type: Array[String], required: false }
+    %% updatedAt: { type: ISODate, required: true }
 
     userEvents {
         ObjectId _id
@@ -56,6 +94,14 @@ erDiagram
         String note
         ISODate updatedAt
     }
+    %% @validation userEvents
+    %% _id: { type: ObjectId, required: true }
+    %% userId: { type: ObjectId, required: true }
+    %% eventId: { type: ObjectId, required: true }
+    %% attended: { type: Boolean, required: false }
+    %% rating: { type: Integer, required: false, min: 1, max: 5 }
+    %% note: { type: String, required: false, maxLength: 500 }
+    %% updatedAt: { type: ISODate, required: true }
 
     urls {
         ObjectId _id
@@ -63,6 +109,11 @@ erDiagram
         JSON params
         ISODate updatedAt
     }
+    %% @validation urls
+    %% _id: { type: ObjectId, required: true }
+    %% url: { type: String, required: true, pattern: ^https?://[^\s]+$ }
+    %% params: { type: JSON, required: false }
+    %% updatedAt: { type: ISODate, required: true }
 
     crawls {
         ObjectId _id
@@ -72,6 +123,13 @@ erDiagram
         Array[String] errors_encountered
         ISODate updatedAt
     }
+    %% @validation crawls
+    %% _id: { type: ObjectId, required: true }
+    %% url_id: { type: ObjectId, required: true }
+    %% last_parsed_date: { type: ISODate, required: false }
+    %% parse_status: { type: JSON, required: false }
+    %% errors_encountered: { type: Array[String], required: false }
+    %% updatedAt: { type: ISODate, required: true }
 
     accounts ||--o{ users: ""
     users ||--o{ profiles: ""

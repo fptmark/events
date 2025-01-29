@@ -1,6 +1,6 @@
 .PHONY: clean move save code
 
-all: er setup code test 
+all: setup code test 
 
 gen: code move test
 
@@ -30,7 +30,10 @@ code: generators/*.py schema.yaml generators/templates/*
 setup: requirements.txt
 	pip install -r requirements.txt
 
-er: schema.mmd
+schema.yaml: schema.mmd
+	python schemaConvert.py
+
+schema.png: schema.mmd
 	mmdc -i schema.mmd -o schema.png
 
 app/main.py: schema.yaml
