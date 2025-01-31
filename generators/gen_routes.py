@@ -1,3 +1,4 @@
+import yaml
 from pathlib import Path
 import sys
 import helpers
@@ -6,21 +7,85 @@ import helpers
 ROUTES_DIR = Path("app/routes")
 TEMPLATE = Path("generators/templates/routes/routes.txt")
 
-# Reserved types and metadata keys that should not generate routes
-# RESERVED_TYPES = {"ISODate", "ObjectId", "_relationships"}
+def singularize(name):
+    """Basic singularization function."""
+    if name.endswith('s'):
+        return name[:-1]
+    return name
 
+def pluralize(name):
+    """Basic pluralization function."""
+    if not name.endswith('s'):
+        return name + 's'
+    return name
+
+def map_python_type(yaml_type):
+    """Map YAML types to Python types."""
+    type_mapping = {
+        "ObjectId": "str",
+        "ISODate": "datetime",
+        "String": "str",
+        "Integer": "int",
+        "Boolean": "bool",
+        "Number": "float",
+        "JSON": "Dict[str, Any]",
+    }
+    return type_mapping.get(yaml_type, "Any")
+
+def generate_fields(fields, model_type="Create"):
+    """
+    Generate Pydantic fields for Create or Read models.
+    model_type: "Create" or "Read"
+    """
+    field_lines = []
+    for field_name, rules in fields.items():
+        if model_type == "Create" and field_name == "_id":
+            continue  # Exclude _id from Create model
+        
+        yaml_type = rules.get("type", "String")
+        python_type = map_python_type(yaml_type)
+        required = rules.get("required", "False") == "True"
+
+        # Start field definition
+        if not required:
+            field_def = f"    {field_name}: Optional[{python_type}] = Field(None)"
+        else:
+            field_def = f"    {field_name}: {python_type}"
+
+        # Add validations based on rules
+        validations = []
+        if "minLength" in rules:
+            validations.append(f"min_length={rules['minLength']}")
+        if "maxLength" in rules:
+            validations.append(f"max_length={rules['maxLength']}")
+        if "pattern" in rules:
+            validations.append(f"regex=r'{rules['pattern']}'")
+        if "min" in rules:
+            validations.append(f"ge={rules['min']}")
+        if "max" in rules:
+            validations.append(f"le={rules['max']}")
+        if "enum" in rules:
+            enum_values = rules["enum"]
+            enum_list = ", ".join([f"'{val}'" for val in enum_values])
+            validations.append(f"enum=[{enum_list}]")
+
+        if validations and model_type == "Create":
+            # Replace the default None with validations
+            field_def = field_def.split(" = ")[0] + f" = Field({', '.join(validations)})"
+        
+        field_lines.append(field_def)
+    
+    return "\n".join(field_lines)
 
 def generate_routes(schema_path, path_root):
+    """
+    Generate route files based on the YAML schema and template.
+    """
+    # Ensure the routes directory exists
+    ROUTES_DIR.mkdir(parents=True, exist_ok=True)
+
     # Load the YAML schema
     entity_schemas = helpers.get_schema(schema_path)
-
-    # with open(schema_path, "r") as file:
-    #     schema = yaml.safe_load(file)
-
-    # # Extract entity schemas, skipping reserved types and metadata keys
-    # entity_schemas = {
-    #     name: details for name, details in schema.items() if name not in RESERVED_TYPES and isinstance(details, dict)
-    # }
 
     for entity, entity_schema in entity_schemas.items():
         fields = entity_schema.get("fields", {})
@@ -29,69 +94,32 @@ def generate_routes(schema_path, path_root):
             continue
 
         # Create entity names
-        entity_lower = entity.lower()   
-        entity_singular = helpers.singularize(entity_lower)
-        entity_name = entity_singular.capitalize()  # Singular entity name with capital first letter
-
-        # print(f"names {entity_singular} {entity_lower} {entity}")
-        route_file = f"{entity_singular}_routes.py"  # Singular file name
+        entity_lower = entity.lower()
+        entity_singular = singularize(entity_lower)
+        entity_plural = pluralize(entity_singular)
+        ModelName = entity
 
         # Generate Pydantic model fields
-        pydantic_fields = []
-        for field, rules in fields.items():
-            field_type = rules["type"]
-            if field_type == "String":
-                pydantic_type = "str"
-            elif field_type == "Integer":
-                pydantic_type = "int"
-            elif field_type == "Number":
-                pydantic_type = "float"
-            elif field_type == "Boolean":
-                pydantic_type = "bool"
-            else:
-                pydantic_type = "Any"
-
-            field_definition = f"{field}: {pydantic_type}"
-            if rules.get("required", False):
-                field_definition += "  # Required"
-            pydantic_fields.append(field_definition)
-
-        # Validation logic for route handlers
-        validation_imports = set()
-        validation_code = []
-        for field, rules in fields.items():
-            if rules.get("required"):
-                validation_code.append(f"    if not item.{field}: raise HTTPException(status_code=400, detail='Field {field} is required')")
-            if "minLength" in rules:
-                validation_code.append(f"    if len(item.{field}) < {rules['minLength']}: raise HTTPException(status_code=400, detail='Field {field} must have at least {rules['minLength']} characters')")
-            if "maxLength" in rules:
-                validation_code.append(f"    if len(item.{field}) > {rules['maxLength']}: raise HTTPException(status_code=400, detail='Field {field} must not exceed {rules['maxLength']} characters')")
-            if "min" in rules:
-                validation_code.append(f"    if item.{field} < {rules['min']}: raise HTTPException(status_code=400, detail='Field {field} must be at least {rules['min']}')")
-            if "max" in rules:
-                validation_code.append(f"    if item.{field} > {rules['max']}: raise HTTPException(status_code=400, detail='Field {field} must be at most {rules['max']}')")
-            if "pattern" in rules:
-                validation_imports.add("import re")
-                validation_code.append(f"    if not re.match(r'{rules['pattern']}', item.{field}): raise HTTPException(status_code=400, detail='Field {field} does not match required pattern')")
+        create_fields = generate_fields(fields, model_type="Create")
+        read_fields = generate_fields(fields, model_type="Read")
 
         # Read the template file
-        template = helpers.read_file_to_array("generators/templates/routes/routes.txt")
+        with open(TEMPLATE, "r") as template_file:
+            template_content = template_file.read()
 
         # Replace placeholders in the template
-        template = [line.replace("{entity_name}", entity_name) for line in template]
-        template = [line.replace("{entity_singular}", entity_singular) for line in template]
-        template = [line.replace("{entity_lower}", entity_lower) for line in template]
-        template = [line.replace("{validation_code}", "\n".join(validation_code)) for line in template]
-        template = [line.replace("{validation_imports}", "\n".join(validation_imports)) for line in template]
-        template = [line.replace("{pydantic_fields}", "\n    ".join(pydantic_fields)) for line in template]
+        template_content = template_content.replace("{ModelName}", ModelName)
+        template_content = template_content.replace("{entity_lower}", entity_lower)
+        template_content = template_content.replace("{entity_plural}", entity_plural)
+        template_content = template_content.replace("{create_fields}", create_fields)
+        template_content = template_content.replace("{read_fields}", read_fields)
 
-        # Save the route file
-        outfile = helpers.generate_file(path_root, ROUTES_DIR / route_file, template)
-        print(f">>> Generated {outfile}")
-
+        # Define the output route file path
+        route_file = helpers.generate_file(path_root, ROUTES_DIR / f"{entity_lower}_routes.py", template_content)
+        print(f">>> Generated {route_file}")
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
+    if len(sys.argv) != 3:
         print("Usage: python gen_routes.py <schema.yaml> <path_root>")
         sys.exit(1)
 

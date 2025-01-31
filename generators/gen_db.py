@@ -4,7 +4,7 @@ import sys
 import helpers
 
 # Paths
-DB_FILE = Path("app/utils/db.py")
+DB_FILE = Path("app/db.py")
 RESERVED_TYPES = {"ISODate", "ObjectId"}  # Reserved types to skip
 TEMPLATE = "generators/templates/db/db.txt"
 
@@ -14,12 +14,6 @@ def generate_db(schema_path, path_root):
     """
     # Load the YAML schema
     entity_schemas = helpers.get_schema(schema_path)
-    # with open(schema_path, "r") as file:
-    #     schema = yaml.safe_load(file)
-
-    # # Extract model names
-    # schemas = schema.get("components", {}).get("schemas", {})
-    # model_names = [name for name in schemas.keys() if name not in RESERVED_TYPES]
 
     # Generate db.py
     db_lines = [
@@ -32,13 +26,14 @@ def generate_db(schema_path, path_root):
     # Dynamically add imports for each model
     models = ""
     for model, _ in entity_schemas.items():
-        singular = helpers.singularize(model.lower())
-        model_name = model.capitalize()
-        db_lines.append(f"from app.models.{singular}_model import {model_name}\n")
+        model_lower = model.lower()
+        db_lines.append(f"from app.models.{model_lower}_model import {model}\n")
         models += f"{model}, "
 
     template = helpers.read_file_to_array(TEMPLATE)
     template = [ line.replace("{models}", models[:-1]) for line in template]
+    # template = [ line.replace("{model_lower}", model_lower) for line in template]
+    # template = [ line.replace("{model}", model) for line in template]
 
     db_lines.extend(template)
 

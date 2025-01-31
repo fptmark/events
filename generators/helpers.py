@@ -1,13 +1,17 @@
 from pathlib import Path
 import sys
+from typing import Type
 
 import yaml
 
-def generate_file(path_root: str, file_name: Path, lines: list[str])-> Path:
+def generate_file(path_root: str, file_name: Path, lines)-> Path:
     outfile = Path(path_root) / file_name
     outfile.parent.mkdir(parents=True, exist_ok=True)
     with open(outfile, "w") as main_file:
-        main_file.writelines(lines) 
+        if isinstance(lines, str):
+            main_file.write(lines)
+        else: 
+            main_file.writelines(lines) 
     return outfile
 
 
@@ -52,4 +56,11 @@ def get_schema(schema_path: str, reserved_types=RESERVED_TYPES)-> dict:
     entity_schemas = {
         name: details for name, details in schema.items() if name not in reserved_types and isinstance(details, dict)
     }
+    # print(f"{entity_schemas}")#['name']}")
     return entity_schemas
+
+def pluralize(name) -> str:
+
+    if name.endswith("y"):  # e.g., category → categories
+        return name[:-1] + "ies"
+    return name + "s"  # Default: just add "s"

@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
-from app.utils.config import load_config 
-from app.utils.db import Database
+from app.utilities.config import load_config 
+from app.db import Database
 
 import logging
 LOG_FILE = "app.log"

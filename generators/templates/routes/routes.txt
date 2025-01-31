@@ -1,60 +1,131 @@
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Any
-from pydantic import BaseModel
-from app.models.{entity_singular}_model import {entity_name}
-from app.utils.db import Database
+from fastapi import APIRouter, HTTPException
+from typing import List
+from app.models.{entity_lower}_model import {ModelName}, {ModelName}Create, {ModelName}Read
+from app.db import Database
 from bson import ObjectId
+from datetime import datetime
 import logging
-{validation_imports}
 
 router = APIRouter()
 
-# Pydantic Model for Request Validation
-class {entity_name}Create(BaseModel):
-    {pydantic_fields}
-
 # CREATE
-@router.post('/', response_model={entity_name})
-async def create_{entity_lower}(item: {entity_name}Create):
-{validation_code}
+@router.post('/', response_model={ModelName}Read)
+async def create_{entity_lower}(item: {ModelName}Create):
+    logging.info("Received request to create a new {entity_lower}.")
+    
     db = Database.get_db()
-    item_dict = item.dict()
+    item_dict = item.dict(exclude_unset=True)
+    
+    # Generate a new ObjectId
     item_dict['_id'] = str(ObjectId())
-    logging.info(f"Creating {entity_lower}: {item_dict}")
-    await db['{entity_lower}'].insert_one(item_dict)  # <-- Singular Collection Name
+    item_dict['createdAt'] = item_dict.get('createdAt') or datetime.utcnow()
+    
+    logging.debug(f"Generated new _id for {entity_lower}: {item_dict['_id']}")
+    logging.info(f"Creating {entity_lower} with data: {item_dict}")
+    
+    try:
+        await db['{entity_lower}'].insert_one(item_dict)  
+        logging.info(f"{ModelName} created successfully with _id: {item_dict['_id']}")
+    except Exception as e:
+        logging.exception("Failed to create {entity_lower}.")
+        raise HTTPException(status_code=500, detail='Internal Server Error')
+    
     return item_dict
 
 # GET ALL
-@router.get('/', response_model=List[{entity_name}])
-async def get_all_{entity_lower}s():
+@router.get('/', response_model=List[{ModelName}Read])
+async def get_all_{entity_plural}():
+    logging.info("Received request to fetch all {entity_plural}.")
+    
     db = Database.get_db()
-    items = await db['{entity_lower}'].find().to_list(None)  # <-- Singular Collection Name
+    
+    try:
+        items = await db['{entity_lower}'].find().to_list(None)  
+        logging.info(f"Fetched {{len(items)}} {entity_plural} successfully.")
+    except Exception as e:
+        logging.exception("Failed to fetch all {entity_plural}.")
+        raise HTTPException(status_code=500, detail='Internal Server Error')
+    
     return items
 
 # GET ONE BY ID
-@router.get('/{item_id}', response_model={entity_name})
+@router.get('/{{item_id}}', response_model={ModelName}Read)
 async def get_{entity_lower}(item_id: str):
+    logging.info(f"Received request to fetch {entity_lower} with _id: {{item_id}}")
+    
     db = Database.get_db()
-    item = await db['{entity_lower}'].find_one({'_id': ObjectId(item_id)})  # <-- Singular Collection Name
-    if not item:
-        raise HTTPException(status_code=404, detail='{entity_lower} not found')
+    
+    try:
+        item = await db['{entity_lower}'].find_one({'_id': ObjectId(item_id)})  
+        if not item:
+            logging.warning(f"{ModelName} with _id {{item_id}} not found.")
+            raise HTTPException(status_code=404, detail='{ModelName} not found')
+        logging.info(f"Fetched {ModelName} with _id: {{item_id}} successfully.")
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logging.exception(f"Failed to fetch {ModelName} with _id: {{item_id}}")
+        raise HTTPException(status_code=500, detail='Internal Server Error')
+    
     return item
 
 # UPDATE
-@router.put('/{item_id}', response_model={entity_name})
-async def update_{entity_lower}(item_id: str, item: {entity_name}Create):
-{validation_code}
+@router.put('/{{item_id}}', response_model={ModelName}Read)
+async def update_{entity_lower}(item_id: str, item: {ModelName}Create):
+    logging.info(f"Received request to update {entity_lower} with _id: {{item_id}}")
+    
     db = Database.get_db()
-    result = await db['{entity_lower}'].update_one({'_id': ObjectId(item_id)}, {'$set': item.dict()})  # <-- Singular Collection Name
-    if not result.matched_count:
-        raise HTTPException(status_code=404, detail='{entity_lower} not found')
-    return item
+    item_dict = item.dict(exclude_unset=True)
+    
+    # Prevent updating the _id and createdAt fields
+    item_dict.pop('_id', None)
+    item_dict.pop('createdAt', None)
+    
+    if not item_dict:
+        logging.error("No fields provided for update in the update_{entity_lower} request.")
+        raise HTTPException(status_code=400, detail='No fields provided for update')
+    
+    logging.debug(f"Update data for {entity_lower} {{item_id}}: {{item_dict}}")
+    
+    try:
+        account = await {ModelName}.get(item_id)
+        if not account:
+            logging.warning(f"{ModelName} with _id {{item_id}} not found for update.")
+            raise HTTPException(status_code=404, detail='{ModelName} not found')
+        
+        await account.set(item_dict)  # Update the document
+        logging.info(f"{ModelName} with _id {{item_id}} updated successfully.")
+    
+        # Fetch the updated {entity_lower}
+        updated_account = await {ModelName}.get(item_id)
+        logging.debug(f"Updated {entity_lower} data: {{updated_account.dict()}}")
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logging.exception(f"Failed to update {ModelName} with _id: {{item_id}}")
+        raise HTTPException(status_code=500, detail='Internal Server Error')
+    
+    return updated_account
 
 # DELETE
-@router.delete('/{item_id}')
+@router.delete('/{{item_id}}')
 async def delete_{entity_lower}(item_id: str):
+    logging.info(f"Received request to delete {entity_lower} with _id: {{item_id}}")
+    
     db = Database.get_db()
-    result = await db['{entity_lower}'].delete_one({'_id': ObjectId(item_id)})  # <-- Singular Collection Name
-    if not result.deleted_count:
-        raise HTTPException(status_code=404, detail='{entity_lower} not found')
-    return {'message': '{entity_lower} deleted successfully'}
+    
+    try:
+        account = await {ModelName}.get(item_id)
+        if not account:
+            logging.warning(f"{ModelName} with _id {{item_id}} not found for deletion.")
+            raise HTTPException(status_code=404, detail='{ModelName} not found')
+    
+        await account.delete()  # Delete the document
+        logging.info(f"{ModelName} with _id {{item_id}} deleted successfully.")
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logging.exception(f"Failed to delete {ModelName} with _id: {{item_id}}")
+        raise HTTPException(status_code=500, detail='Internal Server Error')
+    
+    return {'message': '{ModelName} deleted successfully'}
