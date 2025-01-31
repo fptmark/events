@@ -110,8 +110,8 @@ def parse_mmd(mmd_content):
 def process_entities(entities, validations):
     processed = {}
     for entity, data in entities.items():
-        # Convert entity name to lowercase and pluralize if not already plural
-        entity_key = entity.lower() + 's' if not entity.lower().endswith('s') else entity.lower()
+        # Use the entity name as-is, maintaining singular and PascalCase
+        entity_key = entity
         processed[entity_key] = {'fields': {}, 'relations': []}
         fields = data['fields']
         entity_validations = validations.get(entity, {})
@@ -146,17 +146,19 @@ def process_entities(entities, validations):
             processed[entity_key]['fields'][field] = field_info
 
         processed[entity_key]['relations'] = []  # Will fill later
+        print(f"Processed Entity: {entity_key}")  # Debugging Statement
     return processed
 
 def map_relationships(processed_entities, relationships):
     for rel in relationships:
         source = rel['source']
         target = rel['target']
-        source_key = source.lower() + 's' if not source.lower().endswith('s') else source.lower()
-        target_key = target.lower() + 's' if not target.lower().endswith('s') else target.lower()
+        source_key = source  # Use exact entity name
+        target_key = target  # Use exact entity name
 
         if source_key in processed_entities:
             processed_entities[source_key]['relations'].append(target_key)
+            print(f"Mapped Relationship: {source_key} -> {target_key}")  # Debugging Statement
         else:
             print(f"Warning: Source entity '{source}' not found in entities.")
 
@@ -166,8 +168,8 @@ def build_relationships_section(relationships):
     relationships_section = []
     for rel in relationships:
         relationships_section.append({
-            'source': rel['source'].lower(),
-            'target': rel['target'].lower()
+            'source': rel['source'],
+            'target': rel['target']
         })
     return relationships_section
 
@@ -202,4 +204,4 @@ def main():
     print("YAML conversion completed. Check 'schema.yaml'.")
 
 if __name__ == "__main__":
-        main()
+    main()
