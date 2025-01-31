@@ -1,17 +1,17 @@
 _relationships:
-- source: account
-  target: user
-- source: user
-  target: profile
-- source: profile
-  target: tagaffinity
-- source: user
-  target: userevent
-- source: event
-  target: userevent
-- source: url
-  target: crawl
-accounts:
+- source: Account
+  target: User
+- source: User
+  target: Profile
+- source: Profile
+  target: TagAffinity
+- source: User
+  target: UserEvent
+- source: Event
+  target: UserEvent
+- source: Url
+  target: Crawl
+Account:
   fields:
     _id:
       type: ObjectId
@@ -23,8 +23,8 @@ accounts:
       type: ISODate
       required: 'True'
   relations:
-  - users
-users:
+  - User
+User:
   fields:
     _id:
       type: ObjectId
@@ -55,9 +55,9 @@ users:
       type: ISODate
       required: 'True'
   relations:
-  - profiles
-  - userevents
-profiles:
+  - Profile
+  - UserEvent
+Profile:
   fields:
     _id:
       type: ObjectId
@@ -83,8 +83,8 @@ profiles:
       type: ISODate
       required: 'True'
   relations:
-  - tagaffinitys
-tagaffinitys:
+  - TagAffinity
+TagAffinity:
   fields:
     _id:
       type: ObjectId
@@ -105,7 +105,7 @@ tagaffinitys:
       type: ISODate
       required: 'True'
   relations: []
-events:
+Event:
   fields:
     _id:
       type: ObjectId
@@ -145,8 +145,8 @@ events:
       type: ISODate
       required: 'True'
   relations:
-  - userevents
-userevents:
+  - UserEvent
+UserEvent:
   fields:
     _id:
       type: ObjectId
@@ -173,7 +173,7 @@ userevents:
       type: ISODate
       required: 'True'
   relations: []
-urls:
+Url:
   fields:
     _id:
       type: ObjectId
@@ -189,8 +189,8 @@ urls:
       type: ISODate
       required: 'True'
   relations:
-  - crawls
-crawls:
+  - Crawl
+Crawl:
   fields:
     _id:
       type: ObjectId
