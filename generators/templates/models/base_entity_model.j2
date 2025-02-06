@@ -1,0 +1,45 @@
+{% set _id_conf = fields.get('_id', {}) %}
+{% set created_conf = fields.get('createdAt', {}) %}
+{% set updated_conf = fields.get('updatedAt', {}) %}
+
+from beanie import Document, PydanticObjectId
+from pydantic import Field
+from typing import Optional
+from datetime import datetime
+
+class BaseEntity(Document):
+    """
+    Base entity that auto-manages _id, createdAt, and updatedAt.
+    If autoUpdate is true for updatedAt, save() is overridden to update it.
+    """
+
+    {% set auto_generate_id = _id_conf.get('autoGenerate', 'false')|lower == 'true' %}
+    {% if auto_generate_id %}
+    _id: Optional[PydanticObjectId] = Field(default_factory=PydanticObjectId)
+    {% else %}
+    _id: Optional[PydanticObjectId] = Field(None)
+    {% endif %}
+
+    {% set auto_generate_created = created_conf.get('autoGenerate', 'false')|lower == 'true' %}
+    {% if auto_generate_created %}
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    {% else %}
+    createdAt: Optional[datetime] = Field(None)
+    {% endif %}
+
+    {% set auto_generate_updated = updated_conf.get('autoGenerate', 'false')|lower == 'true' %}
+    {% set auto_update_updated = updated_conf.get('autoUpdate', 'false')|lower == 'true' %}
+    {% if auto_generate_updated %}
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    {% else %}
+    updatedAt: Optional[datetime] = Field(None)
+    {% endif %}
+
+    {% if auto_update_updated %}
+    async def save(self, *args, **kwargs):
+        self.updatedAt = datetime.utcnow()
+        return await super().save(*args, **kwargs)
+    {% endif %}
+
+    class Settings:
+        name = None  # Not a real collection

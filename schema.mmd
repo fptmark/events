@@ -1,68 +1,67 @@
 erDiagram
-    Account {
+    BaseEntity {
         ObjectId _id
-        ISODate expiredAt
-        ISODate createdAt
-    }
-    %% @validation Account
-    %% _id: { type: ObjectId, required: true }
-    %% expiredAt: { type: ISODate, required: false }
-    %% createdAt: { type: ISODate, required: true }
-
-    User {
-        ObjectId _id
-        ObjectId accountId
-        String username
-        String password
-        String name
-        Boolean isAccountOwner
         ISODate createdAt
         ISODate updatedAt
     }
+    %% @validation BaseEntity
+    %% _id { type ObjectId, required true, autoGenerate true }
+    %% createdAt { type ISODate, required true, autoGenerate true }
+    %% updatedAt { type ISODate, required true, autoUpdate true }
+
+    Account {
+        ISODate expiredAt
+    }
+    %% @inherits BaseEntity
+    %% @validation Account
+    %% expiredAt: { type: ISODate, required: false }
+
+    User {
+        ObjectId accountId
+        String username
+        String email
+        String password
+        String firstName
+        String lastName
+        String gender
+        Boolean isAccountOwner
+    }
+    %% @inherits BaseEntity
     %% @validation User
-    %% _id: { type: ObjectId, required: true }
     %% accountId: { type: ObjectId, required: true }
     %% username: { type: String, required: true, minLength: 3, maxLength: 50 }
+    %% email { type String, required true, minLength 8, maxLength 50, pattern ^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ }
     %% password: { type: String, required: true, minLength: 8 }
-    %% name: { type: String, required: false, maxLength: 100 }
+    %% firstName: { type: String, required: true, maxLength: 100 }
+    %% lastName: { type: String, required: true, maxLength: 100 }
+    %% gender { type String, required false, enum [male, female, other] }
     %% isAccountOwner: { type: Boolean, required: true }
-    %% createdAt: { type: ISODate, required: true }
-    %% updatedAt: { type: ISODate, required: true }
 
     Profile {
-        ObjectId _id
         ObjectId userId
         String name
         JSON preferences
         Integer radiusMiles
-        ISODate createdAt
-        ISODate updatedAt
     }
+    %% @inherits BaseEntity
     %% @validation Profile
-    %% _id: { type: ObjectId, required: true }
     %% userId: { type: ObjectId, required: true }
     %% name: { type: String, required: true, maxLength: 100 }
     %% preferences: { type: JSON, required: false }
     %% radiusMiles: { type: Integer, required: false, min: 0 }
-    %% createdAt: { type: ISODate, required: true }
-    %% updatedAt: { type: ISODate, required: true }
 
     TagAffinity {
-        ObjectId _id
         ObjectId profileId
         String tag
         Integer affinity
-        ISODate updatedAt
     }
+    %% @inherits BaseEntity
     %% @validation TagAffinity
-    %% _id: { type: ObjectId, required: true }
     %% profileId: { type: ObjectId, required: true }
     %% tag: { type: String, required: true, maxLength: 50 }
     %% affinity: { type: Integer, required: true, min: -100, max: 100 }
-    %% updatedAt: { type: ISODate, required: true }
 
     Event {
-        ObjectId _id
         String url
         String title
         ISODate dateTime
@@ -71,10 +70,9 @@ erDiagram
         Integer numOfExpectedAttendees
         String recurrence
         Array[String] tags
-        ISODate updatedAt
     }
+    %% @inherits BaseEntity
     %% @validation Event
-    %% _id: { type: ObjectId, required: true }
     %% url: { type: String, required: true, pattern: ^https?://[^\s]+$ }
     %% title: { type: String, required: true, maxLength: 200 }
     %% dateTime: { type: ISODate, required: true }
@@ -83,53 +81,43 @@ erDiagram
     %% numOfExpectedAttendees: { type: Integer, required: false, min: 0 }
     %% recurrence: { type: String, required: false, enum: [daily, weekly, monthly, yearly] }
     %% tags: { type: Array[String], required: false }
-    %% updatedAt: { type: ISODate, required: true }
 
     UserEvent {
-        ObjectId _id
         ObjectId userId
         ObjectId eventId
         Boolean attended
         Integer rating
         String note
-        ISODate updatedAt
     }
+    %% @inherits BaseEntity
     %% @validation UserEvent
-    %% _id: { type: ObjectId, required: true }
     %% userId: { type: ObjectId, required: true }
     %% eventId: { type: ObjectId, required: true }
     %% attended: { type: Boolean, required: false }
     %% rating: { type: Integer, required: false, min: 1, max: 5 }
     %% note: { type: String, required: false, maxLength: 500 }
-    %% updatedAt: { type: ISODate, required: true }
 
     Url {
-        ObjectId _id
         String url
         JSON params
-        ISODate updatedAt
     }
+    %% @inherits BaseEntity
     %% @validation Url
-    %% _id: { type: ObjectId, required: true }
     %% url: { type: String, required: true, pattern: ^https?://[^\s]+$ }
     %% params: { type: JSON, required: false }
-    %% updatedAt: { type: ISODate, required: true }
 
     Crawl {
-        ObjectId _id
-        ObjectId url_id
-        ISODate last_parsed_date
-        JSON parse_status
-        Array[String] errors_encountered
-        ISODate updatedAt
+        ObjectId urlId
+        ISODate lastParsedDate
+        JSON parseStatus
+        Array[String] errorsEncountered
     }
+    %% @inherits BaseEntity
     %% @validation Crawl
-    %% _id: { type: ObjectId, required: true }
-    %% url_id: { type: ObjectId, required: true }
-    %% last_parsed_date: { type: ISODate, required: false }
-    %% parse_status: { type: JSON, required: false }
-    %% errors_encountered: { type: Array[String], required: false }
-    %% updatedAt: { type: ISODate, required: true }
+    %% urlId: { type: ObjectId, required: true }
+    %% lastParsedDate: { type: ISODate, required: false }
+    %% parseStatus: { type: JSON, required: false }
+    %% errorsEncountered: { type: Array[String], required: false }
 
     Account ||--o{ User: ""
     User ||--o{ Profile: ""

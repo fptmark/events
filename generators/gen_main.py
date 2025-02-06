@@ -24,15 +24,17 @@ def generate_main(schema_path, path_root):
     # Import routes dynamically for valid entities
     for entity, _ in entity_schemas.items():
         entity_lower = entity.lower()
-        # print(f"from app.routes.{entity_lower}_routes import router as {entity_lower}_router\n")
-        lines.append(f"from app.routes.{entity_lower}_routes import router as {entity_lower}_router\n")
+        if entity_lower != 'baseentity':
+            # print(f"from app.routes.{entity_lower}_routes import router as {entity_lower}_router\n")
+            lines.append(f"from app.routes.{entity_lower}_router import router as {entity_lower}_router\n")
 
     # Initialize FastAPI app
     lines.extend( helpers.read_file_to_array(TEMPLATE, 2))
 
     # Register routes dynamically
     for entity, _ in entity_schemas.items():
-        lines.append(f"app.include_router({entity.lower()}_router, prefix='/{entity.lower()}', tags=['{entity}'])\n")
+        if entity.lower() != 'baseentity':
+            lines.append(f"app.include_router({entity.lower()}_router, prefix='/{entity.lower()}', tags=['{entity}'])\n")
 
     # Add root endpoint
     lines.extend( helpers.read_file_to_array(TEMPLATE, 3))

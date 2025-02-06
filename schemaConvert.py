@@ -4,36 +4,44 @@ from collections import defaultdict
 
 def parse_validation_string(validation_str):
     """
-    Parses a validation string like "{ type: ObjectId, required: true }"
-    into a Python dictionary.
+    Parses a validation string like "{ type ObjectId, required true, autoGenerate true }"
+    or "{ type: ObjectId, required: true }" into a Python dictionary.
     """
     validation = {}
     # Remove the surrounding braces and whitespace
     validation_str = validation_str.strip().strip('{}').strip()
-
-    # Split by commas to get key-value pairs, handling nested structures like enums
-    # This regex splits on commas that are not inside brackets
-    pairs = re.findall(r'(\w+):\s*(\[[^\]]+\]|[^,]+)', validation_str)
-
-    for key, value in pairs:
+    # Split by commas that are not inside brackets (for now, we assume no nested commas)
+    pairs = re.split(r'\s*,\s*', validation_str)
+    
+    for pair in pairs:
+        if not pair:
+            continue
+        # Try splitting by colon; if not found, split by whitespace
+        if ':' in pair:
+            key, value = pair.split(':', 1)
+        else:
+            parts = pair.split(None, 1)
+            if len(parts) != 2:
+                continue
+            key, value = parts
         key = key.strip()
         value = value.strip()
-
-        # Handle different value types
+        # Handle booleans
         if value.lower() == 'true':
             value = True
         elif value.lower() == 'false':
             value = False
-        elif value.startswith('[') and value.endswith(']'):
-            # Handle lists (e.g., enums)
-            # Extract items, considering quotes
-            items = re.findall(r"'([^']*)'|\"([^\"]*)\"|([^,\s]+)", value[1:-1])
-            # Flatten the list and filter out empty strings
+
+        value_str = value if isinstance(value, str) else str(value)
+
+        # Handle list values (e.g., enums or arrays) if wrapped in [ ]
+        if value_str.startswith('[') and value_str.endswith(']'):
+            items = re.findall(r"'([^']*)'|\"([^\"]*)\"|([^,\s]+)", value_str[1:-1])
             items = [item[0] or item[1] or item[2] for item in items]
             value = items
         else:
-            # Assume it's a string without quotes
-            value = value.strip('\'"')  # Remove any surrounding quotes
+            # Remove any surrounding quotes
+            value = value_str.strip('\'"')
         validation[key] = value
     return validation
 
@@ -43,15 +51,18 @@ def parse_mmd(mmd_content):
     relationships = []
     lines = mmd_content.splitlines()
     current_entity = None
+    last_entity = None
     validation_entity = None
 
-    # Regular expressions to match different parts of the MMD
+    # Regular expressions
     entity_pattern = re.compile(r'^(\w+)\s*\{')
     field_pattern = re.compile(r'^\s*(\w+)\s+([\w\[\]]+)')
     validation_start_pattern = re.compile(r'^%%\s*@validation\s+(\w+)')
-    validation_field_pattern = re.compile(r'^%%\s+(\w+):\s*\{(.+)\}')
+    # Allow optional colon after field name: (\w+):?\s*\{(.+)\}
+    validation_field_pattern = re.compile(r'^%%\s+(\w+):?\s*\{(.+)\}')
+    inherits_pattern = re.compile(r'^%%\s*@inherits\s+(\w+)')
     relationship_pattern = re.compile(r'^(\w+)\s+\|\|--o\{\s*(\w+):.*$')
-
+    
     for line in lines:
         line = line.strip()
         if not line or line.startswith('erDiagram'):
@@ -61,10 +72,11 @@ def parse_mmd(mmd_content):
         entity_match = entity_pattern.match(line)
         if entity_match:
             current_entity = entity_match.group(1)
+            last_entity = current_entity
             entities[current_entity] = {'fields': {}, 'relations': []}
             continue
 
-        # Check for end of entity
+        # Check for end of entity block
         if line == '}':
             current_entity = None
             continue
@@ -76,12 +88,20 @@ def parse_mmd(mmd_content):
             validations[validation_entity] = {}
             continue
 
+        # Check for @inherits line
+        inherits_match = inherits_pattern.match(line)
+        if inherits_match:
+            parent = inherits_match.group(1)
+            # Associate with the last defined entity
+            if last_entity:
+                entities[last_entity]['inherits'] = parent
+            continue
+
         # Check for validation fields
         validation_field_match = validation_field_pattern.match(line)
         if validation_field_match and validation_entity:
             field_name = validation_field_match.group(1)
             field_validations_str = validation_field_match.group(2)
-            # Parse the validation string manually
             try:
                 field_validations = parse_validation_string(field_validations_str)
                 validations[validation_entity][field_name] = field_validations
@@ -101,67 +121,57 @@ def parse_mmd(mmd_content):
         if current_entity:
             field_match = field_pattern.match(line)
             if field_match:
-                field_type = field_match.group(1)   # Corrected: type is group 1
-                field_name = field_match.group(2)   # Corrected: name is group 2
+                # In our ER syntax, the first token is the type and the second is the field name.
+                field_type = field_match.group(1)
+                field_name = field_match.group(2)
                 entities[current_entity]['fields'][field_name] = {'type': field_type}
-
     return entities, validations, relationships
 
 def process_entities(entities, validations):
     processed = {}
     for entity, data in entities.items():
-        # Use the entity name as-is, maintaining singular and PascalCase
         entity_key = entity
         processed[entity_key] = {'fields': {}, 'relations': []}
+        # If this entity inherits from another, record it.
+        if 'inherits' in data:
+            processed[entity_key]['inherits'] = data['inherits']
         fields = data['fields']
         entity_validations = validations.get(entity, {})
         for field, details in fields.items():
             field_info = {}
             field_type = details['type']
-            # Handle Array types
+            # Handle Array types (if using Array[...] syntax)
             array_match = re.match(r'Array\[(\w+)\]', field_type)
             if array_match:
                 base_type = array_match.group(1)
                 field_info['type'] = f"Array[{base_type}]"
             else:
                 field_info['type'] = field_type
-
-            # Add validation data
+            # Add validation data if present
             validation = entity_validations.get(field, {})
-            # Required flag
             required = validation.get('required', False)
-            # Ensure required is a string 'True'/'False'
             if isinstance(required, bool):
                 required = 'True' if required else 'False'
             else:
-                # In case it's a string like 'true'/'false'
                 required = 'True' if str(required).lower() == 'true' else 'False'
             field_info['required'] = required
-
-            # Add other validations
             for key, value in validation.items():
                 if key != 'required':
                     field_info[key] = value
-
             processed[entity_key]['fields'][field] = field_info
-
-        processed[entity_key]['relations'] = []  # Will fill later
-        print(f"Processed Entity: {entity_key}")  # Debugging Statement
+        processed[entity_key]['relations'] = []  # To be filled later
+        print(f"Processed Entity: {entity_key}")  # Debug statement
     return processed
 
 def map_relationships(processed_entities, relationships):
     for rel in relationships:
         source = rel['source']
         target = rel['target']
-        source_key = source  # Use exact entity name
-        target_key = target  # Use exact entity name
-
-        if source_key in processed_entities:
-            processed_entities[source_key]['relations'].append(target_key)
-            print(f"Mapped Relationship: {source_key} -> {target_key}")  # Debugging Statement
+        if source in processed_entities:
+            processed_entities[source]['relations'].append(target)
+            print(f"Mapped Relationship: {source} -> {target}")  # Debug statement
         else:
             print(f"Warning: Source entity '{source}' not found in entities.")
-
     return processed_entities
 
 def build_relationships_section(relationships):
@@ -189,7 +199,7 @@ def convert_mmd_to_yaml(mmd_content):
 
 def main():
     try:
-        # Read MMD content from 'schema.mmd' file
+        # Read MMD content from 'schema.mmd'
         with open('schema.mmd', 'r') as file:
             mmd_content = file.read()
     except FileNotFoundError:

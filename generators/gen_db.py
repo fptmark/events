@@ -27,13 +27,12 @@ def generate_db(schema_path, path_root):
     models = ""
     for model, _ in entity_schemas.items():
         model_lower = model.lower()
-        db_lines.append(f"from app.models.{model_lower}_model import {model}\n")
-        models += f"{model}, "
+        if model_lower != 'baseentity':
+            db_lines.append(f"from app.models.{model_lower}_model import {model.capitalize()}\n")
+            models += f"{model.capitalize()}, "
 
     template = helpers.read_file_to_array(TEMPLATE)
     template = [ line.replace("{models}", models[:-1]) for line in template]
-    # template = [ line.replace("{model_lower}", model_lower) for line in template]
-    # template = [ line.replace("{model}", model) for line in template]
 
     db_lines.extend(template)
 
