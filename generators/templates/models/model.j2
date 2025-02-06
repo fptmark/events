@@ -30,7 +30,7 @@ class {{ entity|capitalize }}Create(BaseModel):
 class {{ entity|capitalize }}Read(BaseModel):
 {% if inheritsBaseEntity %}
     # Include base fields at top level in the GET response
-    _id: Optional[PydanticObjectId] = Field(None, alias="_id")
+    id: Optional[PydanticObjectId] = Field(None, alias="_id")
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
 {% endif %}

@@ -27,7 +27,7 @@ async def get_all_{{ entity|lower }}s():
     logging.info("Received request to fetch all {{ entity|lower }}s.")
     try:
         docs = await {{ entity|capitalize }}.find_all().to_list()
-        logging.info(f"Fetched {{ docs|length }} {{ entity|lower }}(s) successfully.")
+        logging.info(f"Fetched {len(docs)} {{ entity|lower }}(s) successfully.")
     except Exception as e:
         logging.exception("Failed to fetch all {{ entity|lower }}s.")
         raise HTTPException(status_code=500, detail='Internal Server Error')

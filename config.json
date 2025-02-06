@@ -1,7 +1,7 @@
 
 {
     "mongo_uri": "mongodb://localhost:27017",
-    "db_name": "event_management_system",
+    "db_name": "eventMgr",
     "host": "127.0.0.1",
     "app_port": 5500,
     "log_level": "info",
