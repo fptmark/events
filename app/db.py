@@ -2,6 +2,14 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 import logging
 
+from app.models.account_model import Account
+from app.models.user_model import User
+from app.models.profile_model import Profile
+from app.models.tagaffinity_model import Tagaffinity
+from app.models.event_model import Event
+from app.models.userevent_model import Userevent
+from app.models.url_model import Url
+from app.models.crawl_model import Crawl
 
 
 class Database:
@@ -22,7 +30,7 @@ class Database:
         db = Database._client[db_name]
 
         # Initialize Beanie models
-        await init_beanie(database=db, document_models=[  ])
+        await init_beanie(database=db, document_models=[ Account, User, Profile, Tagaffinity, Event, Userevent, Url, Crawl, ])
         logging.info(f"Database initialized with Beanie models for {db_name} at {uri}")
 
     @staticmethod

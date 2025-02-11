@@ -4,7 +4,7 @@ from bson.objectid import ObjectId
 from typing import Dict, Any
 
 # Path to the configuration file
-CONFIG_FILE = Path('app/config.json')
+CONFIG_FILE = Path('config.json')
 
 def load_config():
     """

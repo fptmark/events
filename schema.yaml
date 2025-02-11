@@ -11,200 +11,139 @@ _relationships:
   target: UserEvent
 - source: Url
   target: Crawl
-Account:
+BaseEntity:
   fields:
     _id:
       type: ObjectId
-      required: 'True'
-    expiredAt:
-      type: ISODate
-      required: 'False'
+      required: true
+      autoGenerate: true
     createdAt:
       type: ISODate
-      required: 'True'
+      required: true
+      autoGenerate: true
+    updatedAt:
+      type: ISODate
+      required: true
+      autoUpdate: true
+  relations: []
+Account:
+  fields:
+    expiredAt:
+      type: ISODate
+      required: false
+  inherits:
+  - BaseEntity
   relations:
   - User
 User:
   fields:
-    _id:
-      type: ObjectId
-      required: 'True'
     accountId:
       type: ObjectId
-      required: 'True'
+      required: true
     username:
       type: String
-      required: 'True'
-      minLength: '3'
-      maxLength: '50'
+      required: true
+      minLength: 3
+      maxLength: 50
+    email:
+      type: String
+      required: true
+      minLength: 8
+      maxLength: 50
+      pattern: ^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
     password:
       type: String
-      required: 'True'
-      minLength: '8'
-    name:
+      required: true
+      minLength: 8
+    firstName:
       type: String
-      required: 'False'
-      maxLength: '100'
+      required: true
+      maxLength: 100
+    lastName:
+      type: String
+      required: true
+      maxLength: 100
+    gender:
+      type: String
+      required: false
+      enum:
+      - male
+      - female
+      - other
     isAccountOwner:
       type: Boolean
-      required: 'True'
-    createdAt:
-      type: ISODate
-      required: 'True'
-    updatedAt:
-      type: ISODate
-      required: 'True'
+      required: true
+  inherits:
+  - BaseEntity
   relations:
   - Profile
   - UserEvent
 Profile:
   fields:
-    _id:
-      type: ObjectId
-      required: 'True'
     userId:
       type: ObjectId
-      required: 'True'
     name:
       type: String
-      required: 'True'
-      maxLength: '100'
     preferences:
       type: JSON
-      required: 'False'
     radiusMiles:
       type: Integer
-      required: 'False'
-      min: '0'
-    createdAt:
-      type: ISODate
-      required: 'True'
-    updatedAt:
-      type: ISODate
-      required: 'True'
   relations:
   - TagAffinity
 TagAffinity:
   fields:
-    _id:
-      type: ObjectId
-      required: 'True'
     profileId:
       type: ObjectId
-      required: 'True'
     tag:
       type: String
-      required: 'True'
-      maxLength: '50'
     affinity:
       type: Integer
-      required: 'True'
-      min: '-100'
-      max: '100'
-    updatedAt:
-      type: ISODate
-      required: 'True'
   relations: []
 Event:
   fields:
-    _id:
-      type: ObjectId
-      required: 'True'
     url:
       type: String
-      required: 'True'
-      pattern: ^https?://[^\s]+$
     title:
       type: String
-      required: 'True'
-      maxLength: '200'
     dateTime:
       type: ISODate
-      required: 'True'
     location:
       type: String
-      required: 'False'
-      maxLength: '200'
     cost:
       type: Number
-      required: 'False'
-      min: '0'
     numOfExpectedAttendees:
       type: Integer
-      required: 'False'
-      min: '0'
     recurrence:
       type: String
-      required: 'False'
-      enum:
-      - daily
-      - weekly
-      - monthly
-      - yearly
-    updatedAt:
-      type: ISODate
-      required: 'True'
   relations:
   - UserEvent
 UserEvent:
   fields:
-    _id:
-      type: ObjectId
-      required: 'True'
     userId:
       type: ObjectId
-      required: 'True'
     eventId:
       type: ObjectId
-      required: 'True'
     attended:
       type: Boolean
-      required: 'False'
     rating:
       type: Integer
-      required: 'False'
-      min: '1'
-      max: '5'
     note:
       type: String
-      required: 'False'
-      maxLength: '500'
-    updatedAt:
-      type: ISODate
-      required: 'True'
   relations: []
 Url:
   fields:
-    _id:
-      type: ObjectId
-      required: 'True'
     url:
       type: String
-      required: 'True'
-      pattern: ^https?://[^\s]+$
     params:
       type: JSON
-      required: 'False'
-    updatedAt:
-      type: ISODate
-      required: 'True'
   relations:
   - Crawl
 Crawl:
   fields:
-    _id:
+    urlId:
       type: ObjectId
-      required: 'True'
-    url_id:
-      type: ObjectId
-      required: 'True'
-    last_parsed_date:
+    lastParsedDate:
       type: ISODate
-      required: 'False'
-    parse_status:
+    parseStatus:
       type: JSON
-      required: 'False'
-    updatedAt:
-      type: ISODate
-      required: 'True'
   relations: []
