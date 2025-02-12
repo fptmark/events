@@ -6,7 +6,7 @@ GENERATORS = $(S2R_DIR)/generators
 firsttime: setup schema code 
 	cp $(S2R_DIR)/config.json config.json
 
-all: schema code test 
+all: schema code run 
 
 schema: schema.yaml schema.png
 
@@ -41,5 +41,8 @@ schema.yaml: schema.mmd $(GENERATORS)/schemaConvert.py
 schema.png: schema.mmd
 	mmdc -i schema.mmd -o schema.png
 
-test: app/main.py
+run: app/main.py
 	PYTHONPATH=. python app/main.py
+
+test: test.py
+	pytest -s test.py
