@@ -1,8 +1,10 @@
 from .BaseEntity import BaseEntity
 from beanie import PydanticObjectId
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
+import re
+import json
 
 
 class Userevent(BaseEntity):
@@ -14,6 +16,7 @@ class Userevent(BaseEntity):
 
     class Settings:
         name = "userevent"
+
 
     async def save(self, *args, **kwargs):
         return await super().save(*args, **kwargs)

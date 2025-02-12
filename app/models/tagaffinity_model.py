@@ -1,8 +1,10 @@
 from .BaseEntity import BaseEntity
 from beanie import PydanticObjectId
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
+import re
+import json
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
@@ -17,6 +19,7 @@ class Tagaffinity(BaseEntity):
 
     class Settings:
         name = "tagaffinity"
+
 
     async def validate_uniques(self):
         # Unique constraint on fields: profileId, tag

@@ -1,8 +1,10 @@
 from .BaseEntity import BaseEntity
 from beanie import PydanticObjectId
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
+import re
+import json
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
@@ -13,7 +15,7 @@ class UniqueValidationError(Exception):
 class User(BaseEntity):
     accountId: PydanticObjectId = Field(...)
     username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(..., min_length=8, max_length=50, regex=r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    email: str = Field(..., min_length=8, max_length=50)
     password: str = Field(..., min_length=8)
     firstName: str = Field(..., max_length=100)
     lastName: str = Field(..., max_length=100)
@@ -22,6 +24,24 @@ class User(BaseEntity):
 
     class Settings:
         name = "user"
+
+    @validator('email')
+    def validate_email(cls, v):
+        _custom = {"pattern": "Bad email address format"}
+        if len(v) < 8:
+            raise ValueError("email must be at least 8 characters")
+        if len(v) > 50:
+            raise ValueError("email must be at most 50 characters")
+        if not re.match(r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
+            raise ValueError(_custom["pattern"])
+        return v
+    @validator('gender')
+    def validate_gender(cls, v):
+        _custom = {"enum": "must be male or female"}
+        allowed = ["male", "female", "other"]
+        if v not in allowed:
+            raise ValueError(_custom["enum"])
+        return v
 
     async def validate_uniques(self):
         # Unique constraint on fields: username
@@ -46,7 +66,7 @@ class User(BaseEntity):
 class UserCreate(BaseModel):
     accountId: PydanticObjectId = Field(...)
     username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(..., min_length=8, max_length=50, regex=r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    email: str = Field(..., min_length=8, max_length=50)
     password: str = Field(..., min_length=8)
     firstName: str = Field(..., max_length=100)
     lastName: str = Field(..., max_length=100)
@@ -61,7 +81,7 @@ class UserRead(BaseModel):
     updatedAt: Optional[datetime] = None
     accountId: PydanticObjectId = Field(...)
     username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(..., min_length=8, max_length=50, regex=r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    email: str = Field(..., min_length=8, max_length=50)
     password: str = Field(..., min_length=8)
     firstName: str = Field(..., max_length=100)
     lastName: str = Field(..., max_length=100)

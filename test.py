@@ -48,6 +48,11 @@ async def test_create_account_and_user_interactive():
     override_username = input(f"Press Enter to accept the username {gen_username}, or type an override: ").strip()
     username = override_username if override_username else gen_username
 
+    # --- Generate a random email and prompt for override ---
+    gender = 'male'
+    override_gender = input(f"Press Enter to accept the gender {gender}, or type an override: ").strip()
+    gender = override_gender if override_gender else gender
+
     # --- Create a User referencing the Account ---
     user_data = UserCreate(
         accountId=account.id, # type: ignore
@@ -56,7 +61,7 @@ async def test_create_account_and_user_interactive():
         password="password123",
         firstName="Test",
         lastName="User",
-        gender="other",
+        gender=gender,
         isAccountOwner=True
     )
     user = User(**user_data.dict(exclude_unset=True))

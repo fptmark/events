@@ -11,6 +11,10 @@ _relationships:
   target: UserEvent
 - source: Url
   target: Crawl
+_dictionaries:
+  pattern:
+    email: "^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    url: "^https?://[^\\s]+$"
 BaseEntity:
   fields:
     _id:
@@ -50,7 +54,8 @@ User:
       required: true
       minLength: 8
       maxLength: 50
-      pattern: ^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
+      pattern: dict=pattern.email
+      pattern.message: Bad email address format
     password:
       type: String
       required: true
@@ -58,10 +63,12 @@ User:
     firstName:
       type: String
       required: true
+      minLenght: '3'
       maxLength: 100
     lastName:
       type: String
       required: true
+      minLenght: '3'
       maxLength: 100
     gender:
       type: String
@@ -70,11 +77,17 @@ User:
       - male
       - female
       - other
+      enum.message: must be male or female
     isAccountOwner:
       type: Boolean
       required: true
   inherits:
   - BaseEntity
+  uniques:
+  - fields:
+    - username
+  - fields:
+    - email
   relations:
   - Profile
   - UserEvent
@@ -82,68 +95,133 @@ Profile:
   fields:
     userId:
       type: ObjectId
+      required: true
     name:
       type: String
+      required: true
+      maxLength: 100
     preferences:
       type: JSON
+      required: false
     radiusMiles:
       type: Integer
+      required: false
+      min: '0'
+  inherits:
+  - BaseEntity
+  uniques:
+  - fields:
+    - name
+    - userId
   relations:
   - TagAffinity
 TagAffinity:
   fields:
     profileId:
       type: ObjectId
+      required: true
     tag:
       type: String
+      required: true
+      maxLength: 50
     affinity:
       type: Integer
+      required: true
+      min: '-100'
+      max: '100'
+  inherits:
+  - BaseEntity
+  uniques:
+  - fields:
+    - profileId
+    - tag
   relations: []
 Event:
   fields:
     url:
       type: String
+      required: true
+      pattern: dict=pattern.url
+      pattern.message: Bad URL format
     title:
       type: String
+      required: true
+      maxLength: 200
     dateTime:
       type: ISODate
+      required: true
     location:
       type: String
+      required: false
+      maxLength: 200
     cost:
       type: Number
+      required: false
+      min: '0'
     numOfExpectedAttendees:
       type: Integer
+      required: false
+      min: '0'
     recurrence:
       type: String
+      required: false
+      enum:
+      - daily
+      - weekly
+      - monthly
+      - yearly
+  inherits:
+  - BaseEntity
   relations:
   - UserEvent
 UserEvent:
   fields:
     userId:
       type: ObjectId
+      required: true
     eventId:
       type: ObjectId
+      required: true
     attended:
       type: Boolean
+      required: false
     rating:
       type: Integer
+      required: false
+      min: '1'
+      max: '5'
     note:
       type: String
+      required: false
+      maxLength: 500
+  inherits:
+  - BaseEntity
   relations: []
 Url:
   fields:
     url:
       type: String
+      required: true
+      pattern: dict=pattern.url
+      pattern.message: Bad URL format
     params:
       type: JSON
+      required: false
+  inherits:
+  - BaseEntity
   relations:
   - Crawl
 Crawl:
   fields:
     urlId:
       type: ObjectId
+      required: true
     lastParsedDate:
       type: ISODate
+      required: false
     parseStatus:
       type: JSON
+      required: false
+  inherits:
+  - BaseEntity
   relations: []
