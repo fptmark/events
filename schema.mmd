@@ -1,5 +1,4 @@
 erDiagram
-%% @dictionary pattern { email: "^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", url: "^https?://[^\s]+$" }
     BaseEntity {
         ObjectId _id
         ISODate createdAt
@@ -30,7 +29,7 @@ erDiagram
     %% @inherit BaseEntity
     %% @validate accountId: { required: true }
     %% @validate username: { required: true, minLength: 3, maxLength: 50 }
-    %% @validate email: { required: true, minLength: 8, maxLength: 50, pattern: dict=pattern.email, pattern.message: "Bad email address format" }
+    %% @validate email: { required: true, minLength: 8, maxLength: 50, pattern: dictionary=pattern.email, pattern.message: "Bad email address format" }
     %% @validate password: { required: true, minLength: 8 }
     %% @validate firstName: { required: true, minLenght: 3, maxLength: 100 }
     %% @validate lastName: { required: true, minLenght: 3, maxLength: 100 }
@@ -77,7 +76,7 @@ erDiagram
         Array[String] tags
     
     %% @inherit BaseEntity
-    %% @validate url: { required: true, pattern: dict=pattern.url, pattern.message: "Bad URL format" }
+    %% @validate url: { required: true, pattern: dictionary=pattern.url, pattern.message: "Bad URL format" }
     %% @validate title: { required: true, maxLength: 200 }
     %% @validate dateTime: { required: true }
     %% @validate location: { required: false, maxLength: 200 }
@@ -107,7 +106,7 @@ erDiagram
         JSON params
     
     %% @inherit BaseEntity
-    %% @validate url: { required: true, pattern: dict=pattern.url, pattern.message: "Bad URL format" }
+    %% @validate url: { required: true, pattern: dictionary=pattern.url, pattern.message: "Bad URL format" }
     %% @validate params: { required: false }
     }
 
@@ -130,3 +129,4 @@ erDiagram
     User ||--o{ UserEvent: ""
     Event ||--o{ UserEvent: ""
     Url ||--o{ Crawl: ""
+%% @dictionary pattern { email: "^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", url: "^https?://[^\s]+$" }

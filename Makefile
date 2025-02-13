@@ -8,7 +8,9 @@ firsttime: setup schema code
 
 all: schema code run 
 
-schema: schema.yaml schema.png
+schema: schema.yaml schema.png index.sh
+
+index.sh: schema.mmd
 
 clean: 
 	rm -rf app schema.yaml app.log schema.png
@@ -35,7 +37,7 @@ db: $(GENERATORS)/gen_db.py schema.yaml $(GENERATORS)/templates/db/*
 setup:	$(S2R_DIR)/requirements.txt
 	pip install -r r$(S2R_DIR)/equirements.txt
 
-schema.yaml: schema.mmd $(GENERATORS)/schemaConvert.py
+schema.yaml : schema.mmd $(GENERATORS)/schemaConvert.py
 	python $(GENERATORS)/schemaConvert.py schema.mmd .
 
 schema.png: schema.mmd
