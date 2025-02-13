@@ -54,7 +54,7 @@ User:
       required: true
       minLength: 8
       maxLength: 50
-      pattern: dict=pattern.email
+      pattern: dictionary=pattern.email
       pattern.message: Bad email address format
     password:
       type: String
@@ -141,7 +141,7 @@ Event:
     url:
       type: String
       required: true
-      pattern: dict=pattern.url
+      pattern: dictionary=pattern.url
       pattern.message: Bad URL format
     title:
       type: String
@@ -202,7 +202,7 @@ Url:
     url:
       type: String
       required: true
-      pattern: dict=pattern.url
+      pattern: dictionary=pattern.url
       pattern.message: Bad URL format
     params:
       type: JSON
