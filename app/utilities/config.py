@@ -16,7 +16,7 @@ def load_config():
         return {
             'mongo_uri': 'mongodb://localhost:27017',
             'db_name': 'default_db',
-            'app_port': 8000,
+            'server_port': 8000,
             'environment': 'production',
             'log_level': 'info',
         }

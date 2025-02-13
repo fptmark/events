@@ -61,7 +61,7 @@ if __name__ == '__main__':
 
     # Load configuration
     my_host = config.get('host', '0.0.0.0')
-    my_port = config.get('app_port', 8000)
+    my_port = config.get('server_port', 8000)
 
     logger.info(f' Access Swagger docs at http://{my_host}:{my_port}/docs') 
 
