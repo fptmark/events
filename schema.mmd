@@ -1,127 +1,97 @@
 erDiagram
     BaseEntity {
-        ObjectId _id
-        ISODate createdAt
-        ISODate updatedAt
-   
-    %% @validate _id: { required: true, autoGenerate: true }
-    %% @validate createdAt: { required: true, autoGenerate: true }
-    %% @validate updatedAt: { required: true, autoUpdate: true }
+        ObjectId _id      %% @validate { required: true, autoGenerate: true }
+        ISODate createdAt %% @validate { required: true, autoGenerate: true }
+        ISODate updatedAt %% @validate { required: true, autoUpdate: true }
     }
+
 
     Account {
-        ISODate expiredAt
+        ISODate expiredAt %% @validate { required: false }
     
-    %% @inherit BaseEntity
-    %% @validate expiredAt: { required: false }
+    	%% @inherit BaseEntity
     }
+
 
     User {
-        ObjectId accountId
-        String username
-        String email
-        String password
-        String firstName
-        String lastName
-        String gender
-        Boolean isAccountOwner
+        ObjectId accountId       %% @validate { required: true }
+        String username          %% @validate { required: true, minLength: 3, maxLength: 50 }
+        String email             %% @validate { required: true, minLength: 8, maxLength: 50, pattern: dictionary=pattern.email, pattern.message: "Bad email address format" }
+        String password          %% @validate { required: true, minLength: 8 }
+        String firstName         %% @validate { required: true, minLength: 3, maxLength: 100 }
+        String lastName          %% @validate { required: true, minLength: 3, maxLength: 100 }
+        String gender            %% @validate { required: false, enum: [male, female, other], enum.message: "must be male or female" }
+        Boolean isAccountOwner   %% @validate { required: true }
     
-    %% @inherit BaseEntity
-    %% @validate accountId: { required: true }
-    %% @validate username: { required: true, minLength: 3, maxLength: 50 }
-    %% @validate email: { required: true, minLength: 8, maxLength: 50, pattern: dictionary=pattern.email, pattern.message: "Bad email address format" }
-    %% @validate password: { required: true, minLength: 8 }
-    %% @validate firstName: { required: true, minLenght: 3, maxLength: 100 }
-    %% @validate lastName: { required: true, minLenght: 3, maxLength: 100 }
-    %% @validate gender: { required: false, enum: [male, female, other], enum.message: "must be male or female" }
-    %% @validate isAccountOwner: { required: true }
-    %% @unique username
-    %% @unique email
+    	%% @inherit BaseEntity
+    	%% @service auth.cookies.redis ### Use cookie authentication model and redis for the backing store
+    	%% @unique username
+    	%% @unique email
     }
+
 
     Profile {
-        ObjectId userId
-        String name
-        JSON preferences
-        Integer radiusMiles
+        ObjectId userId      %% @validate { required: true }
+        String name          %% @validate { required: true, maxLength: 100 }
+        JSON preferences     %% @validate { required: false }
+        Integer radiusMiles  %% @validate { required: false, min: 0 }
     
-    %% @inherit BaseEntity
-    %% @validate userId: { required: true }
-    %% @validate name: { required: true, maxLength: 100 }
-    %% @validate preferences: { required: false }
-    %% @validate radiusMiles: { required: false, min: 0 }
-    %% @unique name + userId
+    	%% @inherit BaseEntity
+    	%% @unique name + userId
     }
+
 
     TagAffinity {
-        ObjectId profileId
-        String tag
-        Integer affinity
+        ObjectId profileId    %% @validate { required: true }
+        String tag            %% @validate { required: true, maxLength: 50 }
+        Integer affinity      %% @validate { required: true, min: -100, max: 100 }
     
-    %% @inherit BaseEntity
-    %% @validate profileId: { required: true }
-    %% @validate tag: { required: true, maxLength: 50 }
-    %% @validate affinity: { required: true, min: -100, max: 100 }
-    %% @unique profileId + tag
+    	%% @inherit BaseEntity
+    	%% @unique profileId + tag
     }
+
 
     Event {
-        String url
-        String title
-        ISODate dateTime
-        String location
-        Number cost
-        Integer numOfExpectedAttendees
-        String recurrence
-        Array[String] tags
+        String url                         %% @validate { required: true, pattern: dictionary=pattern.url, pattern.message: "Bad URL format" }
+        String title                       %% @validate { required: true, maxLength: 200 }
+        ISODate dateTime                   %% @validate { required: true }
+        String location                    %% @validate { required: false, maxLength: 200 }
+        Number cost                        %% @validate { required: false, min: 0 }
+        Integer numOfExpectedAttendees     %% @validate { required: false, min: 0 }
+        String recurrence                  %% @validate { required: false, enum: [daily, weekly, monthly, yearly] }
+        Array[String] tags                 %% @validate { required: false }
     
-    %% @inherit BaseEntity
-    %% @validate url: { required: true, pattern: dictionary=pattern.url, pattern.message: "Bad URL format" }
-    %% @validate title: { required: true, maxLength: 200 }
-    %% @validate dateTime: { required: true }
-    %% @validate location: { required: false, maxLength: 200 }
-    %% @validate cost: { required: false, min: 0 }
-    %% @validate numOfExpectedAttendees: { required: false, min: 0 }
-    %% @validate recurrence: { required: false, enum: [daily, weekly, monthly, yearly] }
-    %% @validate tags: { required: false }
+    	%% @inherit BaseEntity
     }
+
 
     UserEvent {
-        ObjectId userId
-        ObjectId eventId
-        Boolean attended
-        Integer rating
-        String note
+        ObjectId userId      %% @validate { required: true }
+        ObjectId eventId     %% @validate { required: true }
+        Boolean attended     %% @validate { required: false }
+        Integer rating       %% @validate { required: false, min: 1, max: 5 }
+        String note          %% @validate { required: false, maxLength: 500 }
     
-    %% @inherit BaseEntity
-    %% @validate userId: { required: true }
-    %% @validate eventId: { required: true }
-    %% @validate attended: { required: false }
-    %% @validate rating: { required: false, min: 1, max: 5 }
-    %% @validate note: { required: false, maxLength: 500 }
+    	%% @inherit BaseEntity
     }
 
+
     Url {
-        String url
-        JSON params
+        String url       %% @validate { required: true, pattern: dictionary=pattern.url, pattern.message: "Bad URL format" }
+        JSON params      %% @validate { required: false }
     
-    %% @inherit BaseEntity
-    %% @validate url: { required: true, pattern: dictionary=pattern.url, pattern.message: "Bad URL format" }
-    %% @validate params: { required: false }
+    	%% @inherit BaseEntity
     }
 
     Crawl {
-        ObjectId urlId
-        ISODate lastParsedDate
-        JSON parseStatus
-        Array[String] errorsEncountered
+        ObjectId urlId                     %% @validate { required: true }
+        ISODate lastParsedDate             %% @validate { required: false }
+        JSON parseStatus                   %% @validate { required: false }
+        Array[String] errorsEncountered    %% @validate { required: false }
     
-    %% @inherit BaseEntity
-    %% @validate urlId: { required: true }
-    %% @validate lastParsedDate: { required: false }
-    %% @validate parseStatus: { required: false }
-    %% @validate errorsEncountered: { required: false }
+    	%% @inherit BaseEntity
     }
+
 
     Account ||--o{ User: ""
     User ||--o{ Profile: ""
