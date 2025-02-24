@@ -14,7 +14,6 @@ erDiagram
 
 
     User {
-        ObjectId accountId       %% @validate { required: true }
         String username          %% @validate { required: true, minLength: 3, maxLength: 50 }
         String email             %% @validate { required: true, minLength: 8, maxLength: 50, pattern: dictionary=pattern.email, pattern.message: "Bad email address format" }
         String password          %% @validate { required: true, minLength: 8 }
@@ -31,7 +30,6 @@ erDiagram
 
 
     Profile {
-        ObjectId userId      %% @validate { required: true }
         String name          %% @validate { required: true, maxLength: 100 }
         JSON preferences     %% @validate { required: false }
         Integer radiusMiles  %% @validate { required: false, min: 0 }
@@ -42,7 +40,6 @@ erDiagram
 
 
     TagAffinity {
-        ObjectId profileId    %% @validate { required: true }
         String tag            %% @validate { required: true, maxLength: 50 }
         Integer affinity      %% @validate { required: true, min: -100, max: 100 }
     
@@ -66,8 +63,6 @@ erDiagram
 
 
     UserEvent {
-        ObjectId userId      %% @validate { required: true }
-        ObjectId eventId     %% @validate { required: true }
         Boolean attended     %% @validate { required: false }
         Integer rating       %% @validate { required: false, min: 1, max: 5 }
         String note          %% @validate { required: false, maxLength: 500 }
@@ -84,7 +79,6 @@ erDiagram
     }
 
     Crawl {
-        ObjectId urlId                     %% @validate { required: true }
         ISODate lastParsedDate             %% @validate { required: false }
         JSON parseStatus                   %% @validate { required: false }
         Array[String] errorsEncountered    %% @validate { required: false }
