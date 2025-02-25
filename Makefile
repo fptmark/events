@@ -1,7 +1,7 @@
 S2R_DIR = ~/Projects/schema2rest
 GENERATORS = $(S2R_DIR)
 
-.PHONY: clean code
+.PHONY: clean code run cli
 
 firsttime: setup schema code redis services
 	brew install mongo
@@ -55,8 +55,11 @@ schema.yaml : schema.mmd $(GENERATORS)/schemaConvert.py
 schema.png: schema.mmd
 	cat schema.mmd | sed '/[[:alnum:]].*%%/ s/%%.*//' | mmdc -i - -o schema.png
 
-run: app/main.py
+run: 
 	PYTHONPATH=. python app/main.py
 
 test: test.py
 	pytest -s test.py
+
+cli: 
+	PYTHONPATH=. python cli/cli.py
