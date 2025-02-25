@@ -1,4 +1,4 @@
-from .baseentity_model import BaseEntity
+from beanie import Document
 
 from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field, validator
@@ -15,32 +15,27 @@ class UniqueValidationError(Exception):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
 
-class UrlBase(BaseModel):
-    url: str = Field(...)
-    params: Optional[dict] = Field(None)
-
-    @validator('url')
-    def validate_url(cls, v):
-        _custom = {"pattern": "Bad URL format"}
-        if not re.match(r'^https?://[^\s]+$', v):
-            raise ValueError(_custom["pattern"])
-        return v
+class BaseEntityBase(BaseModel):
+    _id: PydanticObjectId = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
 
-class Url(BaseEntity, UrlBase):
+
+class BaseEntity(Document, BaseEntityBase):
     class Settings:
-        name = "url"
+        name = "baseentity"
 
     async def save(self, *args, **kwargs):
         return await super().save(*args, **kwargs)
 
 
-class UrlCreate(UrlBase):
+class BaseEntityCreate(BaseEntityBase):
     class Config:
         orm_mode = True
 
 
-class UrlRead(UrlBase):
+class BaseEntityRead(BaseEntityBase):
     class Config:
         orm_mode = True
         allow_population_by_field_name = True

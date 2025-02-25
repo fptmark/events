@@ -1,5 +1,6 @@
-from .BaseEntity import BaseEntity
-from beanie import PydanticObjectId
+from .baseentity_model import BaseEntity
+
+from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
@@ -10,48 +11,42 @@ class UniqueValidationError(Exception):
     def __init__(self, fields, query):
         self.fields = fields
         self.query = query
-        super().__init__(f"Unique constraint violated for fields: {', '.join(fields)}")
+    def __str__(self):
+        return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
-class Profile(BaseEntity):
-    userId: PydanticObjectId = Field(...)
+
+class ProfileBase(BaseModel):
     name: str = Field(..., max_length=100)
     preferences: Optional[dict] = Field(None)
     radiusMiles: Optional[int] = Field(None, ge=0)
+    userId: PydanticObjectId = Field(...)
 
+
+
+class Profile(BaseEntity, ProfileBase):
     class Settings:
         name = "profile"
 
-
     async def validate_uniques(self):
-        # Unique constraint on fields: name, userId
-        query = {
+        query_1 = {
             "name": self.name,
             "userId": self.userId,
         }
-        existing = await self.__class__.find_one(query)
-        if existing:
-            raise UniqueValidationError(["name", "userId"], query)
+        existing_1 = await self.__class__.find_one(query_1)
+        if existing_1:
+            raise UniqueValidationError(["name", "userId"], query_1)
 
     async def save(self, *args, **kwargs):
         await self.validate_uniques()
         return await super().save(*args, **kwargs)
 
-class ProfileCreate(BaseModel):
-    userId: PydanticObjectId = Field(...)
-    name: str = Field(..., max_length=100)
-    preferences: Optional[dict] = Field(None)
-    radiusMiles: Optional[int] = Field(None, ge=0)
+
+class ProfileCreate(ProfileBase):
     class Config:
         orm_mode = True
 
-class ProfileRead(BaseModel):
-    id: Optional[PydanticObjectId] = Field(None, alias="_id")
-    createdAt: Optional[datetime] = None
-    updatedAt: Optional[datetime] = None
-    userId: PydanticObjectId = Field(...)
-    name: str = Field(..., max_length=100)
-    preferences: Optional[dict] = Field(None)
-    radiusMiles: Optional[int] = Field(None, ge=0)
+
+class ProfileRead(ProfileBase):
     class Config:
         orm_mode = True
         allow_population_by_field_name = True

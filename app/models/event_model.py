@@ -1,13 +1,21 @@
-from .BaseEntity import BaseEntity
-from beanie import PydanticObjectId
+from .baseentity_model import BaseEntity
+
+from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
 import re
 import json
 
+class UniqueValidationError(Exception):
+    def __init__(self, fields, query):
+        self.fields = fields
+        self.query = query
+    def __str__(self):
+        return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
-class Event(BaseEntity):
+
+class EventBase(BaseModel):
     url: str = Field(...)
     title: str = Field(..., max_length=200)
     dateTime: datetime = Field(...)
@@ -15,9 +23,7 @@ class Event(BaseEntity):
     cost: Optional[float] = Field(None, ge=0)
     numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
     recurrence: Optional[str] = Field(None, description="Allowed values: ['daily', 'weekly', 'monthly', 'yearly']")
-
-    class Settings:
-        name = "event"
+    tags: Optional[str] = Field(None)
 
     @validator('url')
     def validate_url(cls, v):
@@ -33,31 +39,21 @@ class Event(BaseEntity):
             raise ValueError("recurrence must be one of " + ", ".join(allowed))
         return v
 
+
+class Event(BaseEntity, EventBase):
+    class Settings:
+        name = "event"
+
     async def save(self, *args, **kwargs):
         return await super().save(*args, **kwargs)
 
-class EventCreate(BaseModel):
-    url: str = Field(...)
-    title: str = Field(..., max_length=200)
-    dateTime: datetime = Field(...)
-    location: Optional[str] = Field(None, max_length=200)
-    cost: Optional[float] = Field(None, ge=0)
-    numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
-    recurrence: Optional[str] = Field(None, description="Allowed values: ['daily', 'weekly', 'monthly', 'yearly']")
+
+class EventCreate(EventBase):
     class Config:
         orm_mode = True
 
-class EventRead(BaseModel):
-    id: Optional[PydanticObjectId] = Field(None, alias="_id")
-    createdAt: Optional[datetime] = None
-    updatedAt: Optional[datetime] = None
-    url: str = Field(...)
-    title: str = Field(..., max_length=200)
-    dateTime: datetime = Field(...)
-    location: Optional[str] = Field(None, max_length=200)
-    cost: Optional[float] = Field(None, ge=0)
-    numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
-    recurrence: Optional[str] = Field(None, description="Allowed values: ['daily', 'weekly', 'monthly', 'yearly']")
+
+class EventRead(EventBase):
     class Config:
         orm_mode = True
         allow_population_by_field_name = True
