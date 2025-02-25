@@ -1,3 +1,4 @@
+from app.services.auth.cookies.redis import CookiesAuth as Auth
 import sys
 from pathlib import Path
 from app.utilities.config import load_config 
@@ -32,6 +33,9 @@ from app.routes.event_router import router as event_router
 from app.routes.userevent_router import router as userevent_router
 from app.routes.url_router import router as url_router
 from app.routes.crawl_router import router as crawl_router
+
+#Add routing for each entity-service pair
+from routes.services.auth.user_auth_routes import router as user_auth_router
 app = FastAPI()
 
 @app.on_event('startup')
@@ -40,9 +44,14 @@ async def startup_event():
     logger.info(f"Running in {'development' if config.get('environment', 'production') == 'development' else 'production'} mode")
     await Database.init(config['mongo_uri'], config['db_name']) 
 
-# Include routers
+# Add service initializers
+    print(f'>>> Initializing service auth.cookies.redis')
+    await Auth.initialize(config['auth.cookies.redis'])
+
+# Register routes
 app.include_router(account_router, prefix='/account', tags=['Account'])
 app.include_router(user_router, prefix='/user', tags=['User'])
+app.include_router(user_auth_router, prefix='/user/auth', tags=['User'])
 app.include_router(profile_router, prefix='/profile', tags=['Profile'])
 app.include_router(tagaffinity_router, prefix='/tagaffinity', tags=['TagAffinity'])
 app.include_router(event_router, prefix='/event', tags=['Event'])

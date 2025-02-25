@@ -1,22 +1,33 @@
 S2R_DIR = ~/Projects/schema2rest
-GENERATORS = $(S2R_DIR)/generators
+GENERATORS = $(S2R_DIR)
 
 .PHONY: clean code
 
-firsttime: setup schema code 
+firsttime: setup schema code redis services
+	brew install mongo
+	brew install redis
 	cp $(S2R_DIR)/config.json config.json
+
+redis:
+	brew install redis
+	brew services start redis
+
+services: $(S2R_DIR)/services/* schema.yaml
+	rm -rf app/services
+	mkdir -p app/services
+	cp -r $(S2R_DIR)/services app
+	python $(GENERATORS)/gen_service_routes.py schema.yaml .
 
 all: schema code run 
 
-schema: schema.yaml schema.png index.sh
-
-index.sh: schema.mmd
+schema: schema.yaml schema.png 
 
 clean: 
 	rm -rf app schema.yaml app.log schema.png
 
-code:	schema main db models routes
-	cp -r $(S2R_DIR)/utilities app
+code:	schema main db models routes services
+	mkdir -p app/utilities
+	cp -r $(S2R_DIR)/config.py app/utilities
 
 models: $(GENERATORS)/gen_models.py schema.yaml $(GENERATORS)/templates/models/*
 	rm -rf app/models
@@ -39,9 +50,10 @@ setup:	$(S2R_DIR)/requirements.txt
 
 schema.yaml : schema.mmd $(GENERATORS)/schemaConvert.py
 	python $(GENERATORS)/schemaConvert.py schema.mmd .
+	python $(S2R_DIR)/update_indicies.py schema.yaml
 
 schema.png: schema.mmd
-	mmdc -i schema.mmd -o schema.png
+	cat schema.mmd | sed '/[[:alnum:]].*%%/ s/%%.*//' | mmdc -i - -o schema.png
 
 run: app/main.py
 	PYTHONPATH=. python app/main.py
