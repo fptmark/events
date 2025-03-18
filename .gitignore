@@ -6,3 +6,4 @@ __pycache__/
 app.log
 code/
 app/config.json
+obsolete/

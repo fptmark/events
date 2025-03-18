@@ -13,8 +13,8 @@ _relationships:
   target: Crawl
 _dictionaries:
   pattern:
-    email: "^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
-    url: "^https?://[^\\s]+$"
+    email: ^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$
+    url: ^https?://[^s]+$
 _services:
 - auth.cookies.redis
 _inherited_entities:
@@ -22,10 +22,6 @@ _inherited_entities:
 _entities:
   BaseEntity:
     fields:
-      _id:
-        type: ObjectId
-        required: true
-        autoGenerate: true
       createdAt:
         type: ISODate
         required: true
@@ -40,14 +36,16 @@ _entities:
       expiredAt:
         type: ISODate
         required: false
-    inherits:
-    - BaseEntity
     relationships:
     - User
+    inherits:
+    - BaseEntity
   User:
     fields:
       username:
         type: String
+        ui_metadata:
+          displayName: whos your daddy?
         required: true
         minLength: 3
         maxLength: 50
@@ -56,7 +54,7 @@ _entities:
         required: true
         minLength: 8
         maxLength: 50
-        pattern: "^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+        pattern: dictionary=pattern.email
         pattern.message: Bad email address format
       password:
         type: String
@@ -83,16 +81,16 @@ _entities:
       isAccountOwner:
         type: Boolean
         required: true
-    inherits:
-    - BaseEntity
-    - service:
-      - auth.cookies.redis
-    uniques:
-    - - username
-    - - email
     relationships:
     - Profile
     - UserEvent
+    unique:
+    - - username
+    - - email
+    inherits:
+    - BaseEntity
+    services:
+    - auth.cookies.redis
   Profile:
     fields:
       name:
@@ -106,13 +104,13 @@ _entities:
         type: Integer
         required: false
         min: 0
-    inherits:
-    - BaseEntity
-    uniques:
-    - - name
-      - userId
     relationships:
     - TagAffinity
+    inherits:
+    - BaseEntity
+    unique:
+    - - name
+      - userId
   TagAffinity:
     fields:
       tag:
@@ -124,18 +122,18 @@ _entities:
         required: true
         min: -100
         max: 100
+    relationships: []
     inherits:
     - BaseEntity
-    uniques:
+    unique:
     - - profileId
       - tag
-    relationships: []
   Event:
     fields:
       url:
         type: String
         required: true
-        pattern: "^https?://[^\\s]+$"
+        pattern: dictionary=pattern.url
         pattern.message: Bad URL format
       title:
         type: String
@@ -167,10 +165,10 @@ _entities:
       tags:
         type: Array[String]
         required: false
-    inherits:
-    - BaseEntity
     relationships:
     - UserEvent
+    inherits:
+    - BaseEntity
   UserEvent:
     fields:
       attended:
@@ -185,23 +183,23 @@ _entities:
         type: String
         required: false
         maxLength: 500
+    relationships: []
     inherits:
     - BaseEntity
-    relationships: []
   Url:
     fields:
       url:
         type: String
         required: true
-        pattern: "^https?://[^\\s]+$"
+        pattern: dictionary=pattern.url
         pattern.message: Bad URL format
       params:
         type: JSON
         required: false
-    inherits:
-    - BaseEntity
     relationships:
     - Crawl
+    inherits:
+    - BaseEntity
   Crawl:
     fields:
       lastParsedDate:
@@ -213,6 +211,6 @@ _entities:
       errorsEncountered:
         type: Array[String]
         required: false
+    relationships: []
     inherits:
     - BaseEntity
-    relationships: []

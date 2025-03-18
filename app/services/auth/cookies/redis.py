@@ -101,10 +101,12 @@ class CookiesAuth(BaseAuth):
             return True
         return False
 
-    async def logout(self, request: Request) -> None:
+    async def logout(self, request: Request) -> bool:
         token = request.cookies.get(self.cookie_name)
         if token and self.cookie_store:
             await self.cookie_store.delete_session(token)
+            return True
+        return False
 
     async def refresh(self, request: Request) -> bool:
         token = request.cookies.get(self.cookie_name)

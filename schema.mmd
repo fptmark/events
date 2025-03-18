@@ -1,6 +1,5 @@
 erDiagram
     BaseEntity {
-        ObjectId _id      %% @validate { required: true, autoGenerate: true }
         ISODate createdAt %% @validate { required: true, autoGenerate: true }
         ISODate updatedAt %% @validate { required: true, autoUpdate: true }
     }
@@ -14,18 +13,16 @@ erDiagram
 
 
     User {
-        String username          %% @validate { required: true, minLength: 3, maxLength: 50 }
-        String email             %% @validate { required: true, minLength: 8, maxLength: 50, pattern: dictionary=pattern.email, pattern.message: "Bad email address format" }
+        String username          %% @validate { required: true, minLength: 3, maxLength: 50 }, @ui { displayName: "whos your daddy?" }, @unique
+        String email             %% @validate { required: true, minLength: 8, maxLength: 50, pattern: "dictionary=pattern.email", "pattern.message": "Bad email address format" }, @unique
         String password          %% @validate { required: true, minLength: 8 }
         String firstName         %% @validate { required: true, minLength: 3, maxLength: 100 }
         String lastName          %% @validate { required: true, minLength: 3, maxLength: 100 }
-        String gender            %% @validate { required: false, enum: [male, female, other], enum.message: "must be male or female" }
+        String gender            %% @validate { required: false, enum: ["male", "female", "other"], "enum.message": "must be male or female" }
         Boolean isAccountOwner   %% @validate { required: true }
     
     	%% @inherit BaseEntity
-    	%% @service auth.cookies.redis ### Use cookie authentication model and redis for the backing store
-    	%% @unique username
-    	%% @unique email
+    	%% @service auth.cookies.redis 
     }
 
 
@@ -49,13 +46,13 @@ erDiagram
 
 
     Event {
-        String url                         %% @validate { required: true, pattern: dictionary=pattern.url, pattern.message: "Bad URL format" }
+        String url                         %% @validate { required: true, pattern: "dictionary=pattern.url", "pattern.message": "Bad URL format" }
         String title                       %% @validate { required: true, maxLength: 200 }
         ISODate dateTime                   %% @validate { required: true }
         String location                    %% @validate { required: false, maxLength: 200 }
         Number cost                        %% @validate { required: false, min: 0 }
         Integer numOfExpectedAttendees     %% @validate { required: false, min: 0 }
-        String recurrence                  %% @validate { required: false, enum: [daily, weekly, monthly, yearly] }
+        String recurrence                  %% @validate { required: false, enum: ["daily", "weekly", "monthly", "yearly"] }
         Array[String] tags                 %% @validate { required: false }
     
     	%% @inherit BaseEntity
@@ -72,7 +69,7 @@ erDiagram
 
 
     Url {
-        String url       %% @validate { required: true, pattern: dictionary=pattern.url, pattern.message: "Bad URL format" }
+        String url       %% @validate { required: true, pattern: "dictionary=pattern.url", "pattern.message": "Bad URL format" }
         JSON params      %% @validate { required: false }
     
     	%% @inherit BaseEntity
@@ -93,4 +90,6 @@ erDiagram
     User ||--o{ UserEvent: ""
     Event ||--o{ UserEvent: ""
     Url ||--o{ Crawl: ""
+
+
 %% @dictionary pattern { email: "^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", url: "^https?://[^\s]+$" }

@@ -1,14 +1,47 @@
-from fastapi import APIRouter, HTTPException
-from typing import List
+from fastapi import APIRouter, HTTPException, Response
+from typing import List, Dict, Any
 from app.models.profile_model import Profile, ProfileCreate, ProfileRead
 from beanie import PydanticObjectId
 import logging
+import json
 
 router = APIRouter()
 
+# Helper function to wrap response with metadata
+def wrap_response(data, include_metadata=True):
+    """Wrap response data with metadata for UI generation."""
+    if not include_metadata:
+        return data
+    
+    result = {
+        "data": data,
+    }
+    
+    # Add metadata if requested
+    if include_metadata:
+        result["metadata"] = Profile.get_metadata()
+    
+    return result
+
+# Helper function to wrap collection response with metadata
+def wrap_collection_response(data_list, include_metadata=True):
+    """Wrap response data list with metadata for UI generation."""
+    if not include_metadata:
+        return data_list
+    
+    result = {
+        "data": data_list,
+    }
+    
+    # Add metadata if requested
+    if include_metadata:
+        result["metadata"] = Profile.get_metadata()
+    
+    return result
+
 # CREATE
-@router.post('/', response_model=ProfileRead)
-async def create_profile(item: ProfileCreate):
+@router.post('/')
+async def create_profile(item: ProfileCreate, include_metadata: bool = True):
     logging.info("Received request to create a new profile.")
     # Instantiate a document from the model
     doc = Profile(**item.dict(exclude_unset=True))
@@ -18,11 +51,12 @@ async def create_profile(item: ProfileCreate):
     except Exception as e:
         logging.exception("Failed to create profile.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return doc
+    
+    return wrap_response(doc, include_metadata)
 
 # GET ALL
-@router.get('/', response_model=List[ProfileRead])
-async def get_all_profiles():
+@router.get('/')
+async def get_all_profiles(include_metadata: bool = True):
     logging.info("Received request to fetch all profiles.")
     try:
         docs = await Profile.find_all().to_list()
@@ -30,11 +64,12 @@ async def get_all_profiles():
     except Exception as e:
         logging.exception("Failed to fetch all profiles.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return docs
+    
+    return wrap_collection_response(docs, include_metadata)
 
 # GET ONE BY ID
-@router.get('/{item_id}', response_model=ProfileRead)
-async def get_profile(item_id: str):
+@router.get('/{item_id}')
+async def get_profile(item_id: str, include_metadata: bool = True):
     logging.info(f"Received request to fetch profile with _id: {item_id}")
     try:
         doc = await Profile.get(PydanticObjectId(item_id))
@@ -47,11 +82,12 @@ async def get_profile(item_id: str):
     except Exception as e:
         logging.exception(f"Failed to fetch Profile with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return doc
+    
+    return wrap_response(doc, include_metadata)
 
 # UPDATE
-@router.put('/{item_id}', response_model=ProfileRead)
-async def update_profile(item_id: str, item: ProfileCreate):
+@router.put('/{item_id}')
+async def update_profile(item_id: str, item: ProfileCreate, include_metadata: bool = True):
     logging.info(f"Received request to update profile with _id: {item_id}")
     try:
         doc = await Profile.get(PydanticObjectId(item_id))
@@ -72,7 +108,8 @@ async def update_profile(item_id: str, item: ProfileCreate):
     except Exception as e:
         logging.exception(f"Failed to update Profile with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return doc
+    
+    return wrap_response(doc, include_metadata)
 
 # DELETE
 @router.delete('/{item_id}')
@@ -90,4 +127,11 @@ async def delete_profile(item_id: str):
     except Exception as e:
         logging.exception(f"Failed to delete Profile with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
+    
     return {'message': 'Profile deleted successfully'}
+
+# GET METADATA
+@router.get('/metadata')
+async def get_profile_metadata():
+    """Get metadata for Profile entity."""
+    return Profile.get_metadata()

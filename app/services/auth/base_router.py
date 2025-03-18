@@ -28,7 +28,7 @@ class BaseAuth(ABC):
 
     @expose_endpoint("POST", "/logout")
     @abstractmethod
-    async def logout(self, request: Request) -> None:
+    async def logout(self, request: Request) -> bool:
         """
         Log out the user by terminating their session.
         """

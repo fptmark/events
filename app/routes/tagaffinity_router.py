@@ -1,14 +1,47 @@
-from fastapi import APIRouter, HTTPException
-from typing import List
+from fastapi import APIRouter, HTTPException, Response
+from typing import List, Dict, Any
 from app.models.tagaffinity_model import TagAffinity, TagAffinityCreate, TagAffinityRead
 from beanie import PydanticObjectId
 import logging
+import json
 
 router = APIRouter()
 
+# Helper function to wrap response with metadata
+def wrap_response(data, include_metadata=True):
+    """Wrap response data with metadata for UI generation."""
+    if not include_metadata:
+        return data
+    
+    result = {
+        "data": data,
+    }
+    
+    # Add metadata if requested
+    if include_metadata:
+        result["metadata"] = TagAffinity.get_metadata()
+    
+    return result
+
+# Helper function to wrap collection response with metadata
+def wrap_collection_response(data_list, include_metadata=True):
+    """Wrap response data list with metadata for UI generation."""
+    if not include_metadata:
+        return data_list
+    
+    result = {
+        "data": data_list,
+    }
+    
+    # Add metadata if requested
+    if include_metadata:
+        result["metadata"] = TagAffinity.get_metadata()
+    
+    return result
+
 # CREATE
-@router.post('/', response_model=TagAffinityRead)
-async def create_tagaffinity(item: TagAffinityCreate):
+@router.post('/')
+async def create_tagaffinity(item: TagAffinityCreate, include_metadata: bool = True):
     logging.info("Received request to create a new tagaffinity.")
     # Instantiate a document from the model
     doc = TagAffinity(**item.dict(exclude_unset=True))
@@ -18,11 +51,12 @@ async def create_tagaffinity(item: TagAffinityCreate):
     except Exception as e:
         logging.exception("Failed to create tagaffinity.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return doc
+    
+    return wrap_response(doc, include_metadata)
 
 # GET ALL
-@router.get('/', response_model=List[TagAffinityRead])
-async def get_all_tagaffinitys():
+@router.get('/')
+async def get_all_tagaffinitys(include_metadata: bool = True):
     logging.info("Received request to fetch all tagaffinitys.")
     try:
         docs = await TagAffinity.find_all().to_list()
@@ -30,11 +64,12 @@ async def get_all_tagaffinitys():
     except Exception as e:
         logging.exception("Failed to fetch all tagaffinitys.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return docs
+    
+    return wrap_collection_response(docs, include_metadata)
 
 # GET ONE BY ID
-@router.get('/{item_id}', response_model=TagAffinityRead)
-async def get_tagaffinity(item_id: str):
+@router.get('/{item_id}')
+async def get_tagaffinity(item_id: str, include_metadata: bool = True):
     logging.info(f"Received request to fetch tagaffinity with _id: {item_id}")
     try:
         doc = await TagAffinity.get(PydanticObjectId(item_id))
@@ -47,11 +82,12 @@ async def get_tagaffinity(item_id: str):
     except Exception as e:
         logging.exception(f"Failed to fetch TagAffinity with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return doc
+    
+    return wrap_response(doc, include_metadata)
 
 # UPDATE
-@router.put('/{item_id}', response_model=TagAffinityRead)
-async def update_tagaffinity(item_id: str, item: TagAffinityCreate):
+@router.put('/{item_id}')
+async def update_tagaffinity(item_id: str, item: TagAffinityCreate, include_metadata: bool = True):
     logging.info(f"Received request to update tagaffinity with _id: {item_id}")
     try:
         doc = await TagAffinity.get(PydanticObjectId(item_id))
@@ -72,7 +108,8 @@ async def update_tagaffinity(item_id: str, item: TagAffinityCreate):
     except Exception as e:
         logging.exception(f"Failed to update TagAffinity with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return doc
+    
+    return wrap_response(doc, include_metadata)
 
 # DELETE
 @router.delete('/{item_id}')
@@ -90,4 +127,11 @@ async def delete_tagaffinity(item_id: str):
     except Exception as e:
         logging.exception(f"Failed to delete TagAffinity with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
+    
     return {'message': 'TagAffinity deleted successfully'}
+
+# GET METADATA
+@router.get('/metadata')
+async def get_tagaffinity_metadata():
+    """Get metadata for TagAffinity entity."""
+    return TagAffinity.get_metadata()

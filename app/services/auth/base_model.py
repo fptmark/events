@@ -17,7 +17,7 @@ class LoginResponse(AuthResponse):
 
 @expose_response("/logout")
 class LogoutResponse(AuthResponse):
-    pass
+    success: bool
 
 @expose_response("/refresh")
 class RefreshResponse(AuthResponse):

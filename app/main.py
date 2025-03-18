@@ -35,7 +35,6 @@ from app.routes.url_router import router as url_router
 from app.routes.crawl_router import router as crawl_router
 
 #Add routing for each entity-service pair
-from routes.services.auth.user_auth_routes import router as user_auth_router
 app = FastAPI()
 
 @app.on_event('startup')
@@ -51,7 +50,6 @@ async def startup_event():
 # Register routes
 app.include_router(account_router, prefix='/account', tags=['Account'])
 app.include_router(user_router, prefix='/user', tags=['User'])
-app.include_router(user_auth_router, prefix='/user/auth', tags=['User'])
 app.include_router(profile_router, prefix='/profile', tags=['Profile'])
 app.include_router(tagaffinity_router, prefix='/tagaffinity', tags=['TagAffinity'])
 app.include_router(event_router, prefix='/event', tags=['Event'])

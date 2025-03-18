@@ -1,9 +1,10 @@
-from .baseentity_model import BaseEntity
+
+from app.models.baseentity_model import BaseEntity, BaseEntityCreate, BaseEntityRead
 
 from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field, validator
-from typing import Optional
-from datetime import datetime
+from typing import Optional, List, Dict, Any, ClassVar
+from datetime import datetime, timezone
 import re
 import json
 
@@ -14,39 +15,59 @@ class UniqueValidationError(Exception):
     def __str__(self):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
-
-class TagAffinityBase(BaseModel):
+class TagAffinity(BaseEntity):
+    # TagAffinity-specific fields
     tag: str = Field(..., max_length=50)
     affinity: int = Field(..., ge=-100, le=100)
     profileId: PydanticObjectId = Field(...)
 
-
-
-class TagAffinity(BaseEntity, TagAffinityBase):
+    
+    # Class-level metadata for UI generation
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'TagAffinity', 'displayName': 'TagAffinity', 'fields': {'tag': {'type': 'String', 'displayName': 'Tag', 'display': 'always', 'displayAfterField': '', 'widget': 'text', 'required': True, 'maxLength': 50}, 'affinity': {'type': 'Integer', 'displayName': 'Affinity', 'display': 'always', 'displayAfterField': 'tag', 'widget': 'number', 'required': True, 'min': -100, 'max': 100}, 'profileId': {'type': 'ObjectId', 'displayName': 'Profile ID', 'display': 'always', 'displayAfterField': 'affinity', 'widget': 'reference', 'required': True}}}
+    
     class Settings:
         name = "tagaffinity"
-
-    async def validate_uniques(self):
-        query_1 = {
-            "profileId": self.profileId,
-            "tag": self.tag,
-        }
-        existing_1 = await self.__class__.find_one(query_1)
-        if existing_1:
-            raise UniqueValidationError(["profileId", "tag"], query_1)
+    
+    @classmethod
+    def get_metadata(cls) -> Dict[str, Any]:
+        """Get UI metadata for this entity."""
+        return cls.__ui_metadata__
 
     async def save(self, *args, **kwargs):
-        await self.validate_uniques()
         return await super().save(*args, **kwargs)
 
 
-class TagAffinityCreate(TagAffinityBase):
+class TagAffinityCreate(BaseEntityCreate):
+    # TagAffinity-specific fields
+    tag: str = Field(..., max_length=50)
+    affinity: int = Field(..., ge=-100, le=100)
+    profileId: PydanticObjectId = Field(...)
+    @validator('tag')
+    def validate_tag(cls, v):
+        _custom = {}
+        if v is not None and len(v) > 50:
+            raise ValueError("tag must be at most 50 characters")
+        return v
+    @validator('affinity')
+    def validate_affinity(cls, v):
+        _custom = {}
+        if v is not None and v < -100:
+            raise ValueError("affinity must be at least -100")
+        if v is not None and v > 100:
+            raise ValueError("affinity must be at most 100")
+        return v
     class Config:
         orm_mode = True
 
 
-class TagAffinityRead(TagAffinityBase):
+class TagAffinityRead(BaseEntityRead):
+    # TagAffinity-specific fields
+    tag: str = Field(None, max_length=50)
+    affinity: int = Field(None, ge=-100, le=100)
+    profileId: PydanticObjectId = Field(None)
+
     class Config:
         orm_mode = True
         allow_population_by_field_name = True
         json_encoders = {PydanticObjectId: str}
+

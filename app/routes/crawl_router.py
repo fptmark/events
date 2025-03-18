@@ -1,14 +1,47 @@
-from fastapi import APIRouter, HTTPException
-from typing import List
+from fastapi import APIRouter, HTTPException, Response
+from typing import List, Dict, Any
 from app.models.crawl_model import Crawl, CrawlCreate, CrawlRead
 from beanie import PydanticObjectId
 import logging
+import json
 
 router = APIRouter()
 
+# Helper function to wrap response with metadata
+def wrap_response(data, include_metadata=True):
+    """Wrap response data with metadata for UI generation."""
+    if not include_metadata:
+        return data
+    
+    result = {
+        "data": data,
+    }
+    
+    # Add metadata if requested
+    if include_metadata:
+        result["metadata"] = Crawl.get_metadata()
+    
+    return result
+
+# Helper function to wrap collection response with metadata
+def wrap_collection_response(data_list, include_metadata=True):
+    """Wrap response data list with metadata for UI generation."""
+    if not include_metadata:
+        return data_list
+    
+    result = {
+        "data": data_list,
+    }
+    
+    # Add metadata if requested
+    if include_metadata:
+        result["metadata"] = Crawl.get_metadata()
+    
+    return result
+
 # CREATE
-@router.post('/', response_model=CrawlRead)
-async def create_crawl(item: CrawlCreate):
+@router.post('/')
+async def create_crawl(item: CrawlCreate, include_metadata: bool = True):
     logging.info("Received request to create a new crawl.")
     # Instantiate a document from the model
     doc = Crawl(**item.dict(exclude_unset=True))
@@ -18,11 +51,12 @@ async def create_crawl(item: CrawlCreate):
     except Exception as e:
         logging.exception("Failed to create crawl.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return doc
+    
+    return wrap_response(doc, include_metadata)
 
 # GET ALL
-@router.get('/', response_model=List[CrawlRead])
-async def get_all_crawls():
+@router.get('/')
+async def get_all_crawls(include_metadata: bool = True):
     logging.info("Received request to fetch all crawls.")
     try:
         docs = await Crawl.find_all().to_list()
@@ -30,11 +64,12 @@ async def get_all_crawls():
     except Exception as e:
         logging.exception("Failed to fetch all crawls.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return docs
+    
+    return wrap_collection_response(docs, include_metadata)
 
 # GET ONE BY ID
-@router.get('/{item_id}', response_model=CrawlRead)
-async def get_crawl(item_id: str):
+@router.get('/{item_id}')
+async def get_crawl(item_id: str, include_metadata: bool = True):
     logging.info(f"Received request to fetch crawl with _id: {item_id}")
     try:
         doc = await Crawl.get(PydanticObjectId(item_id))
@@ -47,11 +82,12 @@ async def get_crawl(item_id: str):
     except Exception as e:
         logging.exception(f"Failed to fetch Crawl with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return doc
+    
+    return wrap_response(doc, include_metadata)
 
 # UPDATE
-@router.put('/{item_id}', response_model=CrawlRead)
-async def update_crawl(item_id: str, item: CrawlCreate):
+@router.put('/{item_id}')
+async def update_crawl(item_id: str, item: CrawlCreate, include_metadata: bool = True):
     logging.info(f"Received request to update crawl with _id: {item_id}")
     try:
         doc = await Crawl.get(PydanticObjectId(item_id))
@@ -72,7 +108,8 @@ async def update_crawl(item_id: str, item: CrawlCreate):
     except Exception as e:
         logging.exception(f"Failed to update Crawl with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
-    return doc
+    
+    return wrap_response(doc, include_metadata)
 
 # DELETE
 @router.delete('/{item_id}')
@@ -90,4 +127,11 @@ async def delete_crawl(item_id: str):
     except Exception as e:
         logging.exception(f"Failed to delete Crawl with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
+    
     return {'message': 'Crawl deleted successfully'}
+
+# GET METADATA
+@router.get('/metadata')
+async def get_crawl_metadata():
+    """Get metadata for Crawl entity."""
+    return Crawl.get_metadata()
