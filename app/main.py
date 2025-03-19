@@ -48,14 +48,14 @@ async def startup_event():
     await Auth.initialize(config['auth.cookies.redis'])
 
 # Register routes
-app.include_router(account_router, prefix='/account', tags=['Account'])
-app.include_router(user_router, prefix='/user', tags=['User'])
-app.include_router(profile_router, prefix='/profile', tags=['Profile'])
-app.include_router(tagaffinity_router, prefix='/tagaffinity', tags=['TagAffinity'])
-app.include_router(event_router, prefix='/event', tags=['Event'])
-app.include_router(userevent_router, prefix='/userevent', tags=['UserEvent'])
-app.include_router(url_router, prefix='/url', tags=['Url'])
-app.include_router(crawl_router, prefix='/crawl', tags=['Crawl'])
+app.include_router(account_router, prefix='/api/account', tags=['Account'])
+app.include_router(user_router, prefix='/api/user', tags=['User'])
+app.include_router(profile_router, prefix='/api/profile', tags=['Profile'])
+app.include_router(tagaffinity_router, prefix='/api/tagaffinity', tags=['TagAffinity'])
+app.include_router(event_router, prefix='/api/event', tags=['Event'])
+app.include_router(userevent_router, prefix='/api/userevent', tags=['UserEvent'])
+app.include_router(url_router, prefix='/api/url', tags=['Url'])
+app.include_router(crawl_router, prefix='/api/crawl', tags=['Crawl'])
 
 @app.get('/')
 def read_root():
