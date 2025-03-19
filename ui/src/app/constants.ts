@@ -1,6 +1,6 @@
 export const API_CONFIG = {
   // Base API URL with no trailing slash
-  baseUrl: '',
+  baseUrl: '/api',
   
   // Endpoint mapping (entity type to endpoint)
   endpoints: {
