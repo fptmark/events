@@ -2,6 +2,7 @@ import sys
 import pytest
 import random
 import string
+import asyncio
 from app.models.account_model import Account, AccountCreate, AccountRead
 from app.models.user_model import User, UserCreate, UserRead
 from app.utilities.config import load_config 
@@ -18,50 +19,35 @@ def generate_random_username():
     return f"user_{rand_str}"
 
 @pytest.mark.asyncio
-async def test_create_account_and_user_interactive():
-    print("*** starting tests")
+async def test_create_account_and_user():
+    print("*** starting test for account and user creation")
     config = load_config()
-    # Initialize the database.
     await Database.init(config['mongo_uri'], config['db_name'])
     db = Database.get_db()
     
     # Verify database connection by counting existing Account documents.
     existing_accounts = await db['account'].find().to_list(None)
-    # print(f"existing_accounts {existing_accounts}")
     print(f"Number of accounts in the database: {len(existing_accounts)}")
     sys.stdout.flush()
     
-    # --- Create an Account ---
+    # Create an Account.
     account_data = AccountCreate(expiredAt=None)
     account = Account(**account_data.dict(exclude_unset=True))
     await account.save()
     assert account.id is not None, "Account.id should be generated"
     print(f"account.id = {account.id}.  Type = {type(account.id)}")
-
-    # --- Generate a random email and prompt for override ---
+    
+    # Create a User referencing the Account.
     gen_email = generate_random_email()
-    override_email = input(f"Press Enter to accept the email {gen_email}, or type an override: ").strip()
-    email = override_email if override_email else gen_email
-
-    # --- Generate a random username and prompt for override ---
     gen_username = generate_random_username()
-    override_username = input(f"Press Enter to accept the username {gen_username}, or type an override: ").strip()
-    username = override_username if override_username else gen_username
-
-    # --- Generate a random email and prompt for override ---
-    gender = 'male'
-    override_gender = input(f"Press Enter to accept the gender {gender}, or type an override: ").strip()
-    gender = override_gender if override_gender else gender
-
-    # --- Create a User referencing the Account ---
     user_data = UserCreate(
-        accountId=account.id, # type: ignore
-        username=username,
-        email=email,
+        accountId=account.id,
+        username=gen_username,
+        email=gen_email,
         password="password123",
         firstName="Test",
         lastName="User",
-        gender=gender,
+        gender="male",
         isAccountOwner=True
     )
     user = User(**user_data.dict(exclude_unset=True))
@@ -71,4 +57,4 @@ async def test_create_account_and_user_interactive():
     fetched_user = await User.get(user.id)
     assert fetched_user is not None, "User should be found in the database"
     assert fetched_user.accountId == account.id, "User's accountId should match the created Account's _id"
-    print(f"{fetched_user}")
+    print(f"Fetched user: {fetched_user}")
