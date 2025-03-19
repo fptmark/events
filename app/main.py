@@ -37,6 +37,17 @@ from app.routes.crawl_router import router as crawl_router
 #Add routing for each entity-service pair
 app = FastAPI()
 
+ # Add CORS middleware
+from fastapi.middleware.cors import CORSMiddleware  # Add this import
+
+app.add_middleware(
+    CORSMiddleware,  # Specify the middleware class
+    allow_origins=["http://localhost:4200"],  # Your Angular app's URL
+    allow_credentials=True,
+    allow_methods=["*"],  # Or specify HTTP methods: ["GET", "POST", "PUT", "DELETE"]
+    allow_headers=["*"],  # Or specify headers you need
+)
+
 @app.on_event('startup')
 async def startup_event():
     logger.info('Startup event called')
