@@ -7,3 +7,4 @@ app.log
 code/
 app/config.json
 obsolete/
+node_modules/
