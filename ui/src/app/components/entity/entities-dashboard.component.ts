@@ -3,6 +3,8 @@ import { Router, RouterLink } from '@angular/router';
 import { EntityService } from '../../services/entity.service';
 import { CommonModule } from '@angular/common';
 import { ROUTE_CONFIG } from '../../constants';
+import { EntityAttributesService } from '../../services/entity-attributes.service';
+
 
 @Component({
   selector: 'app-entities-dashboard',
@@ -10,7 +12,7 @@ import { ROUTE_CONFIG } from '../../constants';
   imports: [CommonModule],
   template: `
     <div class="container mt-4">
-      <h2>Entities Dashboard</h2>
+      <h2>{{ dashboardTitle }}</h2>
       
       <div *ngIf="loading" class="text-center">
         <p>Loading...</p>
@@ -24,12 +26,12 @@ import { ROUTE_CONFIG } from '../../constants';
         <div *ngFor="let entityType of entityTypes" class="col">
           <div class="card h-100">
             <div class="card-body">
-              <h5 class="card-title">{{ entityType | titlecase }}</h5>
-              <p class="card-text">Manage {{ entityType | lowercase }} data</p>
+              <h5 class="card-title">{{ getEntityTitle(entityType) }}</h5>
+              <p class="card-text">{{ getEntityDescription(entityType) }}</p>
             </div>
             <div class="card-footer">
               <button (click)="navigateToEntity(entityType)" class="btn btn-primary">
-                View {{ entityType | titlecase }}
+                {{ getEntityButtonText(entityType) }}
               </button>
             </div>
           </div>
@@ -41,12 +43,19 @@ import { ROUTE_CONFIG } from '../../constants';
     .container { max-width: 1200px; }
   `]
 })
+
+
 export class EntitiesDashboardComponent implements OnInit {
+  // Entity data
   entityTypes: string[] = [];
   loading: boolean = true;
   error: string = '';
-
+  
+  // Customizable text
+  dashboardTitle: string = 'Event Manager Dashboard';
+  
   constructor(
+    private entityAttributes: EntityAttributesService,
     private entityService: EntityService,
     private router: Router
   ) {}
@@ -74,5 +83,18 @@ export class EntitiesDashboardComponent implements OnInit {
 
   navigateToEntity(entityType: string): void {
     this.router.navigate([ROUTE_CONFIG.getEntityListRoute(entityType)]);
+  }
+  
+  // Methods to get customized text for entities
+  getEntityTitle(entityType: string): string {
+    return this.entityAttributes.getTitle(entityType)
+  }
+  
+  getEntityDescription(entityType: string): string {
+    return this.entityAttributes.getDescription(entityType)
+  }
+  
+  getEntityButtonText(entityType: string): string {
+    return this.entityAttributes.getButtonLabel(entityType)
   }
 }

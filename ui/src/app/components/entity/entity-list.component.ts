@@ -3,6 +3,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { EntityService, Entity, EntityMetadata } from '../../services/entity.service';
 import { CommonModule } from '@angular/common';
 import { ROUTE_CONFIG } from '../../constants';
+import { EntityAttributesService } from '../../services/entity-attributes.service';
 
 @Component({
   selector: 'app-entity-list',
@@ -12,8 +13,11 @@ import { ROUTE_CONFIG } from '../../constants';
     <div class="container mt-4">
       <h2>{{ entityType | titlecase }} List</h2>
       
-      <div class="mb-3">
-        <button class="btn btn-primary" (click)="navigateToCreate()">Create New {{ entityType | titlecase }}</button>
+      <div *ngIf="isValidOperation(entityType, 'c')">
+      
+        <div class="mb-3">
+          <button class="btn btn-primary" (click)="navigateToCreate()">Create New {{ entityType | titlecase }}</button>
+        </div>
       </div>
       
       <div *ngIf="loading" class="text-center">
@@ -36,9 +40,15 @@ import { ROUTE_CONFIG } from '../../constants';
             <tr *ngFor="let entity of entities">
               <td *ngFor="let field of displayFields">{{ formatFieldValue(entity, field) }}</td>
               <td>
-                <button class="btn btn-sm btn-info me-2" (click)="viewEntity(entity._id)">View</button>
-                <button class="btn btn-sm btn-warning me-2" (click)="editEntity(entity._id)">Edit</button>
-                <button class="btn btn-sm btn-danger" (click)="deleteEntity(entity._id)">Delete</button>
+                <ng-container *ngIf="isValidOperation(entityType, 'r')">
+                  <button class="btn btn-sm btn-info me-2" (click)="viewEntity(entity._id)">View</button>
+                </ng-container>
+                <ng-container *ngIf="isValidOperation(entityType, 'u')">
+                  <button class="btn btn-sm btn-warning me-2" (click)="editEntity(entity._id)">Edit</button>
+                </ng-container>
+                <ng-container *ngIf="isValidOperation(entityType, 'd')">
+                  <button class="btn btn-sm btn-danger" (click)="deleteEntity(entity._id)">Delete</button>
+                </ng-container>
               </td>
             </tr>
           </tbody>
@@ -59,6 +69,7 @@ export class EntityListComponent implements OnInit {
   error: string = '';
 
   constructor(
+    private entityAttributes: EntityAttributesService,
     private entityService: EntityService,
     private route: ActivatedRoute,
     private router: Router
@@ -69,6 +80,10 @@ export class EntityListComponent implements OnInit {
       this.entityType = params['entityType'];
       this.loadEntities();
     });
+  }
+
+  isValidOperation(entityType: string, operation: string): boolean {
+    return this.entityAttributes.getOperations(entityType).includes(operation)
   }
 
   loadEntities(): void {

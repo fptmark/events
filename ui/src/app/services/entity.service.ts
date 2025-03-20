@@ -45,6 +45,7 @@ export class EntityService {
   constructor(private http: HttpClient) {}
 
   getEntities(entityType: string): Observable<{ entities: Entity[], metadata: EntityMetadata }> {
+    console.log(">> gentEntities using", API_CONFIG.getApiUrl(entityType))
     return this.http.get<EntityResponse<Entity>>(API_CONFIG.getApiUrl(entityType)).pipe(
       map(response => ({
         entities: Array.isArray(response.data) ? response.data : [response.data],
