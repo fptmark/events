@@ -11,10 +11,7 @@ _relationships:
   target: UserEvent
 - source: Url
   target: Crawl
-_dictionaries:
-  pattern:
-    email: ^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$
-    url: ^https?://[^s]+$
+_dictionaries: {}
 _services:
 - auth.cookies.redis
 _inherited_entities:
@@ -24,10 +21,14 @@ _entities:
     fields:
       createdAt:
         type: ISODate
+        ui_metadata:
+          display: form|details
         required: true
         autoGenerate: true
       updatedAt:
         type: ISODate
+        ui_metadata:
+          display: form|details
         required: true
         autoUpdate: true
     relationships: []
@@ -38,7 +39,7 @@ _entities:
         required: false
     relationships:
     - User
-    inherits:
+    inherit:
     - BaseEntity
   User:
     fields:
@@ -58,10 +59,15 @@ _entities:
         pattern.message: Bad email address format
       password:
         type: String
+        ui_metadata:
+          displayName: First Name
+          display: details
         required: true
         minLength: 8
       firstName:
         type: String
+        ui_metadata:
+          displayName: Last Name
         required: true
         minLength: 3
         maxLength: 100
@@ -78,8 +84,12 @@ _entities:
         - female
         - other
         enum.message: must be male or female
+      dob:
+        type: ISODate
       isAccountOwner:
         type: Boolean
+        ui_metadata:
+          displayName: Owner
         required: true
     relationships:
     - Profile
@@ -87,9 +97,9 @@ _entities:
     unique:
     - - username
     - - email
-    inherits:
+    inherit:
     - BaseEntity
-    services:
+    service:
     - auth.cookies.redis
   Profile:
     fields:
@@ -99,6 +109,8 @@ _entities:
         maxLength: 100
       preferences:
         type: JSON
+        ui_metadata:
+          display: details
         required: false
       radiusMiles:
         type: Integer
@@ -106,7 +118,7 @@ _entities:
         min: 0
     relationships:
     - TagAffinity
-    inherits:
+    inherit:
     - BaseEntity
     unique:
     - - name
@@ -123,7 +135,7 @@ _entities:
         min: -100
         max: 100
     relationships: []
-    inherits:
+    inherit:
     - BaseEntity
     unique:
     - - profileId
@@ -148,14 +160,20 @@ _entities:
         maxLength: 200
       cost:
         type: Number
+        ui_metadata:
+          display: details
         required: false
         min: 0
       numOfExpectedAttendees:
         type: Integer
+        ui_metadata:
+          display: details
         required: false
         min: 0
       recurrence:
         type: String
+        ui_metadata:
+          display: details
         required: false
         enum:
         - daily
@@ -164,10 +182,12 @@ _entities:
         - yearly
       tags:
         type: Array[String]
+        ui_metadata:
+          display: details
         required: false
     relationships:
     - UserEvent
-    inherits:
+    inherit:
     - BaseEntity
   UserEvent:
     fields:
@@ -181,10 +201,12 @@ _entities:
         max: 5
       note:
         type: String
+        ui_metadata:
+          display: details
         required: false
         maxLength: 500
     relationships: []
-    inherits:
+    inherit:
     - BaseEntity
   Url:
     fields:
@@ -198,7 +220,7 @@ _entities:
         required: false
     relationships:
     - Crawl
-    inherits:
+    inherit:
     - BaseEntity
   Crawl:
     fields:
@@ -212,5 +234,7 @@ _entities:
         type: Array[String]
         required: false
     relationships: []
-    inherits:
+    inherit:
     - BaseEntity
+    operations:
+    - rd

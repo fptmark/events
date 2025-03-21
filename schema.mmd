@@ -1,7 +1,7 @@
 erDiagram
     BaseEntity {
-        ISODate createdAt %% @validate { required: true, autoGenerate: true }
-        ISODate updatedAt %% @validate { required: true, autoUpdate: true }
+        ISODate createdAt %% @validate { required: true, autoGenerate: true } @ui { display: "form|details"}
+        ISODate updatedAt %% @validate { required: true, autoUpdate: true } @ui { display: "form|details"}
     }
 
 
@@ -15,11 +15,12 @@ erDiagram
     User {
         String username          %% @validate { required: true, minLength: 3, maxLength: 50 }, @ui { displayName: "whos your daddy?" }, @unique
         String email             %% @validate { required: true, minLength: 8, maxLength: 50, pattern: "dictionary=pattern.email", "pattern.message": "Bad email address format" }, @unique
-        String password          %% @validate { required: true, minLength: 8 }
-        String firstName         %% @validate { required: true, minLength: 3, maxLength: 100 }
+        String password          %% @validate { required: true, minLength: 8 } @ui { displayName: "First Name", display: "details"}
+        String firstName         %% @validate { required: true, minLength: 3, maxLength: 100 }, @ui { displayName: "Last Name" }
         String lastName          %% @validate { required: true, minLength: 3, maxLength: 100 }
         String gender            %% @validate { required: false, enum: ["male", "female", "other"], "enum.message": "must be male or female" }
-        Boolean isAccountOwner   %% @validate { required: true }
+        ISODate dob         
+        Boolean isAccountOwner   %% @validate { required: true }, @ui { displayName: "Owner"}
     
     	%% @inherit BaseEntity
     	%% @service auth.cookies.redis 
@@ -28,7 +29,7 @@ erDiagram
 
     Profile {
         String name          %% @validate { required: true, maxLength: 100 }
-        JSON preferences     %% @validate { required: false }
+        JSON preferences     %% @validate { required: false } @ui { display: "details"}
         Integer radiusMiles  %% @validate { required: false, min: 0 }
     
     	%% @inherit BaseEntity
@@ -50,10 +51,10 @@ erDiagram
         String title                       %% @validate { required: true, maxLength: 200 }
         ISODate dateTime                   %% @validate { required: true }
         String location                    %% @validate { required: false, maxLength: 200 }
-        Number cost                        %% @validate { required: false, min: 0 }
-        Integer numOfExpectedAttendees     %% @validate { required: false, min: 0 }
-        String recurrence                  %% @validate { required: false, enum: ["daily", "weekly", "monthly", "yearly"] }
-        Array[String] tags                 %% @validate { required: false }
+        Number cost                        %% @validate { required: false, min: 0 } @ui { display: "details"}
+        Integer numOfExpectedAttendees     %% @validate { required: false, min: 0 } @ui { display: "details"}
+        String recurrence                  %% @validate { required: false, enum: ["daily", "weekly", "monthly", "yearly"] } @ui { display: "details"}
+        Array[String] tags                 %% @validate { required: false } @ui { display: "details"}
     
     	%% @inherit BaseEntity
     }
@@ -62,7 +63,7 @@ erDiagram
     UserEvent {
         Boolean attended     %% @validate { required: false }
         Integer rating       %% @validate { required: false, min: 1, max: 5 }
-        String note          %% @validate { required: false, maxLength: 500 }
+        String note          %% @validate { required: false, maxLength: 500 } @ui { display: "details"}
     
     	%% @inherit BaseEntity
     }
@@ -81,6 +82,7 @@ erDiagram
         Array[String] errorsEncountered    %% @validate { required: false }
     
     	%% @inherit BaseEntity
+        %% @operations [ "read", "delete" ]
     }
 
 
