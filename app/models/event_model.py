@@ -1,5 +1,4 @@
 
-from app.models.baseentity_model import BaseEntity, BaseEntityCreate, BaseEntityRead
 
 from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field, validator
@@ -15,8 +14,8 @@ class UniqueValidationError(Exception):
     def __str__(self):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
-class Event(BaseEntity):
-    # Event-specific fields
+class Event(Document):
+    # Base fields
     url: str = Field(...)
     title: str = Field(..., max_length=200)
     dateTime: datetime = Field(...)
@@ -25,10 +24,12 @@ class Event(BaseEntity):
     numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
     recurrence: Optional[str] = Field(None, description="Allowed values: ['daily', 'weekly', 'monthly', 'yearly']")
     tags: Optional[List[str]] = Field(None)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Event', 'displayName': 'Event', 'fields': {'url': {'type': 'String', 'displayName': 'Url', 'display': 'always', 'displayAfterField': '', 'widget': 'text', 'required': True, 'pattern': '^https?://[^s]+$'}, 'title': {'type': 'String', 'displayName': 'Title', 'display': 'always', 'displayAfterField': 'url', 'widget': 'textarea', 'required': True, 'maxLength': 200}, 'dateTime': {'type': 'ISODate', 'displayName': 'Date Time', 'display': 'always', 'displayAfterField': 'title', 'widget': 'date', 'required': True}, 'location': {'type': 'String', 'displayName': 'Location', 'display': 'always', 'displayAfterField': 'dateTime', 'widget': 'textarea', 'required': False, 'maxLength': 200}, 'cost': {'type': 'Number', 'displayName': 'Cost', 'display': 'always', 'displayAfterField': 'location', 'widget': 'number', 'required': False, 'min': 0}, 'numOfExpectedAttendees': {'type': 'Integer', 'displayName': 'Num Of Expected Attendees', 'display': 'always', 'displayAfterField': 'cost', 'widget': 'number', 'required': False, 'min': 0}, 'recurrence': {'type': 'String', 'displayName': 'Recurrence', 'display': 'always', 'displayAfterField': 'numOfExpectedAttendees', 'widget': 'select', 'required': False, 'options': ['daily', 'weekly', 'monthly', 'yearly']}, 'tags': {'type': 'Array[String]', 'displayName': 'Tags', 'display': 'always', 'displayAfterField': 'recurrence', 'widget': 'multiselect', 'required': False}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Event', 'displayName': 'Event', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': '^https?://[^s]+$', 'pattern.message': 'Bad URL format', 'displayName': 'Url'}, 'title': {'type': 'String', 'required': True, 'maxLength': 200, 'displayName': 'Title'}, 'dateTime': {'type': 'ISODate', 'required': True, 'displayName': 'Date Time'}, 'location': {'type': 'String', 'required': False, 'maxLength': 200, 'displayName': 'Location'}, 'cost': {'type': 'Number', 'display': 'details', 'required': False, 'min': 0, 'displayName': 'Cost'}, 'numOfExpectedAttendees': {'type': 'Integer', 'display': 'details', 'required': False, 'min': 0, 'displayName': 'Num Of Expected Attendees'}, 'recurrence': {'type': 'String', 'display': 'details', 'required': False, 'options': ['daily', 'weekly', 'monthly', 'yearly'], 'displayName': 'Recurrence'}, 'tags': {'type': 'Array[String]', 'display': 'details', 'required': False, 'displayName': 'Tags'}, 'createdAt': {'type': 'ISODate', 'readOnly': True, 'displayAfterField': '-1', 'required': True, 'autoGenerate': True, 'displayName': 'Created At'}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'displayAfterField': '-2', 'displayName': 'Updated At'}}}
     
     class Settings:
         name = "event"
@@ -39,11 +40,14 @@ class Event(BaseEntity):
         return cls.__ui_metadata__
 
     async def save(self, *args, **kwargs):
+        # Update timestamp fields for auto-updating fields
+        current_time = datetime.now(timezone.utc)
+        self.updatedAt = current_time
         return await super().save(*args, **kwargs)
 
 
-class EventCreate(BaseEntityCreate):
-    # Event-specific fields
+class EventCreate(BaseModel):
+    # Fields for create operations
     url: str = Field(...)
     title: str = Field(..., max_length=200)
     dateTime: datetime = Field(...)
@@ -52,6 +56,8 @@ class EventCreate(BaseEntityCreate):
     numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
     recurrence: Optional[str] = Field(None, description="Allowed values: ['daily', 'weekly', 'monthly', 'yearly']")
     tags: Optional[List[str]] = Field(None)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     @validator('url')
     def validate_url(cls, v):
         _custom = {"pattern": "Bad URL format"}
@@ -93,8 +99,9 @@ class EventCreate(BaseEntityCreate):
         orm_mode = True
 
 
-class EventRead(BaseEntityRead):
-    # Event-specific fields
+class EventRead(BaseModel):
+    # Fields for read operations
+    id: Optional[PydanticObjectId] = Field(alias="_id")
     url: str = Field(None)
     title: str = Field(None, max_length=200)
     dateTime: datetime = Field(None)
@@ -103,9 +110,12 @@ class EventRead(BaseEntityRead):
     numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
     recurrence: Optional[str] = Field(None, description="Allowed values: ['daily', 'weekly', 'monthly', 'yearly']")
     tags: Optional[List[str]] = Field(None)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Config:
         orm_mode = True
         allow_population_by_field_name = True
         json_encoders = {PydanticObjectId: str}
+
 

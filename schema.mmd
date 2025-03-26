@@ -1,29 +1,34 @@
 erDiagram
-    BaseEntity {
-        ISODate createdAt %% @validate { required: true, autoGenerate: true } @ui { display: "form|details"}
-        ISODate updatedAt %% @validate { required: true, autoUpdate: true } @ui { display: "form|details"}
+    BaseEntity { 
+        ISODate createdAt %% @validate { required: true, autoGenerate: true } @ui {readOnly: true}
+        ISODate updatedAt %% @validate { required: true, autoUpdate: true } 
+
+        %% @abstract
     }
 
 
     Account {
         ISODate expiredAt %% @validate { required: false }
     
-    	%% @inherit BaseEntity
+    	%% @include BaseEntity
+        %% #@ui id { display: "summary" }
+        %% @ui updatedAt { display: "details", displayAfterField: 'createdAt' } 
     }
 
 
     User {
-        String username          %% @validate { required: true, minLength: 3, maxLength: 50 }, @ui { displayName: "whos your daddy?" }, @unique
+        String username          %% @validate { required: true, minLength: 3, maxLength: 50 }, @unique
         String email             %% @validate { required: true, minLength: 8, maxLength: 50, pattern: "dictionary=pattern.email", "pattern.message": "Bad email address format" }, @unique
-        String password          %% @validate { required: true, minLength: 8 } @ui { displayName: "First Name", display: "details"}
-        String firstName         %% @validate { required: true, minLength: 3, maxLength: 100 }, @ui { displayName: "Last Name" }
-        String lastName          %% @validate { required: true, minLength: 3, maxLength: 100 }
+        String password          %% @validate { required: true, minLength: 8 } @ui { display: "details"}
+        String firstName         %% @validate { required: true, minLength: 3, maxLength: 100 }, @ui { displayName: "First Name" }
+        String lastName          %% @validate { required: true, minLength: 3, maxLength: 100 }, @ui { displayName: "Last Name" }
         String gender            %% @validate { required: false, enum: ["male", "female", "other"], "enum.message": "must be male or female" }
         ISODate dob         
         Boolean isAccountOwner   %% @validate { required: true }, @ui { displayName: "Owner"}
     
-    	%% @inherit BaseEntity
     	%% @service auth.cookies.redis 
+    	%% @include BaseEntity  
+        %% @ui createdAt { display: "summary" } 
     }
 
 
@@ -32,7 +37,7 @@ erDiagram
         JSON preferences     %% @validate { required: false } @ui { display: "details"}
         Integer radiusMiles  %% @validate { required: false, min: 0 }
     
-    	%% @inherit BaseEntity
+    	%% @include BaseEntity
     	%% @unique name + userId
     }
 
@@ -41,7 +46,7 @@ erDiagram
         String tag            %% @validate { required: true, maxLength: 50 }
         Integer affinity      %% @validate { required: true, min: -100, max: 100 }
     
-    	%% @inherit BaseEntity
+    	%% @include BaseEntity
     	%% @unique profileId + tag
     }
 
@@ -56,7 +61,7 @@ erDiagram
         String recurrence                  %% @validate { required: false, enum: ["daily", "weekly", "monthly", "yearly"] } @ui { display: "details"}
         Array[String] tags                 %% @validate { required: false } @ui { display: "details"}
     
-    	%% @inherit BaseEntity
+    	%% @include BaseEntity
     }
 
 
@@ -65,7 +70,7 @@ erDiagram
         Integer rating       %% @validate { required: false, min: 1, max: 5 }
         String note          %% @validate { required: false, maxLength: 500 } @ui { display: "details"}
     
-    	%% @inherit BaseEntity
+    	%% @include BaseEntity
     }
 
 
@@ -73,7 +78,7 @@ erDiagram
         String url       %% @validate { required: true, pattern: "dictionary=pattern.url", "pattern.message": "Bad URL format" }
         JSON params      %% @validate { required: false }
     
-    	%% @inherit BaseEntity
+    	%% @include BaseEntity
     }
 
     Crawl {
@@ -81,7 +86,7 @@ erDiagram
         JSON parseStatus                   %% @validate { required: false }
         Array[String] errorsEncountered    %% @validate { required: false }
     
-    	%% @inherit BaseEntity
+    	%% @include BaseEntity
         %% @operations [ "read", "delete" ]
     }
 

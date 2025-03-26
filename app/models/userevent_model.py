@@ -1,5 +1,4 @@
 
-from app.models.baseentity_model import BaseEntity, BaseEntityCreate, BaseEntityRead
 
 from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field, validator
@@ -15,17 +14,19 @@ class UniqueValidationError(Exception):
     def __str__(self):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
-class UserEvent(BaseEntity):
-    # UserEvent-specific fields
+class UserEvent(Document):
+    # Base fields
     attended: Optional[bool] = Field(None)
     rating: Optional[int] = Field(None, ge=1, le=5)
     note: Optional[str] = Field(None, max_length=500)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     userId: PydanticObjectId = Field(...)
     eventId: PydanticObjectId = Field(...)
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'UserEvent', 'displayName': 'UserEvent', 'fields': {'attended': {'type': 'Boolean', 'displayName': 'Attended', 'display': 'always', 'displayAfterField': '', 'widget': 'checkbox', 'required': False}, 'rating': {'type': 'Integer', 'displayName': 'Rating', 'display': 'always', 'displayAfterField': 'attended', 'widget': 'number', 'required': False, 'min': 1, 'max': 5}, 'note': {'type': 'String', 'displayName': 'Note', 'display': 'always', 'displayAfterField': 'rating', 'widget': 'textarea', 'required': False, 'maxLength': 500}, 'userId': {'type': 'ObjectId', 'displayName': 'User ID', 'display': 'always', 'displayAfterField': 'note', 'widget': 'reference', 'required': True}, 'eventId': {'type': 'ObjectId', 'displayName': 'Event ID', 'display': 'always', 'displayAfterField': 'userId', 'widget': 'reference', 'required': True}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'UserEvent', 'displayName': 'UserEvent', 'fields': {'attended': {'type': 'Boolean', 'required': False, 'displayName': 'Attended'}, 'rating': {'type': 'Integer', 'required': False, 'min': 1, 'max': 5, 'displayName': 'Rating'}, 'note': {'type': 'String', 'display': 'details', 'required': False, 'maxLength': 500, 'displayName': 'Note'}, 'createdAt': {'type': 'ISODate', 'readOnly': True, 'displayAfterField': '-1', 'required': True, 'autoGenerate': True, 'displayName': 'Created At'}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'displayAfterField': '-2', 'displayName': 'Updated At'}, 'userId': {'type': 'ObjectId', 'required': True, 'displayName': 'User ID', 'readOnly': True}, 'eventId': {'type': 'ObjectId', 'required': True, 'displayName': 'Event ID', 'readOnly': True}}}
     
     class Settings:
         name = "userevent"
@@ -36,14 +37,19 @@ class UserEvent(BaseEntity):
         return cls.__ui_metadata__
 
     async def save(self, *args, **kwargs):
+        # Update timestamp fields for auto-updating fields
+        current_time = datetime.now(timezone.utc)
+        self.updatedAt = current_time
         return await super().save(*args, **kwargs)
 
 
-class UserEventCreate(BaseEntityCreate):
-    # UserEvent-specific fields
+class UserEventCreate(BaseModel):
+    # Fields for create operations
     attended: Optional[bool] = Field(None)
     rating: Optional[int] = Field(None, ge=1, le=5)
     note: Optional[str] = Field(None, max_length=500)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     userId: PydanticObjectId = Field(...)
     eventId: PydanticObjectId = Field(...)
     @validator('rating')
@@ -64,11 +70,14 @@ class UserEventCreate(BaseEntityCreate):
         orm_mode = True
 
 
-class UserEventRead(BaseEntityRead):
-    # UserEvent-specific fields
+class UserEventRead(BaseModel):
+    # Fields for read operations
+    id: Optional[PydanticObjectId] = Field(alias="_id")
     attended: Optional[bool] = Field(None)
     rating: Optional[int] = Field(None, ge=1, le=5)
     note: Optional[str] = Field(None, max_length=500)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     userId: PydanticObjectId = Field(None)
     eventId: PydanticObjectId = Field(None)
 
@@ -76,4 +85,5 @@ class UserEventRead(BaseEntityRead):
         orm_mode = True
         allow_population_by_field_name = True
         json_encoders = {PydanticObjectId: str}
+
 

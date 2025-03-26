@@ -1,14 +1,24 @@
-from app.services.auth.cookies.redis import CookiesAuth as Auth
 import sys
 from pathlib import Path
 from app.utilities.config import load_config 
 from app.db import Database
 
+from app.services.auth.cookies.redis import CookiesAuth as Auth
+
+from app.routes.account_router import router as account_router
+from app.routes.user_router import router as user_router
+from app.routes.profile_router import router as profile_router
+from app.routes.tagaffinity_router import router as tagaffinity_router
+from app.routes.event_router import router as event_router
+from app.routes.userevent_router import router as userevent_router
+from app.routes.url_router import router as url_router
+from app.routes.crawl_router import router as crawl_router
+
 import logging
 LOG_FILE = "app.log"
 config = load_config()
-is_dev = config.get('environment', 'production') == 'development' 
-my_log_level = config.get('log_level', 'info' if is_dev else 'warning').upper() 
+is_dev = config.get('environment', 'production') == 'development'
+my_log_level = config.get('log_level', 'info' if is_dev else 'warning').upper()
 
 logging.basicConfig(
     level=my_log_level,
@@ -25,27 +35,19 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from fastapi import FastAPI
 
-from app.routes.account_router import router as account_router
-from app.routes.user_router import router as user_router
-from app.routes.profile_router import router as profile_router
-from app.routes.tagaffinity_router import router as tagaffinity_router
-from app.routes.event_router import router as event_router
-from app.routes.userevent_router import router as userevent_router
-from app.routes.url_router import router as url_router
-from app.routes.crawl_router import router as crawl_router
-
-#Add routing for each entity-service pair
+# Create the FastAPI app.
 app = FastAPI()
 
- # Add CORS middleware
-from fastapi.middleware.cors import CORSMiddleware  # Add this import
+# Add CORS middleware
+from fastapi.middleware.cors import CORSMiddleware
 
+angular = config.get('angular-ui-url', 'http://localhost:4200')
 app.add_middleware(
-    CORSMiddleware,  # Specify the middleware class
-    allow_origins=["http://localhost:4200"],  # Your Angular app's URL
+    CORSMiddleware,
+    allow_origins=[angular],
     allow_credentials=True,
-    allow_methods=["*"],  # Or specify HTTP methods: ["GET", "POST", "PUT", "DELETE"]
-    allow_headers=["*"],  # Or specify headers you need
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.on_event('startup')
@@ -53,18 +55,16 @@ async def startup_event():
     logger.info('Startup event called')
     logger.info(f"Running in {'development' if config.get('environment', 'production') == 'development' else 'production'} mode")
     await Database.init(config['mongo_uri'], config['db_name']) 
-
-# Add service initializers
+    # Initialize the auth service from the hard-coded import.
     print(f'>>> Initializing service auth.cookies.redis')
     await Auth.initialize(config['auth.cookies.redis'])
 
-# Register routes
 app.include_router(account_router, prefix='/api/account', tags=['Account'])
 app.include_router(user_router, prefix='/api/user', tags=['User'])
 app.include_router(profile_router, prefix='/api/profile', tags=['Profile'])
-app.include_router(tagaffinity_router, prefix='/api/tagaffinity', tags=['TagAffinity'])
+app.include_router(tagaffinity_router, prefix='/api/tagaffinity', tags=['Tagaffinity'])
 app.include_router(event_router, prefix='/api/event', tags=['Event'])
-app.include_router(userevent_router, prefix='/api/userevent', tags=['UserEvent'])
+app.include_router(userevent_router, prefix='/api/userevent', tags=['Userevent'])
 app.include_router(url_router, prefix='/api/url', tags=['Url'])
 app.include_router(crawl_router, prefix='/api/crawl', tags=['Crawl'])
 
@@ -74,22 +74,15 @@ def read_root():
 
 if __name__ == '__main__':
     import uvicorn
-
-    logger.info("Welcome to the Event Management System")   
-
-    # Load configuration
+    logger.info("Welcome to the Event Management System")
     my_host = config.get('host', '0.0.0.0')
     my_port = config.get('server_port', 8000)
-
-    logger.info(f' Access Swagger docs at http://{my_host}:{my_port}/docs') 
-
-    # Run Uvicorn
+    logger.info(f' Access Swagger docs at http://{my_host}:{my_port}/docs')
     uvicorn.run(
-        'app.main:app',  # Use the import string for proper reload behavior
+        'app.main:app',
         host=my_host,
         port=my_port,
-        reload=is_dev,  # Enable reload only in development mode
+        reload=is_dev,
         reload_dirs=['app'] if is_dev else None,
-        log_level=my_log_level.lower(), 
+        log_level=my_log_level.lower(),
     )
-

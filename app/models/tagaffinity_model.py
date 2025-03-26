@@ -1,5 +1,4 @@
 
-from app.models.baseentity_model import BaseEntity, BaseEntityCreate, BaseEntityRead
 
 from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field, validator
@@ -15,15 +14,17 @@ class UniqueValidationError(Exception):
     def __str__(self):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
-class TagAffinity(BaseEntity):
-    # TagAffinity-specific fields
+class TagAffinity(Document):
+    # Base fields
     tag: str = Field(..., max_length=50)
     affinity: int = Field(..., ge=-100, le=100)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     profileId: PydanticObjectId = Field(...)
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'TagAffinity', 'displayName': 'TagAffinity', 'fields': {'tag': {'type': 'String', 'displayName': 'Tag', 'display': 'always', 'displayAfterField': '', 'widget': 'text', 'required': True, 'maxLength': 50}, 'affinity': {'type': 'Integer', 'displayName': 'Affinity', 'display': 'always', 'displayAfterField': 'tag', 'widget': 'number', 'required': True, 'min': -100, 'max': 100}, 'profileId': {'type': 'ObjectId', 'displayName': 'Profile ID', 'display': 'always', 'displayAfterField': 'affinity', 'widget': 'reference', 'required': True}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'TagAffinity', 'displayName': 'TagAffinity', 'fields': {'tag': {'type': 'String', 'required': True, 'maxLength': 50, 'displayName': 'Tag'}, 'affinity': {'type': 'Integer', 'required': True, 'min': -100, 'max': 100, 'displayName': 'Affinity'}, 'createdAt': {'type': 'ISODate', 'readOnly': True, 'displayAfterField': '-1', 'required': True, 'autoGenerate': True, 'displayName': 'Created At'}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'displayAfterField': '-2', 'displayName': 'Updated At'}, 'profileId': {'type': 'ObjectId', 'required': True, 'displayName': 'Profile ID', 'readOnly': True}}}
     
     class Settings:
         name = "tagaffinity"
@@ -34,13 +35,18 @@ class TagAffinity(BaseEntity):
         return cls.__ui_metadata__
 
     async def save(self, *args, **kwargs):
+        # Update timestamp fields for auto-updating fields
+        current_time = datetime.now(timezone.utc)
+        self.updatedAt = current_time
         return await super().save(*args, **kwargs)
 
 
-class TagAffinityCreate(BaseEntityCreate):
-    # TagAffinity-specific fields
+class TagAffinityCreate(BaseModel):
+    # Fields for create operations
     tag: str = Field(..., max_length=50)
     affinity: int = Field(..., ge=-100, le=100)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     profileId: PydanticObjectId = Field(...)
     @validator('tag')
     def validate_tag(cls, v):
@@ -60,14 +66,18 @@ class TagAffinityCreate(BaseEntityCreate):
         orm_mode = True
 
 
-class TagAffinityRead(BaseEntityRead):
-    # TagAffinity-specific fields
+class TagAffinityRead(BaseModel):
+    # Fields for read operations
+    id: Optional[PydanticObjectId] = Field(alias="_id")
     tag: str = Field(None, max_length=50)
     affinity: int = Field(None, ge=-100, le=100)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     profileId: PydanticObjectId = Field(None)
 
     class Config:
         orm_mode = True
         allow_population_by_field_name = True
         json_encoders = {PydanticObjectId: str}
+
 

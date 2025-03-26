@@ -1,5 +1,4 @@
 
-from app.models.baseentity_model import BaseEntity, BaseEntityCreate, BaseEntityRead
 
 from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field, validator
@@ -15,14 +14,16 @@ class UniqueValidationError(Exception):
     def __str__(self):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
-class Url(BaseEntity):
-    # Url-specific fields
+class Url(Document):
+    # Base fields
     url: str = Field(...)
     params: Optional[dict] = Field(None)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Url', 'displayName': 'Url', 'fields': {'url': {'type': 'String', 'displayName': 'Url', 'display': 'always', 'displayAfterField': '', 'widget': 'text', 'required': True, 'pattern': '^https?://[^s]+$'}, 'params': {'type': 'JSON', 'displayName': 'Params', 'display': 'always', 'displayAfterField': 'url', 'widget': 'jsoneditor', 'required': False}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Url', 'displayName': 'Url', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': '^https?://[^s]+$', 'pattern.message': 'Bad URL format', 'displayName': 'Url'}, 'params': {'type': 'JSON', 'required': False, 'displayName': 'Params'}, 'createdAt': {'type': 'ISODate', 'readOnly': True, 'displayAfterField': '-1', 'required': True, 'autoGenerate': True, 'displayName': 'Created At'}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'displayAfterField': '-2', 'displayName': 'Updated At'}}}
     
     class Settings:
         name = "url"
@@ -33,13 +34,18 @@ class Url(BaseEntity):
         return cls.__ui_metadata__
 
     async def save(self, *args, **kwargs):
+        # Update timestamp fields for auto-updating fields
+        current_time = datetime.now(timezone.utc)
+        self.updatedAt = current_time
         return await super().save(*args, **kwargs)
 
 
-class UrlCreate(BaseEntityCreate):
-    # Url-specific fields
+class UrlCreate(BaseModel):
+    # Fields for create operations
     url: str = Field(...)
     params: Optional[dict] = Field(None)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     @validator('url')
     def validate_url(cls, v):
         _custom = {"pattern": "Bad URL format"}
@@ -50,13 +56,17 @@ class UrlCreate(BaseEntityCreate):
         orm_mode = True
 
 
-class UrlRead(BaseEntityRead):
-    # Url-specific fields
+class UrlRead(BaseModel):
+    # Fields for read operations
+    id: Optional[PydanticObjectId] = Field(alias="_id")
     url: str = Field(None)
     params: Optional[dict] = Field(None)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Config:
         orm_mode = True
         allow_population_by_field_name = True
         json_encoders = {PydanticObjectId: str}
+
 

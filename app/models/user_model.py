@@ -1,5 +1,4 @@
 
-from app.models.baseentity_model import BaseEntity, BaseEntityCreate, BaseEntityRead
 
 from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field, validator
@@ -15,20 +14,23 @@ class UniqueValidationError(Exception):
     def __str__(self):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
-class User(BaseEntity):
-    # User-specific fields
+class User(Document):
+    # Base fields
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., min_length=8, max_length=50)
     password: str = Field(..., min_length=8)
     firstName: str = Field(..., min_length=3, max_length=100)
     lastName: str = Field(..., min_length=3, max_length=100)
     gender: Optional[str] = Field(None, description="Allowed values: ['male', 'female', 'other']")
+    dob: Optional[datetime] = Field(None)
     isAccountOwner: bool = Field(...)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     accountId: PydanticObjectId = Field(...)
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'User', 'displayName': 'User', 'fields': {'username': {'type': 'String', 'displayName': 'Username', 'display': 'always', 'displayAfterField': '', 'widget': 'text', 'required': True, 'minLength': 3, 'maxLength': 50}, 'email': {'type': 'String', 'displayName': 'Email', 'display': 'always', 'displayAfterField': 'username', 'widget': 'text', 'required': True, 'minLength': 8, 'maxLength': 50, 'pattern': '^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$'}, 'password': {'type': 'String', 'displayName': 'Password', 'display': 'form', 'displayAfterField': 'email', 'widget': 'text', 'required': True, 'minLength': 8}, 'firstName': {'type': 'String', 'displayName': 'First Name', 'display': 'always', 'displayAfterField': 'password', 'widget': 'text', 'required': True, 'minLength': 3, 'maxLength': 100}, 'lastName': {'type': 'String', 'displayName': 'Last Name', 'display': 'always', 'displayAfterField': 'firstName', 'widget': 'text', 'required': True, 'minLength': 3, 'maxLength': 100}, 'gender': {'type': 'String', 'displayName': 'Gender', 'display': 'always', 'displayAfterField': 'lastName', 'widget': 'select', 'required': False, 'options': ['male', 'female', 'other']}, 'isAccountOwner': {'type': 'Boolean', 'displayName': 'Is Account Owner', 'display': 'always', 'displayAfterField': 'gender', 'widget': 'checkbox', 'required': True}, 'accountId': {'type': 'ObjectId', 'displayName': 'Account ID', 'display': 'always', 'displayAfterField': 'isAccountOwner', 'widget': 'reference', 'required': True}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'User', 'displayName': 'User', 'fields': {'username': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 50, 'displayName': 'Username'}, 'email': {'type': 'String', 'required': True, 'minLength': 8, 'maxLength': 50, 'pattern': '^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$', 'pattern.message': 'Bad email address format', 'displayName': 'Email'}, 'password': {'type': 'String', 'display': 'details', 'required': True, 'minLength': 8, 'displayName': 'Password'}, 'firstName': {'type': 'String', 'displayName': 'First Name', 'required': True, 'minLength': 3, 'maxLength': 100}, 'lastName': {'type': 'String', 'displayName': 'Last Name', 'required': True, 'minLength': 3, 'maxLength': 100}, 'gender': {'type': 'String', 'required': False, 'options': ['male', 'female', 'other'], 'enum.message': 'must be male or female', 'displayName': 'Gender'}, 'dob': {'type': 'ISODate', 'displayName': 'Dob'}, 'isAccountOwner': {'type': 'Boolean', 'displayName': 'Owner', 'required': True}, 'createdAt': {'type': 'ISODate', 'readOnly': True, 'displayAfterField': '-1', 'display': 'summary', 'required': True, 'autoGenerate': True, 'displayName': 'Created At'}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'displayAfterField': '-2', 'displayName': 'Updated At'}, 'accountId': {'type': 'ObjectId', 'required': True, 'displayName': 'Account ID', 'readOnly': True}}}
     
     class Settings:
         name = "user"
@@ -39,18 +41,24 @@ class User(BaseEntity):
         return cls.__ui_metadata__
 
     async def save(self, *args, **kwargs):
+        # Update timestamp fields for auto-updating fields
+        current_time = datetime.now(timezone.utc)
+        self.updatedAt = current_time
         return await super().save(*args, **kwargs)
 
 
-class UserCreate(BaseEntityCreate):
-    # User-specific fields
+class UserCreate(BaseModel):
+    # Fields for create operations
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., min_length=8, max_length=50)
     password: str = Field(..., min_length=8)
     firstName: str = Field(..., min_length=3, max_length=100)
     lastName: str = Field(..., min_length=3, max_length=100)
     gender: Optional[str] = Field(None, description="Allowed values: ['male', 'female', 'other']")
+    dob: Optional[datetime] = Field(None)
     isAccountOwner: bool = Field(...)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     accountId: PydanticObjectId = Field(...)
     @validator('username')
     def validate_username(cls, v):
@@ -103,19 +111,24 @@ class UserCreate(BaseEntityCreate):
         orm_mode = True
 
 
-class UserRead(BaseEntityRead):
-    # User-specific fields
+class UserRead(BaseModel):
+    # Fields for read operations
+    id: Optional[PydanticObjectId] = Field(alias="_id")
     username: str = Field(None, min_length=3, max_length=50)
     email: str = Field(None, min_length=8, max_length=50)
     password: str = Field(None, min_length=8)
     firstName: str = Field(None, min_length=3, max_length=100)
     lastName: str = Field(None, min_length=3, max_length=100)
     gender: Optional[str] = Field(None, description="Allowed values: ['male', 'female', 'other']")
+    dob: Optional[datetime] = Field(None)
     isAccountOwner: bool = Field(None)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     accountId: PydanticObjectId = Field(None)
 
     class Config:
         orm_mode = True
         allow_population_by_field_name = True
         json_encoders = {PydanticObjectId: str}
+
 
