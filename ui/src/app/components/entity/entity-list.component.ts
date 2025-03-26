@@ -4,6 +4,8 @@ import { EntityService, Entity, EntityMetadata } from '../../services/entity.ser
 import { CommonModule } from '@angular/common';
 import { ROUTE_CONFIG } from '../../constants';
 import { EntityAttributesService } from '../../services/entity-attributes.service';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { EntityDisplayService } from '../../services/entity-display.service';
 
 @Component({
   selector: 'app-entity-list',
@@ -38,7 +40,7 @@ import { EntityAttributesService } from '../../services/entity-attributes.servic
           </thead>
           <tbody>
             <tr *ngFor="let entity of entities">
-              <td *ngFor="let field of displayFields">{{ formatFieldValue(entity, field) }}</td>
+              <td *ngFor="let field of displayFields" [innerHTML]="formatFieldValue(entity, field)"></td>
               <td>
                 <ng-container *ngIf="isValidOperation(entityType, 'r')">
                   <button class="btn btn-sm btn-info me-2" (click)="viewEntity(entity._id)">View</button>
@@ -47,7 +49,14 @@ import { EntityAttributesService } from '../../services/entity-attributes.servic
                   <button class="btn btn-sm btn-warning me-2" (click)="editEntity(entity._id)">Edit</button>
                 </ng-container>
                 <ng-container *ngIf="isValidOperation(entityType, 'd')">
-                  <button class="btn btn-sm btn-danger" (click)="deleteEntity(entity._id)">Delete</button>
+                  <button class="btn btn-sm btn-danger me-2" (click)="deleteEntity(entity._id)">Delete</button>
+                </ng-container>
+                <!-- Custom action buttons -->
+                <ng-container *ngFor="let action of getCustomActions(entity)">
+                  <button class="btn btn-sm btn-secondary me-2" (click)="executeCustomAction(action.key, entity)">
+                    <i *ngIf="action.icon" [class]="action.icon"></i>
+                    {{ action.label }}
+                  </button>
                 </ng-container>
               </td>
             </tr>
@@ -71,8 +80,10 @@ export class EntityListComponent implements OnInit {
   constructor(
     private entityAttributes: EntityAttributesService,
     private entityService: EntityService,
+    private entityDisplay: EntityDisplayService,
     private route: ActivatedRoute,
-    private router: Router
+    private router: Router,
+    private sanitizer: DomSanitizer
   ) {}
 
   ngOnInit(): void {
@@ -106,66 +117,18 @@ export class EntityListComponent implements OnInit {
   }
 
   initDisplayFields(): void {
+    // if (!this.metadata) return;
     if (!this.metadata) return;
     
-    // First get fields that should be displayed in the list view
-    const filteredFields = Object.keys(this.metadata.fields)
-      .filter(field => {
-        const fieldMeta = this.metadata?.fields[field];
-        // Skip fields that are form-only or system fields
-        if (!fieldMeta || fieldMeta.display === 'form') return false;
-        if (['_id', 'createdAt', 'updatedAt'].includes(field) && this.displayFields.length > 3) return false;
-        if (field === 'password') return false; // Never show password in list
-        return true;
-      });
-    
-    // Now sort them based on displayAfterField to maintain correct order
-    // Build adjacency lists for topological sort
-    const adjacencyMap = new Map<string, string[]>();
-    
-    // Initialize with empty arrays
-    filteredFields.forEach(field => {
-      adjacencyMap.set(field, []);
-    });
-    
-    // Add edges
-    filteredFields.forEach(field => {
-      const afterField = this.metadata?.fields[field]?.displayAfterField;
-      if (afterField && filteredFields.includes(afterField)) {
-        adjacencyMap.get(afterField)?.push(field);
-      }
-    });
-    
-    // Find root nodes (fields that don't come after any other field)
-    const rootFields = filteredFields.filter(field => {
-      return !filteredFields.some(otherField => 
-        this.metadata?.fields[field]?.displayAfterField === otherField
-      );
-    });
-    
-    // Perform topological sort
-    const visited = new Set<string>();
-    const sortedFields: string[] = [];
-    
-    const visit = (field: string) => {
-      if (visited.has(field)) return;
-      visited.add(field);
+    // Use the display service to determine which fields to show based on metadata
+    this.displayFields = Object.keys(this.metadata.fields).filter(field => {
+      const fieldMeta = this.metadata?.fields[field];
+      if (!fieldMeta) return false;
       
-      const nextFields = adjacencyMap.get(field) || [];
-      nextFields.forEach(nextField => visit(nextField));
-      
-      sortedFields.push(field);
-    };
+      // Use the display service to check field visibility
+      return this.entityDisplay.showInView(fieldMeta, 'summary');
+    });
     
-    rootFields.forEach(field => visit(field));
-    
-    // Use the sorted fields, limiting to prevent overcrowding
-    this.displayFields = sortedFields.slice(0, 6);
-    
-    // If no fields were found, fall back to default behavior
-    if (this.displayFields.length === 0) {
-      this.displayFields = filteredFields.slice(0, 6);
-    }
   }
 
   getFieldDisplayName(fieldName: string): string {
@@ -173,42 +136,81 @@ export class EntityListComponent implements OnInit {
     return this.metadata.fields[fieldName]?.displayName || fieldName;
   }
 
-  formatFieldValue(entity: Entity, fieldName: string): string {
+  formatFieldValue(entity: Entity, fieldName: string): SafeHtml {
     if (!entity || entity[fieldName] === undefined || entity[fieldName] === null) {
-      return '';
+      return this.sanitizer.bypassSecurityTrustHtml('');
+    }
+    
+    // Check if there's a custom formatter for this field
+    const customFormatter = this.entityAttributes.entityAttributes[this.entityType]?.columnFormatters?.[fieldName];
+    if (customFormatter) {
+      const formattedValue = customFormatter(entity[fieldName], entity);
+      return this.sanitizer.bypassSecurityTrustHtml(formattedValue);
     }
     
     const value = entity[fieldName];
-    const fieldType = this.metadata?.fields[fieldName]?.type;
-    const widget = this.metadata?.fields[fieldName]?.widget;
+    const fieldMeta = this.metadata?.fields[fieldName];
+    const fieldType = fieldMeta?.type;
+    const widget = fieldMeta?.widget;
+    let displayValue = '';
     
-    // Password field handling
-    if (fieldName === 'password' || widget === 'password') {
-      return '••••••••'; // Mask password
+    // Format based on field widget type
+    if (widget === 'password') {
+      displayValue = '••••••••'; // Mask password
     }
-    
     // Format based on field type
-    if (fieldType === 'ISODate' && typeof value === 'string') {
-      const date = new Date(value);
-      return isNaN(date.getTime()) ? value : date.toLocaleString();
-    } else if (fieldType === 'Boolean') {
-      return value ? 'Yes' : 'No';
-    } else if (fieldType === 'ObjectId') {
+    else if (fieldType === 'ISODate' && (typeof value === 'string' || value instanceof Date)) {
+      const date = typeof value === 'string' ? new Date(value) : value;
+      displayValue = isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+    } 
+    else if (fieldType === 'Boolean') {
+      displayValue = value ? 'Yes' : 'No';
+    } 
+    else if (fieldType === 'ObjectId') {
       // Truncate long IDs for better display
       const strValue = String(value);
-      return strValue.length > 10 ? strValue.substring(0, 7) + '...' : strValue;
-    } else if (Array.isArray(value)) {
-      if (value.length === 0) return '(empty)';
-      return value.length > 3 
-        ? `${value.slice(0, 3).join(', ')}... (${value.length} items)` 
-        : value.join(', ');
-    } else if (typeof value === 'object') {
-      return '(object)';
+      displayValue = strValue.length > 10 ? strValue.substring(0, 7) + '...' : strValue;
+    } 
+    else if (Array.isArray(value)) {
+      if (value.length === 0) {
+        displayValue = '(empty)';
+      } else {
+        displayValue = value.length > 3 
+          ? `${value.slice(0, 3).join(', ')}... (${value.length} items)` 
+          : value.join(', ');
+      }
+    } 
+    else if (typeof value === 'object') {
+      displayValue = '(object)';
+    }
+    else {
+      // For string values, truncate if too long
+      const strValue = String(value);
+      displayValue = strValue.length > 50 ? strValue.substring(0, 47) + '...' : strValue;
     }
     
-    // For string values, truncate if too long
-    const strValue = String(value);
-    return strValue.length > 50 ? strValue.substring(0, 47) + '...' : strValue;
+    return this.sanitizer.bypassSecurityTrustHtml(displayValue);
+  }
+  
+  getCustomActions(entity: Entity): { key: string, label: string, icon?: string }[] {
+    const customActions = this.entityAttributes.entityAttributes[this.entityType]?.customActions;
+    if (!customActions) return [];
+    
+    // Filter actions based on conditions
+    return Object.entries(customActions)
+      .filter(([_, action]) => !action.condition || action.condition(entity))
+      .map(([key, action]) => ({
+        key,
+        label: action.label,
+        icon: action.icon
+      }));
+  }
+  
+  executeCustomAction(actionKey: string, entity: Entity): void {
+    const action = this.entityAttributes.entityAttributes[this.entityType]?.customActions?.[actionKey];
+    if (action) {
+      action.action(entity);
+    }
   }
 
   navigateToCreate(): void {

@@ -252,8 +252,14 @@ export class EntityFormComponent implements OnInit {
   initForm(): void {
     if (!this.metadata) return;
     
+    // Generate the form for the entity
     this.entityForm = this.formGenerator.generateForm(this.metadata, this.entity);
-    this.sortedFields = this.formGenerator.getFormSortedFields(this.metadata);
+    
+    // Get the list of fields from the generated form
+    this.sortedFields = Object.keys(this.metadata.fields).filter(field => {
+      return this.entityForm?.get(field) !== null && this.entityForm?.get(field) !== undefined;
+    });
+    
   }
 
   getFieldDisplayName(fieldName: string): string {
@@ -264,20 +270,28 @@ export class EntityFormComponent implements OnInit {
   getFieldWidget(fieldName: string): string {
     if (!this.metadata) return 'text';
     
-    const fieldType = this.metadata.fields[fieldName]?.type;
-    const widget = this.metadata.fields[fieldName]?.widget;
+    const fieldMeta = this.metadata.fields[fieldName];
+    if (!fieldMeta) return 'text';
     
-    if (widget) return widget;
+    // If widget is explicitly specified, use it
+    if (fieldMeta.widget) return fieldMeta.widget;
+    
+    // Check if field has options - use select dropdown
+    if (fieldMeta.options && Array.isArray(fieldMeta.options) && fieldMeta.options.length > 0) {
+      return 'select';
+    }
     
     // Default widgets based on field type
+    const fieldType = fieldMeta.type;
     switch (fieldType) {
       case 'Boolean':
         return 'checkbox';
       case 'ISODate':
         return 'date';
       case 'String':
-        if (fieldName === 'password') return 'password';
-        if (fieldName === 'email' || this.metadata.fields[fieldName]?.pattern?.includes('@')) return 'email';
+        // Special string field types based on metadata patterns, not field names
+        if (fieldMeta.pattern?.includes('@')) return 'email';
+        if (fieldMeta.maxLength && fieldMeta.maxLength > 100) return 'textarea';
         return 'text';
       case 'ObjectId':
         return 'reference';

@@ -1,34 +1,62 @@
 import { Injectable } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { EntityMetadata } from './entity.service';
+import { EntityDisplayService } from './entity-display.service';
 
 @Injectable({
   providedIn: 'root'
 })
 export class FormGeneratorService {
 
-  constructor(private fb: FormBuilder) {}
+  constructor(
+    private fb: FormBuilder,
+    private entityDisplay: EntityDisplayService
+  ) {}
 
   generateForm(metadata: EntityMetadata, initialData?: any): FormGroup {
     const formGroup: { [key: string]: AbstractControl } = {};
     const fields = metadata.fields;
     
-    // Skip BaseEntity fields for creating new entities
-    const skipFields = ['_id', 'createdAt', 'updatedAt'];
-    
+    // Process all fields from metadata
     Object.keys(fields).forEach(fieldName => {
-      if (skipFields.includes(fieldName)) {
-        return;
+      const fieldMeta = fields[fieldName];
+      if (!fieldMeta) return;
+      
+      // No field skipping based on field names
+      
+      // Skip readonly fields for new entities
+      if (!initialData && fieldMeta.readOnly) return;
+      
+      // Use showInView to determine field visibility
+      if (!initialData) {
+        // For new entities, only include fields for forms
+        if (!this.entityDisplay.showInView(fieldMeta, 'form')) {
+          return;
+        }
+      } else {
+        // For existing entities (edit mode)
+        // Include fields marked for forms or details (to show readonly fields)
+        if (!this.entityDisplay.showInView(fieldMeta, 'form') && 
+            !this.entityDisplay.showInView(fieldMeta, 'details')) {
+          return;
+        }
       }
       
-      const fieldMeta = fields[fieldName];
       const validators = this.getValidators(fieldMeta);
       
       const initialValue = initialData && initialData[fieldName] !== undefined 
         ? initialData[fieldName] 
         : this.getDefaultValue(fieldMeta);
-        
-      formGroup[fieldName] = this.fb.control(initialValue, validators);
+      
+      // For readOnly fields in edit mode, create a disabled control
+      if (fieldMeta.readOnly && initialData) {
+        formGroup[fieldName] = this.fb.control({
+          value: initialValue, 
+          disabled: true
+        }, validators);
+      } else {
+        formGroup[fieldName] = this.fb.control(initialValue, validators);
+      }
     });
     
     return this.fb.group(formGroup);
@@ -100,47 +128,19 @@ export class FormGeneratorService {
     const fields = metadata.fields;
     const fieldNames = Object.keys(fields);
     
-    // Remove BaseEntity fields
-    const filteredFields = fieldNames.filter(name => 
-      !['_id', 'createdAt', 'updatedAt'].includes(name)
-    );
-    
-    // Create a map of displayAfterField values to field names
-    const displayAfterMap = new Map<string, string[]>();
-    
-    filteredFields.forEach(fieldName => {
-      const displayAfter = fields[fieldName].displayAfterField || '';
-      if (!displayAfterMap.has(displayAfter)) {
-        displayAfterMap.set(displayAfter, []);
-      }
-      displayAfterMap.get(displayAfter)!.push(fieldName);
+    // Filter fields based on display property and field metadata
+    const filteredFields = fieldNames.filter(name => {
+      const fieldMeta = fields[name];
+      if (!fieldMeta) return false;
+      
+      // Skip readOnly fields for create forms
+      if (fieldMeta.readOnly) return false;
+      
+      // Check if field should be shown in forms
+      return this.entityDisplay.showInView(fieldMeta, 'form');
     });
     
-    // Build the sorted field list
-    const sortedFields: string[] = [];
-    let current = '';
-    
-    while (sortedFields.length < filteredFields.length) {
-      const fieldsAfterCurrent = displayAfterMap.get(current) || [];
-      
-      if (fieldsAfterCurrent.length === 0) {
-        // Find any remaining fields and add them
-        for (const fieldName of filteredFields) {
-          if (!sortedFields.includes(fieldName)) {
-            sortedFields.push(fieldName);
-          }
-        }
-        break;
-      }
-      
-      fieldsAfterCurrent.forEach(fieldName => {
-        if (!sortedFields.includes(fieldName)) {
-          sortedFields.push(fieldName);
-          current = fieldName;
-        }
-      });
-    }
-    
-    return sortedFields;
+    // Return filtered fields directly without sorting
+    return filteredFields;
   }
 }
