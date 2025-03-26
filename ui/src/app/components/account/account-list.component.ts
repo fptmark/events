@@ -1,45 +1,33 @@
-import { Component, OnInit } from '@angular/core';
-import { AccountService, Account } from '../../services/account.service';
-import { UserService, User } from '../../services/user.service';
-import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { Component } from '@angular/core';
+import { Router } from '@angular/router';
+import { ROUTE_CONFIG } from '../../constants';
+import { EntityAttributesService } from '../../services/entity-attributes.service';
 
 @Component({
   selector: 'app-account-list',
   standalone: true,
-  imports: [CommonModule, RouterLink],
   template: `
-    <h2>Accounts</h2>
-    <ul>
-      <li *ngFor="let account of accounts; let i = index">
-        {{ i + 1 }}: Account ID: {{ account.id }}
-        <ul>
-          <li *ngFor="let user of accountUsers[account.id]">
-            {{ user.username }} ({{ user.email }})
-          </li>
-        </ul>
-      </li>
-    </ul>
+    <div class="text-center p-3">
+      <h3>Redirecting to Entity Component...</h3>
+    </div>
   `
 })
-export class AccountListComponent implements OnInit {
-  accounts: Account[] = [];
-  accountUsers: { [key: string]: User[] } = {};
-
-  constructor(private accountService: AccountService, private userService: UserService) {}
-
-  ngOnInit(): void {
-    this.loadAccounts();
-  }
-
-  loadAccounts() {
-    this.accountService.getAccounts().subscribe(accounts => {
-      this.accounts = accounts;
-      accounts.forEach(account => {
-        this.userService.getUsers().subscribe(users => {
-          this.accountUsers[account.id!] = users.filter(u => u.accountId === account.id);
-        });
-      });
-    });
+export class AccountListComponent {
+  constructor(
+    private router: Router,
+    private entityAttributes: EntityAttributesService
+  ) {
+    // Configure any account-specific hooks if needed
+    const accountAttributes = this.entityAttributes.entityAttributes['account'];
+    
+    // Example of adding a custom afterLoad hook for accounts
+    accountAttributes.afterLoad = (accounts) => {
+      console.log('Processing accounts in custom afterLoad hook');
+      // You could do additional processing here
+      return accounts;
+    };
+    
+    // Redirect to the generic entity list component
+    this.router.navigate([ROUTE_CONFIG.getEntityListRoute('account')]);
   }
 }
