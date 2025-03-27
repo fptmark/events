@@ -23,7 +23,7 @@ class Url(Document):
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Url', 'displayName': 'Url', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': '^https?://[^s]+$', 'pattern.message': 'Bad URL format', 'displayName': 'Url'}, 'params': {'type': 'JSON', 'required': False, 'displayName': 'Params'}, 'createdAt': {'type': 'ISODate', 'readOnly': True, 'displayAfterField': '-1', 'required': True, 'autoGenerate': True, 'displayName': 'Created At'}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'displayAfterField': '-2', 'displayName': 'Updated At'}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Url', 'labels': {'title': 'Url', 'buttonLabel': 'Manage Urls', 'description': 'Manage Event Urls'}, 'operations': '', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': '^https?://[^s]+$', 'pattern.message': 'Bad URL format', 'displayName': 'Url'}, 'params': {'type': 'JSON', 'required': False, 'displayName': 'Params'}, 'createdAt': {'type': 'ISODate', 'readOnly': True, 'displayAfterField': '-1', 'required': True, 'autoGenerate': True, 'displayName': 'Created At'}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'displayAfterField': '-2', 'displayName': 'Updated At'}}}
     
     class Settings:
         name = "url"

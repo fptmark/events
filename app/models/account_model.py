@@ -19,10 +19,11 @@ class Account(Document):
     expiredAt: Optional[datetime] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    _id: Optional[str] = Field(None)
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Account', 'displayName': 'Account', 'fields': {'expiredAt': {'type': 'ISODate', 'required': False, 'displayName': 'Expired At'}, 'createdAt': {'type': 'ISODate', 'readOnly': True, 'displayAfterField': '-1', 'required': True, 'autoGenerate': True, 'displayName': 'Created At'}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'displayAfterField': 'createdAt', 'display': 'details', 'displayName': 'Updated At'}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Account', 'labels': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'}, 'operations': '', 'fields': {'expiredAt': {'type': 'ISODate', 'required': False, 'displayPages': 'details', 'displayAfterField': 'createdAt', 'displayName': 'Expired At'}, 'createdAt': {'type': 'ISODate', 'readOnly': True, 'displayAfterField': 'createdAt', 'displayPages': 'details', 'required': True, 'autoGenerate': True, 'displayName': 'Created At'}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'displayAfterField': 'createdAt', 'displayPages': 'details', 'displayName': 'Updated At'}, '_id': {'displayName': 'Id', 'readOnly': True, 'displayPages': 'details', 'displayAfterField': 'createdAt'}}}
     
     class Settings:
         name = "account"
@@ -44,6 +45,7 @@ class AccountCreate(BaseModel):
     expiredAt: Optional[datetime] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    _id: Optional[str] = Field(None)
     class Config:
         orm_mode = True
 
@@ -54,6 +56,7 @@ class AccountRead(BaseModel):
     expiredAt: Optional[datetime] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    _id: Optional[str] = Field(None)
 
     class Config:
         orm_mode = True
