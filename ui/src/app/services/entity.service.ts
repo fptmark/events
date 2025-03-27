@@ -16,6 +16,7 @@ export interface EntityFieldMetadata {
   type: string;  // Only type is required
   displayName?: string;
   display?: string;
+  displayPages?: string;
   displayAfterField?: string;
   widget?: string;
   required?: boolean;

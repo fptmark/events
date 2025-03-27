@@ -9,9 +9,9 @@ export class EntityDisplayService {
   constructor() { }
 
   showInView(fieldMetadata: EntityFieldMetadata, view: string): boolean {
-    const display = fieldMetadata.display || '';
-    if (display === 'hidden') return false;
-    return display === '' || display === 'all' || display.includes(view)
+    const displayPages = fieldMetadata.displayPages || '';
+    if (displayPages === 'hidden') return false;
+    return displayPages === '' || displayPages === 'all' || displayPages.includes(view)
   }
 
 }

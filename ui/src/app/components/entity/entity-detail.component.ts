@@ -147,10 +147,11 @@ export class EntityDetailComponent implements OnInit {
     const fieldMeta = this.metadata?.fields[fieldName];
     const fieldType = fieldMeta?.type;
     const widget = fieldMeta?.widget;
+    const display = fieldMeta?.display;
     let displayValue = '';
     
     // Use widget type for display formatting
-    if (widget === 'password') {
+    if (display === 'secret') {
       displayValue = '••••••••'; // Mask password
     }
     // Format based on field type
