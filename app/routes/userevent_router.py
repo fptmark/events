@@ -13,32 +13,22 @@ def wrap_response(data, include_metadata=True):
     if not include_metadata:
         return data
     
-    result = {
+    return {
         "data": data,
+        "metadata": UserEvent.get_metadata()
     }
     
-    # Add metadata if requested
-    if include_metadata:
-        result["metadata"] = UserEvent.get_metadata()
-    
-    return result
-
 # Helper function to wrap collection response with metadata
 def wrap_collection_response(data_list, include_metadata=True):
     """Wrap response data list with metadata for UI generation."""
     if not include_metadata:
         return data_list
     
-    result = {
+    return {
         "data": data_list,
+        "metadata": UserEvent.get_metadata()
     }
     
-    # Add metadata if requested
-    if include_metadata:
-        result["metadata"] = UserEvent.get_metadata()
-    
-    return result
-
 # CREATE
 @router.post('/')
 async def create_userevent(item: UserEventCreate, include_metadata: bool = True):
