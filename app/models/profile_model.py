@@ -25,7 +25,7 @@ class Profile(Document):
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Profile', 'labels': {'title': 'Profile', 'buttonLabel': 'Manage User Profiles', 'description': 'Manage User Preferences'}, 'operations': '', 'fields': {'name': {'type': 'String', 'required': True, 'maxLength': 100, 'displayName': 'Name'}, 'preferences': {'type': 'JSON', 'displayPages': 'details', 'required': False, 'displayName': 'Preferences'}, 'radiusMiles': {'type': 'Integer', 'required': False, 'min': 0, 'displayName': 'Radius Miles'}, 'createdAt': {'type': 'ISODate', 'readOnly': True, 'displayAfterField': '-1', 'required': True, 'autoGenerate': True, 'displayName': 'Created At'}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'displayAfterField': '-2', 'displayName': 'Updated At'}, 'userId': {'type': 'ObjectId', 'required': True, 'displayName': 'User ID', 'readOnly': True}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Profile', 'ui': {'title': 'Profile', 'buttonLabel': 'Manage User Profiles', 'description': 'Manage User Preferences'}, 'operations': '', 'fields': {'name': {'type': 'String', 'required': True, 'maxLength': 100}, 'preferences': {'type': 'JSON', 'required': False, 'ui': {'displayPages': 'details'}}, 'radiusMiles': {'type': 'Integer', 'required': False, 'min': 0}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}, 'userId': {'type': 'ObjectId', 'required': True, 'displayName': 'User ID', 'readOnly': True}}}
     
     class Settings:
         name = "profile"

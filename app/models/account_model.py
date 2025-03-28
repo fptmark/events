@@ -23,7 +23,7 @@ class Account(Document):
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Account', 'labels': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'}, 'operations': '', 'fields': {'expiredAt': {'type': 'ISODate', 'required': False, 'displayPages': 'details', 'displayAfterField': 'createdAt', 'displayName': 'Expired At'}, 'createdAt': {'type': 'ISODate', 'readOnly': True, 'displayAfterField': 'createdAt', 'displayPages': 'details', 'required': True, 'autoGenerate': True, 'displayName': 'Created At'}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'displayAfterField': 'createdAt', 'displayPages': 'details', 'displayName': 'Updated At'}, '_id': {'displayName': 'Id', 'readOnly': True, 'displayPages': 'details', 'displayAfterField': 'createdAt'}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Account', 'ui': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'}, 'operations': '', 'fields': {'expiredAt': {'type': 'ISODate', 'required': False}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': 'createdAt', 'displayPages': 'details'}}, '_id': {'ui': {'displayName': 'Id', 'readOnly': True}}}}
     
     class Settings:
         name = "account"
