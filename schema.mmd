@@ -10,7 +10,7 @@ erDiagram
     Account {
         ISODate expiredAt %% @validate { required: false }
     
-        %% @labels { title: "Accounts", buttonLabel: "Manage Accounts" }
+        %% @ui { title: "Accounts", buttonLabel: "Manage Accounts" }
     	%% @include BaseEntity
         %% @ui id { displayName: "Id", readOnly: true }
         %% @ui updatedAt { displayPages: "details", displayAfterField: 'createdAt' } 
@@ -27,7 +27,7 @@ erDiagram
         ISODate dob         
         Boolean isAccountOwner   %% @validate { required: true }, @ui { displayName: "Owner"}
     
-        %% @labels { title: "Users", buttonLabel: "Manage Users", description: "Manage User Profile" }
+        %% @ui { title: "Users", buttonLabel: "Manage Users", description: "Manage User Profile" }
     	%% @service auth.cookies.redis 
     	%% @include BaseEntity  
         %% @ui createdAt { displayPages: "summary" } 
@@ -40,7 +40,7 @@ erDiagram
         JSON preferences     %% @validate { required: false } @ui { displayPages: "details"}
         Integer radiusMiles  %% @validate { required: false, min: 0 }
     
-        %% @labels { title: "Profile", buttonLabel: "Manage User Profiles", description: "Manage User Preferences" }
+        %% @ui { title: "Profile", buttonLabel: "Manage User Profiles", description: "Manage User Preferences" }
     	%% @include BaseEntity
     	%% @unique name + userId
     }
@@ -50,7 +50,7 @@ erDiagram
         String tag            %% @validate { required: true, maxLength: 50 }
         Integer affinity      %% @validate { required: true, min: -100, max: 100 }
     
-        %% @labels { title: "Tag Affinity", buttonLabel: "Manage Event Affinity" }
+        %% @ui { title: "Tag Affinity", buttonLabel: "Manage Event Affinity" }
     	%% @include BaseEntity
     	%% @unique profileId + tag
     }
@@ -66,7 +66,7 @@ erDiagram
         String recurrence                  %% @validate { required: false, enum: ["daily", "weekly", "monthly", "yearly"] } @ui { displayPages: "details"}
         Array[String] tags                 %% @validate { required: false } @ui { displayPages: "details"}
     
-        %% @labels { title: "Events", buttonLabel: "Manage Events" }
+        %% @ui { title: "Events", buttonLabel: "Manage Events" }
     	%% @include BaseEntity
     }
 
@@ -76,7 +76,7 @@ erDiagram
         Integer rating       %% @validate { required: false, min: 1, max: 5 }
         String note          %% @validate { required: false, maxLength: 500 } @ui { displayPages: "details"}
     
-        %% @labels { title: "User Events", buttonLabel: "Manage Event Attendance" }
+        %% @ui { title: "User Events", buttonLabel: "Manage Event Attendance" }
     	%% @include BaseEntity
     }
 
@@ -85,7 +85,7 @@ erDiagram
         String url       %% @validate { required: true, pattern: "dictionary=pattern.url", "pattern.message": "Bad URL format" }
         JSON params      %% @validate { required: false }
     
-        %% @labels { title: "Url", buttonLabel: "Manage Urls", description: "Manage Event Urls" }
+        %% @ui { title: "Url", buttonLabel: "Manage Urls", description: "Manage Event Urls" }
     	%% @include BaseEntity
     }
 
@@ -94,7 +94,7 @@ erDiagram
         JSON parseStatus                   %% @validate { required: false }
         Array[String] errorsEncountered    %% @validate { required: false }
     
-        %% @labels { title: "Crawls", buttonLabel: "Manage Crawls", description: "Manage Crawls of Event sites" }
+        %% @ui { title: "Crawls", buttonLabel: "Manage Crawls", description: "Manage Crawls of Event sites" }
     	%% @include BaseEntity
         %% @operations [ "read", "delete" ]
     }

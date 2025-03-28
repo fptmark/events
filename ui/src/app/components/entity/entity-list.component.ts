@@ -1,24 +1,21 @@
 import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { EntityService, Entity, EntityMetadata } from '../../services/entity.service';
 import { CommonModule } from '@angular/common';
 import { ROUTE_CONFIG } from '../../constants';
-import { EntityAttributesService } from '../../services/entity-attributes.service';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { EntityDisplayService } from '../../services/entity-display.service';
+import { EntityComponentService } from '../../services/entity-component.service';
 
 @Component({
   selector: 'app-entity-list',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule],
   template: `
     <div class="container mt-4">
-      <h2>{{ entityType | titlecase }} List</h2>
+      <h2>{{ entityComponent.getTitle(metadata, entityType) }}</h2>
       
-      <div *ngIf="isValidOperation(entityType, 'c')">
-      
+      <div *ngIf="entityComponent.isValidOperation(metadata, 'c')">
         <div class="mb-3">
-          <button class="btn btn-primary" (click)="navigateToCreate()">Create New {{ entityType | titlecase }}</button>
+          <button class="btn btn-primary" (click)="navigateToCreate()">{{ entityComponent.getButtonLabel(metadata) }}</button>
         </div>
       </div>
       
@@ -34,21 +31,21 @@ import { EntityDisplayService } from '../../services/entity-display.service';
         <table class="table table-striped">
           <thead>
             <tr>
-              <th *ngFor="let field of displayFields">{{ getFieldDisplayName(field) }}</th>
+              <th *ngFor="let field of displayFields">{{ entityComponent.getFieldDisplayName(field, metadata) }}</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             <tr *ngFor="let entity of entities">
-              <td *ngFor="let field of displayFields" [innerHTML]="formatFieldValue(entity, field)"></td>
+              <td *ngFor="let field of displayFields" [innerHTML]="entityComponent.formatFieldValue(entity, field, metadata)"></td>
               <td>
-                <ng-container *ngIf="isValidOperation(entityType, 'r')">
+                <ng-container *ngIf="entityComponent.isValidOperation(metadata, 'r')">
                   <button class="btn btn-sm btn-info me-2" (click)="viewEntity(entity._id)">View</button>
                 </ng-container>
-                <ng-container *ngIf="isValidOperation(entityType, 'u')">
+                <ng-container *ngIf="entityComponent.isValidOperation(metadata, 'u')">
                   <button class="btn btn-sm btn-warning me-2" (click)="editEntity(entity._id)">Edit</button>
                 </ng-container>
-                <ng-container *ngIf="isValidOperation(entityType, 'd')">
+                <ng-container *ngIf="entityComponent.isValidOperation(metadata, 'd')">
                   <button class="btn btn-sm btn-danger me-2" (click)="deleteEntity(entity._id)">Delete</button>
                 </ng-container>
                 <!-- Custom action buttons -->
@@ -78,12 +75,9 @@ export class EntityListComponent implements OnInit {
   error: string = '';
 
   constructor(
-    private entityAttributes: EntityAttributesService,
-    private entityService: EntityService,
-    private entityDisplay: EntityDisplayService,
+    public entityComponent: EntityComponentService,
     private route: ActivatedRoute,
-    private router: Router,
-    private sanitizer: DomSanitizer
+    private router: Router
   ) {}
 
   ngOnInit(): void {
@@ -93,19 +87,15 @@ export class EntityListComponent implements OnInit {
     });
   }
 
-  isValidOperation(entityType: string, operation: string): boolean {
-    return this.entityAttributes.getOperations(entityType).includes(operation)
-  }
-
   loadEntities(): void {
     this.loading = true;
     this.error = '';
     
-    this.entityService.getEntities(this.entityType).subscribe({
+    this.entityComponent.loadEntities(this.entityType).subscribe({
       next: (response) => {
         this.entities = response.entities;
         this.metadata = response.metadata;
-        this.initDisplayFields();
+        this.displayFields = this.entityComponent.initDisplayFields(this.metadata, 'list');
         this.loading = false;
       },
       error: (err) => {
@@ -115,102 +105,16 @@ export class EntityListComponent implements OnInit {
       }
     });
   }
-
-  initDisplayFields(): void {
-    // if (!this.metadata) return;
-    if (!this.metadata) return;
-    
-    // Use the display service to determine which fields to show based on metadata
-    this.displayFields = Object.keys(this.metadata.fields).filter(field => {
-      const fieldMeta = this.metadata?.fields[field];
-      if (!fieldMeta) return false;
-      
-      // Use the display service to check field visibility
-      return this.entityDisplay.showInView(fieldMeta, 'summary');
-    });
-    
-  }
-
-  getFieldDisplayName(fieldName: string): string {
-    if (!this.metadata) return fieldName;
-    return this.metadata.fields[fieldName]?.displayName || fieldName;
-  }
-
-  formatFieldValue(entity: Entity, fieldName: string): SafeHtml {
-    if (!entity || entity[fieldName] === undefined || entity[fieldName] === null) {
-      return this.sanitizer.bypassSecurityTrustHtml('');
-    }
-    
-    // Check if there's a custom formatter for this field
-    const customFormatter = this.entityAttributes.entityAttributes[this.entityType]?.columnFormatters?.[fieldName];
-    if (customFormatter) {
-      const formattedValue = customFormatter(entity[fieldName], entity);
-      return this.sanitizer.bypassSecurityTrustHtml(formattedValue);
-    }
-    
-    const value = entity[fieldName];
-    const fieldMeta = this.metadata?.fields[fieldName];
-    const fieldType = fieldMeta?.type;
-    const widget = fieldMeta?.widget;
-    let displayValue = '';
-    
-    // Format based on field widget type
-    if (widget === 'password') {
-      displayValue = '••••••••'; // Mask password
-    }
-    // Format based on field type
-    else if (fieldType === 'ISODate' && (typeof value === 'string' || value instanceof Date)) {
-      const date = typeof value === 'string' ? new Date(value) : value;
-      displayValue = isNaN(date.getTime()) ? String(value) : date.toLocaleString();
-    } 
-    else if (fieldType === 'Boolean') {
-      displayValue = value ? 'Yes' : 'No';
-    } 
-    else if (fieldType === 'ObjectId') {
-      // Truncate long IDs for better display
-      const strValue = String(value);
-      displayValue = strValue.length > 10 ? strValue.substring(0, 7) + '...' : strValue;
-    } 
-    else if (Array.isArray(value)) {
-      if (value.length === 0) {
-        displayValue = '(empty)';
-      } else {
-        displayValue = value.length > 3 
-          ? `${value.slice(0, 3).join(', ')}... (${value.length} items)` 
-          : value.join(', ');
-      }
-    } 
-    else if (typeof value === 'object') {
-      displayValue = '(object)';
-    }
-    else {
-      // For string values, truncate if too long
-      const strValue = String(value);
-      displayValue = strValue.length > 50 ? strValue.substring(0, 47) + '...' : strValue;
-    }
-    
-    return this.sanitizer.bypassSecurityTrustHtml(displayValue);
-  }
   
+  // Custom actions are not currently implemented in the stateless approach
   getCustomActions(entity: Entity): { key: string, label: string, icon?: string }[] {
-    const customActions = this.entityAttributes.entityAttributes[this.entityType]?.customActions;
-    if (!customActions) return [];
-    
-    // Filter actions based on conditions
-    return Object.entries(customActions)
-      .filter(([_, action]) => !action.condition || action.condition(entity))
-      .map(([key, action]) => ({
-        key,
-        label: action.label,
-        icon: action.icon
-      }));
+    // Will be implemented when hooks are added back
+    return [];
   }
   
   executeCustomAction(actionKey: string, entity: Entity): void {
-    const action = this.entityAttributes.entityAttributes[this.entityType]?.customActions?.[actionKey];
-    if (action) {
-      action.action(entity);
-    }
+    // Will be implemented when hooks are added back
+    console.log(`Custom action ${actionKey} would be executed on entity:`, entity);
   }
 
   navigateToCreate(): void {
@@ -227,7 +131,7 @@ export class EntityListComponent implements OnInit {
 
   deleteEntity(id: string): void {
     if (confirm('Are you sure you want to delete this item?')) {
-      this.entityService.deleteEntity(this.entityType, id).subscribe({
+      this.entityComponent.deleteEntity(this.entityType, id).subscribe({
         next: () => {
           this.loadEntities(); // Reload the list after deletion
         },

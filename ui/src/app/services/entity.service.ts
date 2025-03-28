@@ -12,6 +12,12 @@ export interface Entity {
   [key: string]: any;
 }
 
+export interface EntityFieldMetadataUI {
+  displayName?: string;
+  widget?: string;
+  readOnly?: boolean;
+}
+
 export interface EntityFieldMetadata {
   type: string;  // Only type is required
   displayName?: string;
@@ -29,13 +35,20 @@ export interface EntityFieldMetadata {
   max?: number;
   autoGenerate?: boolean;
   autoUpdate?: boolean;
-  // Add a flexible index signature for any other properties
-  [key: string]: any;
+  ui?: EntityFieldMetadataUI;
+}
+
+export interface EntityMetadataUI {
+  title?: string;
+  buttonLabel?: string;
+  description?: string;
 }
 
 export interface EntityMetadata {
   entity: string;
   displayName: string;
+  ui?: EntityMetadataUI;
+  operations?: string;
   fields: {
     [key: string]: EntityFieldMetadata
   };
@@ -45,6 +58,12 @@ export interface EntityMetadata {
 export interface EntityResponse<T = Entity> {
   data: T | T[];
   metadata: EntityMetadata;
+}
+
+export interface EntityMetadataResponse {
+  entity: string;
+  displayName: string;
+  ui: EntityMetadataUI;
 }
 
 @Injectable({
@@ -62,8 +81,10 @@ export class EntityService {
     return this.http.get<EntityResponse<Entity>>(API_CONFIG.getApiUrl(entityType)).pipe(
       map(response => {
         let entities = Array.isArray(response.data) ? response.data : [response.data];
-        // Apply the afterLoad hook if available
-        entities = this.entityAttributes.applyAfterLoad(entityType, entities);
+        
+        // TODO: Apply afterLoad hook when hooks are implemented
+        // entities = this.entityAttributes.applyAfterLoad(entityType, entities);
+        
         return {
           entities: entities,
           metadata: response.metadata
@@ -74,39 +95,49 @@ export class EntityService {
    
   getEntity(entityType: string, id: string): Observable<{ entity: Entity, metadata: EntityMetadata }> {
     return this.http.get<EntityResponse<Entity>>(`${API_CONFIG.getApiUrl(entityType)}/${id}`).pipe(
-      map(response => ({
-        entity: Array.isArray(response.data) ? response.data[0] : response.data,
-        metadata: response.metadata
-      }))
+      map(response => {
+        return {
+          entity: Array.isArray(response.data) ? response.data[0] : response.data,
+          metadata: response.metadata
+        };
+      })
     );
   }
 
   createEntity(entityType: string, entity: Entity): Observable<Entity> {
-    // Apply beforeCreate hook if available
-    const transformedEntity = this.entityAttributes.applyBeforeCreate(entityType, entity);
+    // TODO: Apply beforeCreate hook when hooks are implemented
+    // const transformedEntity = this.entityAttributes.applyBeforeCreate(entityType, entity);
+    const transformedEntity = entity;
     
     return this.http.post<EntityResponse<Entity>>(API_CONFIG.getApiUrl(entityType), transformedEntity).pipe(
-      map(response => Array.isArray(response.data) ? response.data[0] : response.data)
+      map(response => {
+        return Array.isArray(response.data) ? response.data[0] : response.data;
+      })
     );
   }
 
   updateEntity(entityType: string, id: string, entity: Entity): Observable<Entity> {
-    // Apply beforeUpdate hook if available
-    const transformedEntity = this.entityAttributes.applyBeforeUpdate(entityType, entity);
+    // TODO: Apply beforeUpdate hook when hooks are implemented
+    // const transformedEntity = this.entityAttributes.applyBeforeUpdate(entityType, entity);
+    const transformedEntity = entity;
     
     return this.http.put<EntityResponse<Entity>>(`${API_CONFIG.getApiUrl(entityType)}/${id}`, transformedEntity).pipe(
-      map(response => Array.isArray(response.data) ? response.data[0] : response.data)
+      map(response => {
+        return Array.isArray(response.data) ? response.data[0] : response.data;
+      })
     );
   }
 
   deleteEntity(entityType: string, id: string): Observable<any> {
-    // Apply beforeDelete hook if available - if hook returns false, don't proceed with delete
+    // TODO: Apply beforeDelete hook when hooks are implemented
+    /* 
     if (!this.entityAttributes.applyBeforeDelete(entityType, id)) {
       return new Observable(observer => {
         observer.error(new Error('Delete operation cancelled by validation rule'));
         observer.complete();
       });
     }
+    */
     
     return this.http.delete(`${API_CONFIG.getApiUrl(entityType)}/${id}`);
   }
@@ -119,17 +150,20 @@ export class EntityService {
           console.error('No metadata found in response:', response);
           throw new Error('Metadata not available in the API response');
         }
+        
         return response.metadata;
       })
     );
   }
+  
+  // No longer needed as we're not storing entity attributes
+  // The EntityAttributesService now processes metadata directly
 
-  getAvailableEntities(): Observable<string[]> {
-    // This would typically come from an API endpoint that returns all available entity types
-    // For now we'll hardcode the entities based on our known endpoints
-    return new Observable<string[]>(observer => {
-      observer.next(Object.keys(API_CONFIG.endpoints));
-      observer.complete();
-    });
+  getAvailableEntities(): Observable<EntityMetadataResponse[]> {
+    return this.http.get<EntityMetadataResponse[]>('/api/entities').pipe(
+      tap(response => {
+        console.log('Available entities:', response);
+      })
+    );
   }
 }

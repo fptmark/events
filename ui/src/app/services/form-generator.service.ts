@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
-import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
-import { EntityMetadata } from './entity.service';
-import { EntityDisplayService } from './entity-display.service';
+import { FormBuilder, FormGroup, Validators, AbstractControl } from '@angular/forms';
+import { EntityMetadata, EntityFieldMetadata } from './entity.service';
+import { EntityAttributesService } from './entity-attributes.service';
 
 @Injectable({
   providedIn: 'root'
@@ -10,7 +10,7 @@ export class FormGeneratorService {
 
   constructor(
     private fb: FormBuilder,
-    private entityDisplay: EntityDisplayService
+    private entityAttributes: EntityAttributesService
   ) {}
 
   generateForm(metadata: EntityMetadata, initialData?: any): FormGroup {
@@ -25,19 +25,19 @@ export class FormGeneratorService {
       // No field skipping based on field names
       
       // Skip readonly fields for new entities
-      if (!initialData && fieldMeta.readOnly) return;
+      if (!initialData && fieldMeta['ui']?.readOnly) return;
       
       // Use showInView to determine field visibility
       if (!initialData) {
         // For new entities, only include fields for forms
-        if (!this.entityDisplay.showInView(fieldMeta, 'form')) {
+        if (!this.entityAttributes.showInView(fieldMeta, 'form')) {
           return;
         }
       } else {
         // For existing entities (edit mode)
         // Include fields marked for forms or details (to show readonly fields)
-        if (!this.entityDisplay.showInView(fieldMeta, 'form') && 
-            !this.entityDisplay.showInView(fieldMeta, 'details')) {
+        if (!this.entityAttributes.showInView(fieldMeta, 'form') && 
+            !this.entityAttributes.showInView(fieldMeta, 'details')) {
           return;
         }
       }
@@ -49,7 +49,7 @@ export class FormGeneratorService {
         : this.getDefaultValue(fieldMeta);
       
       // For readOnly fields in edit mode, create a disabled control
-      if (fieldMeta.readOnly && initialData) {
+      if (fieldMeta['ui']?.readOnly && initialData) {
         formGroup[fieldName] = this.fb.control({
           value: initialValue, 
           disabled: true
@@ -62,7 +62,7 @@ export class FormGeneratorService {
     return this.fb.group(formGroup);
   }
   
-  private getValidators(fieldMeta: any): any[] {
+  private getValidators(fieldMeta: EntityFieldMetadata): any[] {
     const validators = [];
     
     if (fieldMeta.required) {
@@ -98,11 +98,11 @@ export class FormGeneratorService {
     return validators;
   }
   
-  private getDefaultValue(fieldMeta: any): any {
+  private getDefaultValue(fieldMeta: EntityFieldMetadata): any {
     switch (fieldMeta.type) {
       case 'String':
         // For select fields with options, default to first option if required
-        if (fieldMeta.widget === 'select' && fieldMeta.options?.length > 0 && fieldMeta.required) {
+        if (fieldMeta.widget === 'select' && fieldMeta.options && fieldMeta.options.length > 0 && fieldMeta.required) {
           return fieldMeta.options[0];
         }
         return '';
@@ -137,7 +137,7 @@ export class FormGeneratorService {
       if (fieldMeta.readOnly) return false;
       
       // Check if field should be shown in forms
-      return this.entityDisplay.showInView(fieldMeta, 'form');
+      return this.entityAttributes.showInView(fieldMeta, 'form');
     });
     
     // Return filtered fields directly without sorting
