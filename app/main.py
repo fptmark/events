@@ -6,13 +6,29 @@ from app.db import Database
 from app.services.auth.cookies.redis import CookiesAuth as Auth
 
 from app.routes.account_router import router as account_router
+from app.models.account_model import Account
+
 from app.routes.user_router import router as user_router
+from app.models.user_model import User
+
 from app.routes.profile_router import router as profile_router
+from app.models.profile_model import Profile
+
 from app.routes.tagaffinity_router import router as tagaffinity_router
+from app.models.tagaffinity_model import TagAffinity
+
 from app.routes.event_router import router as event_router
+from app.models.event_model import Event
+
 from app.routes.userevent_router import router as userevent_router
+from app.models.userevent_model import UserEvent
+
 from app.routes.url_router import router as url_router
+from app.models.url_model import Url
+
 from app.routes.crawl_router import router as crawl_router
+from app.models.crawl_model import Crawl
+
 
 import logging
 LOG_FILE = "app.log"
@@ -71,6 +87,20 @@ app.include_router(crawl_router, prefix='/api/crawl', tags=['Crawl'])
 @app.get('/')
 def read_root():
     return {'message': 'Welcome to the Event Management System'}
+
+@app.get('/api/entities')
+def get_entities_metadata():
+    result = [
+        Account.get_metadata(),     
+        User.get_metadata(),     
+        Profile.get_metadata(),     
+        TagAffinity.get_metadata(),     
+        Event.get_metadata(),     
+        UserEvent.get_metadata(),     
+        Url.get_metadata(),     
+        Crawl.get_metadata(),     
+    ]
+    return result
 
 if __name__ == '__main__':
     import uvicorn
