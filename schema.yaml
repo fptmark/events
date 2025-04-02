@@ -11,42 +11,60 @@ _relationships:
   target: UserEvent
 - source: Url
   target: Crawl
-_dictionaries: {}
+_dictionaries:
+  main:
+    email: ^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$
+    url: ^https?://[^s]+$
 _services:
 - auth.cookies.redis
-_inherited_entities:
-- BaseEntity
+_included_entities: []
 _entities:
   BaseEntity:
     fields:
       createdAt:
         type: ISODate
-        ui_metadata:
-          display: form|details
         required: true
         autoGenerate: true
+        ui:
+          readOnly: true
       updatedAt:
         type: ISODate
-        ui_metadata:
-          display: form|details
         required: true
         autoUpdate: true
     relationships: []
+    abstract: true
   Account:
     fields:
       expiredAt:
         type: ISODate
         required: false
+      createdAt:
+        type: ISODate
+        required: true
+        autoGenerate: true
+        ui:
+          readOnly: true
+          displayAfterField: '-1'
+      updatedAt:
+        type: ISODate
+        required: true
+        autoUpdate: true
+        ui:
+          displayAfterField: createdAt
+          displayPages: details
+      _id:
+        ui:
+          displayName: Id
+          readOnly: true
     relationships:
     - User
-    inherit:
-    - BaseEntity
+    ui:
+      title: Accounts
+      buttonLabel: Manage Accounts
   User:
     fields:
       username:
         type: String
-        ui_metadata:
-          displayName: whos your daddy?
         required: true
         minLength: 3
         maxLength: 50
@@ -55,52 +73,74 @@ _entities:
         required: true
         minLength: 8
         maxLength: 50
-        pattern: dictionary=pattern.email
-        pattern.message: Bad email address format
+        pattern:
+          regex: ^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$
+          message: Bad email address format
       password:
         type: String
-        ui_metadata:
-          displayName: First Name
-          display: details
         required: true
         minLength: 8
+        ui:
+          displayPages: details
+          display: secret
       firstName:
         type: String
-        ui_metadata:
-          displayName: Last Name
         required: true
         minLength: 3
         maxLength: 100
+        ui:
+          displayName: First Name
       lastName:
         type: String
         required: true
         minLength: 3
         maxLength: 100
+        ui:
+          displayName: Last Name
       gender:
         type: String
         required: false
         enum:
-        - male
-        - female
-        - other
-        enum.message: must be male or female
+          values:
+          - male
+          - female
+          - other
+          message: must be male or female
       dob:
         type: ISODate
       isAccountOwner:
         type: Boolean
-        ui_metadata:
-          displayName: Owner
         required: true
+        ui:
+          displayName: Owner
+      createdAt:
+        type: ISODate
+        required: true
+        autoGenerate: true
+        ui:
+          readOnly: true
+          displayAfterField: '-1'
+          displayPages: summary
+      updatedAt:
+        type: ISODate
+        required: true
+        autoUpdate: true
+        ui:
+          displayAfterField: '-2'
     relationships:
     - Profile
     - UserEvent
     unique:
     - - username
     - - email
-    inherit:
-    - BaseEntity
+    ui:
+      title: Users
+      buttonLabel: Manage Users
+      description: Manage User Profile
     service:
     - auth.cookies.redis
+    operations:
+    - rcu
   Profile:
     fields:
       name:
@@ -109,20 +149,34 @@ _entities:
         maxLength: 100
       preferences:
         type: JSON
-        ui_metadata:
-          display: details
         required: false
+        ui:
+          displayPages: details
       radiusMiles:
         type: Integer
         required: false
         min: 0
+      createdAt:
+        type: ISODate
+        required: true
+        autoGenerate: true
+        ui:
+          readOnly: true
+          displayAfterField: '-1'
+      updatedAt:
+        type: ISODate
+        required: true
+        autoUpdate: true
+        ui:
+          displayAfterField: '-2'
     relationships:
     - TagAffinity
-    inherit:
-    - BaseEntity
+    ui:
+      title: Profile
+      buttonLabel: Manage User Profiles
+      description: Manage User Preferences
     unique:
     - - name
-      - userId
   TagAffinity:
     fields:
       tag:
@@ -134,19 +188,33 @@ _entities:
         required: true
         min: -100
         max: 100
+      createdAt:
+        type: ISODate
+        required: true
+        autoGenerate: true
+        ui:
+          readOnly: true
+          displayAfterField: '-1'
+      updatedAt:
+        type: ISODate
+        required: true
+        autoUpdate: true
+        ui:
+          displayAfterField: '-2'
     relationships: []
-    inherit:
-    - BaseEntity
+    ui:
+      title: Tag Affinity
+      buttonLabel: Manage Event Affinity
     unique:
     - - profileId
-      - tag
   Event:
     fields:
       url:
         type: String
         required: true
-        pattern: dictionary=pattern.url
-        pattern.message: Bad URL format
+        pattern:
+          regex: ^https?://[^s]+$
+          message: Bad URL format
       title:
         type: String
         required: true
@@ -160,35 +228,50 @@ _entities:
         maxLength: 200
       cost:
         type: Number
-        ui_metadata:
-          display: details
         required: false
         min: 0
+        ui:
+          displayPages: details
       numOfExpectedAttendees:
         type: Integer
-        ui_metadata:
-          display: details
         required: false
         min: 0
+        ui:
+          displayPages: details
       recurrence:
         type: String
-        ui_metadata:
-          display: details
         required: false
         enum:
-        - daily
-        - weekly
-        - monthly
-        - yearly
+          values:
+          - daily
+          - weekly
+          - monthly
+          - yearly
+        ui:
+          displayPages: details
       tags:
         type: Array[String]
-        ui_metadata:
-          display: details
         required: false
+        ui:
+          displayPages: details
+      createdAt:
+        type: ISODate
+        required: true
+        autoGenerate: true
+        ui:
+          readOnly: true
+          displayAfterField: '-1'
+      updatedAt:
+        type: ISODate
+        required: true
+        autoUpdate: true
+        ui:
+          displayAfterField: '-2'
     relationships:
     - UserEvent
-    inherit:
-    - BaseEntity
+    ui:
+      title: Events
+      buttonLabel: Manage Events
   UserEvent:
     fields:
       attended:
@@ -201,27 +284,57 @@ _entities:
         max: 5
       note:
         type: String
-        ui_metadata:
-          display: details
         required: false
         maxLength: 500
+        ui:
+          displayPages: details
+      createdAt:
+        type: ISODate
+        required: true
+        autoGenerate: true
+        ui:
+          readOnly: true
+          displayAfterField: '-1'
+      updatedAt:
+        type: ISODate
+        required: true
+        autoUpdate: true
+        ui:
+          displayAfterField: '-2'
     relationships: []
-    inherit:
-    - BaseEntity
+    ui:
+      title: User Events
+      buttonLabel: Manage Event Attendance
   Url:
     fields:
       url:
         type: String
         required: true
-        pattern: dictionary=pattern.url
-        pattern.message: Bad URL format
+        pattern:
+          regex: main.url
+          message: Bad URL format
       params:
         type: JSON
         required: false
+      createdAt:
+        type: ISODate
+        required: true
+        autoGenerate: true
+        ui:
+          readOnly: true
+          displayAfterField: '-1'
+      updatedAt:
+        type: ISODate
+        required: true
+        autoUpdate: true
+        ui:
+          displayAfterField: '-2'
     relationships:
     - Crawl
-    inherit:
-    - BaseEntity
+    ui:
+      title: Url
+      buttonLabel: Manage Urls
+      description: Manage Event Urls
   Crawl:
     fields:
       lastParsedDate:
@@ -233,8 +346,23 @@ _entities:
       errorsEncountered:
         type: Array[String]
         required: false
+      createdAt:
+        type: ISODate
+        required: true
+        autoGenerate: true
+        ui:
+          readOnly: true
+          displayAfterField: '-1'
+      updatedAt:
+        type: ISODate
+        required: true
+        autoUpdate: true
+        ui:
+          displayAfterField: '-2'
     relationships: []
-    inherit:
-    - BaseEntity
+    ui:
+      title: Crawls
+      buttonLabel: Manage Crawls
+      description: Manage Crawls of Event sites
     operations:
     - rd

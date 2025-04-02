@@ -7,31 +7,9 @@ import json
 
 router = APIRouter()
 
-# Helper function to wrap response with metadata
-def wrap_response(data, include_metadata=True):
-    """Wrap response data with metadata for UI generation."""
-    if not include_metadata:
-        return data
-    
-    return {
-        "data": data,
-        "metadata": Event.get_metadata()
-    }
-    
-# Helper function to wrap collection response with metadata
-def wrap_collection_response(data_list, include_metadata=True):
-    """Wrap response data list with metadata for UI generation."""
-    if not include_metadata:
-        return data_list
-    
-    return {
-        "data": data_list,
-        "metadata": Event.get_metadata()
-    }
-    
 # CREATE
 @router.post('/')
-async def create_event(item: EventCreate, include_metadata: bool = True):
+async def create_event(item: EventCreate):
     logging.info("Received request to create a new event.")
     # Instantiate a document from the model
     doc = Event(**item.dict(exclude_unset=True))
@@ -42,11 +20,11 @@ async def create_event(item: EventCreate, include_metadata: bool = True):
         logging.exception("Failed to create event.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_response(doc, include_metadata)
+    return doc
 
 # GET ALL
 @router.get('/')
-async def get_all_events(include_metadata: bool = True):
+async def get_all_events():
     logging.info("Received request to fetch all events.")
     try:
         docs = await Event.find_all().to_list()
@@ -55,11 +33,11 @@ async def get_all_events(include_metadata: bool = True):
         logging.exception("Failed to fetch all events.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_collection_response(docs, include_metadata)
+    return docs
 
 # GET ONE BY ID
 @router.get('/{item_id}')
-async def get_event(item_id: str, include_metadata: bool = True):
+async def get_event(item_id: str):
     logging.info(f"Received request to fetch event with _id: {item_id}")
     try:
         doc = await Event.get(PydanticObjectId(item_id))
@@ -73,11 +51,11 @@ async def get_event(item_id: str, include_metadata: bool = True):
         logging.exception(f"Failed to fetch Event with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_response(doc, include_metadata)
+    return doc
 
 # UPDATE
 @router.put('/{item_id}')
-async def update_event(item_id: str, item: EventCreate, include_metadata: bool = True):
+async def update_event(item_id: str, item: EventCreate):
     logging.info(f"Received request to update event with _id: {item_id}")
     try:
         doc = await Event.get(PydanticObjectId(item_id))
@@ -99,7 +77,7 @@ async def update_event(item_id: str, item: EventCreate, include_metadata: bool =
         logging.exception(f"Failed to update Event with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_response(doc, include_metadata)
+    return doc
 
 # DELETE
 @router.delete('/{item_id}')

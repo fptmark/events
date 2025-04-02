@@ -7,31 +7,9 @@ import json
 
 router = APIRouter()
 
-# Helper function to wrap response with metadata
-def wrap_response(data, include_metadata=True):
-    """Wrap response data with metadata for UI generation."""
-    if not include_metadata:
-        return data
-    
-    return {
-        "data": data,
-        "metadata": Profile.get_metadata()
-    }
-    
-# Helper function to wrap collection response with metadata
-def wrap_collection_response(data_list, include_metadata=True):
-    """Wrap response data list with metadata for UI generation."""
-    if not include_metadata:
-        return data_list
-    
-    return {
-        "data": data_list,
-        "metadata": Profile.get_metadata()
-    }
-    
 # CREATE
 @router.post('/')
-async def create_profile(item: ProfileCreate, include_metadata: bool = True):
+async def create_profile(item: ProfileCreate):
     logging.info("Received request to create a new profile.")
     # Instantiate a document from the model
     doc = Profile(**item.dict(exclude_unset=True))
@@ -42,11 +20,11 @@ async def create_profile(item: ProfileCreate, include_metadata: bool = True):
         logging.exception("Failed to create profile.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_response(doc, include_metadata)
+    return doc
 
 # GET ALL
 @router.get('/')
-async def get_all_profiles(include_metadata: bool = True):
+async def get_all_profiles():
     logging.info("Received request to fetch all profiles.")
     try:
         docs = await Profile.find_all().to_list()
@@ -55,11 +33,11 @@ async def get_all_profiles(include_metadata: bool = True):
         logging.exception("Failed to fetch all profiles.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_collection_response(docs, include_metadata)
+    return docs
 
 # GET ONE BY ID
 @router.get('/{item_id}')
-async def get_profile(item_id: str, include_metadata: bool = True):
+async def get_profile(item_id: str):
     logging.info(f"Received request to fetch profile with _id: {item_id}")
     try:
         doc = await Profile.get(PydanticObjectId(item_id))
@@ -73,11 +51,11 @@ async def get_profile(item_id: str, include_metadata: bool = True):
         logging.exception(f"Failed to fetch Profile with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_response(doc, include_metadata)
+    return doc
 
 # UPDATE
 @router.put('/{item_id}')
-async def update_profile(item_id: str, item: ProfileCreate, include_metadata: bool = True):
+async def update_profile(item_id: str, item: ProfileCreate):
     logging.info(f"Received request to update profile with _id: {item_id}")
     try:
         doc = await Profile.get(PydanticObjectId(item_id))
@@ -99,7 +77,7 @@ async def update_profile(item_id: str, item: ProfileCreate, include_metadata: bo
         logging.exception(f"Failed to update Profile with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_response(doc, include_metadata)
+    return doc
 
 # DELETE
 @router.delete('/{item_id}')

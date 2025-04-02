@@ -1,3 +1,4 @@
+%% @dictionary main { email: "^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", url: "^https?://[^\s]+$" }
 erDiagram
     BaseEntity { 
         ISODate createdAt %% @validate { required: true, autoGenerate: true } @ui {readOnly: true}
@@ -19,11 +20,11 @@ erDiagram
 
     User {
         String username          %% @validate { required: true, minLength: 3, maxLength: 50 }, @unique
-        String email             %% @validate { required: true, minLength: 8, maxLength: 50, pattern: "dictionary=pattern.email", "pattern.message": "Bad email address format" }, @unique
+        String email             %% @validate { required: true, minLength: 8, maxLength: 50, pattern: { regex: "dictionary=main.email", message: "Bad email address format" } }, @unique
         String password          %% @validate { required: true, minLength: 8 } @ui { displayPages: "details", display: "secret" }
         String firstName         %% @validate { required: true, minLength: 3, maxLength: 100 }, @ui { displayName: "First Name" }
         String lastName          %% @validate { required: true, minLength: 3, maxLength: 100 }, @ui { displayName: "Last Name" }
-        String gender            %% @validate { required: false, enum: ["male", "female", "other"], "enum.message": "must be male or female" }
+        String gender            %% @validate { required: false, enum: { values: ["male", "female", "other"], message: "must be male or female" } }
         ISODate dob         
         Boolean isAccountOwner   %% @validate { required: true }, @ui { displayName: "Owner"}
     
@@ -57,13 +58,13 @@ erDiagram
 
 
     Event {
-        String url                         %% @validate { required: true, pattern: "dictionary=pattern.url", "pattern.message": "Bad URL format" }
+        String url                         %% @validate { required: true, pattern: { regex: "dictionary=main.url", message: "Bad URL format" } }
         String title                       %% @validate { required: true, maxLength: 200 }
         ISODate dateTime                   %% @validate { required: true }
         String location                    %% @validate { required: false, maxLength: 200 }
         Number cost                        %% @validate { required: false, min: 0 } @ui { displayPages: "details"}
         Integer numOfExpectedAttendees     %% @validate { required: false, min: 0 } @ui { displayPages: "details"}
-        String recurrence                  %% @validate { required: false, enum: ["daily", "weekly", "monthly", "yearly"] } @ui { displayPages: "details"}
+        String recurrence                  %% @validate { required: false, enum: { values: ["daily", "weekly", "monthly", "yearly"] } } @ui { displayPages: "details"}
         Array[String] tags                 %% @validate { required: false } @ui { displayPages: "details"}
     
         %% @ui { title: "Events", buttonLabel: "Manage Events" }
@@ -82,7 +83,7 @@ erDiagram
 
 
     Url {
-        String url       %% @validate { required: true, pattern: "dictionary=pattern.url", "pattern.message": "Bad URL format" }
+        String url       %% @validate { required: true, pattern: { regex: "main.url", message: "Bad URL format" } }
         JSON params      %% @validate { required: false }
     
         %% @ui { title: "Url", buttonLabel: "Manage Urls", description: "Manage Event Urls" }
@@ -108,4 +109,3 @@ erDiagram
     Url ||--o{ Crawl: ""
 
 
-%% @dictionary pattern { email: "^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", url: "^https?://[^\s]+$" }

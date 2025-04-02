@@ -1,4 +1,3 @@
-import copy
 import sys
 from pathlib import Path
 from app.utilities.config import load_config 
@@ -91,7 +90,7 @@ def read_root():
 
 @app.get('/api/entities')
 def get_entities_metadata():
-    result = [
+    return [
         Account.get_metadata(),     
         User.get_metadata(),     
         Profile.get_metadata(),     
@@ -101,11 +100,6 @@ def get_entities_metadata():
         Url.get_metadata(),     
         Crawl.get_metadata(),     
     ]
-
-    r1 = copy.deepcopy(result)
-    for r in r1:
-        r.pop('fields')
-    return r1
 
 if __name__ == '__main__':
     import uvicorn

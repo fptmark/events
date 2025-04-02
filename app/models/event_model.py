@@ -16,7 +16,7 @@ class UniqueValidationError(Exception):
 
 class Event(Document):
     # Base fields
-    url: str = Field(...)
+    url: str = Field(..., regex=r"^https?://[^s]+$")
     title: str = Field(..., max_length=200)
     dateTime: datetime = Field(...)
     location: Optional[str] = Field(None, max_length=200)
@@ -29,7 +29,7 @@ class Event(Document):
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Event', 'ui': {'title': 'Events', 'buttonLabel': 'Manage Events'}, 'operations': '', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': '^https?://[^s]+$', 'pattern.message': 'Bad URL format'}, 'title': {'type': 'String', 'required': True, 'maxLength': 200}, 'dateTime': {'type': 'ISODate', 'required': True}, 'location': {'type': 'String', 'required': False, 'maxLength': 200}, 'cost': {'type': 'Number', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'numOfExpectedAttendees': {'type': 'Integer', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'recurrence': {'type': 'String', 'required': False, 'options': ['daily', 'weekly', 'monthly', 'yearly'], 'ui': {'displayPages': 'details'}}, 'tags': {'type': 'Array[String]', 'required': False, 'ui': {'displayPages': 'details'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Event', 'ui': {'title': 'Events', 'buttonLabel': 'Manage Events'}, 'operations': '', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': {'regex': '^https?://[^s]+$', 'message': 'Bad URL format'}}, 'title': {'type': 'String', 'required': True, 'maxLength': 200}, 'dateTime': {'type': 'ISODate', 'required': True}, 'location': {'type': 'String', 'required': False, 'maxLength': 200}, 'cost': {'type': 'Number', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'numOfExpectedAttendees': {'type': 'Integer', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'recurrence': {'type': 'String', 'required': False, 'enum': {'values': ['daily', 'weekly', 'monthly', 'yearly']}, 'ui': {'displayPages': 'details'}}, 'tags': {'type': 'Array[String]', 'required': False, 'ui': {'displayPages': 'details'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}}}
     
     class Settings:
         name = "event"
@@ -48,7 +48,7 @@ class Event(Document):
 
 class EventCreate(BaseModel):
     # Fields for create operations
-    url: str = Field(...)
+    url: str = Field(..., regex=r"^https?://[^s]+$")
     title: str = Field(..., max_length=200)
     dateTime: datetime = Field(...)
     location: Optional[str] = Field(None, max_length=200)
@@ -60,9 +60,9 @@ class EventCreate(BaseModel):
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     @validator('url')
     def validate_url(cls, v):
-        _custom = {"pattern": "Bad URL format"}
+        _custom = {}
         if v is not None and not re.match(r'^https?://[^s]+$', v):
-            raise ValueError(_custom["pattern"])
+            raise ValueError("Bad URL format")
         return v
     @validator('title')
     def validate_title(cls, v):
@@ -102,7 +102,7 @@ class EventCreate(BaseModel):
 class EventRead(BaseModel):
     # Fields for read operations
     id: Optional[PydanticObjectId] = Field(alias="_id")
-    url: str = Field(None)
+    url: str = Field(None, regex=r"^https?://[^s]+$")
     title: str = Field(None, max_length=200)
     dateTime: datetime = Field(None)
     location: Optional[str] = Field(None, max_length=200)

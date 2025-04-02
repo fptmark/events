@@ -7,31 +7,9 @@ import json
 
 router = APIRouter()
 
-# Helper function to wrap response with metadata
-def wrap_response(data, include_metadata=True):
-    """Wrap response data with metadata for UI generation."""
-    if not include_metadata:
-        return data
-    
-    return {
-        "data": data,
-        "metadata": UserEvent.get_metadata()
-    }
-    
-# Helper function to wrap collection response with metadata
-def wrap_collection_response(data_list, include_metadata=True):
-    """Wrap response data list with metadata for UI generation."""
-    if not include_metadata:
-        return data_list
-    
-    return {
-        "data": data_list,
-        "metadata": UserEvent.get_metadata()
-    }
-    
 # CREATE
 @router.post('/')
-async def create_userevent(item: UserEventCreate, include_metadata: bool = True):
+async def create_userevent(item: UserEventCreate):
     logging.info("Received request to create a new userevent.")
     # Instantiate a document from the model
     doc = UserEvent(**item.dict(exclude_unset=True))
@@ -42,11 +20,11 @@ async def create_userevent(item: UserEventCreate, include_metadata: bool = True)
         logging.exception("Failed to create userevent.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_response(doc, include_metadata)
+    return doc
 
 # GET ALL
 @router.get('/')
-async def get_all_userevents(include_metadata: bool = True):
+async def get_all_userevents():
     logging.info("Received request to fetch all userevents.")
     try:
         docs = await UserEvent.find_all().to_list()
@@ -55,11 +33,11 @@ async def get_all_userevents(include_metadata: bool = True):
         logging.exception("Failed to fetch all userevents.")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_collection_response(docs, include_metadata)
+    return docs
 
 # GET ONE BY ID
 @router.get('/{item_id}')
-async def get_userevent(item_id: str, include_metadata: bool = True):
+async def get_userevent(item_id: str):
     logging.info(f"Received request to fetch userevent with _id: {item_id}")
     try:
         doc = await UserEvent.get(PydanticObjectId(item_id))
@@ -73,11 +51,11 @@ async def get_userevent(item_id: str, include_metadata: bool = True):
         logging.exception(f"Failed to fetch UserEvent with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_response(doc, include_metadata)
+    return doc
 
 # UPDATE
 @router.put('/{item_id}')
-async def update_userevent(item_id: str, item: UserEventCreate, include_metadata: bool = True):
+async def update_userevent(item_id: str, item: UserEventCreate):
     logging.info(f"Received request to update userevent with _id: {item_id}")
     try:
         doc = await UserEvent.get(PydanticObjectId(item_id))
@@ -99,7 +77,7 @@ async def update_userevent(item_id: str, item: UserEventCreate, include_metadata
         logging.exception(f"Failed to update UserEvent with _id: {item_id}")
         raise HTTPException(status_code=500, detail='Internal Server Error')
     
-    return wrap_response(doc, include_metadata)
+    return doc
 
 # DELETE
 @router.delete('/{item_id}')

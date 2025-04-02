@@ -16,14 +16,14 @@ class UniqueValidationError(Exception):
 
 class Url(Document):
     # Base fields
-    url: str = Field(...)
+    url: str = Field(..., regex=r"main.url")
     params: Optional[dict] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Url', 'ui': {'title': 'Url', 'buttonLabel': 'Manage Urls', 'description': 'Manage Event Urls'}, 'operations': '', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': '^https?://[^s]+$', 'pattern.message': 'Bad URL format'}, 'params': {'type': 'JSON', 'required': False}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Url', 'ui': {'title': 'Url', 'buttonLabel': 'Manage Urls', 'description': 'Manage Event Urls'}, 'operations': '', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': {'regex': 'main.url', 'message': 'Bad URL format'}}, 'params': {'type': 'JSON', 'required': False}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}}}
     
     class Settings:
         name = "url"
@@ -42,15 +42,15 @@ class Url(Document):
 
 class UrlCreate(BaseModel):
     # Fields for create operations
-    url: str = Field(...)
+    url: str = Field(..., regex=r"main.url")
     params: Optional[dict] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     @validator('url')
     def validate_url(cls, v):
-        _custom = {"pattern": "Bad URL format"}
-        if v is not None and not re.match(r'^https?://[^s]+$', v):
-            raise ValueError(_custom["pattern"])
+        _custom = {}
+        if v is not None and not re.match(r'main.url', v):
+            raise ValueError("Bad URL format")
         return v
     class Config:
         orm_mode = True
@@ -59,7 +59,7 @@ class UrlCreate(BaseModel):
 class UrlRead(BaseModel):
     # Fields for read operations
     id: Optional[PydanticObjectId] = Field(alias="_id")
-    url: str = Field(None)
+    url: str = Field(None, regex=r"main.url")
     params: Optional[dict] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

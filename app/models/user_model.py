@@ -17,7 +17,7 @@ class UniqueValidationError(Exception):
 class User(Document):
     # Base fields
     username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(..., min_length=8, max_length=50)
+    email: str = Field(..., min_length=8, max_length=50, regex=r"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$")
     password: str = Field(..., min_length=8)
     firstName: str = Field(..., min_length=3, max_length=100)
     lastName: str = Field(..., min_length=3, max_length=100)
@@ -30,7 +30,7 @@ class User(Document):
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'User', 'ui': {'title': 'Users', 'buttonLabel': 'Manage Users', 'description': 'Manage User Profile'}, 'operations': ['rcu'], 'fields': {'username': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 50}, 'email': {'type': 'String', 'required': True, 'minLength': 8, 'maxLength': 50, 'pattern': '^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$', 'pattern.message': 'Bad email address format'}, 'password': {'type': 'String', 'required': True, 'minLength': 8, 'ui': {'displayPages': 'details', 'display': 'secret'}}, 'firstName': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 100, 'ui': {'displayName': 'First Name'}}, 'lastName': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 100, 'ui': {'displayName': 'Last Name'}}, 'gender': {'type': 'String', 'required': False, 'options': ['male', 'female', 'other'], 'enum.message': 'must be male or female'}, 'dob': {'type': 'ISODate'}, 'isAccountOwner': {'type': 'Boolean', 'required': True, 'ui': {'displayName': 'Owner'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1', 'displayPages': 'summary'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}, 'accountId': {'type': 'ObjectId', 'required': True, 'displayName': 'Account ID', 'readOnly': True}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'User', 'ui': {'title': 'Users', 'buttonLabel': 'Manage Users', 'description': 'Manage User Profile'}, 'operations': ['rcu'], 'fields': {'username': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 50}, 'email': {'type': 'String', 'required': True, 'minLength': 8, 'maxLength': 50, 'pattern': {'regex': '^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$', 'message': 'Bad email address format'}}, 'password': {'type': 'String', 'required': True, 'minLength': 8, 'ui': {'displayPages': 'details', 'display': 'secret'}}, 'firstName': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 100, 'ui': {'displayName': 'First Name'}}, 'lastName': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 100, 'ui': {'displayName': 'Last Name'}}, 'gender': {'type': 'String', 'required': False, 'enum': {'values': ['male', 'female', 'other'], 'message': 'must be male or female'}}, 'dob': {'type': 'ISODate'}, 'isAccountOwner': {'type': 'Boolean', 'required': True, 'ui': {'displayName': 'Owner'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1', 'displayPages': 'summary'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}, 'accountId': {'type': 'ObjectId', 'required': True, 'displayName': 'Account ID', 'readOnly': True}}}
     
     class Settings:
         name = "user"
@@ -50,7 +50,7 @@ class User(Document):
 class UserCreate(BaseModel):
     # Fields for create operations
     username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(..., min_length=8, max_length=50)
+    email: str = Field(..., min_length=8, max_length=50, regex=r"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$")
     password: str = Field(..., min_length=8)
     firstName: str = Field(..., min_length=3, max_length=100)
     lastName: str = Field(..., min_length=3, max_length=100)
@@ -70,13 +70,13 @@ class UserCreate(BaseModel):
         return v
     @validator('email')
     def validate_email(cls, v):
-        _custom = {"pattern": "Bad email address format"}
+        _custom = {}
         if v is not None and len(v) < 8:
             raise ValueError("email must be at least 8 characters")
         if v is not None and len(v) > 50:
             raise ValueError("email must be at most 50 characters")
         if v is not None and not re.match(r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$', v):
-            raise ValueError(_custom["pattern"])
+            raise ValueError("Bad email address format")
         return v
     @validator('password')
     def validate_password(cls, v):
@@ -102,10 +102,10 @@ class UserCreate(BaseModel):
         return v
     @validator('gender')
     def validate_gender(cls, v):
-        _custom = {"enum": "must be male or female"}
+        _custom = {}
         allowed = ["male", "female", "other"]
         if v is not None and v not in allowed:
-            raise ValueError(_custom["enum"])
+            raise ValueError("must be male or female")
         return v
     class Config:
         orm_mode = True
@@ -115,7 +115,7 @@ class UserRead(BaseModel):
     # Fields for read operations
     id: Optional[PydanticObjectId] = Field(alias="_id")
     username: str = Field(None, min_length=3, max_length=50)
-    email: str = Field(None, min_length=8, max_length=50)
+    email: str = Field(None, min_length=8, max_length=50, regex=r"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$")
     password: str = Field(None, min_length=8)
     firstName: str = Field(None, min_length=3, max_length=100)
     lastName: str = Field(None, min_length=3, max_length=100)

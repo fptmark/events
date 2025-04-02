@@ -3,12 +3,13 @@
     "db_name": "eventMgr",
     "host": "127.0.0.1",
     "server_port": 5500,
+    "server_url": "http://localhost:5500/api",
     "angular-ui-url": "http://localhost:4200",
     "log_level": "info",
     "environment": "development",
-    "auth.cookies.redis" : {
-       "host": "127.0.0.1",
-       "port": 6379,
-       "db": 0
+    "auth.cookies.redis": {
+        "host": "127.0.0.1",
+        "port": 6379,
+        "db": 0
     }
 }
