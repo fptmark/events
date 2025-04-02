@@ -1,7 +1,8 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { ROUTE_CONFIG } from './constants';
+import { ConfigService } from './services/config.service';
+import { AllEntitiesService } from './services/all-entities.service';
 
 @Component({
   selector: 'app-root',
@@ -20,11 +21,10 @@ import { ROUTE_CONFIG } from './constants';
             <li class="nav-item">
               <a class="nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">Dashboard</a>
             </li>
-            <li class="nav-item">
-              <a class="nav-link" routerLink="/entity/user" routerLinkActive="active">Users</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" routerLink="/entity/account" routerLinkActive="active">Accounts</a>
+            <li class="nav-item" *ngFor="let entity of recent">
+              <a class="nav-link" [routerLink]="['/entity', (entity | lowercase) ]" routerLinkActive="active">
+                {{ getTitle(entity) }}
+              </a>
             </li>
           </ul>
         </div>
@@ -42,6 +42,24 @@ import { ROUTE_CONFIG } from './constants';
     }
   `]
 })
-export class AppComponent {
+export class AppComponent implements OnInit {
   title = 'Events Management';
+  recent: string[] = []
+
+  constructor(
+    private configService: ConfigService,
+    private allEntitiesService: AllEntitiesService
+  ) {
+  }
+
+  ngOnInit() {
+    // Simple initialization
+    console.log('AppComponent: App initialized');
+    this.recent = this.allEntitiesService.getRecent()
+    console.log(this.recent)
+  }
+
+  getTitle(entityType: string): string {
+    return this.allEntitiesService.getTitle(entityType)
+  }
 }

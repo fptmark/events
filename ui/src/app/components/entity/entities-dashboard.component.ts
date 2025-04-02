@@ -1,9 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { EntityService, EntityMetadata } from '../../services/entity.service';
+import { AllEntitiesService, AllEntitiesMetadata } from '../../services/all-entities.service';
 import { CommonModule } from '@angular/common';
-import { ROUTE_CONFIG } from '../../constants';
-import { EntityComponentService } from '../../services/entity-component.service';
 
 @Component({
   selector: 'app-entities-dashboard',
@@ -25,10 +23,10 @@ import { EntityComponentService } from '../../services/entity-component.service'
         <div *ngFor="let entity of entityTypes" class="col">
           <div class="card h-100">
             <div class="card-body">
-              <h5 class="card-title">{{ entityComponent.getTitle(entity, entity.entity) }}</h5>
-              <p class="card-text">{{ entityComponent.getDescription(entity) }}</p>
+              <h5 class="card-title">{{ allEntitiesService.getTitle(entity.entity) }}</h5>
+              <p class="card-text">{{ allEntitiesService.getDescription(entity.entity) }}</p>
               <button class="btn btn-primary" (click)="navigateToEntity(entity.entity)">
-                {{ entityComponent.getButtonLabel(entity) }}
+                {{ allEntitiesService.getButtonLabel(entity.entity) }}
               </button>
             </div>
           </div>
@@ -43,37 +41,44 @@ import { EntityComponentService } from '../../services/entity-component.service'
   `]
 })
 export class EntitiesDashboardComponent implements OnInit {
-  entityTypes: EntityMetadata[] = [];
+  entityTypes: AllEntitiesMetadata[] = [];
   loading: boolean = true;
   error: string = '';
 
   constructor(
-    public entityComponent: EntityComponentService,
-    private entityService: EntityService,
+    public allEntitiesService: AllEntitiesService,
     private router: Router
   ) {}
 
   ngOnInit(): void {
-    this.loadEntityTypes();
+    console.log('EntitiesDashboardComponent: Initializing');
+    
+    // Wait for entities to be loaded
+    this.allEntitiesService.waitForEntities()
+      .then(() => {
+        // Now we can safely get the entities
+        this.entityTypes = this.allEntitiesService.getAvailableEntities();
+        console.log('EntitiesDashboardComponent: Entities loaded:', this.entityTypes.length);
+        
+        // Show error if no entities found
+        if (this.entityTypes.length === 0) {
+          console.log('EntitiesDashboardComponent: No entities found');
+          this.error = 'No entities found. Please refresh the page.';
+        }
+        
+        // Data is ready to display
+        this.loading = false;
+      })
+      .catch(error => {
+        console.error('EntitiesDashboardComponent: Error loading entities:', error);
+        this.error = 'Error loading entities. Please refresh the page.';
+        this.loading = false;
+      });
   }
 
-  loadEntityTypes(): void {
-    this.loading = true;
-    this.error = '';
-    
-    this.entityService.getAvailableEntities().subscribe({
-      next: (metadata) => {
-        this.entityTypes = metadata;
-        this.loading = false;
-      },
-      error: (err) => {
-        this.error = 'Failed to load entity types. Please try again later.';
-        this.loading = false;
-      }
-    });
-  }
 
   navigateToEntity(entityType: string): void {
-    this.router.navigate([ROUTE_CONFIG.getEntityListRoute(entityType)]);
+    this.allEntitiesService.addRecent(entityType)
+    this.router.navigate(['/entity', entityType]);
   }
 }

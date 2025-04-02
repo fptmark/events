@@ -1,25 +1,17 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { map, tap } from 'rxjs/operators';
-import { API_CONFIG } from '../constants';
-import { EntityAttributesService } from './entity-attributes.service';
+import { Observable, tap } from 'rxjs';
+import { ConfigService } from './config.service';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { AllEntitiesService } from './all-entities.service';
 
 export interface Entity {
   _id: string;
-  createdAt?: string;
-  updatedAt?: string;
   [key: string]: any;
 }
 
-export interface EntityFieldMetadataUI {
-  displayName?: string;
-  widget?: string;
-  readOnly?: boolean;
-}
-
-export interface EntityFieldMetadata {
-  type: string;  // Only type is required
+export interface EntityMetadata {
+  type: string;
   displayName?: string;
   display?: string;
   displayPages?: string;
@@ -35,135 +27,69 @@ export interface EntityFieldMetadata {
   max?: number;
   autoGenerate?: boolean;
   autoUpdate?: boolean;
-  ui?: EntityFieldMetadataUI;
 }
 
-export interface EntityMetadataUI {
-  title?: string;
-  buttonLabel?: string;
-  description?: string;
+export interface EntityData {
+  [key: string]: any;
 }
 
-export interface EntityMetadata {
-  entity: string;
-  displayName: string;
-  ui?: EntityMetadataUI;
-  operations?: string;
-  fields: {
-    [key: string]: EntityFieldMetadata
-  };
-}
-
-
-export interface EntityResponse<T = Entity> {
+export interface EntityResponse<T = EntityData> {
   data: T | T[];
-  metadata: EntityMetadata;
-}
-
-export interface EntityMetadataResponse {
-  entity: string;
-  displayName: string;
-  ui: EntityMetadataUI;
+  // No metadata in entity responses anymore, it comes from all-entities
 }
 
 @Injectable({
   providedIn: 'root'
 })
 export class EntityService {
-
   constructor(
     private http: HttpClient,
-    private entityAttributes: EntityAttributesService
+    private configService: ConfigService,
+    private sanitizer: DomSanitizer,
+    private allEntitiesService: AllEntitiesService
   ) {}
 
-  getEntities(entityType: string): Observable<{ entities: Entity[], metadata: EntityMetadata }> {
-    console.log(">> getEntities using", API_CONFIG.getApiUrl(entityType));
-    return this.http.get<EntityResponse<Entity>>(API_CONFIG.getApiUrl(entityType)).pipe(
-      map(response => {
-        let entities = Array.isArray(response.data) ? response.data : [response.data];
-        
-        // TODO: Apply afterLoad hook when hooks are implemented
-        // entities = this.entityAttributes.applyAfterLoad(entityType, entities);
-        
-        return {
-          entities: entities,
-          metadata: response.metadata
-        };
-      })
-    );
-  }
-   
-  getEntity(entityType: string, id: string): Observable<{ entity: Entity, metadata: EntityMetadata }> {
-    return this.http.get<EntityResponse<Entity>>(`${API_CONFIG.getApiUrl(entityType)}/${id}`).pipe(
-      map(response => {
-        return {
-          entity: Array.isArray(response.data) ? response.data[0] : response.data,
-          metadata: response.metadata
-        };
-      })
-    );
+  initDisplayFields(fields: { [key: string]: EntityMetadata } | null, view: 'list' | 'details' | 'form'): string[] {
+    if (!fields) return []
+    return Object.keys(fields)
   }
 
-  createEntity(entityType: string, entity: Entity): Observable<Entity> {
-    // TODO: Apply beforeCreate hook when hooks are implemented
-    // const transformedEntity = this.entityAttributes.applyBeforeCreate(entityType, entity);
-    const transformedEntity = entity;
-    
-    return this.http.post<EntityResponse<Entity>>(API_CONFIG.getApiUrl(entityType), transformedEntity).pipe(
-      map(response => {
-        return Array.isArray(response.data) ? response.data[0] : response.data;
-      })
-    );
+  formatFieldValue(entity: Entity, fieldName: string): SafeHtml {
+    if (!entity || entity[fieldName] === undefined || entity[fieldName] === null) {
+      return this.sanitizer.bypassSecurityTrustHtml('')
+    }
+    return this.sanitizer.bypassSecurityTrustHtml(String(entity[fieldName]))
   }
 
-  updateEntity(entityType: string, id: string, entity: Entity): Observable<Entity> {
-    // TODO: Apply beforeUpdate hook when hooks are implemented
-    // const transformedEntity = this.entityAttributes.applyBeforeUpdate(entityType, entity);
-    const transformedEntity = entity;
-    
-    return this.http.put<EntityResponse<Entity>>(`${API_CONFIG.getApiUrl(entityType)}/${id}`, transformedEntity).pipe(
-      map(response => {
-        return Array.isArray(response.data) ? response.data[0] : response.data;
-      })
-    );
+  getFieldDisplayName(fieldName: string): string {
+    return fieldName
+  }
+
+  getFieldWidget(fieldName: string): string {
+    return 'text'
+  }
+
+  getFieldOptions(fieldName: string): string[] {
+    return []
+  }
+
+  getEntity(entityType: string, id: string): Observable<EntityResponse> {
+    return this.http.get<EntityResponse>(`${this.configService.getApiUrl(entityType)}/${id}`);
+  }
+
+  getEntityList(entityType: string): Observable<EntityResponse> {
+    return this.http.get<EntityResponse>(`${this.configService.getApiUrl(entityType)}`);
+  }
+
+  createEntity(entityType: string, entityData: any): Observable<EntityResponse> {
+    return this.http.post<EntityResponse>(this.configService.getApiUrl(entityType), entityData);
+  }
+
+  updateEntity(entityType: string, id: string, entityData: any): Observable<EntityResponse> {
+    return this.http.put<EntityResponse>(`${this.configService.getApiUrl(entityType)}/${id}`, entityData);
   }
 
   deleteEntity(entityType: string, id: string): Observable<any> {
-    // TODO: Apply beforeDelete hook when hooks are implemented
-    /* 
-    if (!this.entityAttributes.applyBeforeDelete(entityType, id)) {
-      return new Observable(observer => {
-        observer.error(new Error('Delete operation cancelled by validation rule'));
-        observer.complete();
-      });
-    }
-    */
-    
-    return this.http.delete(`${API_CONFIG.getApiUrl(entityType)}/${id}`);
-  }
-
-  getMetadata(entityType: string): Observable<EntityMetadata> {
-    // Get metadata from the base endpoint - API already includes metadata with the response
-    return this.http.get<any>(`${API_CONFIG.getApiUrl(entityType)}`).pipe(
-      map(response => {
-        if (!response.metadata) {
-          console.error('No metadata found in response:', response);
-          throw new Error('Metadata not available in the API response');
-        }
-        
-        return response.metadata;
-      })
-    );
-  }
-  
-  // No longer needed as we're not storing entity attributes
-  // The EntityAttributesService now processes metadata directly
-
-  getAvailableEntities(): Observable<EntityMetadataResponse[]> {
-    return this.http.get<EntityMetadataResponse[]>('/api/entities').pipe(
-      tap(response => {
-        console.log('Available entities:', response);
-      })
-    );
+    return this.http.delete(`${this.configService.getApiUrl(entityType)}/${id}`);
   }
 }

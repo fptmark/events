@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
-import { FormBuilder, FormGroup, Validators, AbstractControl } from '@angular/forms';
-import { EntityMetadata, EntityFieldMetadata } from './entity.service';
-import { EntityAttributesService } from './entity-attributes.service';
+import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
+import { Entity } from './entity.service';
+import { AllEntitiesService, AllEntitiesMetadata } from './all-entities.service';
 
 @Injectable({
   providedIn: 'root'
@@ -10,108 +10,137 @@ export class FormGeneratorService {
 
   constructor(
     private fb: FormBuilder,
-    private entityAttributes: EntityAttributesService
+    private allEntitiesService: AllEntitiesService
   ) {}
 
-  generateForm(metadata: EntityMetadata, initialData?: any): FormGroup {
+  generateForm(metadata: AllEntitiesMetadata, entity?: Entity): FormGroup {
     const formGroup: { [key: string]: AbstractControl } = {};
-    const fields = metadata.fields;
     
-    // Process all fields from metadata
-    Object.keys(fields).forEach(fieldName => {
-      const fieldMeta = fields[fieldName];
-      if (!fieldMeta) return;
-      
-      // No field skipping based on field names
-      
-      // Skip readonly fields for new entities
-      if (!initialData && fieldMeta['ui']?.readOnly) return;
-      
-      // Use showInView to determine field visibility
-      if (!initialData) {
-        // For new entities, only include fields for forms
-        if (!this.entityAttributes.showInView(fieldMeta, 'form')) {
+    // If this is an edit operation and we have an entity
+    if (entity) {
+      // Use the entity object's properties to build form fields
+      Object.keys(entity).forEach(fieldName => {
+        // Skip internal fields like _id for create forms if no entity is provided
+        if (fieldName === '_id' || fieldName === 'createdAt' || fieldName === 'updatedAt') {
+          // For _id and timestamp fields, create disabled controls
+          formGroup[fieldName] = this.fb.control({
+            value: entity[fieldName],
+            disabled: true
+          });
           return;
         }
-      } else {
-        // For existing entities (edit mode)
-        // Include fields marked for forms or details (to show readonly fields)
-        if (!this.entityAttributes.showInView(fieldMeta, 'form') && 
-            !this.entityAttributes.showInView(fieldMeta, 'details')) {
-          return;
+        
+        // Get field metadata if available
+        const fieldMeta = metadata.fields?.[fieldName];
+        const validators = fieldMeta ? this.getValidators(fieldMeta) : [];
+        
+        // Check if field should be read-only
+        const isReadOnly = fieldMeta?.ui?.readOnly === true;
+        
+        if (isReadOnly) {
+          // Create disabled control for read-only fields
+          formGroup[fieldName] = this.fb.control({
+            value: entity[fieldName], 
+            disabled: true
+          }, validators);
+        } else {
+          // Create normal control
+          formGroup[fieldName] = this.fb.control(entity[fieldName], validators);
         }
+      });
+    } else {
+      // This is a create operation
+      // Use metadata fields to build the form
+      if (metadata.fields) {
+        Object.keys(metadata.fields).forEach(fieldName => {
+          const fieldMeta = metadata.fields[fieldName];
+          
+          // Skip read-only fields for create forms
+          if (fieldMeta?.ui?.readOnly) return;
+          
+          // Skip fields that aren't meant for forms
+          if (fieldMeta?.displayPages && 
+              fieldMeta.displayPages !== 'all' && 
+              !fieldMeta.displayPages.includes('form')) {
+            return;
+          }
+          
+          const validators = this.getValidators(fieldMeta);
+          const defaultValue = this.getDefaultValue(fieldMeta);
+          
+          formGroup[fieldName] = this.fb.control(defaultValue, validators);
+        });
       }
-      
-      const validators = this.getValidators(fieldMeta);
-      
-      const initialValue = initialData && initialData[fieldName] !== undefined 
-        ? initialData[fieldName] 
-        : this.getDefaultValue(fieldMeta);
-      
-      // For readOnly fields in edit mode, create a disabled control
-      if (fieldMeta['ui']?.readOnly && initialData) {
-        formGroup[fieldName] = this.fb.control({
-          value: initialValue, 
-          disabled: true
-        }, validators);
-      } else {
-        formGroup[fieldName] = this.fb.control(initialValue, validators);
-      }
-    });
+    }
     
     return this.fb.group(formGroup);
   }
   
-  private getValidators(fieldMeta: EntityFieldMetadata): any[] {
+  private getValidators(fieldMeta: any): any[] {
     const validators = [];
     
+    // Required is at the root level according to sample payload
     if (fieldMeta.required) {
       validators.push(Validators.required);
     }
     
-    if (fieldMeta.minLength) {
-      validators.push(Validators.minLength(fieldMeta.minLength));
+    // These validations might be in the UI object or at root level
+    const minLength = fieldMeta.ui?.minLength || fieldMeta.minLength;
+    if (minLength) {
+      validators.push(Validators.minLength(minLength));
     }
     
-    if (fieldMeta.maxLength) {
-      validators.push(Validators.maxLength(fieldMeta.maxLength));
+    const maxLength = fieldMeta.ui?.maxLength || fieldMeta.maxLength;
+    if (maxLength) {
+      validators.push(Validators.maxLength(maxLength));
     }
     
-    if (fieldMeta.pattern) {
-      validators.push(Validators.pattern(fieldMeta.pattern));
+    const pattern = fieldMeta.ui?.pattern || fieldMeta.pattern;
+    if (pattern) {
+      validators.push(Validators.pattern(pattern));
     }
     
-    if (fieldMeta.min !== undefined) {
-      validators.push(Validators.min(fieldMeta.min));
+    const min = fieldMeta.ui?.min !== undefined ? fieldMeta.ui.min : fieldMeta.min;
+    if (min !== undefined) {
+      validators.push(Validators.min(min));
     }
     
-    if (fieldMeta.max !== undefined) {
-      validators.push(Validators.max(fieldMeta.max));
+    const max = fieldMeta.ui?.max !== undefined ? fieldMeta.ui.max : fieldMeta.max;
+    if (max !== undefined) {
+      validators.push(Validators.max(max));
     }
     
     // Special case handling for email fields
-    if (fieldMeta.type === 'String' && 
-        (fieldMeta.widget === 'email' || fieldMeta.pattern?.includes('@'))) {
+    const type = fieldMeta.type;
+    const widget = fieldMeta.ui?.widget || fieldMeta.widget;
+    
+    if (type === 'String' && (widget === 'email' || pattern?.includes('@'))) {
       validators.push(Validators.email);
     }
     
     return validators;
   }
   
-  private getDefaultValue(fieldMeta: EntityFieldMetadata): any {
-    switch (fieldMeta.type) {
+  private getDefaultValue(fieldMeta: any): any {
+    const type = fieldMeta.type;
+    const widget = fieldMeta.ui?.widget || fieldMeta.widget;
+    const enumValues = fieldMeta.enum?.values;
+    const required = fieldMeta.required;
+    
+    switch (type) {
       case 'String':
-        // For select fields with options, default to first option if required
-        if (fieldMeta.widget === 'select' && fieldMeta.options && fieldMeta.options.length > 0 && fieldMeta.required) {
-          return fieldMeta.options[0];
+        // For select fields with enum values, default to first value if required
+        if (widget === 'select' && enumValues?.length > 0 && required) {
+          return enumValues[0];
         }
         return '';
       case 'Number':
       case 'Integer':
-        return fieldMeta.required ? 0 : null;
+        return required ? 0 : null;
       case 'Boolean':
         return false;
       case 'Array':
+      case 'Array[String]':
         return [];
       case 'JSON':
         return {};
@@ -124,20 +153,24 @@ export class FormGeneratorService {
     }
   }
   
-  getFormSortedFields(metadata: EntityMetadata): string[] {
-    const fields = metadata.fields;
-    const fieldNames = Object.keys(fields);
+  getFormSortedFields(metadata: AllEntitiesMetadata): string[] {
+    if (!metadata.fields) return [];
+    
+    const fieldNames = Object.keys(metadata.fields);
     
     // Filter fields based on display property and field metadata
     const filteredFields = fieldNames.filter(name => {
-      const fieldMeta = fields[name];
+      const fieldMeta = metadata.fields?.[name];
       if (!fieldMeta) return false;
       
       // Skip readOnly fields for create forms
-      if (fieldMeta.readOnly) return false;
+      if (fieldMeta.ui?.readOnly) return false;
       
-      // Check if field should be shown in forms
-      return this.entityAttributes.showInView(fieldMeta, 'form');
+      // Check if field should be shown in forms based on displayPages
+      const displayPages = fieldMeta.displayPages || '';
+      return displayPages === '' || 
+             displayPages === 'all' || 
+             displayPages.includes('form');
     });
     
     // Return filtered fields directly without sorting

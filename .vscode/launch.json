@@ -13,6 +13,38 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             }
+        },
+        {
+          "name": "Angular",
+          "type": "chrome",
+          "request": "launch",
+          "url": "http://localhost:4200",
+          "webRoot": "${workspaceFolder}/ui/src",
+          "skipFiles": [
+            "<node_internals>/**",
+            "chrome-error://*"
+          ],
+          "sourceMapPathOverrides": {
+            "http://localhost:4200/src/*": "${workspaceFolder}/ui/src/*"
+          },
+          "smartStep": false,
+          "trace": true,
+          "resolveSourceMapLocations": [
+            "${workspaceFolder}/ui/src/**/*",
+            "!**/node_modules/**",
+            "!**/chrome-error://**"
+          ]
+        },
+        {
+          "name": "Attach to Chrome",
+          "type": "pwa-chrome",
+          "request": "attach",
+          "port": 9222,
+          "webRoot": "${workspaceFolder}/ui/src",
+          "sourceMapPathOverrides": {
+            "webpack:///src/*": "${workspaceFolder}/ui/src/*",
+            "webpack:///./src/*": "${workspaceFolder}/ui/src/*"
+          }
         }
     ]
 }

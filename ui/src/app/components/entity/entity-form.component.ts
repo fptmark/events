@@ -1,12 +1,11 @@
 import { Component, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
-import { Entity, EntityMetadata, EntityFieldMetadata } from '../../services/entity.service';
-import { EntityService } from '../../services/entity.service';
-import { EntityComponentService } from '../../services/entity-component.service';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { EntityService, Entity } from '../../services/entity.service';
+import { AllEntitiesService, AllEntitiesMetadata } from '../../services/all-entities.service';
+import { FormGeneratorService } from '../../services/form-generator.service';
 import { CommonModule } from '@angular/common';
+// Removed constants import as constants.ts was removed
 
 @Component({
   selector: 'app-entity-form',
@@ -15,8 +14,8 @@ import { CommonModule } from '@angular/common';
   template: `
     <div class="container mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>{{ entityComponent.getTitle(metadata, entityType) }} {{ isEditMode ? 'Edit' : 'Create' }}</h2>
-        <button class="btn btn-secondary" (click)="goBack()">Back</button>
+        <h2>{{ isEditMode ? 'Edit' : 'Create' }} {{ entityType | titlecase }}</h2>
+        <button class="btn btn-secondary" (click)="goBack()">Back to List</button>
       </div>
       
       <div *ngIf="loading" class="text-center">
@@ -29,150 +28,325 @@ import { CommonModule } from '@angular/common';
       
       <div *ngIf="!loading && !error && entityForm">
         <form [formGroup]="entityForm" (ngSubmit)="onSubmit()">
-          <div class="row">
-            <div *ngFor="let field of sortedFields" class="col-md-6 mb-3">
-              <div class="form-group">
-                <label [for]="field">{{ entityComponent.getFieldDisplayName(field) }}</label>
-                <ng-container [ngSwitch]="entityComponent.getFieldWidget(field)">
-                  <input *ngSwitchCase="'text'" 
-                         [type]="'text'" 
-                         [id]="field" 
-                         class="form-control" 
-                         [formControlName]="field"
-                         [class.is-invalid]="isFieldInvalid(field)">
-                  <textarea *ngSwitchCase="'textarea'" 
-                           [id]="field" 
-                           class="form-control" 
-                           [formControlName]="field"
-                           [class.is-invalid]="isFieldInvalid(field)"></textarea>
-                  <select *ngSwitchCase="'select'" 
-                          [id]="field" 
-                          class="form-control" 
-                          [formControlName]="field"
-                          [class.is-invalid]="isFieldInvalid(field)">
-                    <option value="">Select...</option>
-                    <option *ngFor="let option of entityComponent.getFieldOptions(field)" 
-                            [value]="option">
-                      {{ option }}
-                    </option>
-                  </select>
-                  <select *ngSwitchCase="'multiselect'" 
-                          [id]="field" 
-                          class="form-control" 
-                          [formControlName]="field"
-                          multiple
-                          [class.is-invalid]="isFieldInvalid(field)">
-                    <option *ngFor="let option of entityComponent.getFieldOptions(field)" 
-                            [value]="option">
-                      {{ option }}
-                    </option>
-                  </select>
+          <div class="card">
+            <div class="card-body">
+              <div class="row">
+                <ng-container *ngFor="let fieldName of sortedFields">
+                  <div class="col-md-6 mb-3">
+                    <label [for]="fieldName" class="form-label">
+                      {{ getFieldDisplayName(fieldName) }}
+                      <span *ngIf="isFieldRequired(fieldName)" class="text-danger">*</span>
+                    </label>
+                    
+                    <!-- Input field based on field type and widget -->
+                    <span *ngIf="true">
+                    <ng-container [ngSwitch]="getFieldWidget(fieldName)">
+                      
+                      <!-- Select dropdown -->
+                      <select *ngSwitchCase="'select'" 
+                        [id]="fieldName" 
+                        [formControlName]="fieldName" 
+                        class="form-select"
+                        [class.is-invalid]="isFieldInvalid(fieldName)">
+                        <option value="">Select {{ getFieldDisplayName(fieldName) }}</option>
+                        <option *ngFor="let option of getFieldOptions(fieldName)" [value]="option">
+                          {{ option }}
+                        </option>
+                      </select>
+                      
+                      <!-- Checkbox -->
+                      <div *ngSwitchCase="'checkbox'" class="form-check mt-2">
+                        <input type="checkbox" 
+                          [id]="fieldName" 
+                          [formControlName]="fieldName" 
+                          class="form-check-input"
+                          [class.is-invalid]="isFieldInvalid(fieldName)">
+                        <label [for]="fieldName" class="form-check-label">
+                          {{ getFieldDisplayName(fieldName) }}
+                        </label>
+                      </div>
+                      
+                      <!-- Textarea -->
+                      <textarea *ngSwitchCase="'textarea'" 
+                        [id]="fieldName" 
+                        [formControlName]="fieldName" 
+                        class="form-control"
+                        [class.is-invalid]="isFieldInvalid(fieldName)"
+                        rows="3"></textarea>
+                      
+                      <!-- Date input -->
+                      <input *ngSwitchCase="'date'" 
+                        type="datetime-local" 
+                        [id]="fieldName" 
+                        [formControlName]="fieldName" 
+                        class="form-control"
+                        [class.is-invalid]="isFieldInvalid(fieldName)">
+                      
+                      <!-- Password input -->
+                      <input *ngSwitchCase="'password'" 
+                        type="password" 
+                        [id]="fieldName" 
+                        [formControlName]="fieldName" 
+                        class="form-control"
+                        [class.is-invalid]="isFieldInvalid(fieldName)">
+                        
+                      <!-- Email input -->
+                      <input *ngSwitchCase="'email'" 
+                        type="email" 
+                        [id]="fieldName" 
+                        [formControlName]="fieldName" 
+                        class="form-control"
+                        [class.is-invalid]="isFieldInvalid(fieldName)">
+                        
+                      <!-- Reference input (for ObjectId fields) -->
+                      <input *ngSwitchCase="'reference'" 
+                        type="text" 
+                        [id]="fieldName" 
+                        [formControlName]="fieldName" 
+                        class="form-control"
+                        [class.is-invalid]="isFieldInvalid(fieldName)"
+                        placeholder="Select or enter ID">
+                      
+                      <!-- JSON input -->
+                      <textarea *ngSwitchCase="'json'" 
+                        [id]="fieldName" 
+                        [formControlName]="fieldName" 
+                        class="form-control"
+                        [class.is-invalid]="isFieldInvalid(fieldName)"
+                        rows="3"
+                        placeholder="{ }"></textarea>
+                      
+                      <!-- Array input -->
+                      <textarea *ngSwitchCase="'array'" 
+                        [id]="fieldName" 
+                        [formControlName]="fieldName" 
+                        class="form-control"
+                        [class.is-invalid]="isFieldInvalid(fieldName)"
+                        rows="3"
+                        placeholder="[]"></textarea>
+                      
+                      <!-- Default text input -->
+                      <input *ngSwitchDefault 
+                        type="text" 
+                        [id]="fieldName" 
+                        [formControlName]="fieldName" 
+                        class="form-control"
+                        [class.is-invalid]="isFieldInvalid(fieldName)">
+                    </ng-container>
+                    </span>
+                    
+                    <!-- Validation error messages -->
+                    <div *ngIf="isFieldInvalid(fieldName)" class="invalid-feedback">
+                      <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['required']">
+                        {{ getFieldDisplayName(fieldName) }} is required.
+                      </div>
+                      <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['minlength']">
+                        {{ getFieldDisplayName(fieldName) }} must be at least 
+                        {{ entityForm.get(fieldName)?.errors?.['minlength']?.requiredLength }} characters.
+                      </div>
+                      <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['maxlength']">
+                        {{ getFieldDisplayName(fieldName) }} cannot exceed 
+                        {{ entityForm.get(fieldName)?.errors?.['maxlength']?.requiredLength }} characters.
+                      </div>
+                      <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['pattern']">
+                        {{ getFieldDisplayName(fieldName) }} has an invalid format.
+                      </div>
+                      <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['min']">
+                        {{ getFieldDisplayName(fieldName) }} must be at least 
+                        {{ entityForm.get(fieldName)?.errors?.['min']?.min }}.
+                      </div>
+                      <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['max']">
+                        {{ getFieldDisplayName(fieldName) }} cannot exceed 
+                        {{ entityForm.get(fieldName)?.errors?.['max']?.max }}.
+                      </div>
+                    </div>
+                  </div>
                 </ng-container>
-                <div *ngIf="isFieldInvalid(field)" class="invalid-feedback">
-                  Please provide a valid value.
-                </div>
               </div>
             </div>
-          </div>
-          
-          <div class="mt-4">
-            <button type="submit" 
-                    class="btn btn-primary" 
-                    [disabled]="entityForm.invalid || submitting">
-              {{ submitting ? 'Saving...' : 'Save' }}
-            </button>
+            <div class="card-footer">
+              <button type="submit" class="btn btn-primary" [disabled]="entityForm && entityForm.invalid || submitting">
+                {{ submitting ? 'Saving...' : (isEditMode ? 'Update' : 'Create') }}
+              </button>
+            </div>
           </div>
         </form>
       </div>
     </div>
   `,
   styles: [`
-    .container { max-width: 900px; }
+    .container { max-width: 1000px; }
   `]
 })
 export class EntityFormComponent implements OnInit {
   entityType: string = '';
-  entityId: string | null = null;
-  entity: Entity | null = null;
-  metadata!: EntityMetadata;
-  fields: { [key: string]: EntityFieldMetadata } | null = null;
-  entityForm: FormGroup;
-  displayFields: string[] = [];
-  validationMessages: { [key: string]: string } = {};
+  entityId: string = '';
   isEditMode: boolean = false;
+  
+  entity: Entity | null = null;
+  metadata: AllEntitiesMetadata | null = null;
+  entityForm: FormGroup | null = null;
+  sortedFields: string[] = [];
   
   loading: boolean = true;
   submitting: boolean = false;
   error: string = '';
-  sortedFields: string[] = [];
 
   constructor(
-    private route: ActivatedRoute,
-    private router: Router,
-    private fb: FormBuilder,
     private entityService: EntityService,
-    public entityComponent: EntityComponentService
-  ) {
-    this.entityForm = this.fb.group({});
-  }
+    private formGenerator: FormGeneratorService,
+    private allEntitiesService: AllEntitiesService,
+    private route: ActivatedRoute,
+    private router: Router
+  ) {}
 
   ngOnInit(): void {
     this.route.params.subscribe(params => {
       this.entityType = params['entityType'];
-      this.entityId = params['id'] || null;
-      this.isEditMode = !!this.entityId;
-      this.loadEntity();
+      this.entityId = params['id'];
+      this.isEditMode = this.route.snapshot.url.some(segment => segment.path === 'edit');
+      
+      if (this.isEditMode) {
+        this.loadEntityForEdit();
+      } else {
+        this.loadMetadataForCreate();
+      }
     });
   }
 
-  private loadEntity(): void {
-    if (this.entityId) {
-      this.loading = true;
-      this.error = '';
-      
-      this.entityComponent.loadEntity(this.entityType, this.entityId).subscribe({
-        next: ({ entity, metadata }) => {
-          this.entity = entity;
-          this.metadata = metadata;
+  loadMetadataForCreate(): void {
+    this.loading = true;
+    this.error = '';
+    
+    // Wait for entities to be loaded
+    this.allEntitiesService.waitForEntities()
+      .then(() => {
+        try {
+          // Get metadata from AllEntitiesService
+          this.metadata = this.allEntitiesService.getEntityMetadata(this.entityType);
+          this.initForm();
+          this.loading = false;
+        } catch (err) {
+          console.error('Error loading metadata:', err);
+          this.error = 'Failed to load form. Please try again later.';
+          this.loading = false;
+        }
+      })
+      .catch(error => {
+        console.error('Error waiting for entities:', error);
+        this.error = 'Failed to load entity metadata. Please refresh the page.';
+        this.loading = false;
+      });
+  }
+
+  loadEntityForEdit(): void {
+    this.loading = true;
+    this.error = '';
+    
+    // Wait for entities to be loaded
+    this.allEntitiesService.waitForEntities()
+      .then(() => {
+        try {
+          // First get the metadata
+          this.metadata = this.allEntitiesService.getEntityMetadata(this.entityType);
+          
+          // Then load the entity data
+          this.entityService.getEntity(this.entityType, this.entityId).subscribe({
+        next: (response) => {
+          this.entity = Array.isArray(response.data) ? response.data[0] : response.data;
           this.initForm();
           this.loading = false;
         },
         error: (err) => {
-          console.error('Error loading entity:', err);
-          this.error = 'Failed to load entity. Please try again later.';
+          console.error('Error loading entity for edit:', err);
+          this.error = 'Failed to load entity data. Please try again later.';
           this.loading = false;
         }
       });
-    } else {
-      this.loading = true;
-      this.error = '';
-      
-      this.entityComponent.loadEntities(this.entityType).subscribe({
-        next: ({ metadata }) => {
-          this.metadata = metadata;
-          this.initForm();
-          this.loading = false;
-        },
-        error: (err) => {
+        } catch (err) {
           console.error('Error loading metadata:', err);
-          this.error = 'Failed to load form configuration. Please try again later.';
+          this.error = 'Failed to load entity metadata. Please try again later.';
           this.loading = false;
         }
+      })
+      .catch(error => {
+        console.error('Error waiting for entities:', error);
+        this.error = 'Failed to load entity metadata. Please refresh the page.';
+        this.loading = false;
+      });
+  }
+
+  initForm(): void {
+    if (!this.metadata) return;
+    
+    // Generate the form for the entity - convert null to undefined to match expected type
+    this.entityForm = this.formGenerator.generateForm(this.metadata, this.entity || undefined);
+    
+    // Get the list of fields from the generated form
+    if (this.entityForm) {
+      this.sortedFields = Object.keys(this.metadata.fields).filter(field => {
+        return this.entityForm?.get(field) !== null && this.entityForm?.get(field) !== undefined;
       });
     }
   }
 
-  private initForm(): void {
-    if (!this.metadata) return;
+  getFieldDisplayName(fieldName: string): string {
+    if (!this.metadata) return fieldName;
+    return this.metadata.fields[fieldName]?.ui?.displayName || fieldName;
+  }
 
-    const formControls: { [key: string]: any } = {};
-    this.displayFields = Object.keys(this.entity || {});
+  getFieldWidget(fieldName: string): string {
+    const fieldMeta = this.metadata?.fields[fieldName];
+    if (!fieldMeta) return 'text';
+    
+    // If widget is explicitly specified in ui object, use it
+    if (fieldMeta.ui?.widget) return fieldMeta.ui.widget;
+    
+    // Check if field has enum values - use select dropdown
+    if (fieldMeta.enum && fieldMeta.enum.values && fieldMeta.enum.values.length > 0) {
+      return 'select';
+    }
+    
+    // Default widgets based on field type
+    const fieldType = fieldMeta.type;
+    switch (fieldType) {
+      case 'Boolean':
+        return 'checkbox';
+      case 'ISODate':
+        return 'date';
+      case 'String':
+        // Special string field types based on metadata patterns, not field names
+        if (fieldMeta.pattern?.regex?.includes('@')) return 'email';
+        if (fieldMeta.maxLength && fieldMeta.maxLength > 100) return 'textarea';
+        return 'text';
+      case 'ObjectId':
+        return 'reference';
+      case 'Array':
+      case 'Array[String]':
+        return 'array';
+      case 'JSON':
+        return 'json';
+      default:
+        return 'text';
+    }
+  }
 
-    this.displayFields.forEach(field => {
-      formControls[field] = [this.entity?.[field] || '', []];
-    });
 
-    this.entityForm = this.fb.group(formControls);
+  getFieldOptions(fieldName: string): string[] {
+    if (!this.metadata) return [];
+    const fieldMeta = this.metadata.fields[fieldName];
+    if (!fieldMeta || !fieldMeta.enum || !fieldMeta.enum.values) return [];
+    
+    return fieldMeta.enum.values;
+  }
+
+  isFieldRequired(fieldName: string): boolean {
+    if (!this.metadata) return false;
+    const fieldMeta = this.metadata.fields[fieldName];
+    if (!fieldMeta) return false;
+    
+    // Field required property is at the root level, not in the UI object
+    return fieldMeta['required'] || false;
   }
 
   isFieldInvalid(fieldName: string): boolean {
@@ -182,24 +356,25 @@ export class EntityFormComponent implements OnInit {
   }
 
   onSubmit(): void {
-    if (this.entityForm.valid) {
-      const entity = this.entityForm.value;
-      if (this.entityId) {
-        this.updateEntity(entity);
-      } else {
-        this.createEntity(entity);
-      }
+    if (!this.entityForm || this.entityForm.invalid) return;
+    
+    this.submitting = true;
+    const formData = this.entityForm.value;
+    
+    if (this.isEditMode) {
+      this.updateEntity(formData);
+    } else {
+      this.createEntity(formData);
     }
   }
 
   createEntity(formData: any): void {
-    this.submitting = true;
-    this.error = '';
-    
     this.entityService.createEntity(this.entityType, formData).subscribe({
-      next: (result) => {
+      next: (response) => {
         this.submitting = false;
-        this.router.navigate(['/entities', this.entityType]);
+        // Handle the created entity - should be in the response.data
+        const createdEntity = Array.isArray(response.data) ? response.data[0] : response.data;
+        this.router.navigate(['/entity', this.entityType, createdEntity._id]);
       },
       error: (err) => {
         console.error('Error creating entity:', err);
@@ -210,19 +385,16 @@ export class EntityFormComponent implements OnInit {
   }
 
   updateEntity(formData: any): void {
-    this.submitting = true;
-    this.error = '';
-    
-    if (!this.entityId) return;
-    
     this.entityService.updateEntity(this.entityType, this.entityId, formData).subscribe({
-      next: (result) => {
+      next: (response) => {
         this.submitting = false;
-        this.router.navigate(['/entities', this.entityType]);
+        // Get the updated entity from the response data
+        const updatedEntity = Array.isArray(response.data) ? response.data[0] : response.data;
+        this.router.navigate(['/entity', this.entityType, updatedEntity._id]);
       },
       error: (err) => {
         console.error('Error updating entity:', err);
-        this.error = 'Failed to update entity. Please try again later.';
+        this.error = 'Failed to update entity. Please check your data and try again.';
         this.submitting = false;
       }
     });
@@ -230,17 +402,9 @@ export class EntityFormComponent implements OnInit {
 
   goBack(): void {
     if (this.isEditMode && this.entityId) {
-      this.router.navigate(['/entities', this.entityType, this.entityId]);
+      this.router.navigate(['/entity', this.entityType, this.entityId]);
     } else {
-      this.router.navigate(['/entities', this.entityType]);
+      this.router.navigate(['/entity', this.entityType]);
     }
-  }
-
-  getFieldDisplayName(fieldName: string): string {
-    return fieldName;
-  }
-
-  getValidationMessage(fieldName: string): string {
-    return this.validationMessages[fieldName] || '';
   }
 }
