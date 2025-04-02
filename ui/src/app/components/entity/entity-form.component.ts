@@ -1,17 +1,17 @@
 import { Component, OnInit } from '@angular/core';
-import { FormGroup } from '@angular/forms';
+import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { EntityService, Entity, EntityMetadata } from '../../services/entity.service';
-import { CommonModule } from '@angular/common';
-import { ROUTE_CONFIG } from '../../constants';
-import { FormGeneratorService } from '../../services/form-generator.service';
-import { EntityAttributesService } from '../../services/entity-attributes.service';
+import { Entity, EntityMetadata, EntityFieldMetadata } from '../../services/entity.service';
+import { EntityService } from '../../services/entity.service';
 import { EntityComponentService } from '../../services/entity-component.service';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { CommonModule } from '@angular/common';
 
 @Component({
   selector: 'app-entity-form',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ReactiveFormsModule],
   template: `
     <div class="container mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
@@ -32,8 +32,8 @@ import { EntityComponentService } from '../../services/entity-component.service'
           <div class="row">
             <div *ngFor="let field of sortedFields" class="col-md-6 mb-3">
               <div class="form-group">
-                <label [for]="field">{{ entityComponent.getFieldDisplayName(field, metadata) }}</label>
-                <ng-container [ngSwitch]="entityComponent.getFieldWidget(field, metadata)">
+                <label [for]="field">{{ entityComponent.getFieldDisplayName(field) }}</label>
+                <ng-container [ngSwitch]="entityComponent.getFieldWidget(field)">
                   <input *ngSwitchCase="'text'" 
                          [type]="'text'" 
                          [id]="field" 
@@ -51,7 +51,7 @@ import { EntityComponentService } from '../../services/entity-component.service'
                           [formControlName]="field"
                           [class.is-invalid]="isFieldInvalid(field)">
                     <option value="">Select...</option>
-                    <option *ngFor="let option of entityComponent.getFieldOptions(field, metadata)" 
+                    <option *ngFor="let option of entityComponent.getFieldOptions(field)" 
                             [value]="option">
                       {{ option }}
                     </option>
@@ -62,7 +62,7 @@ import { EntityComponentService } from '../../services/entity-component.service'
                           [formControlName]="field"
                           multiple
                           [class.is-invalid]="isFieldInvalid(field)">
-                    <option *ngFor="let option of entityComponent.getFieldOptions(field, metadata)" 
+                    <option *ngFor="let option of entityComponent.getFieldOptions(field)" 
                             [value]="option">
                       {{ option }}
                     </option>
@@ -92,90 +92,87 @@ import { EntityComponentService } from '../../services/entity-component.service'
 })
 export class EntityFormComponent implements OnInit {
   entityType: string = '';
-  entityId: string = '';
-  isEditMode: boolean = false;
-  
+  entityId: string | null = null;
   entity: Entity | null = null;
-  metadata: EntityMetadata | null = null;
-  entityForm: FormGroup | null = null;
-  sortedFields: string[] = [];
+  metadata!: EntityMetadata;
+  fields: { [key: string]: EntityFieldMetadata } | null = null;
+  entityForm: FormGroup;
+  displayFields: string[] = [];
+  validationMessages: { [key: string]: string } = {};
+  isEditMode: boolean = false;
   
   loading: boolean = true;
   submitting: boolean = false;
   error: string = '';
+  sortedFields: string[] = [];
 
   constructor(
-    public entityComponent: EntityComponentService,
-    private entityService: EntityService,
-    private formGenerator: FormGeneratorService,
     private route: ActivatedRoute,
-    private router: Router
-  ) {}
+    private router: Router,
+    private fb: FormBuilder,
+    private entityService: EntityService,
+    public entityComponent: EntityComponentService
+  ) {
+    this.entityForm = this.fb.group({});
+  }
 
   ngOnInit(): void {
     this.route.params.subscribe(params => {
       this.entityType = params['entityType'];
-      this.entityId = params['id'];
+      this.entityId = params['id'] || null;
       this.isEditMode = !!this.entityId;
+      this.loadEntity();
+    });
+  }
+
+  private loadEntity(): void {
+    if (this.entityId) {
+      this.loading = true;
+      this.error = '';
       
-      if (this.isEditMode) {
-        this.loadEntityForEdit();
-      } else {
-        this.loadMetadataForCreate();
-      }
-    });
+      this.entityComponent.loadEntity(this.entityType, this.entityId).subscribe({
+        next: ({ entity, metadata }) => {
+          this.entity = entity;
+          this.metadata = metadata;
+          this.initForm();
+          this.loading = false;
+        },
+        error: (err) => {
+          console.error('Error loading entity:', err);
+          this.error = 'Failed to load entity. Please try again later.';
+          this.loading = false;
+        }
+      });
+    } else {
+      this.loading = true;
+      this.error = '';
+      
+      this.entityComponent.loadEntities(this.entityType).subscribe({
+        next: ({ metadata }) => {
+          this.metadata = metadata;
+          this.initForm();
+          this.loading = false;
+        },
+        error: (err) => {
+          console.error('Error loading metadata:', err);
+          this.error = 'Failed to load form configuration. Please try again later.';
+          this.loading = false;
+        }
+      });
+    }
   }
 
-  loadMetadataForCreate(): void {
-    this.loading = true;
-    this.error = '';
-    
-    this.entityService.getMetadata(this.entityType).subscribe({
-      next: (metadata) => {
-        this.metadata = metadata;
-        this.initForm();
-        this.loading = false;
-      },
-      error: (err) => {
-        console.error('Error loading metadata:', err);
-        this.error = 'Failed to load form configuration. Please try again later.';
-        this.loading = false;
-      }
-    });
-  }
-
-  loadEntityForEdit(): void {
-    this.loading = true;
-    this.error = '';
-    
-    this.entityComponent.loadEntity(this.entityType, this.entityId).subscribe({
-      next: (response) => {
-        this.entity = response.entity;
-        this.metadata = response.metadata;
-        this.initForm();
-        this.loading = false;
-      },
-      error: (err) => {
-        console.error('Error loading entity:', err);
-        this.error = 'Failed to load entity. Please try again later.';
-        this.loading = false;
-      }
-    });
-  }
-
-  initForm(): void {
+  private initForm(): void {
     if (!this.metadata) return;
-    
-    // Get fields that should be shown in the form
-    this.sortedFields = Object.keys(this.metadata.fields).filter(field => {
-      const fieldMeta = this.metadata?.fields[field];
-      if (!fieldMeta) return false;
-      return this.entityComponent.isValidOperation(this.metadata, 'c') && 
-             this.entityComponent.initDisplayFields(this.metadata, 'form').includes(field);
+
+    const formControls: { [key: string]: any } = {};
+    this.displayFields = Object.keys(this.entity || {});
+
+    this.displayFields.forEach(field => {
+      formControls[field] = [this.entity?.[field] || '', []];
     });
-    
-    // Generate the form
-    this.entityForm = this.formGenerator.generateForm(this.metadata, this.entity);
+
+    this.entityForm = this.fb.group(formControls);
   }
 
   isFieldInvalid(fieldName: string): boolean {
@@ -185,23 +182,24 @@ export class EntityFormComponent implements OnInit {
   }
 
   onSubmit(): void {
-    if (!this.entityForm || this.entityForm.invalid) return;
-    
-    this.submitting = true;
-    const formData = this.entityForm.value;
-    
-    if (this.isEditMode) {
-      this.updateEntity(formData);
-    } else {
-      this.createEntity(formData);
+    if (this.entityForm.valid) {
+      const entity = this.entityForm.value;
+      if (this.entityId) {
+        this.updateEntity(entity);
+      } else {
+        this.createEntity(entity);
+      }
     }
   }
 
   createEntity(formData: any): void {
+    this.submitting = true;
+    this.error = '';
+    
     this.entityService.createEntity(this.entityType, formData).subscribe({
       next: (result) => {
         this.submitting = false;
-        this.router.navigate([ROUTE_CONFIG.getEntityDetailRoute(this.entityType, result._id)]);
+        this.router.navigate(['/entities', this.entityType]);
       },
       error: (err) => {
         console.error('Error creating entity:', err);
@@ -212,14 +210,19 @@ export class EntityFormComponent implements OnInit {
   }
 
   updateEntity(formData: any): void {
+    this.submitting = true;
+    this.error = '';
+    
+    if (!this.entityId) return;
+    
     this.entityService.updateEntity(this.entityType, this.entityId, formData).subscribe({
       next: (result) => {
         this.submitting = false;
-        this.router.navigate([ROUTE_CONFIG.getEntityDetailRoute(this.entityType, result._id)]);
+        this.router.navigate(['/entities', this.entityType]);
       },
       error: (err) => {
         console.error('Error updating entity:', err);
-        this.error = 'Failed to update entity. Please check your data and try again.';
+        this.error = 'Failed to update entity. Please try again later.';
         this.submitting = false;
       }
     });
@@ -227,9 +230,17 @@ export class EntityFormComponent implements OnInit {
 
   goBack(): void {
     if (this.isEditMode && this.entityId) {
-      this.router.navigate([ROUTE_CONFIG.getEntityDetailRoute(this.entityType, this.entityId)]);
+      this.router.navigate(['/entities', this.entityType, this.entityId]);
     } else {
-      this.router.navigate([ROUTE_CONFIG.getEntityListRoute(this.entityType)]);
+      this.router.navigate(['/entities', this.entityType]);
     }
+  }
+
+  getFieldDisplayName(fieldName: string): string {
+    return fieldName;
+  }
+
+  getValidationMessage(fieldName: string): string {
+    return this.validationMessages[fieldName] || '';
   }
 }

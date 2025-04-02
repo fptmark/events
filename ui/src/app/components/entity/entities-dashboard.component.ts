@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { EntityService, EntityMetadataResponse } from '../../services/entity.service';
+import { EntityService, EntityMetadata } from '../../services/entity.service';
 import { CommonModule } from '@angular/common';
 import { ROUTE_CONFIG } from '../../constants';
 import { EntityComponentService } from '../../services/entity-component.service';
@@ -11,7 +11,7 @@ import { EntityComponentService } from '../../services/entity-component.service'
   imports: [CommonModule],
   template: `
     <div class="container mt-4">
-      <h2>{{ dashboardTitle }}</h2>
+      <h2>Entity Dashboard</h2>
       
       <div *ngIf="loading" class="text-center">
         <p>Loading...</p>
@@ -21,15 +21,13 @@ import { EntityComponentService } from '../../services/entity-component.service'
         {{ error }}
       </div>
       
-      <div *ngIf="!loading && !error" class="row row-cols-1 row-cols-md-3 g-4 mt-3">
-        <div *ngFor="let entity of entities" class="col">
+      <div *ngIf="!loading && !error" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        <div *ngFor="let entity of entityTypes" class="col">
           <div class="card h-100">
             <div class="card-body">
-              <h5 class="card-title">{{ entityComponent.getTitle(entity) }}</h5>
+              <h5 class="card-title">{{ entityComponent.getTitle(entity, entity.entity) }}</h5>
               <p class="card-text">{{ entityComponent.getDescription(entity) }}</p>
-            </div>
-            <div class="card-footer">
-              <button (click)="navigateToEntity(entity.entity)" class="btn btn-primary">
+              <button class="btn btn-primary" (click)="navigateToEntity(entity.entity)">
                 {{ entityComponent.getButtonLabel(entity) }}
               </button>
             </div>
@@ -40,17 +38,15 @@ import { EntityComponentService } from '../../services/entity-component.service'
   `,
   styles: [`
     .container { max-width: 1200px; }
+    .card { transition: transform 0.2s; }
+    .card:hover { transform: translateY(-5px); }
   `]
 })
 export class EntitiesDashboardComponent implements OnInit {
-  // Entity data
-  entities: EntityMetadataResponse[] = [];
+  entityTypes: EntityMetadata[] = [];
   loading: boolean = true;
   error: string = '';
-  
-  // Customizable text
-  dashboardTitle: string = 'Event Manager Dashboard';
-  
+
   constructor(
     public entityComponent: EntityComponentService,
     private entityService: EntityService,
@@ -66,12 +62,11 @@ export class EntitiesDashboardComponent implements OnInit {
     this.error = '';
     
     this.entityService.getAvailableEntities().subscribe({
-      next: (entities) => {
-        this.entities = entities;
+      next: (metadata) => {
+        this.entityTypes = metadata;
         this.loading = false;
       },
       error: (err) => {
-        console.error('Error loading entity types:', err);
         this.error = 'Failed to load entity types. Please try again later.';
         this.loading = false;
       }

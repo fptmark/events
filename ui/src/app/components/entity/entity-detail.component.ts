@@ -32,8 +32,8 @@ import { EntityComponentService } from '../../services/entity-component.service'
           <div class="card-body">
             <dl class="row">
               <ng-container *ngFor="let field of displayFields">
-                <dt class="col-sm-3">{{ entityComponent.getFieldDisplayName(field, metadata) }}</dt>
-                <dd class="col-sm-9" [innerHTML]="entityComponent.formatFieldValue(entity, field, metadata)"></dd>
+                <dt class="col-sm-3">{{ entityComponent.getFieldDisplayName(field) }}</dt>
+                <dd class="col-sm-9" [innerHTML]="entityComponent.formatFieldValue(entity, field)"></dd>
               </ng-container>
             </dl>
           </div>
@@ -49,7 +49,7 @@ export class EntityDetailComponent implements OnInit {
   entityType: string = '';
   entityId: string = '';
   entity: Entity | null = null;
-  metadata: EntityMetadata | null = null;
+  metadata!: EntityMetadata;
   displayFields: string[] = [];
   loading: boolean = true;
   error: string = '';
@@ -76,7 +76,7 @@ export class EntityDetailComponent implements OnInit {
       next: (response) => {
         this.entity = response.entity;
         this.metadata = response.metadata;
-        this.displayFields = this.entityComponent.initDisplayFields(this.metadata, 'details');
+        this.displayFields = Object.keys(this.entity || {});
         this.loading = false;
       },
       error: (err) => {
@@ -93,5 +93,9 @@ export class EntityDetailComponent implements OnInit {
 
   goBack(): void {
     this.router.navigate([ROUTE_CONFIG.getEntityListRoute(this.entityType)]);
+  }
+
+  isValidOperation(operation: string): boolean {
+    return this.entityComponent.isValidOperation(this.metadata, operation)
   }
 }

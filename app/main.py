@@ -1,3 +1,4 @@
+import copy
 import sys
 from pathlib import Path
 from app.utilities.config import load_config 
@@ -100,7 +101,11 @@ def get_entities_metadata():
         Url.get_metadata(),     
         Crawl.get_metadata(),     
     ]
-    return result
+
+    r1 = copy.deepcopy(result)
+    for r in r1:
+        r.pop('fields')
+    return r1
 
 if __name__ == '__main__':
     import uvicorn
