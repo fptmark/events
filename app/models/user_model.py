@@ -30,7 +30,7 @@ class User(Document):
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'User', 'ui': {'title': 'Users', 'buttonLabel': 'Manage Users', 'description': 'Manage User Profile'}, 'operations': ['rcu'], 'fields': {'username': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 50}, 'email': {'type': 'String', 'required': True, 'minLength': 8, 'maxLength': 50, 'pattern': {'regex': '^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$', 'message': 'Bad email address format'}}, 'password': {'type': 'String', 'required': True, 'minLength': 8, 'ui': {'displayPages': 'details', 'display': 'secret'}}, 'firstName': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 100, 'ui': {'displayName': 'First Name'}}, 'lastName': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 100, 'ui': {'displayName': 'Last Name'}}, 'gender': {'type': 'String', 'required': False, 'enum': {'values': ['male', 'female', 'other'], 'message': 'must be male or female'}}, 'dob': {'type': 'ISODate'}, 'isAccountOwner': {'type': 'Boolean', 'required': True, 'ui': {'displayName': 'Owner'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1', 'displayPages': 'summary'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}, 'accountId': {'type': 'ObjectId', 'required': True, 'displayName': 'Account ID', 'readOnly': True}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'User', 'ui': {'title': 'Users', 'buttonLabel': 'Manage Users', 'description': 'Manage User Profile'}, 'operations': 'rcu', 'fields': {'username': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 50}, 'email': {'type': 'String', 'required': True, 'minLength': 8, 'maxLength': 50, 'pattern': {'regex': 'dictionary=main.email', 'message': 'Bad email address format'}}, 'password': {'type': 'String', 'required': True, 'minLength': 8, 'ui': {'displayPages': 'details', 'display': 'secret'}}, 'firstName': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 100, 'ui': {'displayName': 'First Name'}}, 'lastName': {'type': 'String', 'required': True, 'minLength': 3, 'maxLength': 100, 'ui': {'displayName': 'Last Name'}}, 'gender': {'type': 'String', 'required': False, 'enum': {'values': ['male', 'female', 'other'], 'message': 'must be male or female'}}, 'dob': {'type': 'ISODate'}, 'isAccountOwner': {'type': 'Boolean', 'required': True, 'ui': {'displayName': 'Owner'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1', 'displayPages': 'summary'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}, 'accountId': {'type': 'ObjectId', 'required': True, 'displayName': 'Account ID', 'readOnly': True}}}
     
     class Settings:
         name = "user"
@@ -75,7 +75,7 @@ class UserCreate(BaseModel):
             raise ValueError("email must be at least 8 characters")
         if v is not None and len(v) > 50:
             raise ValueError("email must be at most 50 characters")
-        if v is not None and not re.match(r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$', v):
+        if v is not None and not re.match(r'dictionary=main.email', v):
             raise ValueError("Bad email address format")
         return v
     @validator('password')

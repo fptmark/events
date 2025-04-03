@@ -74,7 +74,7 @@ _entities:
         minLength: 8
         maxLength: 50
         pattern:
-          regex: ^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$
+          regex: dictionary=main.email
           message: Bad email address format
       password:
         type: String
@@ -139,8 +139,7 @@ _entities:
       description: Manage User Profile
     service:
     - auth.cookies.redis
-    operations:
-    - rcu
+    operations: rcu
   Profile:
     fields:
       name:
@@ -213,7 +212,7 @@ _entities:
         type: String
         required: true
         pattern:
-          regex: ^https?://[^s]+$
+          regex: dictionary=main.url
           message: Bad URL format
       title:
         type: String
@@ -364,5 +363,4 @@ _entities:
       title: Crawls
       buttonLabel: Manage Crawls
       description: Manage Crawls of Event sites
-    operations:
-    - rd
+    operations: rd

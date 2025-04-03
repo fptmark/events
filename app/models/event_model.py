@@ -29,7 +29,7 @@ class Event(Document):
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Event', 'ui': {'title': 'Events', 'buttonLabel': 'Manage Events'}, 'operations': '', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': {'regex': '^https?://[^s]+$', 'message': 'Bad URL format'}}, 'title': {'type': 'String', 'required': True, 'maxLength': 200}, 'dateTime': {'type': 'ISODate', 'required': True}, 'location': {'type': 'String', 'required': False, 'maxLength': 200}, 'cost': {'type': 'Number', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'numOfExpectedAttendees': {'type': 'Integer', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'recurrence': {'type': 'String', 'required': False, 'enum': {'values': ['daily', 'weekly', 'monthly', 'yearly']}, 'ui': {'displayPages': 'details'}}, 'tags': {'type': 'Array[String]', 'required': False, 'ui': {'displayPages': 'details'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Event', 'ui': {'title': 'Events', 'buttonLabel': 'Manage Events'}, 'operations': '', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': {'regex': 'dictionary=main.url', 'message': 'Bad URL format'}}, 'title': {'type': 'String', 'required': True, 'maxLength': 200}, 'dateTime': {'type': 'ISODate', 'required': True}, 'location': {'type': 'String', 'required': False, 'maxLength': 200}, 'cost': {'type': 'Number', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'numOfExpectedAttendees': {'type': 'Integer', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'recurrence': {'type': 'String', 'required': False, 'enum': {'values': ['daily', 'weekly', 'monthly', 'yearly']}, 'ui': {'displayPages': 'details'}}, 'tags': {'type': 'Array[String]', 'required': False, 'ui': {'displayPages': 'details'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}}}
     
     class Settings:
         name = "event"
@@ -61,7 +61,7 @@ class EventCreate(BaseModel):
     @validator('url')
     def validate_url(cls, v):
         _custom = {}
-        if v is not None and not re.match(r'^https?://[^s]+$', v):
+        if v is not None and not re.match(r'dictionary=main.url', v):
             raise ValueError("Bad URL format")
         return v
     @validator('title')
