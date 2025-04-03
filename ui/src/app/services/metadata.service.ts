@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { ConfigService } from './config.service';
 import { Observable, Subject, BehaviorSubject } from 'rxjs';
 
-export interface AllEntitiesMetadata {
+export interface Metadata {
   entity: string
   ui?: {
     title?: string
@@ -46,8 +46,8 @@ export interface AllEntitiesMetadata {
 @Injectable({
   providedIn: 'root'
 })
-export class AllEntitiesService {
-  private entities: AllEntitiesMetadata[] = [];
+export class MetadataService {
+  private entities: Metadata[] = [];
   private entitiesLoaded = false;
   private entitiesLoading = false;
   private loadPromise: Promise<void> | null = null;
@@ -58,11 +58,10 @@ export class AllEntitiesService {
     private configService: ConfigService,
   ) {
     // Load entities when service is initialized
-    console.log('AllEntitiesService: Loading entities');
-    this.loadAllEntities();
+    this.loadMetadata();
   }
   
-  private loadAllEntities(): void {
+  private loadMetadata(): void {
     // If already loading or loaded, don't load again
     if (this.entitiesLoading || this.entitiesLoaded) {
       return;
@@ -71,21 +70,21 @@ export class AllEntitiesService {
     this.entitiesLoading = true;
     
     // Get API URL from config
-    const entitiesUrl = this.configService.getApiUrl('entities');
-    console.log('AllEntitiesService: Loading entities from:', entitiesUrl);
+    const entitiesUrl = this.configService.getApiUrl('metadata');
+    console.log('Metadata: Loading entities from:', entitiesUrl);
     
     // Create a promise that will resolve when entities are loaded
     this.loadPromise = new Promise<void>((resolve, reject) => {
-      this.http.get<AllEntitiesMetadata[]>(entitiesUrl).subscribe({
+      this.http.get<Metadata[]>(entitiesUrl).subscribe({
         next: entities => {
-          console.log('AllEntitiesService: Entities loaded successfully:', entities.length, 'entities');
+          console.log('Metadata: Entities loaded successfully:', entities.length, 'entities');
           this.entities = entities;
           this.entitiesLoaded = true;
           this.entitiesLoading = false;
           resolve();
         },
         error: (error) => {
-          console.error('AllEntitiesService: Failed to fetch entities:', error);
+          console.error('Metadata: Failed to fetch entities:', error);
           this.entities = []; // Ensure entities array is empty on error
           this.entitiesLoading = false;
           // We still resolve the promise even on error, just with empty entities
@@ -110,12 +109,11 @@ export class AllEntitiesService {
    * @param entityType The type of entity
    * @returns Promise that resolves to the metadata
    */
-  getEntityMetadata(entityName: string): AllEntitiesMetadata {
+  getEntityMetadata(entityName: string): Metadata {
     const metadata = this.entities.find(e => e.entity === entityName);
     if (!metadata) {
       throw new Error(`No metadata found for entity: ${entityName}`);
     }
-    console.log('get metadata for entity:', entityName)
     return metadata;
   }
 
@@ -144,7 +142,7 @@ export class AllEntitiesService {
     }
     
     if (!this.entitiesLoading) {
-      this.loadAllEntities();
+      this.loadMetadata();
     }
     
     return this.loadPromise || Promise.resolve();
@@ -154,7 +152,7 @@ export class AllEntitiesService {
    * Gets the list of available entities
    * Should only be called after waitForEntities() resolves
    */
-  getAvailableEntities(): AllEntitiesMetadata[] {
+  getAvailableEntities(): Metadata[] {
     return this.entities;
   }
   
@@ -172,8 +170,38 @@ export class AllEntitiesService {
   }
 
   isValidOperation(entityName: string, operation: string): boolean {
+    // let md = this.getEntityMetadata(entityName)
+  //   let ops: string = md?.operations || 'crud'
     let operations = this.getEntityMetadata(entityName)?.operations || 'crud'
     operations = operations === 'all' ? 'crud' : operations
+    // let results =  operations.includes(operation)
     return operations.includes(operation)
   }
+
+  getViewFields(entityName: string, currentView: string): string[] {
+    let metadata = this.getEntityMetadata(entityName)
+    let fields = Object.keys(metadata.fields).filter(field => {
+      let fieldMetadata = metadata.fields[field]
+      if (fieldMetadata?.ui?.display === 'hidden') {
+        return false
+      }
+      let views = fieldMetadata.ui?.displayPages || ''
+      return views.includes(currentView) || views === '' || views === 'all'
+    })
+    return fields
+  }
+  
+  getFieldDisplayName(entityName: string, fieldName: string): string {
+    try {
+      const metadata = this.getEntityMetadata(entityName);
+      return metadata.fields[fieldName]?.ui?.displayName || fieldName;
+    } catch (error) {
+      return fieldName;
+    }
+  }
+
+  // showInView(entityName: string, fieldName: string, currentView: string): boolean {
+  //   let views = this.getEntityMetadata(entityName)?.fields[fieldName]?.ui?.displayPages || ''
+  //   return views.includes(currentView) || views === '' || views === 'all'
+  // }
 }
