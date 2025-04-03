@@ -88,7 +88,7 @@ app.include_router(crawl_router, prefix='/api/crawl', tags=['Crawl'])
 def read_root():
     return {'message': 'Welcome to the Event Management System'}
 
-@app.get('/api/entities')
+@app.get('/api/metadata')
 def get_entities_metadata():
     return [
         Account.get_metadata(),     
