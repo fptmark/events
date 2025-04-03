@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { Entity } from './entity.service';
-import { AllEntitiesService, AllEntitiesMetadata } from './all-entities.service';
+import { MetadataService, Metadata } from './metadata.service';
 
 @Injectable({
   providedIn: 'root'
@@ -10,10 +10,10 @@ export class FormGeneratorService {
 
   constructor(
     private fb: FormBuilder,
-    private allEntitiesService: AllEntitiesService
+    private allEntitiesService: MetadataService
   ) {}
 
-  generateForm(metadata: AllEntitiesMetadata, entity?: Entity): FormGroup {
+  generateForm(metadata: Metadata, entity?: Entity): FormGroup {
     const formGroup: { [key: string]: AbstractControl } = {};
     
     // If this is an edit operation and we have an entity
@@ -153,7 +153,7 @@ export class FormGeneratorService {
     }
   }
   
-  getFormSortedFields(metadata: AllEntitiesMetadata): string[] {
+  getFormSortedFields(metadata: Metadata): string[] {
     if (!metadata.fields) return [];
     
     const fieldNames = Object.keys(metadata.fields);

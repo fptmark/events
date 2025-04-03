@@ -1,8 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { EntityService, Entity } from '../../services/entity.service';
-import { AllEntitiesService } from '../../services/all-entities.service';
+import { MetadataService } from '../../services/metadata.service';
+import { ConfigService } from '../../services/config.service';
 import { CommonModule } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
 // Removed constants import as constants.ts was removed
 
 @Component({
@@ -13,9 +15,10 @@ import { CommonModule } from '@angular/common';
     <div class="container mt-4">
       <h2>{{ allEntitiesService.getTitle(entityType) }}</h2>
       
+      <!-- Create button - permission checked once per page -->
       <div *ngIf="allEntitiesService.isValidOperation(entityType, 'c')">
         <div class="mb-3">
-          <button class="btn btn-primary" (click)="navigateToCreate()">{{ allEntitiesService.getButtonLabel(entityType) }}</button>
+          <button class="btn btn-primary" (click)="navigateToCreate()">Create {{ entityType }}</button>
         </div>
       </div>
       
@@ -28,30 +31,40 @@ import { CommonModule } from '@angular/common';
       </div>
       
       <div *ngIf="!loading && !error">
-        <table class="table table-striped">
-          <thead>
-            <tr>
-              <th *ngFor="let field of displayFields">{{ field }}</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let entity of entities">
-              <td *ngFor="let field of displayFields">{{ entity[field] }}</td>
-              <td>
-                <ng-container *ngIf="allEntitiesService.isValidOperation(entityType, 'r')">
-                  <button class="btn btn-sm btn-info me-2" (click)="viewEntity(entity._id)">View</button>
-                </ng-container>
-                <ng-container *ngIf="allEntitiesService.isValidOperation(entityType, 'u')">
-                  <button class="btn btn-sm btn-warning me-2" (click)="editEntity(entity._id)">Edit</button>
-                </ng-container>
-                <ng-container *ngIf="allEntitiesService.isValidOperation(entityType, 'd')">
-                  <button class="btn btn-sm btn-danger me-2" (click)="deleteEntity(entity._id)">Delete</button>
-                </ng-container>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <!-- Check if there are any entities to display -->
+        <div *ngIf="entities.length === 0" class="alert alert-info">
+          No {{ entityType }} records found.
+        </div>
+        
+        <!-- Table layout with one row per entity -->
+        <div *ngIf="entities.length > 0" class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th *ngFor="let field of displayFields">{{ allEntitiesService.getFieldDisplayName(entityType, field) }}</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let entity of entities">
+                <td *ngFor="let field of displayFields">{{ formatFieldValue(entity, field) }}</td>
+                <td>
+                  <div class="btn-group btn-group-sm">
+                    <button *ngIf="canRead" 
+                      class="btn btn-info me-1" 
+                      (click)="viewEntity(entity._id)">View</button>
+                    <button *ngIf="canUpdate" 
+                      class="btn btn-warning me-1" 
+                      (click)="editEntity(entity._id)">Edit</button>
+                    <button *ngIf="canDelete" 
+                      class="btn btn-danger" 
+                      (click)="deleteEntity(entity._id)">Delete</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   `,
@@ -65,19 +78,38 @@ export class EntityListComponent implements OnInit {
   displayFields: string[] = [];
   loading: boolean = true;
   error: string = '';
+  
+  // Store operation permissions for row-level actions
+  canRead: boolean = false;
+  canUpdate: boolean = false;
+  canDelete: boolean = false;
 
   constructor(
     private entityService: EntityService,
-    public allEntitiesService: AllEntitiesService,
+    public allEntitiesService: MetadataService,
     private route: ActivatedRoute,
-    private router: Router
+    private router: Router,
+    private configService: ConfigService,
+    private http: HttpClient
   ) {}
 
   ngOnInit(): void {
     this.route.params.subscribe(params => {
       this.entityType = params['entityType'];
+      
+      // Initialize permissions for this entity type
+      this.initializePermissions();
+      
+      // Load entities
       this.loadEntities();
     });
+  }
+  
+  initializePermissions(): void {
+    // Check row-level operation permissions once
+    this.canRead = this.allEntitiesService.isValidOperation(this.entityType, 'r');
+    this.canUpdate = this.allEntitiesService.isValidOperation(this.entityType, 'u');
+    this.canDelete = this.allEntitiesService.isValidOperation(this.entityType, 'd');
   }
 
   loadEntities(): void {
@@ -87,13 +119,24 @@ export class EntityListComponent implements OnInit {
     // Wait for entities to be loaded
     this.allEntitiesService.waitForEntities()
       .then(() => {
-        // Now we can safely load the entity data
-        this.entityService.getEntityList(this.entityType).subscribe({
+        // First get the fields to display from metadata
+        try {
+          this.displayFields = this.allEntitiesService.getViewFields(this.entityType, 'summary');
+        } catch (error) {
+          console.warn('Error getting view fields:', error);
+          this.displayFields = [];
+        }
+        
+        // Get API endpoint from config service
+        const apiUrl = this.configService.getApiUrl(this.entityType);
+        
+        // Now fetch the entity data from the API
+        this.http.get<any>(apiUrl).subscribe({
           next: (response) => {
-            this.entities = Array.isArray(response.data) ? response.data : [response.data];
+            this.entities = Array.isArray(response) ? response : [response];
             
-            // Use fields from the first entity
-            if (this.entities.length > 0) {
+            // If we couldn't get display fields from metadata, fall back to keys from response
+            if (this.displayFields.length === 0 && this.entities.length > 0) {
               this.displayFields = Object.keys(this.entities[0] || {});
             }
             
@@ -141,7 +184,8 @@ export class EntityListComponent implements OnInit {
 
   deleteEntity(id: string): void {
     if (confirm('Are you sure you want to delete this item?')) {
-      this.entityService.deleteEntity(this.entityType, id).subscribe({
+      const apiUrl = `${this.configService.getApiUrl(this.entityType)}/${id}`;
+      this.http.delete(apiUrl).subscribe({
         next: () => {
           this.loadEntities(); // Reload the list after deletion
         },
@@ -151,5 +195,37 @@ export class EntityListComponent implements OnInit {
         }
       });
     }
+  }
+  
+  formatFieldValue(entity: Entity, fieldName: string): string {
+    if (!entity || entity[fieldName] === undefined || entity[fieldName] === null) {
+      return '';
+    }
+    
+    const value = entity[fieldName];
+    
+    // Handle date strings (ISO format)
+    if (typeof value === 'string' && 
+        (value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/) || 
+         value.match(/^\d{4}-\d{2}-\d{2}/))) {
+      try {
+        const date = new Date(value);
+        return date.toLocaleString();
+      } catch (e) {
+        return value;
+      }
+    }
+    
+    // Handle boolean values
+    if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No';
+    }
+    
+    // Handle objects (convert to JSON string)
+    if (typeof value === 'object' && value !== null) {
+      return JSON.stringify(value);
+    }
+    
+    return String(value);
   }
 }

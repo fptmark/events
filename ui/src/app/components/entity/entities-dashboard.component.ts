@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { AllEntitiesService, AllEntitiesMetadata } from '../../services/all-entities.service';
+import { MetadataService, Metadata } from '../../services/metadata.service';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -23,10 +23,10 @@ import { CommonModule } from '@angular/common';
         <div *ngFor="let entity of entityTypes" class="col">
           <div class="card h-100">
             <div class="card-body">
-              <h5 class="card-title">{{ allEntitiesService.getTitle(entity.entity) }}</h5>
-              <p class="card-text">{{ allEntitiesService.getDescription(entity.entity) }}</p>
+              <h5 class="card-title">{{ metadataService.getTitle(entity.entity) }}</h5>
+              <p class="card-text">{{ metadataService.getDescription(entity.entity) }}</p>
               <button class="btn btn-primary" (click)="navigateToEntity(entity.entity)">
-                {{ allEntitiesService.getButtonLabel(entity.entity) }}
+                {{ metadataService.getButtonLabel(entity.entity) }}
               </button>
             </div>
           </div>
@@ -41,12 +41,12 @@ import { CommonModule } from '@angular/common';
   `]
 })
 export class EntitiesDashboardComponent implements OnInit {
-  entityTypes: AllEntitiesMetadata[] = [];
+  entityTypes: Metadata[] = [];
   loading: boolean = true;
   error: string = '';
 
   constructor(
-    public allEntitiesService: AllEntitiesService,
+    public metadataService: MetadataService,
     private router: Router
   ) {}
 
@@ -54,10 +54,10 @@ export class EntitiesDashboardComponent implements OnInit {
     console.log('EntitiesDashboardComponent: Initializing');
     
     // Wait for entities to be loaded
-    this.allEntitiesService.waitForEntities()
+    this.metadataService.waitForEntities()
       .then(() => {
         // Now we can safely get the entities
-        this.entityTypes = this.allEntitiesService.getAvailableEntities();
+        this.entityTypes = this.metadataService.getAvailableEntities();
         console.log('EntitiesDashboardComponent: Entities loaded:', this.entityTypes.length);
         
         // Show error if no entities found
@@ -78,7 +78,7 @@ export class EntitiesDashboardComponent implements OnInit {
 
 
   navigateToEntity(entityType: string): void {
-    this.allEntitiesService.addRecent(entityType)
+    this.metadataService.addRecent(entityType)
     this.router.navigate(['/entity', entityType]);
   }
 }

@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { EntityService, Entity } from '../../services/entity.service';
-import { AllEntitiesService, AllEntitiesMetadata } from '../../services/all-entities.service';
+import { MetadataService, Metadata } from '../../services/metadata.service';
 import { FormGeneratorService } from '../../services/form-generator.service';
 import { CommonModule } from '@angular/common';
 // Removed constants import as constants.ts was removed
@@ -184,7 +184,7 @@ export class EntityFormComponent implements OnInit {
   isEditMode: boolean = false;
   
   entity: Entity | null = null;
-  metadata: AllEntitiesMetadata | null = null;
+  metadata: Metadata | null = null;
   entityForm: FormGroup | null = null;
   sortedFields: string[] = [];
   
@@ -195,7 +195,7 @@ export class EntityFormComponent implements OnInit {
   constructor(
     private entityService: EntityService,
     private formGenerator: FormGeneratorService,
-    private allEntitiesService: AllEntitiesService,
+    private allEntitiesService: MetadataService,
     private route: ActivatedRoute,
     private router: Router
   ) {}

@@ -1,8 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { ConfigService } from './services/config.service';
-import { AllEntitiesService } from './services/all-entities.service';
+import { MetadataService } from './services/metadata.service'
 
 @Component({
   selector: 'app-root',
@@ -47,19 +46,20 @@ export class AppComponent implements OnInit {
   recent: string[] = []
 
   constructor(
-    private configService: ConfigService,
-    private allEntitiesService: AllEntitiesService
+    private metadataService: MetadataService,
   ) {
   }
 
   ngOnInit() {
     // Simple initialization
-    console.log('AppComponent: App initialized');
-    this.recent = this.allEntitiesService.getRecent()
-    console.log(this.recent)
+    console.log('AppComponent: App initialized', this.recent)
+  }
+
+  ngAfterViewInit() {
+    this.recent = this.metadataService.getRecent()
   }
 
   getTitle(entityType: string): string {
-    return this.allEntitiesService.getTitle(entityType)
+    return this.metadataService.getTitle(entityType)
   }
 }

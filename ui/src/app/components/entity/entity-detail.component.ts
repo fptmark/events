@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { EntityService, Entity } from '../../services/entity.service';
-import { AllEntitiesService } from '../../services/all-entities.service';
+import { MetadataService } from '../../services/metadata.service';
 import { CommonModule } from '@angular/common';
 // // Removed constants import as constants.ts was removed
 
@@ -55,7 +55,7 @@ export class EntityDetailComponent implements OnInit {
 
   constructor(
     private entityService: EntityService,
-    public allEntitiesService: AllEntitiesService,
+    public allEntitiesService: MetadataService,
     private route: ActivatedRoute,
     private router: Router
   ) {}

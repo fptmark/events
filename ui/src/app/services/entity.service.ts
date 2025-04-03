@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
 import { ConfigService } from './config.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { AllEntitiesService } from './all-entities.service';
+import { MetadataService } from './metadata.service';
 
 export interface Entity {
   _id: string;
@@ -46,7 +46,7 @@ export class EntityService {
     private http: HttpClient,
     private configService: ConfigService,
     private sanitizer: DomSanitizer,
-    private allEntitiesService: AllEntitiesService
+    private allEntitiesService: MetadataService
   ) {}
 
   initDisplayFields(fields: { [key: string]: EntityMetadata } | null, view: 'list' | 'details' | 'form'): string[] {
