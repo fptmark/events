@@ -90,7 +90,8 @@ def read_root():
 
 @app.get('/api/metadata')
 def get_entities_metadata():
-    return [
+    ui_overrides = load_config(Path('ui_overrides.json'))
+    metadata =  [
         Account.get_metadata(),     
         User.get_metadata(),     
         Profile.get_metadata(),     
@@ -100,6 +101,22 @@ def get_entities_metadata():
         Url.get_metadata(),     
         Crawl.get_metadata(),     
     ]
+    for m in metadata:
+        entity = m.get('entity')
+        if entity and entity in ui_overrides.keys():
+            deep_merge_dicts(m, ui_overrides[entity])
+    return metadata
+
+def deep_merge_dicts(dest, override):
+    for key, value in override.items():
+        if (
+            key in dest
+            and isinstance(dest[key], dict)
+            and isinstance(value, dict)
+        ):
+            deep_merge_dicts(dest[key], value)
+        else:
+            dest[key] = value
 
 if __name__ == '__main__':
     import uvicorn
