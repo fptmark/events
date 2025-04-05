@@ -55,39 +55,29 @@ export interface UiFieldMetata {
 })
 export class MetadataService {
   private entities: Metadata[] = [];
-  private entitiesLoaded = false;
-  private entitiesLoading = false;
-  private loadPromise: Promise<void> | null = null;
-  private recentEntities: string[] = []
+  private metadataPromise: Promise<void>;
+  private recentEntities: string[] = [];
 
   constructor(
     private http: HttpClient,
     private configService: ConfigService,
   ) {
-    // Load entities when service is initialized
-    this.loadMetadata();
+    // Load metadata once on initialization and cache the promise
+    this.metadataPromise = this.loadMetadata();
   }
   
-  private loadMetadata(): void {
-    // If already loading or loaded, don't load again
-    if (this.entitiesLoading || this.entitiesLoaded) {
-      return;
-    }
-    
-    this.entitiesLoading = true;
-    
+  private loadMetadata(): Promise<void> {
     // Get API URL from config
     const entitiesUrl = this.configService.getApiUrl('metadata');
     console.log('Metadata: Loading entities from:', entitiesUrl);
     
     // Create a promise that will resolve when entities are loaded
-    this.loadPromise = new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve) => {
       this.http.get<Metadata[]>(entitiesUrl).subscribe({
         next: entities => {
           console.log('Metadata: Entities loaded successfully:', entities.length, 'entities');
           this.entities = entities;
-          this.entitiesLoaded = true;
-          this.entitiesLoading = false;
+          // Normalize entity names for easier lookup
           for (let e of this.entities) {
             e.entityLowerCase = e.entity.toLowerCase();
           }
@@ -96,18 +86,16 @@ export class MetadataService {
         error: (error) => {
           console.error('Metadata: Failed to fetch entities:', error);
           this.entities = []; // Ensure entities array is empty on error
-          this.entitiesLoading = false;
-          // We still resolve the promise even on error, just with empty entities
-          resolve();
+          resolve(); // Still resolve the promise even on error
         }
       });
     });
   }
   
   addRecent(entityType: string){
-    this.recentEntities = this.recentEntities.filter(item => item !== entityType);
+    this.recentEntities = this.recentEntities.filter(item => item !== entityType)
     this.recentEntities.unshift(entityType)
-    this.recentEntities.slice(0, 3)
+    this.recentEntities = this.recentEntities.slice(0, 3) // Fix: assign the result back
   }
 
   getRecent(): string[] {
@@ -152,25 +140,10 @@ export class MetadataService {
     return this.getFieldMetadata(entityType, fieldName).ui || {}
   }
   /**
-   * Returns true if entities have been loaded
-   */
-  areEntitiesLoaded(): boolean {
-    return this.entitiesLoaded;
-  }
-
-  /**
-   * Returns a promise that resolves when entities are loaded
+   * Returns a promise that resolves when metadata is loaded
    */
   waitForEntities(): Promise<void> {
-    if (this.entitiesLoaded) {
-      return Promise.resolve();
-    }
-    
-    if (!this.entitiesLoading) {
-      this.loadMetadata();
-    }
-    
-    return this.loadPromise || Promise.resolve();
+    return this.metadataPromise
   }
   
   /**
@@ -195,14 +168,12 @@ export class MetadataService {
   }
 
   isValidOperation(entityName: string, operation: string): boolean {
-    // let md = this.getEntityMetadata(entityName)
-  //   let ops: string = md?.operations || 'crud'
     let operations = this.getEntityMetadata(entityName)?.operations || 'crud'
     operations = operations === 'all' ? 'crud' : operations
-    // let results =  operations.includes(operation)
     return operations.includes(operation)
   }
 
+  // view can be 'details', 'summary' and/or 'form' e.g. 'details|summary'
   getViewFields(entityName: string, currentView: string): string[] {
     let metadata = this.getEntityMetadata(entityName)
     let fields = Object.keys(metadata.fields).filter(field => {
