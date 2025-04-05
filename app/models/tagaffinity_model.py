@@ -24,7 +24,7 @@ class TagAffinity(Document):
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'TagAffinity', 'ui': {'title': 'Tag Affinity', 'buttonLabel': 'Manage Event Affinity'}, 'operations': '', 'fields': {'tag': {'type': 'String', 'required': True, 'maxLength': 50}, 'affinity': {'type': 'Integer', 'required': True, 'min': -100, 'max': 100}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}, 'profileId': {'type': 'ObjectId', 'required': True, 'displayName': 'Profile ID', 'readOnly': True}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'TagAffinity', 'ui': {'title': 'Tag Affinity', 'buttonLabel': 'Manage Event Affinity'}, 'operations': '', 'fields': {'tag': {'type': 'String', 'required': True, 'maxLength': 50}, 'affinity': {'type': 'Integer', 'required': True, 'min': -100, 'max': 100}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}, 'profileId': {'type': 'ObjectId', 'required': True, 'displayName': 'profileId', 'readOnly': True, 'ui': {'link': 'entity/Profile/${value}'}}}}
     
     class Settings:
         name = "tagaffinity"

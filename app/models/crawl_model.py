@@ -25,7 +25,7 @@ class Crawl(Document):
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Crawl', 'ui': {'title': 'Crawls', 'buttonLabel': 'Manage Crawls', 'description': 'Manage Crawls of Event sites'}, 'operations': 'rd', 'fields': {'lastParsedDate': {'type': 'ISODate', 'required': False}, 'parseStatus': {'type': 'JSON', 'required': False}, 'errorsEncountered': {'type': 'Array[String]', 'required': False}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}, 'urlId': {'type': 'ObjectId', 'required': True, 'displayName': 'Url ID', 'readOnly': True}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Crawl', 'ui': {'title': 'Crawls', 'buttonLabel': 'Manage Crawls', 'description': 'Manage Crawls of Event sites'}, 'operations': 'rd', 'fields': {'lastParsedDate': {'type': 'ISODate', 'required': False}, 'parseStatus': {'type': 'JSON', 'required': False}, 'errorsEncountered': {'type': 'Array[String]', 'required': False}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}, 'urlId': {'type': 'ObjectId', 'required': True, 'displayName': 'urlId', 'readOnly': True, 'ui': {'link': 'entity/Url/${value}'}}}}
     
     class Settings:
         name = "crawl"

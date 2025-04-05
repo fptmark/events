@@ -3,8 +3,7 @@
       "fields": {
          "accountId": {
             "ui": {
-               "displayPages": "all",
-               "link": "entity/account/${value}"
+               "displayPages": "all"
             }
          }
       }

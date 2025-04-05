@@ -127,6 +127,13 @@ _entities:
         autoUpdate: true
         ui:
           displayAfterField: '-2'
+      accountId:
+        type: ObjectId
+        required: true
+        displayName: accountId
+        readOnly: true
+        ui:
+          link: entity/Account/${value}
     relationships:
     - Profile
     - UserEvent
@@ -168,6 +175,13 @@ _entities:
         autoUpdate: true
         ui:
           displayAfterField: '-2'
+      userId:
+        type: ObjectId
+        required: true
+        displayName: userId
+        readOnly: true
+        ui:
+          link: entity/User/${value}
     relationships:
     - TagAffinity
     ui:
@@ -200,6 +214,13 @@ _entities:
         autoUpdate: true
         ui:
           displayAfterField: '-2'
+      profileId:
+        type: ObjectId
+        required: true
+        displayName: profileId
+        readOnly: true
+        ui:
+          link: entity/Profile/${value}
     relationships: []
     ui:
       title: Tag Affinity
@@ -300,6 +321,20 @@ _entities:
         autoUpdate: true
         ui:
           displayAfterField: '-2'
+      userId:
+        type: ObjectId
+        required: true
+        displayName: userId
+        readOnly: true
+        ui:
+          link: entity/User/${value}
+      eventId:
+        type: ObjectId
+        required: true
+        displayName: eventId
+        readOnly: true
+        ui:
+          link: entity/Event/${value}
     relationships: []
     ui:
       title: User Events
@@ -358,6 +393,13 @@ _entities:
         autoUpdate: true
         ui:
           displayAfterField: '-2'
+      urlId:
+        type: ObjectId
+        required: true
+        displayName: urlId
+        readOnly: true
+        ui:
+          link: entity/Url/${value}
     relationships: []
     ui:
       title: Crawls
