@@ -20,9 +20,9 @@ import { MetadataService } from './services/metadata.service'
             <li class="nav-item">
               <a class="nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">Dashboard</a>
             </li>
-            <li class="nav-item" *ngFor="let entity of recent">
+            <li class="nav-item" *ngFor="let entity of metadataService.getRecent()">
               <a class="nav-link" [routerLink]="['/entity', (entity | lowercase) ]" routerLinkActive="active">
-                {{ getTitle(entity) }}
+                {{ metadataService.getTitle(entity) }}
               </a>
             </li>
           </ul>
@@ -43,23 +43,23 @@ import { MetadataService } from './services/metadata.service'
 })
 export class AppComponent implements OnInit {
   title = 'Events Management';
-  recent: string[] = []
+  // recent: string[] = []
 
   constructor(
-    private metadataService: MetadataService,
+    public metadataService: MetadataService,
   ) {
   }
 
   ngOnInit() {
     // Simple initialization
-    console.log('AppComponent: App initialized', this.recent)
+    console.log('AppComponent: App initialized')
   }
 
-  ngAfterViewInit() {
-    this.recent = this.metadataService.getRecent()
-  }
+  // ngAfterViewInit() {
+  //   this.recent = this.metadataService.getRecent()
+  // }
 
-  getTitle(entityType: string): string {
-    return this.metadataService.getTitle(entityType)
-  }
+  // getTitle(entityType: string): string {
+  //   return this.metadataService.getTitle(entityType)
+  // }
 }
