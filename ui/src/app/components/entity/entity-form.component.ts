@@ -196,7 +196,7 @@ export class EntityFormComponent implements OnInit {
   constructor(
     private entityService: EntityService,
     private formGenerator: FormGeneratorService,
-    private allEntitiesService: MetadataService,
+    private metadataService: MetadataService,
     private route: ActivatedRoute,
     private router: Router
   ) {}
@@ -220,11 +220,11 @@ export class EntityFormComponent implements OnInit {
     this.error = '';
     
     // Wait for entities to be loaded
-    this.allEntitiesService.waitForEntities()
+    this.metadataService.waitForEntities()
       .then(() => {
         try {
           // Get metadata from AllEntitiesService
-          this.metadata = this.allEntitiesService.getEntityMetadata(this.entityType);
+          this.metadata = this.metadataService.getEntityMetadata(this.entityType);
           this.initForm();
           this.loading = false;
         } catch (err) {
@@ -245,11 +245,11 @@ export class EntityFormComponent implements OnInit {
     this.error = '';
     
     // Wait for entities to be loaded
-    this.allEntitiesService.waitForEntities()
+    this.metadataService.waitForEntities()
       .then(() => {
         try {
           // First get the metadata
-          this.metadata = this.allEntitiesService.getEntityMetadata(this.entityType);
+          this.metadata = this.metadataService.getEntityMetadata(this.entityType);
           
           // Then load the entity data
           this.entityService.getEntity(this.entityType, this.entityId).subscribe({
@@ -362,13 +362,57 @@ export class EntityFormComponent implements OnInit {
     if (!this.entityForm || this.entityForm.invalid) return;
     
     this.submitting = true;
-    const formData = this.entityForm.value;
+    let formData = this.entityForm.value;
+    
+    // Process the form data before sending it to the API
+    formData = this.processFormData(formData);
     
     if (this.isEditMode) {
       this.updateEntity(formData);
     } else {
       this.createEntity(formData);
     }
+  }
+  
+  // Process form data before submitting to the API
+  processFormData(formData: any): any {
+    // Clone the data to avoid modifying the form values directly
+    const processedData = { ...formData };
+    
+    try {
+      // Get all available fields for the form view using metadataService
+      const formFields = this.metadataService.getViewFields(this.entityType, 'form');
+      
+      // Handle autoGenerate and autoUpdate fields
+      formFields.forEach(fieldName => {
+        try {
+          // Get field metadata using metadataService
+          const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+          
+          // Handle ISODate fields that need auto-generation
+          if (fieldMeta.type === 'ISODate') {
+            // For create operations, handle autoGenerate fields
+            if (!this.isEditMode && fieldMeta.autoGenerate) {
+              processedData[fieldName] = new Date().toISOString();
+              console.log(`Auto-generated date for ${fieldName}: ${processedData[fieldName]}`);
+            }
+            
+            // For both create and edit operations, handle autoUpdate fields
+            if (fieldMeta.autoUpdate) {
+              processedData[fieldName] = new Date().toISOString();
+              console.log(`Auto-updated date for ${fieldName}: ${processedData[fieldName]}`);
+            }
+          }
+        } catch (error) {
+          // Handle case where field metadata can't be found
+          console.warn(`Could not get metadata for field: ${fieldName}`, error);
+        }
+      });
+    } catch (error) {
+      console.error('Error processing form data:', error);
+    }
+    
+    return processedData;
   }
 
   createEntity(formData: any): void {

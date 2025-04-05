@@ -27,14 +27,13 @@ import { EntityService } from '../../services/entity.service';
         {{ error }}
       </div>
       
-      <div *ngIf="!loading && !error && data.length">
-        <div *ngFor="let item of data" class="card mb-4">
+      <div *ngIf="!loading && !error && data">
+        <div class="card mb-4">
           <div class="card-body">
             <dl class="row">
               <ng-container *ngFor="let field of displayFields">
-                <dt class="col-sm-3">{{ field }}</dt>
-                <dd class="col-sm-9">
-                  {{ metadataService.formatFieldValue(entityType, field, 'details', item[field]) }}
+                <dt class="col-sm-3">{{ metadataService.getFieldDisplayName(entityType, field) }}</dt>
+                <dd class="col-sm-9" [innerHTML]="metadataService.formatFieldValue(entityType, field, 'details', data[field])">
                 </dd>
               </ng-container>
             </dl>
@@ -51,7 +50,7 @@ import { EntityService } from '../../services/entity.service';
 export class EntityDetailComponent implements OnInit {
   entityType: string = '';
   entityId: string = '';
-  data: any[] = []
+  data: any = null;
   displayFields: string[] = [];
   loading: boolean = true;
   error: string = '';
@@ -78,27 +77,35 @@ export class EntityDetailComponent implements OnInit {
     // Wait for entities to be loaded
     this.metadataService.waitForEntities()
       .then(() => {
-        // Load entity data
-        this.entityService.getEntity(this.entityType, this.entityId).subscribe({
-      next: (response) => {
-        this.data = Array.isArray(response.data) ? response.data : response.data;
-        
-        // Get fields from service if available
+        // First get the fields to display from metadata for 'details' view
         try {
-          this.displayFields = this.metadataService.getEntityFields(this.entityType);
+          this.displayFields = this.metadataService.getViewFields(this.entityType, 'details');
+          console.log('Display fields for details view:', this.displayFields);
+          
+          if (this.displayFields.length === 0) {
+            throw new Error(`No fields configured for 'details' view of entity type: ${this.entityType}`);
+          }
+          
+          // Then load entity data using the entity service
+          this.entityService.getEntity(this.entityType, this.entityId).subscribe({
+            next: (response) => {
+              // The API returns the entity directly
+              this.data = response;
+              this.loading = false;
+              
+              console.log('Entity data loaded:', this.data);
+            },
+            error: (err) => {
+              console.error('Error loading entity:', err);
+              this.error = 'Failed to load entity details. Please try again later.';
+              this.loading = false;
+            }
+          });
         } catch (error) {
-          // Fallback to using entity keys
-          this.displayFields = Object.keys(this.data || {});
+          console.error('Error getting view fields:', error);
+          this.error = `Failed to get field configuration: ${error}`;
+          this.loading = false;
         }
-        
-        this.loading = false;
-      },
-      error: (err) => {
-        console.error('Error loading entity:', err);
-        this.error = 'Failed to load entity details. Please try again later.';
-        this.loading = false;
-      }
-    });
       })
       .catch(error => {
         console.error('Error waiting for entities:', error);

@@ -3,7 +3,6 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
 import { ConfigService } from './config.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { MetadataService } from './metadata.service';
 
 export interface EntityResponse<> {
   data: [];
@@ -20,17 +19,17 @@ export class EntityService {
     private sanitizer: DomSanitizer,
   ) {}
 
-  getFieldDisplayName(fieldName: string): string {
-    return fieldName
-  }
+  // getFieldDisplayName(fieldName: string): string {
+  //   return fieldName
+  // }
 
-  getFieldWidget(fieldName: string): string {
-    return 'text'
-  }
+  // getFieldWidget(fieldName: string): string {
+  //   return 'text'
+  // }
 
-  getFieldOptions(fieldName: string): string[] {
-    return []
-  }
+  // getFieldOptions(fieldName: string): string[] {
+  //   return []
+  // }
 
   getEntity(entityType: string, id: string): Observable<EntityResponse> {
     return this.http.get<EntityResponse>(`${this.configService.getApiUrl(entityType)}/${id}`);

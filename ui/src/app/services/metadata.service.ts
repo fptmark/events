@@ -5,6 +5,7 @@ import { Observable, Subject, BehaviorSubject } from 'rxjs';
 
 export interface Metadata {
   entity: string
+  entityLowerCase?: string  // for easier comparison - internal use only
   ui?: {
     title?: string
     buttonLabel?: string
@@ -87,6 +88,9 @@ export class MetadataService {
           this.entities = entities;
           this.entitiesLoaded = true;
           this.entitiesLoading = false;
+          for (let e of this.entities) {
+            e.entityLowerCase = e.entity.toLowerCase();
+          }
           resolve();
         },
         error: (error) => {
@@ -116,10 +120,14 @@ export class MetadataService {
    * @returns Promise that resolves to the metadata
    */
   getEntityMetadata(entityName: string): Metadata {
-    const metadata = this.entities.find(e => e.entity === entityName);
+    const metadata =
+      this.entities.find(e => e.entity === entityName) ||
+      this.entities.find(e => e.entityLowerCase === entityName);
+  
     if (!metadata) {
       throw new Error(`No metadata found for entity: ${entityName}`);
     }
+  
     return metadata;
   }
 
