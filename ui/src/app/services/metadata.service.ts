@@ -12,35 +12,41 @@ export interface Metadata {
   }
   operations?: string
   fields: {
-    [key: string]: {
-      type?: string
-      required?: boolean
-      autoGenerate?: boolean
-      autoUpdate?: boolean
-      displayPages?: string
-      min?: number
-      max?: number
-      minLength?: number
-      maxLength?: number
-      enum?: {
-        values?: string[]
-        message?: string
-      }
-      pattern?: {
-        regex?: string
-        message?: string
-      }
-      ui?: {
-        displayName?: string
-        displayAfterField?: string
-        displayPages?: string
-        readOnly?: boolean
-        widget?: string
-        display?: string
-      }
-      [key: string]: any
-    }
+    [key: string]: FieldMetadata
   }
+}
+  
+export interface FieldMetadata {
+  type?: string
+  required?: boolean
+  autoGenerate?: boolean
+  autoUpdate?: boolean
+  displayPages?: string
+  min?: number
+  max?: number
+  minLength?: number
+  maxLength?: number
+  enum?: {
+    values?: string[]
+    message?: string
+  }
+  pattern?: {
+    regex?: string
+    message?: string
+  }
+  ui?: UiFieldMetata 
+}
+
+export interface UiFieldMetata {
+  displayName?: string
+  displayAfterField?: string
+  displayPages?: string
+  link?: string
+  readOnly?: boolean
+  format?: string
+  widget?: string
+  display?: string
+  [key: string]: any
 }
 
 @Injectable({
@@ -126,6 +132,17 @@ export class MetadataService {
     return Object.keys(metadata.fields)
   }
 
+  getFieldMetadata(entityType: string, fieldName: string): FieldMetadata {
+    let metadata = this.getEntityMetadata(entityType)
+    if (!metadata.fields[fieldName]) {
+      throw new Error(`No metadata found for field: ${fieldName} in entity: ${entityType}`);
+    }
+    return metadata.fields[fieldName]
+  }
+
+  getUiFieldMetadata(entityType: string, fieldName: string): UiFieldMetata {
+    return this.getFieldMetadata(entityType, fieldName).ui || {}
+  }
   /**
    * Returns true if entities have been loaded
    */
@@ -200,8 +217,40 @@ export class MetadataService {
     }
   }
 
-  // showInView(entityName: string, fieldName: string, currentView: string): boolean {
-  //   let views = this.getEntityMetadata(entityName)?.fields[fieldName]?.ui?.displayPages || ''
-  //   return views.includes(currentView) || views === '' || views === 'all'
-  // }
+  formatFieldValue(entityType: string, fieldName: string, view: string, value: any): string {
+    if (!value || value === undefined || value === null) {
+      return '';
+    }
+
+    let metadata = this.getFieldMetadata(entityType, fieldName)
+    let type = metadata?.type || 'text'
+    let format = metadata?.ui?.format || ''
+
+    // auto compute format and widget info
+    if (type === 'ISODate'){
+      if (view === 'summary'){
+        format = format || 'short'
+      }
+    }
+    
+    // Handle date strings (ISO format)
+    if (metadata?.ui?.link){
+      let link = metadata.ui.link.replace('${value}', value)
+      return `<a href=${link}>View</a>`
+
+    } else if (type === 'ISODate'){
+      try {
+        const date = new Date(value);
+        return format === 'short' ? date.toLocaleDateString() : date.toLocaleString()
+      } catch (e) {
+        return value;
+      }
+    } else if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No';
+    } else if (typeof value === 'object' && value !== null) {
+      return JSON.stringify(value);
+    } 
+    return String(value);
+  }
+  
 }

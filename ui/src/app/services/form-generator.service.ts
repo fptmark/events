@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
-import { Entity } from './entity.service';
+// Fix missing Entity import 
 import { MetadataService, Metadata } from './metadata.service';
 
 @Injectable({
@@ -13,7 +13,7 @@ export class FormGeneratorService {
     private allEntitiesService: MetadataService
   ) {}
 
-  generateForm(metadata: Metadata, entity?: Entity): FormGroup {
+  generateForm(metadata: Metadata, entity?: any): FormGroup {
     const formGroup: { [key: string]: AbstractControl } = {};
     
     // If this is an edit operation and we have an entity

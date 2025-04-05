@@ -1,6 +1,5 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { EntityService, Entity } from '../../services/entity.service';
 import { MetadataService } from '../../services/metadata.service';
 import { ConfigService } from '../../services/config.service';
 import { CommonModule } from '@angular/common';
@@ -13,10 +12,10 @@ import { HttpClient } from '@angular/common/http';
   imports: [CommonModule],
   template: `
     <div class="container mt-4">
-      <h2>{{ allEntitiesService.getTitle(entityType) }}</h2>
+      <h2>{{ metadataService.getTitle(entityType) }}</h2>
       
       <!-- Create button - permission checked once per page -->
-      <div *ngIf="allEntitiesService.isValidOperation(entityType, 'c')">
+      <div *ngIf="metadataService.isValidOperation(entityType, 'c')">
         <div class="mb-3">
           <button class="btn btn-primary" (click)="navigateToCreate()">Create {{ entityType }}</button>
         </div>
@@ -32,33 +31,33 @@ import { HttpClient } from '@angular/common/http';
       
       <div *ngIf="!loading && !error">
         <!-- Check if there are any entities to display -->
-        <div *ngIf="entities.length === 0" class="alert alert-info">
+        <div *ngIf="data.length === 0" class="alert alert-info">
           No {{ entityType }} records found.
         </div>
         
         <!-- Table layout with one row per entity -->
-        <div *ngIf="entities.length > 0" class="table-responsive">
+        <div *ngIf="data.length > 0" class="table-responsive">
           <table class="table table-striped table-hover">
             <thead>
               <tr>
-                <th *ngFor="let field of displayFields">{{ allEntitiesService.getFieldDisplayName(entityType, field) }}</th>
+                <th *ngFor="let field of displayFields">{{ metadataService.getFieldDisplayName(entityType, field) }}</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let entity of entities">
-                <td *ngFor="let field of displayFields">{{ formatFieldValue(entity, field) }}</td>
+              <tr *ngFor="let row of data">
+                <td *ngFor="let field of displayFields" [innerHTML]="metadataService.formatFieldValue(entityType, field, 'summary', row[field])"></td>
                 <td>
                   <div class="btn-group btn-group-sm">
                     <button *ngIf="canRead" 
                       class="btn btn-info me-1" 
-                      (click)="viewEntity(entity._id)">View</button>
+                      (click)="viewEntity(row['_id'])">View</button>
                     <button *ngIf="canUpdate" 
                       class="btn btn-warning me-1" 
-                      (click)="editEntity(entity._id)">Edit</button>
+                      (click)="editEntity(row['_id'])">Edit</button>
                     <button *ngIf="canDelete" 
                       class="btn btn-danger" 
-                      (click)="deleteEntity(entity._id)">Delete</button>
+                      (click)="deleteEntity(row['_id'])">Delete</button>
                   </div>
                 </td>
               </tr>
@@ -74,7 +73,7 @@ import { HttpClient } from '@angular/common/http';
 })
 export class EntityListComponent implements OnInit {
   entityType: string = '';
-  entities: Entity[] = [];
+  data: any[] = []
   displayFields: string[] = [];
   loading: boolean = true;
   error: string = '';
@@ -85,8 +84,7 @@ export class EntityListComponent implements OnInit {
   canDelete: boolean = false;
 
   constructor(
-    private entityService: EntityService,
-    public allEntitiesService: MetadataService,
+    public metadataService: MetadataService,
     private route: ActivatedRoute,
     private router: Router,
     private configService: ConfigService,
@@ -107,9 +105,9 @@ export class EntityListComponent implements OnInit {
   
   initializePermissions(): void {
     // Check row-level operation permissions once
-    this.canRead = this.allEntitiesService.isValidOperation(this.entityType, 'r');
-    this.canUpdate = this.allEntitiesService.isValidOperation(this.entityType, 'u');
-    this.canDelete = this.allEntitiesService.isValidOperation(this.entityType, 'd');
+    this.canRead = this.metadataService.isValidOperation(this.entityType, 'r');
+    this.canUpdate = this.metadataService.isValidOperation(this.entityType, 'u');
+    this.canDelete = this.metadataService.isValidOperation(this.entityType, 'd');
   }
 
   loadEntities(): void {
@@ -117,11 +115,11 @@ export class EntityListComponent implements OnInit {
     this.error = '';
     
     // Wait for entities to be loaded
-    this.allEntitiesService.waitForEntities()
+    this.metadataService.waitForEntities()
       .then(() => {
         // First get the fields to display from metadata
         try {
-          this.displayFields = this.allEntitiesService.getViewFields(this.entityType, 'summary');
+          this.displayFields = this.metadataService.getViewFields(this.entityType, 'summary');
         } catch (error) {
           console.warn('Error getting view fields:', error);
           this.displayFields = [];
@@ -133,11 +131,11 @@ export class EntityListComponent implements OnInit {
         // Now fetch the entity data from the API
         this.http.get<any>(apiUrl).subscribe({
           next: (response) => {
-            this.entities = Array.isArray(response) ? response : [response];
+            this.data = Array.isArray(response) ? response : [response];
             
             // If we couldn't get display fields from metadata, fall back to keys from response
-            if (this.displayFields.length === 0 && this.entities.length > 0) {
-              this.displayFields = Object.keys(this.entities[0] || {});
+            if (this.displayFields.length === 0 && this.data.length > 0) {
+              this.displayFields = Object.keys(this.data[0] || {});
             }
             
             this.loading = false;
@@ -157,15 +155,15 @@ export class EntityListComponent implements OnInit {
   }
   
   // Custom actions are not currently implemented in the stateless approach
-  getCustomActions(entity: Entity): { key: string, label: string, icon?: string }[] {
-    // Will be implemented when hooks are added back
-    return [];
-  }
+  // getCustomActions(entity: Entity): { key: string, label: string, icon?: string }[] {
+  //   // Will be implemented when hooks are added back
+  //   return [];
+  // }
   
-  executeCustomAction(actionKey: string, entity: Entity): void {
-    // Will be implemented when hooks are added back
-    console.log(`Custom action ${actionKey} would be executed on entity:`, entity);
-  }
+  // executeCustomAction(actionKey: string, entity: Entity): void {
+  //   // Will be implemented when hooks are added back
+  //   console.log(`Custom action ${actionKey} would be executed on entity:`, entity);
+  // }
 
   navigateToCreate(): void {
     // Navigate to create page for this entity type
@@ -197,35 +195,4 @@ export class EntityListComponent implements OnInit {
     }
   }
   
-  formatFieldValue(entity: Entity, fieldName: string): string {
-    if (!entity || entity[fieldName] === undefined || entity[fieldName] === null) {
-      return '';
-    }
-    
-    const value = entity[fieldName];
-    
-    // Handle date strings (ISO format)
-    if (typeof value === 'string' && 
-        (value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/) || 
-         value.match(/^\d{4}-\d{2}-\d{2}/))) {
-      try {
-        const date = new Date(value);
-        return date.toLocaleString();
-      } catch (e) {
-        return value;
-      }
-    }
-    
-    // Handle boolean values
-    if (typeof value === 'boolean') {
-      return value ? 'Yes' : 'No';
-    }
-    
-    // Handle objects (convert to JSON string)
-    if (typeof value === 'object' && value !== null) {
-      return JSON.stringify(value);
-    }
-    
-    return String(value);
-  }
 }

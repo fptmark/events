@@ -1,18 +1,18 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { EntityService, Entity } from '../../services/entity.service';
 import { MetadataService } from '../../services/metadata.service';
-import { CommonModule } from '@angular/common';
+import { CommonModule, NgIf, NgFor } from '@angular/common';
+import { EntityService } from '../../services/entity.service';
 // // Removed constants import as constants.ts was removed
 
 @Component({
   selector: 'app-entity-detail',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, NgIf, NgFor],
   template: `
     <div class="container mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>{{ allEntitiesService.getTitle(entityType) }} Details</h2>
+        <h2>{{ metadataService.getTitle(entityType) }} Details</h2>
         <div>
           <button class="btn btn-primary me-2" (click)="goToEdit()">Edit</button>
           <button class="btn btn-secondary" (click)="goBack()">Back to List</button>
@@ -27,18 +27,21 @@ import { CommonModule } from '@angular/common';
         {{ error }}
       </div>
       
-      <div *ngIf="!loading && !error && entity">
-        <div class="card">
+      <div *ngIf="!loading && !error && data.length">
+        <div *ngFor="let item of data" class="card mb-4">
           <div class="card-body">
             <dl class="row">
               <ng-container *ngFor="let field of displayFields">
                 <dt class="col-sm-3">{{ field }}</dt>
-                <dd class="col-sm-9">{{ entity[field] }}</dd>
+                <dd class="col-sm-9">
+                  {{ metadataService.formatFieldValue(entityType, field, 'details', item[field]) }}
+                </dd>
               </ng-container>
             </dl>
           </div>
         </div>
       </div>
+
     </div>
   `,
   styles: [`
@@ -48,14 +51,14 @@ import { CommonModule } from '@angular/common';
 export class EntityDetailComponent implements OnInit {
   entityType: string = '';
   entityId: string = '';
-  entity: Entity | null = null;
+  data: any[] = []
   displayFields: string[] = [];
   loading: boolean = true;
   error: string = '';
 
   constructor(
     private entityService: EntityService,
-    public allEntitiesService: MetadataService,
+    public metadataService: MetadataService,
     private route: ActivatedRoute,
     private router: Router
   ) {}
@@ -73,19 +76,19 @@ export class EntityDetailComponent implements OnInit {
     this.error = '';
     
     // Wait for entities to be loaded
-    this.allEntitiesService.waitForEntities()
+    this.metadataService.waitForEntities()
       .then(() => {
         // Load entity data
         this.entityService.getEntity(this.entityType, this.entityId).subscribe({
       next: (response) => {
-        this.entity = Array.isArray(response.data) ? response.data[0] : response.data;
+        this.data = Array.isArray(response.data) ? response.data : response.data;
         
         // Get fields from service if available
         try {
-          this.displayFields = this.allEntitiesService.getEntityFields(this.entityType);
+          this.displayFields = this.metadataService.getEntityFields(this.entityType);
         } catch (error) {
           // Fallback to using entity keys
-          this.displayFields = Object.keys(this.entity || {});
+          this.displayFields = Object.keys(this.data || {});
         }
         
         this.loading = false;
@@ -115,6 +118,6 @@ export class EntityDetailComponent implements OnInit {
   }
 
   isValidOperation(operation: string): boolean {
-    return this.allEntitiesService.isValidOperation(this.entityType, operation);
+    return this.metadataService.isValidOperation(this.entityType, operation);
   }
 }

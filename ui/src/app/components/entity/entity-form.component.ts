@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { EntityService, Entity } from '../../services/entity.service';
+import { EntityService } from '../../services/entity.service';
 import { MetadataService, Metadata } from '../../services/metadata.service';
 import { FormGeneratorService } from '../../services/form-generator.service';
 import { CommonModule } from '@angular/common';
@@ -183,10 +183,11 @@ export class EntityFormComponent implements OnInit {
   entityId: string = '';
   isEditMode: boolean = false;
   
-  entity: Entity | null = null;
+  data: any[] = [];
   metadata: Metadata | null = null;
   entityForm: FormGroup | null = null;
   sortedFields: string[] = [];
+  entity: any = null; // Add missing entity property
   
   loading: boolean = true;
   submitting: boolean = false;
@@ -253,7 +254,9 @@ export class EntityFormComponent implements OnInit {
           // Then load the entity data
           this.entityService.getEntity(this.entityType, this.entityId).subscribe({
         next: (response) => {
-          this.entity = Array.isArray(response.data) ? response.data[0] : response.data;
+          // For a single entity, response.data will be a single object
+          this.entity = response.data; // Set directly for form initialization
+          this.data = response.data;   // Keep this.data for backward compatibility
           this.initForm();
           this.loading = false;
         },
@@ -372,9 +375,8 @@ export class EntityFormComponent implements OnInit {
     this.entityService.createEntity(this.entityType, formData).subscribe({
       next: (response) => {
         this.submitting = false;
-        // Handle the created entity - should be in the response.data
-        const createdEntity = Array.isArray(response.data) ? response.data[0] : response.data;
-        this.router.navigate(['/entity', this.entityType, createdEntity._id]);
+        // For now, just go back to the entity list to avoid navigation issues
+        this.router.navigate(['/entity', this.entityType]);
       },
       error: (err) => {
         console.error('Error creating entity:', err);
@@ -388,9 +390,8 @@ export class EntityFormComponent implements OnInit {
     this.entityService.updateEntity(this.entityType, this.entityId, formData).subscribe({
       next: (response) => {
         this.submitting = false;
-        // Get the updated entity from the response data
-        const updatedEntity = Array.isArray(response.data) ? response.data[0] : response.data;
-        this.router.navigate(['/entity', this.entityType, updatedEntity._id]);
+        // For now, just go back to the entity list to avoid navigation issues
+        this.router.navigate(['/entity', this.entityType]);
       },
       error: (err) => {
         console.error('Error updating entity:', err);
