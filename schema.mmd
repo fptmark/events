@@ -2,7 +2,7 @@
 erDiagram
     BaseEntity { 
         ISODate createdAt %% @validate { required: true, autoGenerate: true } @ui {readOnly: true}
-        ISODate updatedAt %% @validate { required: true, autoUpdate: true } 
+        ISODate updatedAt %% @validate { required: true, autoUpdate: true } @ui {readOnly: true}
 
         %% @abstract
     }
@@ -25,7 +25,7 @@ erDiagram
         String firstName         %% @validate { required: true, minLength: 3, maxLength: 100 }, @ui { displayName: "First Name" }
         String lastName          %% @validate { required: true, minLength: 3, maxLength: 100 }, @ui { displayName: "Last Name" }
         String gender            %% @validate { required: false, enum: { values: ["male", "female", "other"], message: "must be male or female" } }
-        ISODate dob         
+        ISODate dob              %% @validate { required: false }
         Boolean isAccountOwner   %% @validate { required: true }, @ui { displayName: "Owner"}
     
         %% @ui { title: "Users", buttonLabel: "Manage Users", description: "Manage User Profile" }
