@@ -1,80 +1,95 @@
 import { Injectable } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
-// Fix missing Entity import 
-import { MetadataService, Metadata } from './metadata.service';
+import { FieldMetadata, MetadataService } from './metadata.service';
+import { EntityService } from './entity.service';
 
+export const VIEW = 'View';
+export const CREATE  = 'Create';
+export const EDIT  = 'Edit';
+export type FormMode = typeof VIEW | typeof CREATE | typeof EDIT
 @Injectable({
   providedIn: 'root'
 })
+
 export class FormGeneratorService {
 
   constructor(
     private fb: FormBuilder,
-    private allEntitiesService: MetadataService
+    private entityService: EntityService,
+    private metadataService: MetadataService
   ) {}
 
-  generateForm(metadata: Metadata, entity?: any): FormGroup {
+  /**
+   * Generate a complete entity form with both the form controls and display fields
+   * @param entityType The type of entity to create a form for
+   * @param mode The mode of the form: 'create', 'edit', or 'view'
+   * @param entityData Optional entity data for edit mode
+   * @returns An object with the form and ordered display fields
+   * 
+   * This handles create, edit and view modes.
+   */
+  generateEntityForm(entityType: string, mode: FormMode): { form: FormGroup, displayFields: string[] } {
     const formGroup: { [key: string]: AbstractControl } = {};
+    const idField = '_id'
     
-    // If this is an edit operation and we have an entity
-    if (entity) {
-      // Use the entity object's properties to build form fields
-      Object.keys(entity).forEach(fieldName => {
-        // Skip internal fields like _id for create forms if no entity is provided
-        if (fieldName === '_id' || fieldName === 'createdAt' || fieldName === 'updatedAt') {
-          // For _id and timestamp fields, create disabled controls
-          formGroup[fieldName] = this.fb.control({
-            value: entity[fieldName],
-            disabled: true
-          });
-          return;
+    // Get fields to display from entity service
+    let viewFields: string[] = this.entityService.getViewFields(entityType, 'form');
+    let displayFields: string[] // may add or delete the id field later
+
+    // Manage ID field - it should be first in edit and view modes and removed in create mode
+    displayFields = viewFields.filter(fieldName => fieldName !== idField);
+    if (mode === VIEW || mode === EDIT) { // Make sure the id field is first
+      displayFields.unshift(idField);
+    }
+
+    // Process all fields to create form controls
+    displayFields.forEach(fieldName => {
+      let validators: any[] = [];
+      
+      try {
+        // Determine if field should be disabled by non-data-dependent rules
+        let isDisabled = mode === VIEW; // All fields disabled in view mode
+        
+        // ID fields are always disabled
+        if (fieldName === idField) {
+          isDisabled = true;
         }
         
-        // Get field metadata if available
-        const fieldMeta = metadata.fields?.[fieldName];
-        const validators = fieldMeta ? this.getValidators(fieldMeta) : [];
+        // Get field validators and metadata
+        const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
         
-        // Check if field should be read-only
-        const isReadOnly = fieldMeta?.ui?.readOnly === true;
-        
-        if (isReadOnly) {
-          // Create disabled control for read-only fields
-          formGroup[fieldName] = this.fb.control({
-            value: entity[fieldName], 
-            disabled: true
-          }, validators);
-        } else {
-          // Create normal control
-          formGroup[fieldName] = this.fb.control(entity[fieldName], validators);
-        }
-      });
-    } else {
-      // This is a create operation
-      // Use metadata fields to build the form
-      if (metadata.fields) {
-        Object.keys(metadata.fields).forEach(fieldName => {
-          const fieldMeta = metadata.fields[fieldName];
+        // Add validators if not in view mode and field has metadata
+        if (fieldMeta && mode !== VIEW) {
+          validators = this.getValidators(fieldMeta);
           
-          // Skip read-only fields for create forms
-          if (fieldMeta?.ui?.readOnly) return;
-          
-          // Skip fields that aren't meant for forms
-          if (fieldMeta?.displayPages && 
-              fieldMeta.displayPages !== 'all' && 
-              !fieldMeta.displayPages.includes('form')) {
-            return;
+          // Field marked read-only in metadata
+          if (fieldMeta.ui?.readOnly) {
+            isDisabled = true;
           }
           
-          const validators = this.getValidators(fieldMeta);
-          const defaultValue = this.getDefaultValue(fieldMeta);
-          
-          formGroup[fieldName] = this.fb.control(defaultValue, validators);
-        });
-      }
-    }
-    
-    return this.fb.group(formGroup);
+          // Auto-generate/update ISODate fields should be disabled in all modes
+          if (fieldMeta.type === 'ISODate' && (fieldMeta.autoGenerate || fieldMeta.autoUpdate)) {
+            isDisabled = true;
+          }
+        }
+        
+        // Create the form control with appropriate disabled state
+        formGroup[fieldName] = this.fb.control({
+          // No initial value - will be set by entity-form
+          disabled: isDisabled
+        }, validators);
+      } catch (error) {
+        console.error(`Error processing field ${fieldName}:`, error);
+      } 
+    })
+
+    return {
+      form: this.fb.group(formGroup),
+      displayFields: displayFields
+    };
   }
+  
+  // Old method removed - we only need generateEntityForm
   
   private getValidators(fieldMeta: any): any[] {
     const validators = [];
@@ -121,59 +136,112 @@ export class FormGeneratorService {
     return validators;
   }
   
-  private getDefaultValue(fieldMeta: any): any {
-    const type = fieldMeta.type;
-    const widget = fieldMeta.ui?.widget || fieldMeta.widget;
-    const enumValues = fieldMeta.enum?.values;
-    const required = fieldMeta.required;
+  /**
+   * Get the appropriate widget type for a field based on its metadata and mode
+   * @param entityType The type of entity
+   * @param fieldName The name of the field
+   * @param mode The form mode (view/edit/create)
+   * @returns The widget type to use
+   */
+  getFieldWidget(entityType: string, fieldName: string, mode: FormMode): string {
+    // For view mode, always use text inputs to avoid browser-specific rendering issues
+    if (mode === VIEW) {
+      return 'text';
+    }
     
-    switch (type) {
-      case 'String':
-        // For select fields with enum values, default to first value if required
-        if (widget === 'select' && enumValues?.length > 0 && required) {
-          return enumValues[0];
-        }
-        return '';
-      case 'Number':
-      case 'Integer':
-        return required ? 0 : null;
+    if (fieldName === '_id') return 'text';
+    
+    const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
+    if (!fieldMeta) return 'text';
+    
+    // If widget is explicitly specified in ui object, use it
+    if (fieldMeta.ui?.widget) return fieldMeta.ui.widget;
+    
+    // Check if field has enum values - use select dropdown
+    if (fieldMeta.enum && fieldMeta.enum.values && fieldMeta.enum.values.length > 0) {
+      return 'select';
+    }
+    
+    // Default widgets based on field type
+    const fieldType = fieldMeta.type;
+    switch (fieldType) {
       case 'Boolean':
-        return false;
+        return 'checkbox';
+      case 'ISODate':
+        // For auto fields always use text to avoid browser issues
+        if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
+          return 'text';
+        }
+        return 'date';
+      case 'String':
+        // Special string field types based on metadata patterns, not field names
+        if (fieldMeta.pattern?.regex?.includes('@')) return 'email';
+        if (fieldMeta.maxLength && fieldMeta.maxLength > 100) return 'textarea';
+        return 'text';
+      case 'ObjectId':
+        return 'reference';
       case 'Array':
       case 'Array[String]':
-        return [];
+        return 'array';
       case 'JSON':
-        return {};
-      case 'ISODate':
-        return null;
-      case 'ObjectId':
-        return '';
+        return 'json';
       default:
-        return null;
+        return 'text';
     }
   }
   
-  getFormSortedFields(metadata: Metadata): string[] {
-    if (!metadata.fields) return [];
+  // private getDefaultValue(fieldMeta: any): any {
+  //   const type = fieldMeta.type;
+  //   const widget = fieldMeta.ui?.widget || fieldMeta.widget;
+  //   const enumValues = fieldMeta.enum?.values;
+  //   const required = fieldMeta.required;
     
-    const fieldNames = Object.keys(metadata.fields);
+  //   console.log(`getDefaultValue for field type ${type}, autoGenerate=${fieldMeta.autoGenerate}, autoUpdate=${fieldMeta.autoUpdate}`);
     
-    // Filter fields based on display property and field metadata
-    const filteredFields = fieldNames.filter(name => {
-      const fieldMeta = metadata.fields?.[name];
-      if (!fieldMeta) return false;
-      
-      // Skip readOnly fields for create forms
-      if (fieldMeta.ui?.readOnly) return false;
-      
-      // Check if field should be shown in forms based on displayPages
-      const displayPages = fieldMeta.displayPages || '';
-      return displayPages === '' || 
-             displayPages === 'all' || 
-             displayPages.includes('form');
+  //   switch (type) {
+  //     case 'String':
+  //       // For select fields with enum values, default to first value if required
+  //       if (widget === 'select' && enumValues?.length > 0 && required) {
+  //         return enumValues[0];
+  //       }
+  //       return '';
+  //     case 'Number':
+  //     case 'Integer':
+  //       return required ? 0 : null;
+  //     case 'Boolean':
+  //       return false;
+  //     case 'Array':
+  //     case 'Array[String]':
+  //       return [];
+  //     case 'JSON':
+  //       return {};
+  //     case 'ISODate':
+  //       // Always set current date for autoGenerate and autoUpdate fields
+  //       if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
+  //         const now = new Date().toISOString();
+  //         console.log(`Setting default ISO date for field with autoGenerate=${fieldMeta.autoGenerate}, autoUpdate=${fieldMeta.autoUpdate}, value=${now}`);
+  //         return now;
+  //       }
+  //       console.log('No autoGenerate/autoUpdate flag, returning null for ISODate');
+  //       return null;
+  //     case 'ObjectId':
+  //       return '';
+  //     default:
+  //       return null;
+  //   }
+  // }
+  
+  /**
+   * Creates a disabled form control with the given value
+   * @param value The value for the control
+   * @returns A disabled form control
+   */
+  createDisabledControl(value: any): AbstractControl {
+    return this.fb.control({
+      value: value,
+      disabled: true
     });
-    
-    // Return filtered fields directly without sorting
-    return filteredFields;
   }
+  
+  // Method removed - use entityService.getViewFields instead
 }

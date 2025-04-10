@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MetadataService } from '../../services/metadata.service';
+import { EntityService } from '../../services/entity.service';
 import { ConfigService } from '../../services/config.service';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
@@ -40,13 +41,13 @@ import { HttpClient } from '@angular/common/http';
           <table class="table table-striped table-hover">
             <thead>
               <tr>
-                <th *ngFor="let field of displayFields">{{ metadataService.getFieldDisplayName(entityType, field) }}</th>
+                <th *ngFor="let field of displayFields">{{ entityService.getFieldDisplayName(entityType, field) }}</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               <tr *ngFor="let row of data">
-                <td *ngFor="let field of displayFields" [innerHTML]="metadataService.formatFieldValue(entityType, field, 'summary', row[field])"></td>
+                <td *ngFor="let field of displayFields" [innerHTML]="entityService.formatFieldValue(entityType, field, 'summary', row[field])"></td>
                 <td>
                   <div class="btn-group btn-group-sm">
                     <button *ngIf="canRead" 
@@ -85,6 +86,7 @@ export class EntityListComponent implements OnInit {
 
   constructor(
     public metadataService: MetadataService,
+    public entityService: EntityService,
     private route: ActivatedRoute,
     private router: Router,
     private configService: ConfigService,
@@ -115,43 +117,24 @@ export class EntityListComponent implements OnInit {
     this.error = '';
     
     // Wait for entities to be loaded
-    this.metadataService.waitForEntities()
-      .then(() => {
-        // First get the fields to display from metadata
-        try {
-          this.displayFields = this.metadataService.getViewFields(this.entityType, 'summary');
-        } catch (error) {
-          console.warn('Error getting view fields:', error);
-          this.displayFields = [];
+    this.displayFields = this.entityService.getViewFields(this.entityType, 'summary');
+        
+    // Get API endpoint from config service
+    const apiUrl = this.configService.getApiUrl(this.entityType);
+        
+    // Now fetch the entity data from the API
+    this.http.get<any>(apiUrl).subscribe({
+      next: (response) => {
+        this.data = Array.isArray(response) ? response : [response];
+            
+          this.loading = false;
+        },
+        error: (err) => {
+          console.error('Error loading entities:', err);
+          this.error = 'Failed to load entities. Please try again later.';
+          this.loading = false;
         }
-        
-        // Get API endpoint from config service
-        const apiUrl = this.configService.getApiUrl(this.entityType);
-        
-        // Now fetch the entity data from the API
-        this.http.get<any>(apiUrl).subscribe({
-          next: (response) => {
-            this.data = Array.isArray(response) ? response : [response];
-            
-            // If we couldn't get display fields from metadata, fall back to keys from response
-            if (this.displayFields.length === 0 && this.data.length > 0) {
-              this.displayFields = Object.keys(this.data[0] || {});
-            }
-            
-            this.loading = false;
-          },
-          error: (err) => {
-            console.error('Error loading entities:', err);
-            this.error = 'Failed to load entities. Please try again later.';
-            this.loading = false;
-          }
-        });
       })
-      .catch(error => {
-        console.error('Error waiting for entities metadata:', error);
-        this.error = 'Failed to load entity metadata. Please refresh the page.';
-        this.loading = false;
-      });
   }
   
   // Custom actions are not currently implemented in the stateless approach

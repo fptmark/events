@@ -2,8 +2,8 @@ import { Component, OnInit } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { EntityService } from '../../services/entity.service';
-import { MetadataService, Metadata } from '../../services/metadata.service';
-import { FormGeneratorService } from '../../services/form-generator.service';
+import { MetadataService, EntityMetadata } from '../../services/metadata.service';
+import { FormGeneratorService, FormMode, VIEW, CREATE, EDIT } from '../../services/form-generator.service';
 import { CommonModule } from '@angular/common';
 // Removed constants import as constants.ts was removed
 
@@ -14,7 +14,7 @@ import { CommonModule } from '@angular/common';
   template: `
     <div class="container mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>{{ isEditMode ? 'Edit' : 'Create' }} {{ entityType | titlecase }}</h2>
+        <h2>{{ mode }} {{ entityType | titlecase }}</h2>
         <button class="btn btn-secondary" (click)="goBack()">Back to List</button>
       </div>
       
@@ -38,8 +38,9 @@ import { CommonModule } from '@angular/common';
                       <span *ngIf="isFieldRequired(fieldName)" class="text-danger">*</span>
                     </label>
                     
-                    <!-- Input field based on field type and widget -->
-                    <span *ngIf="true">
+                    <!-- All form controls using formControlName automatically handle disabled state -->
+                    <!-- Disabled controls will have their values populated by populateFormValues -->
+                    <!-- So we can use the same controls for all states (view/edit/create) -->
                     <ng-container [ngSwitch]="getFieldWidget(fieldName)">
                       
                       <!-- Select dropdown -->
@@ -133,7 +134,6 @@ import { CommonModule } from '@angular/common';
                         class="form-control"
                         [class.is-invalid]="isFieldInvalid(fieldName)">
                     </ng-container>
-                    </span>
                     
                     <!-- Validation error messages -->
                     <div *ngIf="isFieldInvalid(fieldName)" class="invalid-feedback">
@@ -165,8 +165,11 @@ import { CommonModule } from '@angular/common';
               </div>
             </div>
             <div class="card-footer">
-              <button type="submit" class="btn btn-primary" [disabled]="entityForm && entityForm.invalid || submitting">
-                {{ submitting ? 'Saving...' : (isEditMode ? 'Update' : 'Create') }}
+              <button type="button" class="btn btn-primary" *ngIf="isViewMode()" (click)="goToEdit()">
+                Edit
+              </button>
+              <button type="submit" class="btn btn-primary" *ngIf="!isViewMode()" [disabled]="entityForm && entityForm.invalid || submitting">
+                {{ submitting ? 'Saving...' : mode }}
               </button>
             </div>
           </div>
@@ -176,180 +179,147 @@ import { CommonModule } from '@angular/common';
   `,
   styles: [`
     .container { max-width: 1000px; }
+    
+    /* Style for disabled (read-only) form controls */
+    .form-control:disabled,
+    .form-select:disabled,
+    .form-check-input:disabled {
+      background-color: #f8f9fa; /* Light gray background */
+      color: #212529; /* Dark text for readability */
+      opacity: 1; /* Full opacity for better readability */
+      cursor: default;
+      border: 1px solid #dee2e6;
+    }
   `]
 })
+
 export class EntityFormComponent implements OnInit {
+  readonly ID_FIELD = '_id'; // Changed from private to public
+
   entityType: string = '';
   entityId: string = '';
-  isEditMode: boolean = false;
   
   data: any[] = [];
-  metadata: Metadata | null = null;
+  entityMetadata: EntityMetadata | null = null;
   entityForm: FormGroup | null = null;
   sortedFields: string[] = [];
-  entity: any = null; // Add missing entity property
+  entity: any = null;
   
   loading: boolean = true;
   submitting: boolean = false;
   error: string = '';
 
+  mode: FormMode = VIEW;
+  
   constructor(
-    private entityService: EntityService,
-    private formGenerator: FormGeneratorService,
-    private metadataService: MetadataService,
     private route: ActivatedRoute,
-    private router: Router
+    private router: Router,
+    private entityService: EntityService,
+    private metadataService: MetadataService,
+    private formGenerator: FormGeneratorService
   ) {}
+  
+  // Helper methods for template conditions
+  isViewMode(): boolean {
+    return this.mode === VIEW;
+  }
+  
+  isEditMode(): boolean {
+    return this.mode === EDIT;
+  }
+  
+  isCreateMode(): boolean {
+    return this.mode === CREATE;
+  }
 
   ngOnInit(): void {
+    // Simplified initialization
     this.route.params.subscribe(params => {
       this.entityType = params['entityType'];
       this.entityId = params['id'];
-      this.isEditMode = this.route.snapshot.url.some(segment => segment.path === 'edit');
       
-      if (this.isEditMode) {
-        this.loadEntityForEdit();
+      const url = this.router.url;
+      
+      if (url.includes('/create')) {
+        this.mode = CREATE;
+      } else if (url.includes('/edit')) {
+        this.mode = EDIT;
       } else {
-        this.loadMetadataForCreate();
+        this.mode = VIEW;
+      }
+      
+      this.loadEntity();
+    });
+  }
+
+  loadEntity(): void {
+    this.loading = true;
+    this.error = '';
+    
+    // Generate the form first (same for all modes)
+    const result = this.formGenerator.generateEntityForm(this.entityType, this.mode);
+    this.entityForm = result.form;
+    this.sortedFields = result.displayFields;
+    
+    // For create mode, just populate with defaults and we're done
+    if (this.isCreateMode()) {
+      this.populateFormValues();
+      this.loading = false;
+      return;
+    }
+    
+    // For edit/view mode, fetch the data first, then populate
+    this.entityService.getEntity(this.entityType, this.entityId).subscribe({
+      next: (response) => {
+        this.entity = response.data || response;
+        
+        if (!this.entity) {
+          this.error = 'No entity data returned from the server.';
+          this.loading = false;
+          return;
+        }
+        
+        // Populate form with entity data for edit/view mode
+        this.populateFormValues(this.entity);
+        this.loading = false;
+      },
+      error: (err) => {
+        console.error('Error loading entity:', err);
+        this.error = 'Failed to load entity data. Please try again later.';
+        this.loading = false;
       }
     });
   }
 
-  loadMetadataForCreate(): void {
-    this.loading = true;
-    this.error = '';
-    
-    // Wait for entities to be loaded
-    this.metadataService.waitForEntities()
-      .then(() => {
-        try {
-          // Get metadata from AllEntitiesService
-          this.metadata = this.metadataService.getEntityMetadata(this.entityType);
-          this.initForm();
-          this.loading = false;
-        } catch (err) {
-          console.error('Error loading metadata:', err);
-          this.error = 'Failed to load form. Please try again later.';
-          this.loading = false;
-        }
-      })
-      .catch(error => {
-        console.error('Error waiting for entities:', error);
-        this.error = 'Failed to load entity metadata. Please refresh the page.';
-        this.loading = false;
-      });
-  }
-
-  loadEntityForEdit(): void {
-    this.loading = true;
-    this.error = '';
-    
-    // Wait for entities to be loaded
-    this.metadataService.waitForEntities()
-      .then(() => {
-        try {
-          // First get the metadata
-          this.metadata = this.metadataService.getEntityMetadata(this.entityType);
-          
-          // Then load the entity data
-          this.entityService.getEntity(this.entityType, this.entityId).subscribe({
-        next: (response) => {
-          // For a single entity, response.data will be a single object
-          this.entity = response.data; // Set directly for form initialization
-          this.data = response.data;   // Keep this.data for backward compatibility
-          this.initForm();
-          this.loading = false;
-        },
-        error: (err) => {
-          console.error('Error loading entity for edit:', err);
-          this.error = 'Failed to load entity data. Please try again later.';
-          this.loading = false;
-        }
-      });
-        } catch (err) {
-          console.error('Error loading metadata:', err);
-          this.error = 'Failed to load entity metadata. Please try again later.';
-          this.loading = false;
-        }
-      })
-      .catch(error => {
-        console.error('Error waiting for entities:', error);
-        this.error = 'Failed to load entity metadata. Please refresh the page.';
-        this.loading = false;
-      });
-  }
-
-  initForm(): void {
-    if (!this.metadata) return;
-    
-    // Generate the form for the entity - convert null to undefined to match expected type
-    this.entityForm = this.formGenerator.generateForm(this.metadata, this.entity || undefined);
-    
-    // Get the list of fields from the generated form
-    if (this.entityForm) {
-      this.sortedFields = Object.keys(this.metadata.fields).filter(field => {
-        return this.entityForm?.get(field) !== null && this.entityForm?.get(field) !== undefined;
-      });
-    }
-  }
+  // initForm method removed - logic moved directly into loadMetadataForCreate and loadEntityForEdit
 
   getFieldDisplayName(fieldName: string): string {
-    if (!this.metadata) return fieldName;
-    return this.metadata.fields[fieldName]?.ui?.displayName || fieldName;
+    if (fieldName === this.ID_FIELD) return 'ID';
+    const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+    return fieldMeta?.ui?.displayName || fieldName;
   }
 
   getFieldWidget(fieldName: string): string {
-    const fieldMeta = this.metadata?.fields[fieldName];
-    if (!fieldMeta) return 'text';
-    
-    // If widget is explicitly specified in ui object, use it
-    if (fieldMeta.ui?.widget) return fieldMeta.ui.widget;
-    
-    // Check if field has enum values - use select dropdown
-    if (fieldMeta.enum && fieldMeta.enum.values && fieldMeta.enum.values.length > 0) {
-      return 'select';
-    }
-    
-    // Default widgets based on field type
-    const fieldType = fieldMeta.type;
-    switch (fieldType) {
-      case 'Boolean':
-        return 'checkbox';
-      case 'ISODate':
-        return 'date';
-      case 'String':
-        // Special string field types based on metadata patterns, not field names
-        if (fieldMeta.pattern?.regex?.includes('@')) return 'email';
-        if (fieldMeta.maxLength && fieldMeta.maxLength > 100) return 'textarea';
-        return 'text';
-      case 'ObjectId':
-        return 'reference';
-      case 'Array':
-      case 'Array[String]':
-        return 'array';
-      case 'JSON':
-        return 'json';
-      default:
-        return 'text';
-    }
+    // Delegate to the FormGeneratorService for widget determination
+    return this.formGenerator.getFieldWidget(this.entityType, fieldName, this.mode);
   }
 
 
   getFieldOptions(fieldName: string): string[] {
-    if (!this.metadata) return [];
-    const fieldMeta = this.metadata.fields[fieldName];
+    const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
     if (!fieldMeta || !fieldMeta.enum || !fieldMeta.enum.values) return [];
     
     return fieldMeta.enum.values;
   }
 
   isFieldRequired(fieldName: string): boolean {
-    if (!this.metadata) return false;
-    const fieldMeta = this.metadata.fields[fieldName];
+    if (fieldName === this.ID_FIELD) return true;
+    
+    const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
     if (!fieldMeta) return false;
     
     // Field required property is at the root level, not in the UI object
-    return fieldMeta['required'] || false;
+    return fieldMeta.required || false;
   }
 
   isFieldInvalid(fieldName: string): boolean {
@@ -357,9 +327,169 @@ export class EntityFormComponent implements OnInit {
     const control = this.entityForm.get(fieldName);
     return !!control && control.invalid && (control.dirty || control.touched);
   }
+  
+  isFieldReadOnly(fieldName: string): boolean {
+    if (!this.entityForm) return false;
+    const control = this.entityForm.get(fieldName);
+    return control?.disabled || false;
+  }
+  
+  // formatReadOnlyValue(fieldName: string): string {
+  //   if (!this.entityForm) return '';
+    
+  //   try {
+  //     // Get the control and its value - this is now populated by populateFormValues
+  //     const control = this.entityForm.get(fieldName);
+  //     let value = control?.value;
+      
+  //     // Get field metadata
+  //     const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+  //     const fieldType = fieldMeta?.type || 'String';
+      
+  //     // Handle null/undefined values
+  //     if (value === null || value === undefined) {
+  //       return '';
+  //     }
+      
+  //     // Format the value based on its type
+  //     return this.formatValueByType(value, fieldType);
+  //   } catch (error) {
+  //     console.error('Error formatting read-only value:', error);
+  //     // Simple fallback for any errors
+  //     const control = this.entityForm.get(fieldName);
+  //     return control?.value !== undefined ? String(control.value) : '';
+  //   }
+  // }
+  
+  // // Helper method to format values based on their type
+  // formatValueByType(value: any, type: string): string {
+  //   if (value === null || value === undefined) return '';
+    
+  //   // Format based on type
+  //   switch (type) {
+  //     case 'ISODate':
+  //       if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T/)) {
+  //         try {
+  //           return new Date(value).toLocaleString();
+  //         } catch (e) {
+  //           return value;
+  //         }
+  //       }
+  //       break;
+  //     case 'Boolean':
+  //       return value ? 'Yes' : 'No';
+  //   }
+    
+  //   // Default formatting
+  //   return String(value);
+  // }
+
+  /**
+   * Populates form values based on mode and entity data
+   * @param entityData Optional entity data for edit/view modes
+   */
+  populateFormValues(entityData?: any): void {
+    if (!this.entityForm || !this.sortedFields.length) return;
+    
+    // Process each field
+    for (const fieldName of this.sortedFields) {
+      const control = this.entityForm.get(fieldName);
+      if (!control) continue;
+      
+      // Get field metadata
+      const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+      
+      // Get the value based on mode
+      let value;
+      
+      if (this.isCreateMode()) {
+        // Use default values for create mode
+        value = this.getDefaultValue(fieldMeta);
+        
+        // Handle special types that need specific default values
+        if (fieldMeta?.type === 'ISODate' && (fieldMeta?.autoGenerate || fieldMeta?.autoUpdate)) {
+          // For auto-generate/update fields in create mode, use current date
+          value = new Date().toISOString().substring(0, 16); // Format for datetime-local
+        }
+      } else {
+        // Use entity data for edit/view modes
+        value = entityData?.[fieldName];
+        
+        // Handle ISODate fields specially
+        if (fieldMeta?.type === 'ISODate') {
+          if (!value) {
+            // For empty dates, ensure we display them properly as completely empty
+            value = null; // Use null instead of empty string for date fields
+          } else if (value) {
+            try {
+              // Format valid date strings
+              if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T/)) {
+                // For input[type=datetime-local], format as YYYY-MM-DDThh:mm
+                const date = new Date(value);
+                value = date.toISOString().substring(0, 16); // Format for datetime-local input
+              }
+            } catch (e) {
+              console.error('Error formatting date:', e);
+            }
+          }
+          
+          // For auto-update fields in edit mode, use current date
+          if (this.isEditMode() && fieldMeta?.autoUpdate) {
+            value = new Date().toISOString().substring(0, 16);
+          }
+        }
+      }
+      
+      // Set value (disabled state is already handled by form generator)
+      control.setValue(value);
+    }
+  }
+
+  private getDefaultValue(fieldMeta: any): any {
+    const type = fieldMeta.type;
+    const widget = fieldMeta.ui?.widget || fieldMeta.widget;
+    const enumValues = fieldMeta.enum?.values;
+    const required = fieldMeta.required;
+    
+    switch (type) {
+      case 'String':
+        // For select fields with enum values, default to first value if required
+        if (widget === 'select' && enumValues?.length > 0 && required) {
+          return enumValues[0];
+        }
+        return '';
+      case 'Number':
+      case 'Integer':
+        return required ? 0 : null;
+      case 'Boolean':
+        return false;
+      case 'Array':
+      case 'Array[String]':
+        return [];
+      case 'JSON':
+        return {};
+      case 'ISODate':
+        // Always set current date for autoGenerate and autoUpdate fields
+        if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
+          const now = new Date().toISOString();
+          return now;
+        }
+        return null;
+      case 'ObjectId':
+        return '';
+      default:
+        return null;
+    }
+  }
 
   onSubmit(): void {
     if (!this.entityForm || this.entityForm.invalid) return;
+    
+    // For view mode, go to edit instead of submitting
+    if (this.isViewMode()) {
+      this.goToEdit();
+      return;
+    }
     
     this.submitting = true;
     let formData = this.entityForm.value;
@@ -367,9 +497,9 @@ export class EntityFormComponent implements OnInit {
     // Process the form data before sending it to the API
     formData = this.processFormData(formData);
     
-    if (this.isEditMode) {
+    if (this.isEditMode()) {
       this.updateEntity(formData);
-    } else {
+    } else if (this.isCreateMode()) {
       this.createEntity(formData);
     }
   }
@@ -380,34 +510,36 @@ export class EntityFormComponent implements OnInit {
     const processedData = { ...formData };
     
     try {
-      // Get all available fields for the form view using metadataService
-      const formFields = this.metadataService.getViewFields(this.entityType, 'form');
+      if (!this.entityForm) return processedData;
       
-      // Handle autoGenerate and autoUpdate fields
-      formFields.forEach(fieldName => {
-        try {
-          // Get field metadata using metadataService
-          const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
-          
-          // Handle ISODate fields that need auto-generation
-          if (fieldMeta.type === 'ISODate') {
-            // For create operations, handle autoGenerate fields
-            if (!this.isEditMode && fieldMeta.autoGenerate) {
-              processedData[fieldName] = new Date().toISOString();
-              console.log(`Auto-generated date for ${fieldName}: ${processedData[fieldName]}`);
-            }
-            
-            // For both create and edit operations, handle autoUpdate fields
-            if (fieldMeta.autoUpdate) {
-              processedData[fieldName] = new Date().toISOString();
-              console.log(`Auto-updated date for ${fieldName}: ${processedData[fieldName]}`);
-            }
+      // Process all form controls directly (including disabled fields)
+      for (const fieldName in this.entityForm.controls) {
+        const control = this.entityForm.controls[fieldName];
+        const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+        
+        if (control.disabled) {
+          // Add disabled field values to the processed data (they're excluded from formData by default)
+          const value = control.value;
+          if (value !== undefined && value !== null) {
+            processedData[fieldName] = value;
           }
-        } catch (error) {
-          // Handle case where field metadata can't be found
-          console.warn(`Could not get metadata for field: ${fieldName}`, error);
         }
-      });
+        
+        // Special handling for specific field types
+        if (fieldMeta && fieldMeta.type === 'ISODate') {
+          const currentTime = new Date().toISOString();
+          
+          // For create operations, handle autoGenerate fields
+          if (this.isCreateMode() && fieldMeta.autoGenerate) {
+            processedData[fieldName] = currentTime;
+          }
+          
+          // For both create and edit operations, always update autoUpdate fields
+          if (fieldMeta.autoUpdate) {
+            processedData[fieldName] = currentTime;
+          }
+        }
+      }
     } catch (error) {
       console.error('Error processing form data:', error);
     }
@@ -446,10 +578,16 @@ export class EntityFormComponent implements OnInit {
   }
 
   goBack(): void {
-    if (this.isEditMode && this.entityId) {
+    if (this.isEditMode() && this.entityId) {
       this.router.navigate(['/entity', this.entityType, this.entityId]);
     } else {
       this.router.navigate(['/entity', this.entityType]);
+    }
+  }
+  
+  goToEdit(): void {
+    if (this.entityId) {
+      this.router.navigate(['/entity', this.entityType, this.entityId, 'edit']);
     }
   }
 }

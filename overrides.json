@@ -1,0 +1,20 @@
+{
+   "User" : {
+      "fields": {
+         "accountId": {
+            "ui": {
+               "displayPages": "all"
+            }
+         }
+     }
+   },
+   "Account": {
+      "fields": {
+         "createdAt": {
+            "ui": {
+               "displayName": "Created On"
+            }
+         }
+      }
+   }
+}
