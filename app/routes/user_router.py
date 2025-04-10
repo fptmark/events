@@ -17,8 +17,9 @@ async def create_user(item: UserCreate):
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
         logging.info(f"User created successfully with _id: {doc._id}")
     except Exception as e:
+        msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create user.")
-        raise HTTPException(status_code=500, detail='Internal Server Error')
+        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
     
     return doc
 
@@ -30,8 +31,9 @@ async def get_all_users():
         docs = await User.find_all().to_list()
         logging.info(f"Fetched {len(docs)} user(s) successfully.")
     except Exception as e:
+        msg = str(e).replace('\n', ' ')
         logging.exception("Failed to fetch all users.")
-        raise HTTPException(status_code=500, detail='Internal Server Error')
+        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
     
     return docs
 
@@ -48,8 +50,9 @@ async def get_user(item_id: str):
     except HTTPException as he:
         raise he
     except Exception as e:
+        msg = str(e).replace('\n', ' ')
         logging.exception(f"Failed to fetch User with _id: {item_id}")
-        raise HTTPException(status_code=500, detail='Internal Server Error')
+        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
     
     return doc
 
@@ -74,8 +77,9 @@ async def update_user(item_id: str, item: UserCreate):
     except HTTPException as he:
         raise he
     except Exception as e:
+        msg = str(e).replace('\n', ' ')
         logging.exception(f"Failed to update User with _id: {item_id}")
-        raise HTTPException(status_code=500, detail='Internal Server Error')
+        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
     
     return doc
 
@@ -93,8 +97,9 @@ async def delete_user(item_id: str):
     except HTTPException as he:
         raise he
     except Exception as e:
+        msg = str(e).replace('\n', ' ')
         logging.exception(f"Failed to delete User with _id: {item_id}")
-        raise HTTPException(status_code=500, detail='Internal Server Error')
+        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
     
     return {'message': 'User deleted successfully'}
 

@@ -17,8 +17,9 @@ async def create_userevent(item: UserEventCreate):
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
         logging.info(f"UserEvent created successfully with _id: {doc._id}")
     except Exception as e:
+        msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create userevent.")
-        raise HTTPException(status_code=500, detail='Internal Server Error')
+        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
     
     return doc
 
@@ -30,8 +31,9 @@ async def get_all_userevents():
         docs = await UserEvent.find_all().to_list()
         logging.info(f"Fetched {len(docs)} userevent(s) successfully.")
     except Exception as e:
+        msg = str(e).replace('\n', ' ')
         logging.exception("Failed to fetch all userevents.")
-        raise HTTPException(status_code=500, detail='Internal Server Error')
+        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
     
     return docs
 
@@ -48,8 +50,9 @@ async def get_userevent(item_id: str):
     except HTTPException as he:
         raise he
     except Exception as e:
+        msg = str(e).replace('\n', ' ')
         logging.exception(f"Failed to fetch UserEvent with _id: {item_id}")
-        raise HTTPException(status_code=500, detail='Internal Server Error')
+        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
     
     return doc
 
@@ -74,8 +77,9 @@ async def update_userevent(item_id: str, item: UserEventCreate):
     except HTTPException as he:
         raise he
     except Exception as e:
+        msg = str(e).replace('\n', ' ')
         logging.exception(f"Failed to update UserEvent with _id: {item_id}")
-        raise HTTPException(status_code=500, detail='Internal Server Error')
+        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
     
     return doc
 
@@ -93,8 +97,9 @@ async def delete_userevent(item_id: str):
     except HTTPException as he:
         raise he
     except Exception as e:
+        msg = str(e).replace('\n', ' ')
         logging.exception(f"Failed to delete UserEvent with _id: {item_id}")
-        raise HTTPException(status_code=500, detail='Internal Server Error')
+        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
     
     return {'message': 'UserEvent deleted successfully'}
 
