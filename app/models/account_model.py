@@ -16,14 +16,13 @@ class UniqueValidationError(Exception):
 
 class Account(Document):
     # Base fields
-    expiredAt: Optional[datetime] = Field(None)
+    expiredAt: datetime = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    _id: Optional[str] = Field(None)
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Account', 'ui': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'}, 'operations': '', 'fields': {'expiredAt': {'type': 'ISODate', 'required': False}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': 'createdAt', 'displayPages': 'details'}}, '_id': {'ui': {'displayName': 'Id', 'readOnly': True}}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Account', 'ui': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'}, 'operations': '', 'fields': {'expiredAt': {'type': 'ISODate', 'required': False}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'readOnly': True, 'displayAfterField': 'createdAt', 'displayPages': 'details'}}}}
     
     class Settings:
         name = "account"
@@ -42,21 +41,19 @@ class Account(Document):
 
 class AccountCreate(BaseModel):
     # Fields for create operations
-    expiredAt: Optional[datetime] = Field(None)
+    expiredAt: datetime = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    _id: Optional[str] = Field(None)
     class Config:
         orm_mode = True
 
 
 class AccountRead(BaseModel):
     # Fields for read operations
-    id: Optional[PydanticObjectId] = Field(alias="_id")
+    id: PydanticObjectId = Field(alias="_id")
     expiredAt: Optional[datetime] = Field(None)
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    _id: Optional[str] = Field(None)
+    createdAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Config:
         orm_mode = True

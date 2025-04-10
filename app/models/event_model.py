@@ -19,17 +19,17 @@ class Event(Document):
     url: str = Field(..., regex=r"^https?://[^s]+$")
     title: str = Field(..., max_length=200)
     dateTime: datetime = Field(...)
-    location: Optional[str] = Field(None, max_length=200)
-    cost: Optional[float] = Field(None, ge=0)
-    numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
-    recurrence: Optional[str] = Field(None, description="Allowed values: ['daily', 'weekly', 'monthly', 'yearly']")
+    location: str = Field(None, max_length=200)
+    cost: float = Field(None, ge=0)
+    numOfExpectedAttendees: int = Field(None, ge=0)
+    recurrence: str = Field(None, description="Allowed values: ['daily', 'weekly', 'monthly', 'yearly']")
     tags: Optional[List[str]] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Event', 'ui': {'title': 'Events', 'buttonLabel': 'Manage Events'}, 'operations': '', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': {'regex': 'dictionary=main.url', 'message': 'Bad URL format'}}, 'title': {'type': 'String', 'required': True, 'maxLength': 200}, 'dateTime': {'type': 'ISODate', 'required': True}, 'location': {'type': 'String', 'required': False, 'maxLength': 200}, 'cost': {'type': 'Number', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'numOfExpectedAttendees': {'type': 'Integer', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'recurrence': {'type': 'String', 'required': False, 'enum': {'values': ['daily', 'weekly', 'monthly', 'yearly']}, 'ui': {'displayPages': 'details'}}, 'tags': {'type': 'Array[String]', 'required': False, 'ui': {'displayPages': 'details'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Event', 'ui': {'title': 'Events', 'buttonLabel': 'Manage Events'}, 'operations': '', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': {'regex': '^https?://[^s]+$', 'message': 'Bad URL format'}}, 'title': {'type': 'String', 'required': True, 'maxLength': 200}, 'dateTime': {'type': 'ISODate', 'required': True}, 'location': {'type': 'String', 'required': False, 'maxLength': 200}, 'cost': {'type': 'Number', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'numOfExpectedAttendees': {'type': 'Integer', 'required': False, 'min': 0, 'ui': {'displayPages': 'details'}}, 'recurrence': {'type': 'String', 'required': False, 'enum': {'values': ['daily', 'weekly', 'monthly', 'yearly']}, 'ui': {'displayPages': 'details'}}, 'tags': {'type': 'Array[String]', 'required': False, 'ui': {'displayPages': 'details'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'readOnly': True, 'displayAfterField': '-2'}}}}
     
     class Settings:
         name = "event"
@@ -51,17 +51,17 @@ class EventCreate(BaseModel):
     url: str = Field(..., regex=r"^https?://[^s]+$")
     title: str = Field(..., max_length=200)
     dateTime: datetime = Field(...)
-    location: Optional[str] = Field(None, max_length=200)
-    cost: Optional[float] = Field(None, ge=0)
-    numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
-    recurrence: Optional[str] = Field(None, description="Allowed values: ['daily', 'weekly', 'monthly', 'yearly']")
+    location: str = Field(None, max_length=200)
+    cost: float = Field(None, ge=0)
+    numOfExpectedAttendees: int = Field(None, ge=0)
+    recurrence: str = Field(None, description="Allowed values: ['daily', 'weekly', 'monthly', 'yearly']")
     tags: Optional[List[str]] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     @validator('url')
     def validate_url(cls, v):
         _custom = {}
-        if v is not None and not re.match(r'dictionary=main.url', v):
+        if v is not None and not re.match(r'^https?://[^s]+$', v):
             raise ValueError("Bad URL format")
         return v
     @validator('title')
@@ -101,17 +101,17 @@ class EventCreate(BaseModel):
 
 class EventRead(BaseModel):
     # Fields for read operations
-    id: Optional[PydanticObjectId] = Field(alias="_id")
-    url: str = Field(None, regex=r"^https?://[^s]+$")
-    title: str = Field(None, max_length=200)
-    dateTime: datetime = Field(None)
+    id: PydanticObjectId = Field(alias="_id")
+    url: Optional[str] = Field(None, regex=r"^https?://[^s]+$")
+    title: Optional[str] = Field(None, max_length=200)
+    dateTime: Optional[datetime] = Field(None)
     location: Optional[str] = Field(None, max_length=200)
     cost: Optional[float] = Field(None, ge=0)
     numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
     recurrence: Optional[str] = Field(None, description="Allowed values: ['daily', 'weekly', 'monthly', 'yearly']")
-    tags: Optional[List[str]] = Field(None)
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    tags: Optional[Optional[List[str]]] = Field(None)
+    createdAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Config:
         orm_mode = True

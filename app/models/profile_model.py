@@ -17,15 +17,15 @@ class UniqueValidationError(Exception):
 class Profile(Document):
     # Base fields
     name: str = Field(..., max_length=100)
-    preferences: Optional[dict] = Field(None)
-    radiusMiles: Optional[int] = Field(None, ge=0)
+    preferences: dict = Field(None)
+    radiusMiles: int = Field(None, ge=0)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     userId: PydanticObjectId = Field(...)
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Profile', 'ui': {'title': 'Profile', 'buttonLabel': 'Manage User Profiles', 'description': 'Manage User Preferences'}, 'operations': '', 'fields': {'name': {'type': 'String', 'required': True, 'maxLength': 100}, 'preferences': {'type': 'JSON', 'required': False, 'ui': {'displayPages': 'details'}}, 'radiusMiles': {'type': 'Integer', 'required': False, 'min': 0}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}, 'userId': {'type': 'ObjectId', 'required': True, 'displayName': 'userId', 'readOnly': True, 'ui': {'link': 'entity/User/${value}'}}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Profile', 'ui': {'title': 'Profile', 'buttonLabel': 'Manage User Profiles', 'description': 'Manage User Preferences'}, 'operations': '', 'fields': {'name': {'type': 'String', 'required': True, 'maxLength': 100}, 'preferences': {'type': 'JSON', 'required': False, 'ui': {'displayPages': 'details'}}, 'radiusMiles': {'type': 'Integer', 'required': False, 'min': 0}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'readOnly': True, 'displayAfterField': '-2'}}, 'userId': {'type': 'ObjectId', 'required': True, 'displayName': 'userId', 'readOnly': True, 'ui': {'link': 'entity/User/${value}'}}}}
     
     class Settings:
         name = "profile"
@@ -45,8 +45,8 @@ class Profile(Document):
 class ProfileCreate(BaseModel):
     # Fields for create operations
     name: str = Field(..., max_length=100)
-    preferences: Optional[dict] = Field(None)
-    radiusMiles: Optional[int] = Field(None, ge=0)
+    preferences: dict = Field(None)
+    radiusMiles: int = Field(None, ge=0)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     userId: PydanticObjectId = Field(...)
@@ -68,13 +68,13 @@ class ProfileCreate(BaseModel):
 
 class ProfileRead(BaseModel):
     # Fields for read operations
-    id: Optional[PydanticObjectId] = Field(alias="_id")
-    name: str = Field(None, max_length=100)
+    id: PydanticObjectId = Field(alias="_id")
+    name: Optional[str] = Field(None, max_length=100)
     preferences: Optional[dict] = Field(None)
     radiusMiles: Optional[int] = Field(None, ge=0)
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    userId: PydanticObjectId = Field(None)
+    createdAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
+    userId: Optional[PydanticObjectId] = Field(None)
 
     class Config:
         orm_mode = True

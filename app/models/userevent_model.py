@@ -16,9 +16,9 @@ class UniqueValidationError(Exception):
 
 class UserEvent(Document):
     # Base fields
-    attended: Optional[bool] = Field(None)
-    rating: Optional[int] = Field(None, ge=1, le=5)
-    note: Optional[str] = Field(None, max_length=500)
+    attended: bool = Field(None)
+    rating: int = Field(None, ge=1, le=5)
+    note: str = Field(None, max_length=500)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     userId: PydanticObjectId = Field(...)
@@ -26,7 +26,7 @@ class UserEvent(Document):
 
     
     # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'UserEvent', 'ui': {'title': 'User Events', 'buttonLabel': 'Manage Event Attendance'}, 'operations': '', 'fields': {'attended': {'type': 'Boolean', 'required': False}, 'rating': {'type': 'Integer', 'required': False, 'min': 1, 'max': 5}, 'note': {'type': 'String', 'required': False, 'maxLength': 500, 'ui': {'displayPages': 'details'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'displayAfterField': '-2'}}, 'userId': {'type': 'ObjectId', 'required': True, 'displayName': 'userId', 'readOnly': True, 'ui': {'link': 'entity/User/${value}'}}, 'eventId': {'type': 'ObjectId', 'required': True, 'displayName': 'eventId', 'readOnly': True, 'ui': {'link': 'entity/Event/${value}'}}}}
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'UserEvent', 'ui': {'title': 'User Events', 'buttonLabel': 'Manage Event Attendance'}, 'operations': '', 'fields': {'attended': {'type': 'Boolean', 'required': False}, 'rating': {'type': 'Integer', 'required': False, 'min': 1, 'max': 5}, 'note': {'type': 'String', 'required': False, 'maxLength': 500, 'ui': {'displayPages': 'details'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'readOnly': True, 'displayAfterField': '-2'}}, 'userId': {'type': 'ObjectId', 'required': True, 'displayName': 'userId', 'readOnly': True, 'ui': {'link': 'entity/User/${value}'}}, 'eventId': {'type': 'ObjectId', 'required': True, 'displayName': 'eventId', 'readOnly': True, 'ui': {'link': 'entity/Event/${value}'}}}}
     
     class Settings:
         name = "userevent"
@@ -45,9 +45,9 @@ class UserEvent(Document):
 
 class UserEventCreate(BaseModel):
     # Fields for create operations
-    attended: Optional[bool] = Field(None)
-    rating: Optional[int] = Field(None, ge=1, le=5)
-    note: Optional[str] = Field(None, max_length=500)
+    attended: bool = Field(None)
+    rating: int = Field(None, ge=1, le=5)
+    note: str = Field(None, max_length=500)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     userId: PydanticObjectId = Field(...)
@@ -72,14 +72,14 @@ class UserEventCreate(BaseModel):
 
 class UserEventRead(BaseModel):
     # Fields for read operations
-    id: Optional[PydanticObjectId] = Field(alias="_id")
+    id: PydanticObjectId = Field(alias="_id")
     attended: Optional[bool] = Field(None)
     rating: Optional[int] = Field(None, ge=1, le=5)
     note: Optional[str] = Field(None, max_length=500)
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    userId: PydanticObjectId = Field(None)
-    eventId: PydanticObjectId = Field(None)
+    createdAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
+    userId: Optional[PydanticObjectId] = Field(None)
+    eventId: Optional[PydanticObjectId] = Field(None)
 
     class Config:
         orm_mode = True
