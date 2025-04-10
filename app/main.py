@@ -90,7 +90,7 @@ def read_root():
 
 @app.get('/api/metadata')
 def get_entities_metadata():
-    ui_overrides = load_config(Path('ui_overrides.json'))
+    overrides = load_config(Path('overrides.json'))
     metadata =  [
         Account.get_metadata(),     
         User.get_metadata(),     
@@ -103,8 +103,8 @@ def get_entities_metadata():
     ]
     for m in metadata:
         entity = m.get('entity')
-        if entity and entity in ui_overrides.keys():
-            deep_merge_dicts(m, ui_overrides[entity])
+        if entity and entity in overrides.keys():
+            deep_merge_dicts(m, overrides[entity])
     return metadata
 
 def deep_merge_dicts(dest, override):

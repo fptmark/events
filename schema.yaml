@@ -31,6 +31,8 @@ _entities:
         type: ISODate
         required: true
         autoUpdate: true
+        ui:
+          readOnly: true
     relationships: []
     abstract: true
   Account:
@@ -50,12 +52,9 @@ _entities:
         required: true
         autoUpdate: true
         ui:
+          readOnly: true
           displayAfterField: createdAt
           displayPages: details
-      _id:
-        ui:
-          displayName: Id
-          readOnly: true
     relationships:
     - User
     ui:
@@ -108,6 +107,7 @@ _entities:
           message: must be male or female
       dob:
         type: ISODate
+        required: false
       isAccountOwner:
         type: Boolean
         required: true
@@ -126,6 +126,7 @@ _entities:
         required: true
         autoUpdate: true
         ui:
+          readOnly: true
           displayAfterField: '-2'
       accountId:
         type: ObjectId
@@ -174,6 +175,7 @@ _entities:
         required: true
         autoUpdate: true
         ui:
+          readOnly: true
           displayAfterField: '-2'
       userId:
         type: ObjectId
@@ -213,6 +215,7 @@ _entities:
         required: true
         autoUpdate: true
         ui:
+          readOnly: true
           displayAfterField: '-2'
       profileId:
         type: ObjectId
@@ -286,6 +289,7 @@ _entities:
         required: true
         autoUpdate: true
         ui:
+          readOnly: true
           displayAfterField: '-2'
     relationships:
     - UserEvent
@@ -320,6 +324,7 @@ _entities:
         required: true
         autoUpdate: true
         ui:
+          readOnly: true
           displayAfterField: '-2'
       userId:
         type: ObjectId
@@ -362,6 +367,7 @@ _entities:
         required: true
         autoUpdate: true
         ui:
+          readOnly: true
           displayAfterField: '-2'
     relationships:
     - Crawl
@@ -392,6 +398,7 @@ _entities:
         required: true
         autoUpdate: true
         ui:
+          readOnly: true
           displayAfterField: '-2'
       urlId:
         type: ObjectId
