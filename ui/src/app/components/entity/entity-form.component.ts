@@ -5,6 +5,8 @@ import { EntityService } from '../../services/entity.service';
 import { MetadataService, EntityMetadata } from '../../services/metadata.service';
 import { FormGeneratorService, FormMode, VIEW, CREATE, EDIT } from '../../services/form-generator.service';
 import { CommonModule } from '@angular/common';
+import { ConfigService } from '../../services/config.service';
+import { HttpClient } from '@angular/common/http';
 // Removed constants import as constants.ts was removed
 
 @Component({
@@ -41,7 +43,7 @@ import { CommonModule } from '@angular/common';
                     <!-- All form controls using formControlName automatically handle disabled state -->
                     <!-- Disabled controls will have their values populated by populateFormValues -->
                     <!-- So we can use the same controls for all states (view/edit/create) -->
-                    <ng-container [ngSwitch]="getFieldWidget(fieldName)">
+                    <ng-container [ngSwitch]="formGenerator.getFieldWidget(entityType, fieldName, mode)">
                       
                       <!-- Select dropdown -->
                       <select *ngSwitchCase="'select'" 
@@ -164,13 +166,26 @@ import { CommonModule } from '@angular/common';
                 </ng-container>
               </div>
             </div>
-            <div class="card-footer">
-              <button type="button" class="btn btn-primary" *ngIf="isViewMode()" (click)="goToEdit()">
-                Edit
-              </button>
-              <button type="submit" class="btn btn-primary" *ngIf="!isViewMode()" [disabled]="entityForm && entityForm.invalid || submitting">
-                {{ submitting ? 'Saving...' : mode }}
-              </button>
+            <div class="card-footer d-flex justify-content-between">
+              <!-- View mode buttons -->
+              <div *ngIf="isViewMode()">
+                <button type="button" class="btn btn-primary me-2" (click)="goToEdit()">
+                  Edit
+                </button>
+                <button type="button" class="btn btn-danger" (click)="this.entityService.deleteEntity(entityType, entityId)">
+                  Delete
+                </button>
+              </div>
+              
+              <!-- Edit/Create mode buttons -->
+              <div *ngIf="!isViewMode()" class="d-flex justify-content-end">
+                <button type="button" class="btn btn-secondary me-2" (click)="goBack()">
+                  Cancel
+                </button>
+                <button type="submit" class="btn btn-primary" [disabled]="entityForm && entityForm.invalid || submitting">
+                  {{ submitting ? 'Saving...' : 'Submit' }}
+                </button>
+              </div>
             </div>
           </div>
         </form>
@@ -214,9 +229,11 @@ export class EntityFormComponent implements OnInit {
   constructor(
     private route: ActivatedRoute,
     private router: Router,
-    private entityService: EntityService,
+    public entityService: EntityService,
     private metadataService: MetadataService,
-    private formGenerator: FormGeneratorService
+    public formGenerator: FormGeneratorService,
+    private configService: ConfigService,
+    private http: HttpClient
   ) {}
   
   // Helper methods for template conditions
@@ -299,10 +316,6 @@ export class EntityFormComponent implements OnInit {
     return fieldMeta?.ui?.displayName || fieldName;
   }
 
-  getFieldWidget(fieldName: string): string {
-    // Delegate to the FormGeneratorService for widget determination
-    return this.formGenerator.getFieldWidget(this.entityType, fieldName, this.mode);
-  }
 
 
   getFieldOptions(fieldName: string): string[] {
@@ -334,56 +347,7 @@ export class EntityFormComponent implements OnInit {
     return control?.disabled || false;
   }
   
-  // formatReadOnlyValue(fieldName: string): string {
-  //   if (!this.entityForm) return '';
-    
-  //   try {
-  //     // Get the control and its value - this is now populated by populateFormValues
-  //     const control = this.entityForm.get(fieldName);
-  //     let value = control?.value;
-      
-  //     // Get field metadata
-  //     const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
-  //     const fieldType = fieldMeta?.type || 'String';
-      
-  //     // Handle null/undefined values
-  //     if (value === null || value === undefined) {
-  //       return '';
-  //     }
-      
-  //     // Format the value based on its type
-  //     return this.formatValueByType(value, fieldType);
-  //   } catch (error) {
-  //     console.error('Error formatting read-only value:', error);
-  //     // Simple fallback for any errors
-  //     const control = this.entityForm.get(fieldName);
-  //     return control?.value !== undefined ? String(control.value) : '';
-  //   }
-  // }
   
-  // // Helper method to format values based on their type
-  // formatValueByType(value: any, type: string): string {
-  //   if (value === null || value === undefined) return '';
-    
-  //   // Format based on type
-  //   switch (type) {
-  //     case 'ISODate':
-  //       if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T/)) {
-  //         try {
-  //           return new Date(value).toLocaleString();
-  //         } catch (e) {
-  //           return value;
-  //         }
-  //       }
-  //       break;
-  //     case 'Boolean':
-  //       return value ? 'Yes' : 'No';
-  //   }
-    
-  //   // Default formatting
-  //   return String(value);
-  // }
-
   /**
    * Populates form values based on mode and entity data
    * @param entityData Optional entity data for edit/view modes
@@ -590,4 +554,13 @@ export class EntityFormComponent implements OnInit {
       this.router.navigate(['/entity', this.entityType, this.entityId, 'edit']);
     }
   }
+  
+  /**
+   * Reuses the deleteEntity method from EntityListComponent
+   */
+  // deleteEntity(): void {
+  //   if (this.entityId) {
+  //     this.entityListComponent.deleteEntity(this.entityId);
+  //   }
+  // }
 }

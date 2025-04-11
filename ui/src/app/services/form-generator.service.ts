@@ -74,10 +74,13 @@ export class FormGeneratorService {
         }
         
         // Create the form control with appropriate disabled state
-        formGroup[fieldName] = this.fb.control({
+        let ctl = this.fb.control({
           // No initial value - will be set by entity-form
-          disabled: isDisabled
         }, validators);
+        if (isDisabled) {
+          ctl.disable();
+        }
+        formGroup[fieldName] = ctl
       } catch (error) {
         console.error(`Error processing field ${fieldName}:`, error);
       } 
@@ -236,12 +239,12 @@ export class FormGeneratorService {
    * @param value The value for the control
    * @returns A disabled form control
    */
-  createDisabledControl(value: any): AbstractControl {
-    return this.fb.control({
-      value: value,
-      disabled: true
-    });
-  }
+  // createDisabledControl(value: any): AbstractControl {
+  //   return this.fb.control({
+  //     value: value,
+  //     disabled: true
+  //   });
+  // }
   
   // Method removed - use entityService.getViewFields instead
 }

@@ -58,7 +58,7 @@ import { HttpClient } from '@angular/common/http';
                       (click)="editEntity(row['_id'])">Edit</button>
                     <button *ngIf="canDelete" 
                       class="btn btn-danger" 
-                      (click)="deleteEntity(row['_id'])">Delete</button>
+                      (click)="deleteEntity(entityType, row._id, loadEntities.bind(this))">Delete</button>
                   </div>
                 </td>
               </tr>
@@ -163,12 +163,16 @@ export class EntityListComponent implements OnInit {
     this.router.navigate(['/entity', this.entityType, id, 'edit']);
   }
 
-  deleteEntity(id: string): void {
+  // // Make this static so it can be called from other components
+  deleteEntity(entityType: string, id: string, onSuccess?: () => void): void {
+
     if (confirm('Are you sure you want to delete this item?')) {
-      const apiUrl = `${this.configService.getApiUrl(this.entityType)}/${id}`;
-      this.http.delete(apiUrl).subscribe({
+      this.entityService.deleteEntity(entityType, id).subscribe({
         next: () => {
-          this.loadEntities(); // Reload the list after deletion
+          alert('Entity deleted successfully.');
+          if (onSuccess) {
+            onSuccess();
+          }
         },
         error: (err) => {
           console.error('Error deleting entity:', err);

@@ -79,17 +79,6 @@ export class EntityService {
     } 
     return String(value);
   }
-  // getFieldDisplayName(fieldName: string): string {
-  //   return fieldName
-  // }
-
-  // getFieldWidget(fieldName: string): string {
-  //   return 'text'
-  // }
-
-  // getFieldOptions(fieldName: string): string[] {
-  //   return []
-  // }
 
   getEntity(entityType: string, id: string): Observable<EntityResponse> {
     return this.http.get<EntityResponse>(`${this.configService.getApiUrl(entityType)}/${id}`);
