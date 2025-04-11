@@ -98,19 +98,19 @@ export class EntityListComponent implements OnInit {
       this.entityType = params['entityType'];
       
       // Initialize permissions for this entity type
-      this.initializePermissions();
+      // this.initializePermissions();
       
       // Load entities
       this.loadEntities();
     });
   }
   
-  initializePermissions(): void {
+  // initializePermissions(): void {
     // Check row-level operation permissions once
-    this.canRead = this.metadataService.isValidOperation(this.entityType, 'r');
-    this.canUpdate = this.metadataService.isValidOperation(this.entityType, 'u');
-    this.canDelete = this.metadataService.isValidOperation(this.entityType, 'd');
-  }
+    // this.canRead = this.metadataService.isValidOperation(this.entityType, 'r');
+    // this.canUpdate = this.metadataService.isValidOperation(this.entityType, 'u');
+    // this.canDelete = this.metadataService.isValidOperation(this.entityType, 'd');
+  // }
 
   loadEntities(): void {
     this.loading = true;
