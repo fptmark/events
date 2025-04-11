@@ -1,6 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable, tap } from 'rxjs';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ConfigService } from './config.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { MetadataService } from './metadata.service';
@@ -15,10 +14,10 @@ export interface EntityResponse<> {
 })
 export class EntityService {
   constructor(
-    private http: HttpClient,
     private configService: ConfigService,
     private metadataService: MetadataService,
     private sanitizer: DomSanitizer,
+    private router: Router,
   ) {}
 
    // view can be 'details', 'summary' and/or 'form' e.g. 'details|summary'
@@ -80,23 +79,42 @@ export class EntityService {
     return String(value);
   }
 
-  getEntity(entityType: string, id: string): Observable<EntityResponse> {
-    return this.http.get<EntityResponse>(`${this.configService.getApiUrl(entityType)}/${id}`);
+  canRead(entityType: string): boolean {
+    return this.metadataService.isValidOperation(entityType, 'r');
   }
 
-  getEntityList(entityType: string): Observable<EntityResponse> {
-    return this.http.get<EntityResponse>(`${this.configService.getApiUrl(entityType)}`);
+  canUpdate(entityType: string): boolean {
+    return this.metadataService.isValidOperation(entityType, 'u');
   }
 
-  createEntity(entityType: string, entityData: any): Observable<EntityResponse> {
-    return this.http.post<EntityResponse>(this.configService.getApiUrl(entityType), entityData);
+  canDelete(entityType: string): boolean {
+    return this.metadataService.isValidOperation(entityType, 'd');
   }
 
-  updateEntity(entityType: string, id: string, entityData: any): Observable<EntityResponse> {
-    return this.http.put<EntityResponse>(`${this.configService.getApiUrl(entityType)}/${id}`, entityData);
+  // Custom actions are not currently implemented in the stateless approach
+  // getCustomActions(entity: Entity): { key: string, label: string, icon?: string }[] {
+  //   // Will be implemented when hooks are added back
+  //   return [];
+  // }
+  
+  // executeCustomAction(actionKey: string, entity: Entity): void {
+  //   // Will be implemented when hooks are added back
+  //   console.log(`Custom action ${actionKey} would be executed on entity:`, entity);
+  // }
+
+  navigateToCreate(entityType: string): void {
+    // Navigate to create page for this entity type
+    this.router.navigate(['/entity', entityType, 'create']);
   }
 
-  deleteEntity(entityType: string, id: string): Observable<any> {
-    return this.http.delete(`${this.configService.getApiUrl(entityType)}/${id}`);
+  viewEntity(entityType: string, id: string): void {
+    // Navigate to detail view for specific entity
+    this.router.navigate(['/entity', entityType, id]);
   }
+
+  editEntity(entityType: string, id: string): void {
+    // Navigate to edit page for specific entity
+    this.router.navigate(['/entity', entityType, id, 'edit']);
+  }
+
 }

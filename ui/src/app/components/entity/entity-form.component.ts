@@ -5,19 +5,18 @@ import { EntityService } from '../../services/entity.service';
 import { MetadataService, EntityMetadata } from '../../services/metadata.service';
 import { FormGeneratorService, FormMode, VIEW, CREATE, EDIT } from '../../services/form-generator.service';
 import { CommonModule } from '@angular/common';
-import { ConfigService } from '../../services/config.service';
-import { HttpClient } from '@angular/common/http';
-// Removed constants import as constants.ts was removed
+import { RestService } from '../../services/rest.service';
 
 @Component({
   selector: 'app-entity-form',
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule],
+  providers: [RestService],
   template: `
     <div class="container mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>{{ mode }} {{ entityType | titlecase }}</h2>
-        <button class="btn btn-secondary" (click)="goBack()">Back to List</button>
+        <button class="btn btn-secondary" (click)="goBack()">Back</button>
       </div>
       
       <div *ngIf="loading" class="text-center">
@@ -166,27 +165,30 @@ import { HttpClient } from '@angular/common/http';
                 </ng-container>
               </div>
             </div>
-            <div class="card-footer d-flex justify-content-between">
-              <!-- View mode buttons -->
-              <div *ngIf="isViewMode()">
-                <button type="button" class="btn btn-primary me-2" (click)="goToEdit()">
-                  Edit
-                </button>
-                <button type="button" class="btn btn-danger" (click)="this.entityService.deleteEntity(entityType, entityId)">
-                  Delete
-                </button>
-              </div>
-              
-              <!-- Edit/Create mode buttons -->
-              <div *ngIf="!isViewMode()" class="d-flex justify-content-end">
-                <button type="button" class="btn btn-secondary me-2" (click)="goBack()">
-                  Cancel
-                </button>
+
+          <div class="card-footer d-flex justify-content-between">
+            <!-- Left side (for view mode) -->
+            <div>
+              <ng-container *ngIf="isViewMode()">
+                <div *ngIf="entityService.canUpdate(entityType)">
+                  <button type="button" class="btn btn-primary me-2" (click)="goToEdit()">Edit</button>
+                </div>
+                <div *ngIf="entityService.canDelete(entityType)">
+                  <button type="button" class="btn btn-danger" (click)="restService.deleteEntity(entityType, entityId)">Delete</button>
+                </div>
+              </ng-container>
+            </div>
+
+            <!-- Right side (for edit/create mode) -->
+            <div>
+              <ng-container *ngIf="!isViewMode()">
                 <button type="submit" class="btn btn-primary" [disabled]="entityForm && entityForm.invalid || submitting">
                   {{ submitting ? 'Saving...' : 'Submit' }}
                 </button>
-              </div>
+                <button type="button" class="btn btn-secondary ms-2" (click)="goBack()">Cancel</button>
+              </ng-container>
             </div>
+          </div>
           </div>
         </form>
       </div>
@@ -232,8 +234,7 @@ export class EntityFormComponent implements OnInit {
     public entityService: EntityService,
     private metadataService: MetadataService,
     public formGenerator: FormGeneratorService,
-    private configService: ConfigService,
-    private http: HttpClient
+    public restService: RestService
   ) {}
   
   // Helper methods for template conditions
@@ -286,7 +287,7 @@ export class EntityFormComponent implements OnInit {
     }
     
     // For edit/view mode, fetch the data first, then populate
-    this.entityService.getEntity(this.entityType, this.entityId).subscribe({
+    this.restService.getEntity(this.entityType, this.entityId).subscribe({
       next: (response) => {
         this.entity = response.data || response;
         
@@ -512,7 +513,7 @@ export class EntityFormComponent implements OnInit {
   }
 
   createEntity(formData: any): void {
-    this.entityService.createEntity(this.entityType, formData).subscribe({
+    this.restService.createEntity(this.entityType, formData).subscribe({
       next: (response) => {
         this.submitting = false;
         // For now, just go back to the entity list to avoid navigation issues
@@ -527,7 +528,7 @@ export class EntityFormComponent implements OnInit {
   }
 
   updateEntity(formData: any): void {
-    this.entityService.updateEntity(this.entityType, this.entityId, formData).subscribe({
+    this.restService.updateEntity(this.entityType, this.entityId, formData).subscribe({
       next: (response) => {
         this.submitting = false;
         // For now, just go back to the entity list to avoid navigation issues
@@ -555,12 +556,4 @@ export class EntityFormComponent implements OnInit {
     }
   }
   
-  /**
-   * Reuses the deleteEntity method from EntityListComponent
-   */
-  // deleteEntity(): void {
-  //   if (this.entityId) {
-  //     this.entityListComponent.deleteEntity(this.entityId);
-  //   }
-  // }
 }

@@ -5,7 +5,7 @@ import { EntityService } from '../../services/entity.service';
 import { ConfigService } from '../../services/config.service';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-// Removed constants import as constants.ts was removed
+import { RestService } from '../../services/rest.service';
 
 @Component({
   selector: 'app-entity-list',
@@ -18,7 +18,7 @@ import { HttpClient } from '@angular/common/http';
       <!-- Create button - permission checked once per page -->
       <div *ngIf="metadataService.isValidOperation(entityType, 'c')">
         <div class="mb-3">
-          <button class="btn btn-primary" (click)="navigateToCreate()">Create {{ entityType }}</button>
+          <button class="btn btn-primary" (click)="this.entityService.navigateToCreate(entityType)">Create {{ entityType }}</button>
         </div>
       </div>
       
@@ -52,13 +52,13 @@ import { HttpClient } from '@angular/common/http';
                   <div class="btn-group btn-group-sm">
                     <button *ngIf="canRead" 
                       class="btn btn-info me-1" 
-                      (click)="viewEntity(row['_id'])">View</button>
+                      (click)="this.entityService.viewEntity(entityType, row['_id'])">View</button>
                     <button *ngIf="canUpdate" 
                       class="btn btn-warning me-1" 
-                      (click)="editEntity(row['_id'])">Edit</button>
+                      (click)="this.entityService.editEntity(entityType, row['_id'])">Edit</button>
                     <button *ngIf="canDelete" 
                       class="btn btn-danger" 
-                      (click)="deleteEntity(entityType, row._id, loadEntities.bind(this))">Delete</button>
+                      (click)="this.restService.deleteEntity(entityType, row._id, loadEntities.bind(this))">Delete</button>
                   </div>
                 </td>
               </tr>
@@ -88,7 +88,7 @@ export class EntityListComponent implements OnInit {
     public metadataService: MetadataService,
     public entityService: EntityService,
     private route: ActivatedRoute,
-    private router: Router,
+    public restService: RestService,
     private configService: ConfigService,
     private http: HttpClient
   ) {}
@@ -148,38 +148,5 @@ export class EntityListComponent implements OnInit {
   //   console.log(`Custom action ${actionKey} would be executed on entity:`, entity);
   // }
 
-  navigateToCreate(): void {
-    // Navigate to create page for this entity type
-    this.router.navigate(['/entity', this.entityType, 'create']);
-  }
-
-  viewEntity(id: string): void {
-    // Navigate to detail view for specific entity
-    this.router.navigate(['/entity', this.entityType, id]);
-  }
-
-  editEntity(id: string): void {
-    // Navigate to edit page for specific entity
-    this.router.navigate(['/entity', this.entityType, id, 'edit']);
-  }
-
-  // // Make this static so it can be called from other components
-  deleteEntity(entityType: string, id: string, onSuccess?: () => void): void {
-
-    if (confirm('Are you sure you want to delete this item?')) {
-      this.entityService.deleteEntity(entityType, id).subscribe({
-        next: () => {
-          alert('Entity deleted successfully.');
-          if (onSuccess) {
-            onSuccess();
-          }
-        },
-        error: (err) => {
-          console.error('Error deleting entity:', err);
-          alert('Failed to delete entity. Please try again later.');
-        }
-      });
-    }
-  }
   
 }
