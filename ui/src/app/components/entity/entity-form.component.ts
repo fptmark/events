@@ -3,9 +3,10 @@ import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { EntityService } from '../../services/entity.service';
 import { MetadataService, EntityMetadata } from '../../services/metadata.service';
-import { FormGeneratorService, FormMode, VIEW, CREATE, EDIT } from '../../services/form-generator.service';
+import { FormGeneratorService } from '../../services/form-generator.service';
 import { CommonModule } from '@angular/common';
 import { RestService } from '../../services/rest.service';
+import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.service';
 
 @Component({
   selector: 'app-entity-form',
@@ -19,15 +20,11 @@ import { RestService } from '../../services/rest.service';
         <button class="btn btn-secondary" (click)="goBack()">Back</button>
       </div>
       
-      <div *ngIf="loading" class="text-center">
-        <p>Loading...</p>
-      </div>
-      
       <div *ngIf="error" class="alert alert-danger">
         {{ error }}
       </div>
       
-      <div *ngIf="!loading && !error && entityForm">
+      <div *ngIf="!error && entityForm">
         <form [formGroup]="entityForm" (ngSubmit)="onSubmit()">
           <div class="card">
             <div class="card-body">
@@ -170,12 +167,8 @@ import { RestService } from '../../services/rest.service';
             <!-- Left side (for view mode) -->
             <div>
               <ng-container *ngIf="isViewMode()">
-                <div *ngIf="entityService.canUpdate(entityType)">
-                  <button type="button" class="btn btn-primary me-2" (click)="goToEdit()">Edit</button>
-                </div>
-                <div *ngIf="entityService.canDelete(entityType)">
-                  <button type="button" class="btn btn-danger" (click)="restService.deleteEntity(entityType, entityId)">Delete</button>
-                </div>
+                <button *ngIf="entityService.canUpdate(entityType)" type="button" class="btn btn-primary me-2" (click)="goToEdit()">Edit</button>
+                <button *ngIf="entityService.canDelete(entityType)" type="button" class="btn btn-danger" (click)="restService.deleteEntity(entityType, entityId)">Delete</button>
               </ng-container>
             </div>
 
@@ -222,11 +215,10 @@ export class EntityFormComponent implements OnInit {
   sortedFields: string[] = [];
   entity: any = null;
   
-  loading: boolean = true;
   submitting: boolean = false;
   error: string = '';
 
-  mode: FormMode = VIEW;
+  mode: ViewMode = VIEW
   
   constructor(
     private route: ActivatedRoute,
@@ -234,20 +226,21 @@ export class EntityFormComponent implements OnInit {
     public entityService: EntityService,
     private metadataService: MetadataService,
     public formGenerator: FormGeneratorService,
-    public restService: RestService
+    public restService: RestService,
+    public viewService: ViewService
   ) {}
   
-  // Helper methods for template conditions
+  // Helper methods for template conditions - delegate to ViewService
   isViewMode(): boolean {
-    return this.mode === VIEW;
+    return this.viewService.inViewMode(this.mode);
   }
   
   isEditMode(): boolean {
-    return this.mode === EDIT;
+    return this.viewService.inEditMode(this.mode);
   }
   
   isCreateMode(): boolean {
-    return this.mode === CREATE;
+    return this.viewService.inCreateMode(this.mode);
   }
 
   ngOnInit(): void {
@@ -259,11 +252,11 @@ export class EntityFormComponent implements OnInit {
       const url = this.router.url;
       
       if (url.includes('/create')) {
-        this.mode = CREATE;
+        this.mode = CREATE
       } else if (url.includes('/edit')) {
-        this.mode = EDIT;
+        this.mode = EDIT
       } else {
-        this.mode = VIEW;
+        this.mode = VIEW
       }
       
       this.loadEntity();
@@ -271,7 +264,6 @@ export class EntityFormComponent implements OnInit {
   }
 
   loadEntity(): void {
-    this.loading = true;
     this.error = '';
     
     // Generate the form first (same for all modes)
@@ -282,7 +274,6 @@ export class EntityFormComponent implements OnInit {
     // For create mode, just populate with defaults and we're done
     if (this.isCreateMode()) {
       this.populateFormValues();
-      this.loading = false;
       return;
     }
     
@@ -293,18 +284,15 @@ export class EntityFormComponent implements OnInit {
         
         if (!this.entity) {
           this.error = 'No entity data returned from the server.';
-          this.loading = false;
           return;
         }
         
         // Populate form with entity data for edit/view mode
         this.populateFormValues(this.entity);
-        this.loading = false;
       },
       error: (err) => {
         console.error('Error loading entity:', err);
         this.error = 'Failed to load entity data. Please try again later.';
-        this.loading = false;
       }
     });
   }
@@ -361,51 +349,7 @@ export class EntityFormComponent implements OnInit {
       const control = this.entityForm.get(fieldName);
       if (!control) continue;
       
-      // Get field metadata
-      const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
-      
-      // Get the value based on mode
-      let value;
-      
-      if (this.isCreateMode()) {
-        // Use default values for create mode
-        value = this.getDefaultValue(fieldMeta);
-        
-        // Handle special types that need specific default values
-        if (fieldMeta?.type === 'ISODate' && (fieldMeta?.autoGenerate || fieldMeta?.autoUpdate)) {
-          // For auto-generate/update fields in create mode, use current date
-          value = new Date().toISOString().substring(0, 16); // Format for datetime-local
-        }
-      } else {
-        // Use entity data for edit/view modes
-        value = entityData?.[fieldName];
-        
-        // Handle ISODate fields specially
-        if (fieldMeta?.type === 'ISODate') {
-          if (!value) {
-            // For empty dates, ensure we display them properly as completely empty
-            value = null; // Use null instead of empty string for date fields
-          } else if (value) {
-            try {
-              // Format valid date strings
-              if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T/)) {
-                // For input[type=datetime-local], format as YYYY-MM-DDThh:mm
-                const date = new Date(value);
-                value = date.toISOString().substring(0, 16); // Format for datetime-local input
-              }
-            } catch (e) {
-              console.error('Error formatting date:', e);
-            }
-          }
-          
-          // For auto-update fields in edit mode, use current date
-          if (this.isEditMode() && fieldMeta?.autoUpdate) {
-            value = new Date().toISOString().substring(0, 16);
-          }
-        }
-      }
-      
-      // Set value (disabled state is already handled by form generator)
+      const value = this.entityService.formatFieldValue(this.entityType, fieldName, this.mode, entityData?.[fieldName]);
       control.setValue(value);
     }
   }

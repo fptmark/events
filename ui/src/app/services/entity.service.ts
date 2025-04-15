@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ConfigService } from './config.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { MetadataService } from './metadata.service';
+import { ViewService, ViewMode, VIEW, EDIT, CREATE } from './view.service';
 
 export interface EntityResponse<> {
   data: [];
@@ -18,6 +19,7 @@ export class EntityService {
     private metadataService: MetadataService,
     private sanitizer: DomSanitizer,
     private router: Router,
+    private viewService: ViewService
   ) {}
 
    // view can be 'details', 'summary' and/or 'form' e.g. 'details|summary'
@@ -25,11 +27,14 @@ export class EntityService {
     let metadata = this.metadataService.getEntityMetadata(entityName)
     let fields = Object.keys(metadata.fields).filter(field => {
       let fieldMetadata = metadata.fields[field]
+      // Skip hidden fields
       if (fieldMetadata?.ui?.display === 'hidden') {
         return false
       }
-      let views = fieldMetadata.ui?.displayPages || ''
-      return views.includes(currentView) || views === '' || views === 'all'
+      
+      // Use ViewService to determine if field is visible in current view/mode
+      let displayPages = fieldMetadata.ui?.displayPages || ''
+      return this.viewService.existsInMode(displayPages, currentView);
     })
     return fields
   }
@@ -43,40 +48,79 @@ export class EntityService {
     }
   }
 
-  formatFieldValue(entityType: string, fieldName: string, view: string, value: any): string {
+  formatFieldValue(entityType: string, fieldName: string, mode: ViewMode, value: any): string {
     if (!value || value === undefined || value === null) {
       return '';
     }
 
     let metadata = this.metadataService.getFieldMetadata(entityType, fieldName)
     let type = metadata?.type || 'text'
-    let format = metadata?.ui?.format || ''
+    let format = metadata?.ui?.format 
 
-    // auto compute format and widget info
-    if (type === 'ISODate'){
-      if (view === 'summary'){
-        format = format || 'short'
+    // format Foreign keys and date for non-create modes
+    if (metadata?.ui?.link) {
+      if (!this.viewService.inCreateMode(mode) && this.viewService.existsInMode(metadata?.ui?.displayPages, mode)) {
+        let link = metadata.ui.link.replace('${value}', value)
+        return `<a href=${link}>View</a>`
       }
+      return ''
+    } 
+
+    // Date field handling
+    if (type === 'ISODate') {
+      
+      // Determine format based on mode
+      if (this.viewService.inSummaryMode(mode)) {
+        format = format || 'short';
+      } else {
+        format = format || 'long';
+      }
+      
+      // For edit mode, use current date for auto-update fields
+      if (this.viewService.inEditMode(mode)) {
+        if (metadata?.autoUpdate) {
+          value = new Date().toISOString().substring(0, 16);
+        }
+      }
+      
+      // For create mode, use current date for auto-generate/update fields
+      if (this.viewService.inCreateMode(mode)) {
+        if (metadata?.autoGenerate || metadata?.autoUpdate) {
+          value = new Date().toISOString().substring(0, 16); // Format for datetime-local
+        }
+      }
+      
+      if (this.viewService.inCreateMode(mode)) {
+        return this.getDefaultValue(metadata);
+      }
+
+      return this.formatDate(value, format);
+    }
+
+    // Boolean handling
+    if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No';
+    } else if (metadata?.type === 'Boolean' && typeof value === 'string') {
+      return value.toLowerCase() === 'true' ? 'Yes' : 'No';
     }
     
-    // Handle date strings (ISO format)
-    if (metadata?.ui?.link){
-      let link = metadata.ui.link.replace('${value}', value)
-      return `<a href=${link}>View</a>`
-
-    } else if (type === 'ISODate'){
-      try {
-        const date = new Date(value);
-        return format === 'short' ? date.toLocaleDateString() : date.toLocaleString()
-      } catch (e) {
-        return value;
-      }
-    } else if (typeof value === 'boolean') {
-      return value ? 'Yes' : 'No';
-    } else if (typeof value === 'object' && value !== null) {
+    // Object handling
+    if (typeof value === 'object' && value !== null) {
       return JSON.stringify(value);
-    } 
+    }
+    
+    // Default string conversion
     return String(value);
+  }
+
+  formatDate(value: string, format: string): string {
+    try{
+      const date = new Date(value);
+      return format === 'short' ? date.toLocaleDateString() : date.toLocaleString()
+    }
+    catch (e) {
+      return value;
+    }
   }
 
   canRead(entityType: string): boolean {
@@ -117,4 +161,40 @@ export class EntityService {
     this.router.navigate(['/entity', entityType, id, 'edit']);
   }
 
+  private getDefaultValue(fieldMeta: any): any {
+    const type = fieldMeta.type;
+    const widget = fieldMeta.ui?.widget || fieldMeta.widget;
+    const enumValues = fieldMeta.enum?.values;
+    const required = fieldMeta.required;
+    
+    switch (type) {
+      case 'String':
+        // For select fields with enum values, default to first value if required
+        if (widget === 'select' && enumValues?.length > 0 && required) {
+          return enumValues[0];
+        }
+        return '';
+      case 'Number':
+      case 'Integer':
+        return required ? 0 : null;
+      case 'Boolean':
+        return false;
+      case 'Array':
+      case 'Array[String]':
+        return [];
+      case 'JSON':
+        return {};
+      case 'ISODate':
+        // Always set current date for autoGenerate and autoUpdate fields
+        if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
+          const now = new Date().toISOString();
+          return now;
+        }
+        return null;
+      case 'ObjectId':
+        return '';
+      default:
+        return null;
+    }
+  }
 }

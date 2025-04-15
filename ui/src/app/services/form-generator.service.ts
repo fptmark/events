@@ -2,11 +2,9 @@ import { Injectable } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { FieldMetadata, MetadataService } from './metadata.service';
 import { EntityService } from './entity.service';
+import { ViewService, ViewMode, VIEW, EDIT, CREATE } from './view.service';
 
-export const VIEW = 'View';
-export const CREATE  = 'Create';
-export const EDIT  = 'Edit';
-export type FormMode = typeof VIEW | typeof CREATE | typeof EDIT
+// No need for constants or FormMode type anymore
 @Injectable({
   providedIn: 'root'
 })
@@ -16,7 +14,8 @@ export class FormGeneratorService {
   constructor(
     private fb: FormBuilder,
     private entityService: EntityService,
-    private metadataService: MetadataService
+    private metadataService: MetadataService,
+    private viewService: ViewService
   ) {}
 
   /**
@@ -28,17 +27,17 @@ export class FormGeneratorService {
    * 
    * This handles create, edit and view modes.
    */
-  generateEntityForm(entityType: string, mode: FormMode): { form: FormGroup, displayFields: string[] } {
+  generateEntityForm(entityType: string, mode: ViewMode): { form: FormGroup, displayFields: string[] } {
     const formGroup: { [key: string]: AbstractControl } = {};
     const idField = '_id'
     
     // Get fields to display from entity service
-    let viewFields: string[] = this.entityService.getViewFields(entityType, 'form');
+    let viewFields: string[] = this.entityService.getViewFields(entityType, mode)
     let displayFields: string[] // may add or delete the id field later
 
     // Manage ID field - it should be first in edit and view modes and removed in create mode
     displayFields = viewFields.filter(fieldName => fieldName !== idField);
-    if (mode === VIEW || mode === EDIT) { // Make sure the id field is first
+    if (this.viewService.inViewMode(mode) || this.viewService.inEditMode(mode)) { // Make sure the id field is first
       displayFields.unshift(idField);
     }
 
@@ -47,31 +46,33 @@ export class FormGeneratorService {
       let validators: any[] = [];
       
       try {
-        // Determine if field should be disabled by non-data-dependent rules
-        let isDisabled = mode === VIEW; // All fields disabled in view mode
-        
-        // ID fields are always disabled
-        if (fieldName === idField) {
-          isDisabled = true;
-        }
-        
         // Get field validators and metadata
         const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
         
         // Add validators if not in view mode and field has metadata
-        if (fieldMeta && mode !== VIEW) {
+        if (fieldMeta && !this.viewService.inViewMode(mode)) {
           validators = this.getValidators(fieldMeta);
-          
-          // Field marked read-only in metadata
-          if (fieldMeta.ui?.readOnly) {
-            isDisabled = true;
-          }
-          
-          // Auto-generate/update ISODate fields should be disabled in all modes
-          if (fieldMeta.type === 'ISODate' && (fieldMeta.autoGenerate || fieldMeta.autoUpdate)) {
-            isDisabled = true;
-          }
         }
+
+        // Determine if field should be disabled by non-data-dependent rules
+        let isDisabled = this.viewService.inViewMode(mode); // All fields disabled in view mode
+        
+        // Primary ID fields are always disabled
+        if (fieldName === idField) {
+          isDisabled = true;
+        }
+        
+        // Field marked read-only in metadata
+        if (fieldMeta?.ui?.readOnly){
+          isDisabled = true;
+        }
+        
+        // Auto-generate/update ISODate fields should be disabled in all modes
+        if (fieldMeta?.type === 'ISODate' && (fieldMeta.autoGenerate || fieldMeta.autoUpdate)) {
+          isDisabled = true;
+        }
+
+        // Links are enabled in all modes
         
         // Create the form control with appropriate disabled state
         let ctl = this.fb.control({
@@ -146,9 +147,9 @@ export class FormGeneratorService {
    * @param mode The form mode (view/edit/create)
    * @returns The widget type to use
    */
-  getFieldWidget(entityType: string, fieldName: string, mode: FormMode): string {
+  getFieldWidget(entityType: string, fieldName: string, mode: ViewMode): string {
     // For view mode, always use text inputs to avoid browser-specific rendering issues
-    if (mode === VIEW) {
+    if (this.viewService.inViewMode(mode)) {
       return 'text';
     }
     

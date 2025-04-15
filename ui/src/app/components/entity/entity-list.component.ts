@@ -50,13 +50,13 @@ import { RestService } from '../../services/rest.service';
                 <td *ngFor="let field of displayFields" [innerHTML]="entityService.formatFieldValue(entityType, field, 'summary', row[field])"></td>
                 <td>
                   <div class="btn-group btn-group-sm">
-                    <button *ngIf="canRead" 
+                    <button *ngIf="entityService.canRead(entityType)"
                       class="btn btn-info me-1" 
                       (click)="this.entityService.viewEntity(entityType, row['_id'])">View</button>
-                    <button *ngIf="canUpdate" 
+                    <button *ngIf="entityService.canUpdate(entityType)"
                       class="btn btn-warning me-1" 
                       (click)="this.entityService.editEntity(entityType, row['_id'])">Edit</button>
-                    <button *ngIf="canDelete" 
+                    <button *ngIf="entityService.canDelete(entityType)"
                       class="btn btn-danger" 
                       (click)="this.restService.deleteEntity(entityType, row._id, loadEntities.bind(this))">Delete</button>
                   </div>
@@ -97,21 +97,11 @@ export class EntityListComponent implements OnInit {
     this.route.params.subscribe(params => {
       this.entityType = params['entityType'];
       
-      // Initialize permissions for this entity type
-      // this.initializePermissions();
-      
       // Load entities
       this.loadEntities();
     });
   }
   
-  // initializePermissions(): void {
-    // Check row-level operation permissions once
-    // this.canRead = this.metadataService.isValidOperation(this.entityType, 'r');
-    // this.canUpdate = this.metadataService.isValidOperation(this.entityType, 'u');
-    // this.canDelete = this.metadataService.isValidOperation(this.entityType, 'd');
-  // }
-
   loadEntities(): void {
     this.loading = true;
     this.error = '';
