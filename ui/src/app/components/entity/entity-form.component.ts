@@ -104,6 +104,8 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.s
                         [formControlName]="fieldName" 
                         class="form-control"
                         [class.is-invalid]="isFieldInvalid(fieldName)"
+                        [class.link-input]="hasLink(fieldName)"
+                        (click)="openLink(fieldName)"
                         placeholder="Select or enter ID">
                       
                       <!-- JSON input -->
@@ -130,7 +132,9 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.s
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
                         class="form-control"
-                        [class.is-invalid]="isFieldInvalid(fieldName)">
+                        [class.is-invalid]="isFieldInvalid(fieldName)"
+                        [class.link-input]="hasLink(fieldName)"
+                        (click)="openLink(fieldName)">
                     </ng-container>
                     
                     <!-- Validation error messages -->
@@ -199,6 +203,24 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.s
       opacity: 1; /* Full opacity for better readability */
       cursor: default;
       border: 1px solid #dee2e6;
+    }
+
+    /* Style for clickable link inputs */
+    .link-input {
+      cursor: pointer !important;
+      color: #0d6efd !important; /* Bootstrap blue */
+      text-decoration: underline !important;
+      background-color: transparent !important;
+    }
+    
+    .link-input:hover {
+      color: #0a58ca !important; /* Darker blue on hover */
+      text-decoration: underline !important;
+    }
+    
+    .link-input:focus {
+      box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25) !important;
+      border-color: #86b7fe !important;
     }
   `]
 })
@@ -498,6 +520,69 @@ export class EntityFormComponent implements OnInit {
     if (this.entityId) {
       this.router.navigate(['/entity', this.entityType, this.entityId, 'edit']);
     }
+  }
+  
+  /**
+   * Checks if a field has a link defined in its metadata and is an ObjectId type
+   */
+  hasLink(fieldName: string): boolean {
+    const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+    const value = this.entityForm?.get(fieldName)?.value;
+    const hasLink = !!fieldMeta?.ui?.link && fieldMeta?.type === 'ObjectId' && !!value;
+    console.log(`Field ${fieldName}, hasLink=${hasLink}, type=${fieldMeta?.type}, ui.link=${fieldMeta?.ui?.link}, value=${value}`);
+    return hasLink;
+  }
+
+  /**
+   * Navigates to the link for a field
+   * Uses router.navigate instead of window.open to stay within the application
+   */
+  openLink(fieldName: string): void {
+    console.log('openLink called for field:', fieldName);
+    const value = this.entityForm?.get(fieldName)?.value;
+    console.log('Field value:', value);
+    if (!value) {
+      console.error('Cannot navigate: No value for field', fieldName);
+      return;
+    }
+    let entityType = fieldName.substring(0, fieldName.length - 2)   // fieldname must look like <entity>Id
+    //     console.log(`Navigating to view entity: ${this.entityType}/${value}`);
+    this.entityService.viewEntity(entityType, value);
+    // if (!value) return;
+    
+    // const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+    // if (fieldMeta?.ui?.link) {
+    //   // Get the URL from the link template
+    //   const url = fieldMeta.ui.link.replace('${value}', value);
+      
+    //   // Extract the path from the URL (remove any domain and protocol)
+    //   let path = url;
+    //   if (url.startsWith('http')) {
+    //     // For full URLs, check if they're to the same app
+    //     try {
+    //       const urlObj = new URL(url);
+    //       if (urlObj.hostname === window.location.hostname) {
+    //         // Same app, use the pathname
+    //         path = urlObj.pathname;
+    //       } else {
+    //         // External URL, open in new tab
+    //         window.open(url, '_blank');
+    //         return;
+    //       }
+    //     } catch (e) {
+    //       console.error('Invalid URL:', url);
+    //       return;
+    //     }
+    //   }
+      
+    //   // If path starts with /, remove it as router.navigate expects path segments
+    //   if (path.startsWith('/')) {
+    //     path = path.substring(1);
+    //   }
+      
+    //   // Navigate to the path
+    //   this.router.navigate([path.split('/')]);
+    // }
   }
   
 }

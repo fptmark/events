@@ -58,13 +58,10 @@ export class EntityService {
     let format = metadata?.ui?.format 
 
     // format Foreign keys and date for non-create modes
-    if (metadata?.ui?.link) {
-      if (!this.viewService.inCreateMode(mode) && this.viewService.existsInMode(metadata?.ui?.displayPages, mode)) {
-        let link = metadata.ui.link.replace('${value}', value)
-        return `<a href=${link}>View</a>`
-      }
-      return ''
-    } 
+    if (this.viewService.inSummaryMode(mode) && metadata?.ui?.link) {
+      let link = metadata.ui.link.replace('${value}', value)
+      return `<a href=${link}>View</a>`
+    }
 
     // Date field handling
     if (type === 'ISODate') {

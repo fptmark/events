@@ -54,8 +54,10 @@ export class FormGeneratorService {
           validators = this.getValidators(fieldMeta);
         }
 
+        let isDisabled = false;
+
         // Determine if field should be disabled by non-data-dependent rules
-        let isDisabled = this.viewService.inViewMode(mode); // All fields disabled in view mode
+        isDisabled = this.viewService.inViewMode(mode); // All fields disabled in view mode
         
         // Primary ID fields are always disabled
         if (fieldName === idField) {
@@ -73,6 +75,9 @@ export class FormGeneratorService {
         }
 
         // Links are enabled in all modes
+        if (fieldMeta?.ui?.link) {
+          isDisabled = false;
+        }
         
         // Create the form control with appropriate disabled state
         let ctl = this.fb.control({
