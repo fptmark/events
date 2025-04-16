@@ -43,10 +43,8 @@ export interface UiFieldMetata {
   displayName?: string
   displayAfterField?: string
   displayPages?: string
-  link?: string
   readOnly?: boolean
   format?: string
-  widget?: string
   display?: string    // 'hidden', 'secret'
   [key: string]: any
 }

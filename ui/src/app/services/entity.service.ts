@@ -58,8 +58,9 @@ export class EntityService {
     let format = metadata?.ui?.format 
 
     // format Foreign keys and date for non-create modes
-    if (this.viewService.inSummaryMode(mode) && metadata?.ui?.link) {
-      let link = metadata.ui.link.replace('${value}', value)
+    if (this.viewService.inSummaryMode(mode) && metadata?.type === 'ObjectId') {
+      let entity = fieldName.substring(0, fieldName.length - 2) // Remove 'Id' suffix
+      let link = `entity/${entity}/${value}`
       return `<a href=${link}>View</a>`
     }
 
@@ -160,14 +161,13 @@ export class EntityService {
 
   private getDefaultValue(fieldMeta: any): any {
     const type = fieldMeta.type;
-    const widget = fieldMeta.ui?.widget || fieldMeta.widget;
     const enumValues = fieldMeta.enum?.values;
     const required = fieldMeta.required;
     
     switch (type) {
       case 'String':
         // For select fields with enum values, default to first value if required
-        if (widget === 'select' && enumValues?.length > 0 && required) {
+        if (enumValues?.length > 0 && required) {
           return enumValues[0];
         }
         return '';

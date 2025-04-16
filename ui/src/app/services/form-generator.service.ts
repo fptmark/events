@@ -74,11 +74,6 @@ export class FormGeneratorService {
           isDisabled = true;
         }
 
-        // Links are enabled in all modes
-        if (fieldMeta?.ui?.link) {
-          isDisabled = false;
-        }
-        
         // Create the form control with appropriate disabled state
         let ctl = this.fb.control({
           // No initial value - will be set by entity-form
@@ -100,7 +95,7 @@ export class FormGeneratorService {
   
   // Old method removed - we only need generateEntityForm
   
-  private getValidators(fieldMeta: any): any[] {
+  private getValidators(fieldMeta: FieldMetadata): any[] {
     const validators = [];
     
     // Required is at the root level according to sample payload
@@ -109,36 +104,35 @@ export class FormGeneratorService {
     }
     
     // These validations might be in the UI object or at root level
-    const minLength = fieldMeta.ui?.minLength || fieldMeta.minLength;
+    const minLength = fieldMeta.minLength;
     if (minLength) {
       validators.push(Validators.minLength(minLength));
     }
     
-    const maxLength = fieldMeta.ui?.maxLength || fieldMeta.maxLength;
+    const maxLength = fieldMeta.maxLength;
     if (maxLength) {
       validators.push(Validators.maxLength(maxLength));
     }
     
-    const pattern = fieldMeta.ui?.pattern || fieldMeta.pattern;
-    if (pattern) {
-      validators.push(Validators.pattern(pattern));
+    const pattern = fieldMeta.pattern;
+    if (pattern && pattern.regex) {
+      validators.push(Validators.pattern(pattern.regex));
     }
     
-    const min = fieldMeta.ui?.min !== undefined ? fieldMeta.ui.min : fieldMeta.min;
+    const min = fieldMeta?.min
     if (min !== undefined) {
       validators.push(Validators.min(min));
     }
     
-    const max = fieldMeta.ui?.max !== undefined ? fieldMeta.ui.max : fieldMeta.max;
+    const max = fieldMeta?.max
     if (max !== undefined) {
       validators.push(Validators.max(max));
     }
     
     // Special case handling for email fields
     const type = fieldMeta.type;
-    const widget = fieldMeta.ui?.widget || fieldMeta.widget;
     
-    if (type === 'String' && (widget === 'email' || pattern?.includes('@'))) {
+    if (pattern?.regex?.includes('@')) {
       validators.push(Validators.email);
     }
     
@@ -146,49 +140,54 @@ export class FormGeneratorService {
   }
   
   /**
-   * Get the appropriate widget type for a field based on its metadata and mode
+   * Get the appropriate input control type for a field based on its metadata and mode
    * @param entityType The type of entity
    * @param fieldName The name of the field
    * @param mode The form mode (view/edit/create)
-   * @returns The widget type to use
+   * @returns The input control type to use
    */
   getFieldWidget(entityType: string, fieldName: string, mode: ViewMode): string {
-    // For view mode, always use text inputs to avoid browser-specific rendering issues
-    if (this.viewService.inViewMode(mode)) {
-      return 'text';
-    }
-    
+    // _id field is always a text field
     if (fieldName === '_id') return 'text';
     
     const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
     if (!fieldMeta) return 'text';
     
-    // If widget is explicitly specified in ui object, use it
-    if (fieldMeta.ui?.widget) return fieldMeta.ui.widget;
+    // In edit mode, ObjectId fields should be simple text inputs for direct ID editing
+    if (fieldMeta.type === "ObjectId") {
+      return this.viewService.inEditMode(mode) ? 'text' : 'ObjectId' 
+    }
+
+    // For view mode, always use text inputs to avoid browser-specific rendering issues
+    if (this.viewService.inViewMode(mode)) {
+      return 'text';
+    }
     
+    // Usually for ISODate fields but perhaps others?
+    if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
+      return 'text';
+    }
+
     // Check if field has enum values - use select dropdown
     if (fieldMeta.enum && fieldMeta.enum.values && fieldMeta.enum.values.length > 0) {
       return 'select';
     }
     
-    // Default widgets based on field type
+    // Default input control types based on field type
     const fieldType = fieldMeta.type;
     switch (fieldType) {
       case 'Boolean':
         return 'checkbox';
       case 'ISODate':
-        // For auto fields always use text to avoid browser issues
-        if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
-          return 'text';
-        }
         return 'date';
       case 'String':
         // Special string field types based on metadata patterns, not field names
-        if (fieldMeta.pattern?.regex?.includes('@')) return 'email';
+        // if (fieldMeta.pattern?.regex?.includes('@')) return 'email';
         if (fieldMeta.maxLength && fieldMeta.maxLength > 100) return 'textarea';
         return 'text';
       case 'ObjectId':
-        return 'reference';
+        // Only in create mode will this be reached (view mode returns 'text' and edit mode returns 'text' for ObjectId)
+        return 'ObjectId';
       case 'Array':
       case 'Array[String]':
         return 'array';

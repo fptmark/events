@@ -97,14 +97,13 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.s
                         class="form-control"
                         [class.is-invalid]="isFieldInvalid(fieldName)">
                         
-                      <!-- Reference input (for ObjectId fields) -->
-                      <input *ngSwitchCase="'reference'" 
+                      <!-- ObjectId input -->
+                      <input *ngSwitchCase="'ObjectId'" 
                         type="text" 
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
-                        class="form-control"
+                        class="form-control link-input"
                         [class.is-invalid]="isFieldInvalid(fieldName)"
-                        [class.link-input]="hasLink(fieldName)"
                         (click)="openLink(fieldName)"
                         placeholder="Select or enter ID">
                       
@@ -132,9 +131,7 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.s
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
                         class="form-control"
-                        [class.is-invalid]="isFieldInvalid(fieldName)"
-                        [class.link-input]="hasLink(fieldName)"
-                        (click)="openLink(fieldName)">
+                        [class.is-invalid]="isFieldInvalid(fieldName)">
                     </ng-container>
                     
                     <!-- Validation error messages -->
@@ -378,14 +375,13 @@ export class EntityFormComponent implements OnInit {
 
   private getDefaultValue(fieldMeta: any): any {
     const type = fieldMeta.type;
-    const widget = fieldMeta.ui?.widget || fieldMeta.widget;
     const enumValues = fieldMeta.enum?.values;
     const required = fieldMeta.required;
     
     switch (type) {
       case 'String':
         // For select fields with enum values, default to first value if required
-        if (widget === 'select' && enumValues?.length > 0 && required) {
+        if (enumValues?.length > 0 && required) {
           return enumValues[0];
         }
         return '';
@@ -523,66 +519,29 @@ export class EntityFormComponent implements OnInit {
   }
   
   /**
-   * Checks if a field has a link defined in its metadata and is an ObjectId type
-   */
-  hasLink(fieldName: string): boolean {
-    const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
-    const value = this.entityForm?.get(fieldName)?.value;
-    const hasLink = !!fieldMeta?.ui?.link && fieldMeta?.type === 'ObjectId' && !!value;
-    console.log(`Field ${fieldName}, hasLink=${hasLink}, type=${fieldMeta?.type}, ui.link=${fieldMeta?.ui?.link}, value=${value}`);
-    return hasLink;
-  }
-
-  /**
    * Navigates to the link for a field
    * Uses router.navigate instead of window.open to stay within the application
    */
   openLink(fieldName: string): void {
-    console.log('openLink called for field:', fieldName);
-    const value = this.entityForm?.get(fieldName)?.value;
-    console.log('Field value:', value);
-    if (!value) {
-      console.error('Cannot navigate: No value for field', fieldName);
-      return;
+    try {
+      // Get the value from the form field
+      const value = this.entityForm?.get(fieldName)?.value;
+      if (!value) {
+        console.error('No value for field:', fieldName);
+        return;
+      }
+      
+      // Check if field name follows the pattern <entity>Id
+      if (fieldName.endsWith('Id')) {
+        const entityType = fieldName.substring(0, fieldName.length - 2);
+        console.log(`Navigating to entity: ${entityType}/${value}`);
+        this.entityService.viewEntity(entityType, value);
+      } else {
+        console.error('Field name does not follow the expected pattern of <entity>Id:', fieldName);
+      }
+    } catch (error) {
+      console.error('Error in openLink:', error);
     }
-    let entityType = fieldName.substring(0, fieldName.length - 2)   // fieldname must look like <entity>Id
-    //     console.log(`Navigating to view entity: ${this.entityType}/${value}`);
-    this.entityService.viewEntity(entityType, value);
-    // if (!value) return;
-    
-    // const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
-    // if (fieldMeta?.ui?.link) {
-    //   // Get the URL from the link template
-    //   const url = fieldMeta.ui.link.replace('${value}', value);
-      
-    //   // Extract the path from the URL (remove any domain and protocol)
-    //   let path = url;
-    //   if (url.startsWith('http')) {
-    //     // For full URLs, check if they're to the same app
-    //     try {
-    //       const urlObj = new URL(url);
-    //       if (urlObj.hostname === window.location.hostname) {
-    //         // Same app, use the pathname
-    //         path = urlObj.pathname;
-    //       } else {
-    //         // External URL, open in new tab
-    //         window.open(url, '_blank');
-    //         return;
-    //       }
-    //     } catch (e) {
-    //       console.error('Invalid URL:', url);
-    //       return;
-    //     }
-    //   }
-      
-    //   // If path starts with /, remove it as router.navigate expects path segments
-    //   if (path.startsWith('/')) {
-    //     path = path.substring(1);
-    //   }
-      
-    //   // Navigate to the path
-    //   this.router.navigate([path.split('/')]);
-    // }
   }
   
 }
