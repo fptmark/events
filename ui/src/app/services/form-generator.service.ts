@@ -54,31 +54,11 @@ export class FormGeneratorService {
           validators = this.getValidators(fieldMeta);
         }
 
-        let isDisabled = false;
-
-        // Determine if field should be disabled by non-data-dependent rules
-        isDisabled = this.viewService.inViewMode(mode); // All fields disabled in view mode
-        
-        // Primary ID fields are always disabled
-        if (fieldName === idField) {
-          isDisabled = true;
-        }
-        
-        // Field marked read-only in metadata
-        if (fieldMeta?.ui?.readOnly){
-          isDisabled = true;
-        }
-        
-        // Auto-generate/update ISODate fields should be disabled in all modes
-        if (fieldMeta?.type === 'ISODate' && (fieldMeta.autoGenerate || fieldMeta.autoUpdate)) {
-          isDisabled = true;
-        }
-
         // Create the form control with appropriate disabled state
         let ctl = this.fb.control({
           // No initial value - will be set by entity-form
         }, validators);
-        if (isDisabled) {
+        if (this.getFieldAttributes(entityType, fieldName, mode).enabled === false) {
           ctl.disable();
         }
         formGroup[fieldName] = ctl
@@ -146,55 +126,58 @@ export class FormGeneratorService {
    * @param mode The form mode (view/edit/create)
    * @returns The input control type to use
    */
-  getFieldWidget(entityType: string, fieldName: string, mode: ViewMode): string {
+  getFieldAttributes(entityType: string, fieldName: string, mode: ViewMode): { fieldType: string, enabled: boolean } {
     // _id field is always a text field
-    if (fieldName === '_id') return 'text';
+    if (fieldName === '_id') return {fieldType: 'text', enabled: false};
     
     const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
-    if (!fieldMeta) return 'text';
+    if (!fieldMeta) return {fieldType: 'text', enabled: true};
     
+    // Usually for ISODate fields but perhaps others?
+    if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
+      return { fieldType: 'text', enabled: false };
+    }
+
     // In edit mode, ObjectId fields should be simple text inputs for direct ID editing
     if (fieldMeta.type === "ObjectId") {
-      return this.viewService.inEditMode(mode) ? 'text' : 'ObjectId' 
+      if (this.viewService.inEditMode(mode)) {
+        return {fieldType: 'text', enabled: true};  // editable
+      } else {
+        return {fieldType: 'ObjectId', enabled: true}; // clickable
+      }
     }
 
     // For view mode, always use text inputs to avoid browser-specific rendering issues
     if (this.viewService.inViewMode(mode)) {
-      return 'text';
-    }
+      return { fieldType: 'text', enabled: false };
+    } else {    // Create and edit modes
     
-    // Usually for ISODate fields but perhaps others?
-    if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
-      return 'text';
-    }
-
-    // Check if field has enum values - use select dropdown
-    if (fieldMeta.enum && fieldMeta.enum.values && fieldMeta.enum.values.length > 0) {
-      return 'select';
-    }
+      // Check if field has enum values - use select dropdown
+      if (fieldMeta.enum && fieldMeta.enum.values && fieldMeta.enum.values.length > 0) {
+        return { fieldType: 'select', enabled: true };
+      }
     
-    // Default input control types based on field type
-    const fieldType = fieldMeta.type;
-    switch (fieldType) {
-      case 'Boolean':
-        return 'checkbox';
-      case 'ISODate':
-        return 'date';
-      case 'String':
-        // Special string field types based on metadata patterns, not field names
-        // if (fieldMeta.pattern?.regex?.includes('@')) return 'email';
-        if (fieldMeta.maxLength && fieldMeta.maxLength > 100) return 'textarea';
-        return 'text';
-      case 'ObjectId':
-        // Only in create mode will this be reached (view mode returns 'text' and edit mode returns 'text' for ObjectId)
-        return 'ObjectId';
-      case 'Array':
-      case 'Array[String]':
-        return 'array';
-      case 'JSON':
-        return 'json';
-      default:
-        return 'text';
+      // Default input control types based on field type
+      let fieldType = fieldMeta.type;
+      switch (fieldType) {
+        case 'Boolean':
+          fieldType = 'checkbox'; break;
+        case 'ISODate':
+          fieldType = 'date'; break;
+        case 'String':
+          fieldType =  (fieldMeta?.maxLength ?? 0 > 100) ? 'textarea': 'text'
+          break
+        case 'ObjectId':
+          fieldType = 'ObjectId'; break
+        case 'Array':
+        case 'Array[String]': break
+          fieldType = 'array';
+        case 'JSON': break
+          fieldType = 'json';
+        default:
+          fieldType = 'text';
+      }
+      return { fieldType: fieldType, enabled: true };
     }
   }
 } 

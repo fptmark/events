@@ -39,7 +39,7 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.s
                     <!-- All form controls using formControlName automatically handle disabled state -->
                     <!-- Disabled controls will have their values populated by populateFormValues -->
                     <!-- So we can use the same controls for all states (view/edit/create) -->
-                    <ng-container [ngSwitch]="formGenerator.getFieldWidget(entityType, fieldName, mode)">
+                    <ng-container [ngSwitch]="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType">
                       
                       <!-- Select dropdown -->
                       <select *ngSwitchCase="'select'" 
@@ -370,42 +370,6 @@ export class EntityFormComponent implements OnInit {
       
       const value = this.entityService.formatFieldValue(this.entityType, fieldName, this.mode, entityData?.[fieldName]);
       control.setValue(value);
-    }
-  }
-
-  private getDefaultValue(fieldMeta: any): any {
-    const type = fieldMeta.type;
-    const enumValues = fieldMeta.enum?.values;
-    const required = fieldMeta.required;
-    
-    switch (type) {
-      case 'String':
-        // For select fields with enum values, default to first value if required
-        if (enumValues?.length > 0 && required) {
-          return enumValues[0];
-        }
-        return '';
-      case 'Number':
-      case 'Integer':
-        return required ? 0 : null;
-      case 'Boolean':
-        return false;
-      case 'Array':
-      case 'Array[String]':
-        return [];
-      case 'JSON':
-        return {};
-      case 'ISODate':
-        // Always set current date for autoGenerate and autoUpdate fields
-        if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
-          const now = new Date().toISOString();
-          return now;
-        }
-        return null;
-      case 'ObjectId':
-        return '';
-      default:
-        return null;
     }
   }
 
