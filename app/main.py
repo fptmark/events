@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
-from app.utilities.config import load_config 
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+import app.utilities.utils as utils
 from app.db import Database
 
 from app.services.auth.cookies.redis import CookiesAuth as Auth
@@ -32,7 +34,7 @@ from app.models.crawl_model import Crawl
 
 import logging
 LOG_FILE = "app.log"
-config = load_config()
+config = utils.load_system_config()
 is_dev = config.get('environment', 'production') == 'development'
 my_log_level = config.get('log_level', 'info' if is_dev else 'warning').upper()
 
@@ -49,7 +51,7 @@ logger = logging.getLogger(__name__)
 # Add the project root to PYTHONPATH
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 # Create the FastAPI app.
 app = FastAPI()
@@ -62,9 +64,33 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[angular],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "OPTIONS",
+    ],
     allow_headers=["*"],
+    max_age=3600,             # cache preflight for 1 hour
 )
+
+@app.middleware("http")
+async def log_all_requests(request: Request, call_next):
+    logger.info(f"→ {request.method} {request.url}")
+    resp = await call_next(request)
+    logger.info(f"← {resp.status_code} {request.method} {request.url}")
+    return resp
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Just log the errors (you can pull out loc/msg/type here if you want)
+    for err in exc.errors():
+        field = err["loc"][-1]
+        logger.error(f"Validation failed on field `{field}`: {err['msg']}")
+    # Delegate to FastAPI’s built‑in handler (it will read the body correctly)
+    return await request_validation_exception_handler(request, exc)
 
 @app.on_event('startup')
 async def startup_event():
@@ -90,8 +116,7 @@ def read_root():
 
 @app.get('/api/metadata')
 def get_entities_metadata():
-    overrides = load_config(Path('overrides.json'))
-    metadata =  [
+    return  [
         Account.get_metadata(),     
         User.get_metadata(),     
         Profile.get_metadata(),     
@@ -101,11 +126,6 @@ def get_entities_metadata():
         Url.get_metadata(),     
         Crawl.get_metadata(),     
     ]
-    for m in metadata:
-        entity = m.get('entity')
-        if entity and entity in overrides.keys():
-            deep_merge_dicts(m, overrides[entity])
-    return metadata
 
 def deep_merge_dicts(dest, override):
     for key, value in override.items():

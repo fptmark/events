@@ -1,11 +1,9 @@
-
-
 from beanie import Document, PydanticObjectId
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Extra, Field, validator
 from typing import Optional, List, Dict, Any, ClassVar
 from datetime import datetime, timezone
 import re
-import json
+import app.utilities.utils as helpers
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
@@ -15,75 +13,121 @@ class UniqueValidationError(Exception):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
 class UserEvent(Document):
-    # Base fields
-    attended: bool = Field(None)
-    rating: int = Field(None, ge=1, le=5)
-    note: str = Field(None, max_length=500)
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    attended: Optional[bool] = Field(None)
+    rating: Optional[int] = Field(None, ge=1, le=5)
+    note: Optional[str] = Field(None, max_length=500)
     userId: PydanticObjectId = Field(...)
     eventId: PydanticObjectId = Field(...)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {   'entity': 'UserEvent',
+    'fields': {   'attended': {'required': False, 'type': 'Boolean'},
+                  'createdAt': {   'autoGenerate': True,
+                                   'required': True,
+                                   'type': 'ISODate',
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True}},
+                  'eventId': {   'displayName': 'eventId',
+                                 'readOnly': True,
+                                 'required': True,
+                                 'type': 'ObjectId'},
+                  'note': {   'max_length': 500,
+                              'required': False,
+                              'type': 'String',
+                              'ui': {'displayPages': 'details'}},
+                  'rating': {   'ge': 1,
+                                'le': 5,
+                                'required': False,
+                                'type': 'Integer'},
+                  'updatedAt': {   'autoUpdate': True,
+                                   'required': True,
+                                   'type': 'ISODate',
+                                   'ui': {   'displayAfterField': '-2',
+                                             'readOnly': True}},
+                  'userId': {   'displayName': 'userId',
+                                'readOnly': True,
+                                'required': True,
+                                'type': 'ObjectId'}},
+    'operations': '',
+    'ui': {'buttonLabel': 'Manage Event Attendance', 'title': 'User Events'}}
 
-    
-    # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'UserEvent', 'ui': {'title': 'User Events', 'buttonLabel': 'Manage Event Attendance'}, 'operations': '', 'fields': {'attended': {'type': 'Boolean', 'required': False}, 'rating': {'type': 'Integer', 'required': False, 'min': 1, 'max': 5}, 'note': {'type': 'String', 'required': False, 'maxLength': 500, 'ui': {'displayPages': 'details'}}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'readOnly': True, 'displayAfterField': '-2'}}, 'userId': {'type': 'ObjectId', 'required': True, 'displayName': 'userId', 'readOnly': True, 'ui': {'link': 'entity/User/${value}'}}, 'eventId': {'type': 'ObjectId', 'required': True, 'displayName': 'eventId', 'readOnly': True, 'ui': {'link': 'entity/Event/${value}'}}}}
-    
     class Settings:
         name = "userevent"
-    
+
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
-        """Get UI metadata for this entity."""
-        return cls.__ui_metadata__
+        return helpers.get_metadata(cls.__ui_metadata__)
 
     async def save(self, *args, **kwargs):
-        # Update timestamp fields for auto-updating fields
-        current_time = datetime.now(timezone.utc)
-        self.updatedAt = current_time
+        self.updatedAt = datetime.now(timezone.utc)
         return await super().save(*args, **kwargs)
 
-
 class UserEventCreate(BaseModel):
-    # Fields for create operations
-    attended: bool = Field(None)
-    rating: int = Field(None, ge=1, le=5)
-    note: str = Field(None, max_length=500)
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    attended: Optional[bool] = Field(None)
+    rating: Optional[int] = Field(None, ge=1, le=5)
+    note: Optional[str] = Field(None, max_length=500)
     userId: PydanticObjectId = Field(...)
     eventId: PydanticObjectId = Field(...)
+
     @validator('rating')
     def validate_rating(cls, v):
         _custom = {}
         if v is not None and v < 1:
-            raise ValueError("rating must be at least 1")
+            raise ValueError('rating must be at least 1')
         if v is not None and v > 5:
-            raise ValueError("rating must be at most 5")
+            raise ValueError('rating must be at most 5')
         return v
+     
     @validator('note')
     def validate_note(cls, v):
         _custom = {}
         if v is not None and len(v) > 500:
-            raise ValueError("note must be at most 500 characters")
+            raise ValueError('note must be at most 500 characters')
         return v
+     
     class Config:
         orm_mode = True
+        extra = Extra.ignore
 
+class UserEventUpdate(BaseModel):
+    attended: Optional[bool] = Field(None)
+    rating: Optional[int] = Field(None, ge=1, le=5)
+    note: Optional[str] = Field(None, max_length=500)
+    userId: PydanticObjectId = Field(...)
+    eventId: PydanticObjectId = Field(...)
+
+    @validator('rating')
+    def validate_rating(cls, v):
+        _custom = {}
+        if v is not None and v < 1:
+            raise ValueError('rating must be at least 1')
+        if v is not None and v > 5:
+            raise ValueError('rating must be at most 5')
+        return v
+     
+    @validator('note')
+    def validate_note(cls, v):
+        _custom = {}
+        if v is not None and len(v) > 500:
+            raise ValueError('note must be at most 500 characters')
+        return v
+     
+    class Config:
+        orm_mode = True
+        extra = Extra.ignore
 
 class UserEventRead(BaseModel):
-    # Fields for read operations
     id: PydanticObjectId = Field(alias="_id")
     attended: Optional[bool] = Field(None)
     rating: Optional[int] = Field(None, ge=1, le=5)
     note: Optional[str] = Field(None, max_length=500)
-    createdAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
-    userId: Optional[PydanticObjectId] = Field(None)
-    eventId: Optional[PydanticObjectId] = Field(None)
-
+    userId: PydanticObjectId = Field(...)
+    eventId: PydanticObjectId = Field(...)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+            
     class Config:
         orm_mode = True
         allow_population_by_field_name = True
         json_encoders = {PydanticObjectId: str}
-
-

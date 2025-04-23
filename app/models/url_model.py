@@ -1,11 +1,9 @@
-
-
 from beanie import Document, PydanticObjectId
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Extra, Field, validator
 from typing import Optional, List, Dict, Any, ClassVar
 from datetime import datetime, timezone
 import re
-import json
+import app.utilities.utils as helpers
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
@@ -15,58 +13,81 @@ class UniqueValidationError(Exception):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
 class Url(Document):
-    # Base fields
     url: str = Field(..., regex=r"main.url")
-    params: dict = Field(None)
+    params: Optional[Dict[str, Any]] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {   'entity': 'Url',
+    'fields': {   'createdAt': {   'autoGenerate': True,
+                                   'required': True,
+                                   'type': 'ISODate',
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True}},
+                  'params': {'required': False, 'type': 'JSON'},
+                  'updatedAt': {   'autoUpdate': True,
+                                   'required': True,
+                                   'type': 'ISODate',
+                                   'ui': {   'displayAfterField': '-2',
+                                             'readOnly': True}},
+                  'url': {   'pattern': {   'message': 'Bad URL format',
+                                            'regex': 'main.url'},
+                             'required': True,
+                             'type': 'String'}},
+    'operations': '',
+    'ui': {   'buttonLabel': 'Manage Urls',
+              'description': 'Manage Event Urls',
+              'title': 'Url'}}
 
-    
-    # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Url', 'ui': {'title': 'Url', 'buttonLabel': 'Manage Urls', 'description': 'Manage Event Urls'}, 'operations': '', 'fields': {'url': {'type': 'String', 'required': True, 'pattern': {'regex': 'main.url', 'message': 'Bad URL format'}}, 'params': {'type': 'JSON', 'required': False}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'readOnly': True, 'displayAfterField': '-2'}}}}
-    
     class Settings:
         name = "url"
-    
+
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
-        """Get UI metadata for this entity."""
-        return cls.__ui_metadata__
+        return helpers.get_metadata(cls.__ui_metadata__)
 
     async def save(self, *args, **kwargs):
-        # Update timestamp fields for auto-updating fields
-        current_time = datetime.now(timezone.utc)
-        self.updatedAt = current_time
+        self.updatedAt = datetime.now(timezone.utc)
         return await super().save(*args, **kwargs)
 
-
 class UrlCreate(BaseModel):
-    # Fields for create operations
     url: str = Field(..., regex=r"main.url")
-    params: dict = Field(None)
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    params: Optional[Dict[str, Any]] = Field(None)
+
     @validator('url')
     def validate_url(cls, v):
         _custom = {}
         if v is not None and not re.match(r'main.url', v):
-            raise ValueError("Bad URL format")
+            raise ValueError('Bad URL format')
         return v
+     
     class Config:
         orm_mode = True
+        extra = Extra.ignore
 
+class UrlUpdate(BaseModel):
+    url: str = Field(..., regex=r"main.url")
+    params: Optional[Dict[str, Any]] = Field(None)
+
+    @validator('url')
+    def validate_url(cls, v):
+        _custom = {}
+        if v is not None and not re.match(r'main.url', v):
+            raise ValueError('Bad URL format')
+        return v
+     
+    class Config:
+        orm_mode = True
+        extra = Extra.ignore
 
 class UrlRead(BaseModel):
-    # Fields for read operations
     id: PydanticObjectId = Field(alias="_id")
-    url: Optional[str] = Field(None, regex=r"main.url")
-    params: Optional[dict] = Field(None)
-    createdAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
-
+    url: str = Field(..., regex=r"main.url")
+    params: Optional[Dict[str, Any]] = Field(None)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+            
     class Config:
         orm_mode = True
         allow_population_by_field_name = True
         json_encoders = {PydanticObjectId: str}
-
-

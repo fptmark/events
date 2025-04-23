@@ -1,11 +1,9 @@
-
-
 from beanie import Document, PydanticObjectId
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Extra, Field, validator
 from typing import Optional, List, Dict, Any, ClassVar
 from datetime import datetime, timezone
 import re
-import json
+import app.utilities.utils as helpers
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
@@ -15,58 +13,92 @@ class UniqueValidationError(Exception):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
 class Crawl(Document):
-    # Base fields
-    lastParsedDate: datetime = Field(None)
-    parseStatus: dict = Field(None)
+    lastParsedDate: Optional[datetime] = Field(None)
+    parseStatus: Optional[Dict[str, Any]] = Field(None)
     errorsEncountered: Optional[List[str]] = Field(None)
+    urlId: PydanticObjectId = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    urlId: PydanticObjectId = Field(...)
+    
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {   'entity': 'Crawl',
+    'fields': {   'createdAt': {   'autoGenerate': True,
+                                   'required': True,
+                                   'type': 'ISODate',
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True}},
+                  'errorsEncountered': {   'required': False,
+                                           'type': 'Array[String]'},
+                  'lastParsedDate': {'required': False, 'type': 'ISODate'},
+                  'parseStatus': {'required': False, 'type': 'JSON'},
+                  'updatedAt': {   'autoUpdate': True,
+                                   'required': True,
+                                   'type': 'ISODate',
+                                   'ui': {   'displayAfterField': '-2',
+                                             'readOnly': True}},
+                  'urlId': {   'displayName': 'urlId',
+                               'readOnly': True,
+                               'required': True,
+                               'type': 'ObjectId'}},
+    'operations': 'rd',
+    'ui': {   'buttonLabel': 'Manage Crawls',
+              'description': 'Manage Crawls of Event sites',
+              'title': 'Crawls'}}
 
-    
-    # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Crawl', 'ui': {'title': 'Crawls', 'buttonLabel': 'Manage Crawls', 'description': 'Manage Crawls of Event sites'}, 'operations': 'rd', 'fields': {'lastParsedDate': {'type': 'ISODate', 'required': False}, 'parseStatus': {'type': 'JSON', 'required': False}, 'errorsEncountered': {'type': 'Array[String]', 'required': False}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'readOnly': True, 'displayAfterField': '-2'}}, 'urlId': {'type': 'ObjectId', 'required': True, 'displayName': 'urlId', 'readOnly': True, 'ui': {'link': 'entity/Url/${value}'}}}}
-    
     class Settings:
         name = "crawl"
-    
+
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
-        """Get UI metadata for this entity."""
-        return cls.__ui_metadata__
+        return helpers.get_metadata(cls.__ui_metadata__)
 
     async def save(self, *args, **kwargs):
-        # Update timestamp fields for auto-updating fields
-        current_time = datetime.now(timezone.utc)
-        self.updatedAt = current_time
+        self.updatedAt = datetime.now(timezone.utc)
         return await super().save(*args, **kwargs)
 
-
 class CrawlCreate(BaseModel):
-    # Fields for create operations
-    lastParsedDate: datetime = Field(None)
-    parseStatus: dict = Field(None)
+    lastParsedDate: Optional[datetime] = Field(None)
+    parseStatus: Optional[Dict[str, Any]] = Field(None)
     errorsEncountered: Optional[List[str]] = Field(None)
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     urlId: PydanticObjectId = Field(...)
+
+    @validator('lastParsedDate', pre=True)
+    def parse_lastParsedDate(cls, v):
+        if v in (None, '', 'null'):
+            return None
+        if isinstance(v, str):
+            return datetime.fromisoformat(v)
+        return v
     class Config:
         orm_mode = True
+        extra = Extra.ignore
 
+class CrawlUpdate(BaseModel):
+    lastParsedDate: Optional[datetime] = Field(None)
+    parseStatus: Optional[Dict[str, Any]] = Field(None)
+    errorsEncountered: Optional[List[str]] = Field(None)
+    urlId: PydanticObjectId = Field(...)
+
+    @validator('lastParsedDate', pre=True)
+    def parse_lastParsedDate(cls, v):
+        if v in (None, '', 'null'):
+            return None
+        if isinstance(v, str):
+            return datetime.fromisoformat(v)
+        return v
+    class Config:
+        orm_mode = True
+        extra = Extra.ignore
 
 class CrawlRead(BaseModel):
-    # Fields for read operations
     id: PydanticObjectId = Field(alias="_id")
     lastParsedDate: Optional[datetime] = Field(None)
-    parseStatus: Optional[dict] = Field(None)
-    errorsEncountered: Optional[Optional[List[str]]] = Field(None)
-    createdAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
-    urlId: Optional[PydanticObjectId] = Field(None)
-
+    parseStatus: Optional[Dict[str, Any]] = Field(None)
+    errorsEncountered: Optional[List[str]] = Field(None)
+    urlId: PydanticObjectId = Field(...)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+            
     class Config:
         orm_mode = True
         allow_population_by_field_name = True
         json_encoders = {PydanticObjectId: str}
-
-

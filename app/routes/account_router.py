@@ -1,110 +1,182 @@
-from fastapi import APIRouter, HTTPException, Response
+# app/routes/account_router.py
+
+from fastapi import APIRouter, Body, status
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from typing import List, Dict, Any
-from app.models.account_model import Account, AccountCreate, AccountRead
 from beanie import PydanticObjectId
 import logging
-import json
+
+from app.models.account_model import (
+    Account,
+    AccountCreate,
+    AccountUpdate,
+    AccountRead,
+)
+from app.utilities.utils import apply_and_save
 
 router = APIRouter()
 
-# CREATE
-@router.post('/')
-async def create_account(item: AccountCreate):
-    logging.info("Received request to create a new account.")
-    # Instantiate a document from the model
-    doc = Account(**item.dict(exclude_unset=True))
+
+@router.post(
+    "/",
+    response_model=AccountRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_account(raw: dict = Body(...)) -> Any:
+    logging.info("CREATE Account payload: %r", raw)
+
+    # 1) Validate input against AccountCreate
     try:
-        await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"Account created successfully with _id: {doc._id}")
+        payload = AccountCreate(**raw)
+    except ValidationError as ve:
+        logging.error("Validation error creating Account: %s", ve.errors())
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"detail": str(ve.errors())},
+        )
+
+    # 2) Instantiate blank Account (createdAt & updatedAt set by default_factory)
+    doc = Account(**payload.dict(exclude_unset=False))
+
+    # 3) Apply payload fields and save (will bump updatedAt)
+    try:
+        doc = await apply_and_save(doc, payload, exclude_unset=False)
+        logging.info("Account created _id=%s", doc.id)
     except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to create account.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
+        logging.exception("Error inserting Account")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": str(e)},
+        )
+
     return doc
 
-# GET ALL
-@router.get('/')
-async def get_all_accounts():
-    logging.info("Received request to fetch all accounts.")
+
+@router.get(
+    "/",
+    response_model=List[AccountRead],
+)
+async def get_all_accounts() -> Any:
+    logging.info("FETCH ALL Accounts")
     try:
         docs = await Account.find_all().to_list()
-        logging.info(f"Fetched {len(docs)} account(s) successfully.")
+        logging.info("Fetched %d accounts", len(docs))
+        return docs
     except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to fetch all accounts.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return docs
+        logging.exception("Error fetching all Accounts")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": str(e)},
+        )
 
-# GET ONE BY ID
-@router.get('/{item_id}')
-async def get_account(item_id: str):
-    logging.info(f"Received request to fetch account with _id: {item_id}")
+
+@router.get(
+    "/{item_id}",
+    response_model=AccountRead,
+)
+async def get_account(item_id: str) -> Any:
+    logging.info("FETCH Account %s", item_id)
     try:
         doc = await Account.get(PydanticObjectId(item_id))
         if not doc:
-            logging.warning(f"Account with _id {item_id} not found.")
-            raise HTTPException(status_code=404, detail='Account not found')
-        logging.info(f"Fetched account with _id: {item_id} successfully.")
-    except HTTPException as he:
-        raise he
+            logging.warning("Account %s not found", item_id)
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"detail": f"Account {item_id} not found"},
+            )
+        return doc
     except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to fetch Account with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
+        logging.exception("Error fetching Account %s", item_id)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": str(e)},
+        )
+
+
+@router.put(
+    "/{item_id}",
+    response_model=AccountRead,
+)
+async def update_account(item_id: str, raw: dict = Body(...)) -> Any:
+    logging.info("UPDATE Account %s payload: %r", item_id, raw)
+
+    # 1) Validate input against AccountUpdate
+    try:
+        payload = AccountUpdate(**raw)
+    except ValidationError as ve:
+        logging.error("Validation error updating Account: %s", ve.errors())
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"detail": str(ve.errors())},
+        )
+
+    # 2) Fetch existing document
+    try:
+        doc = await Account.get(PydanticObjectId(item_id))
+        if not doc:
+            logging.warning("Account %s not found for update", item_id)
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"detail": f"Account {item_id} not found"},
+            )
+    except Exception as e:
+        logging.exception("Error retrieving Account %s", item_id)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": str(e)},
+        )
+
+    # 3) Apply payload fields and save
+    try:
+        doc = await apply_and_save(doc, payload)
+        logging.info("Account %s updated successfully", item_id)
+    except Exception as e:
+        logging.exception("Error saving updated Account %s", item_id)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": str(e)},
+        )
+
     return doc
 
-# UPDATE
-@router.put('/{item_id}')
-async def update_account(item_id: str, item: AccountCreate):
-    logging.info(f"Received request to update account with _id: {item_id}")
-    try:
-        doc = await Account.get(PydanticObjectId(item_id))
-        if not doc:
-            logging.warning(f"Account with _id {item_id} not found for update.")
-            raise HTTPException(status_code=404, detail='Account not found')
-        update_data = item.dict(exclude_unset=True)
-        # Optionally prevent updating base fields:
-        update_data.pop('_id', None)
-        update_data.pop('createdAt', None)
-        # For updatedAt, BaseEntity.save() will update it automatically.
-        for key, value in update_data.items():
-            setattr(doc, key, value)
-        await doc.save()
-        logging.info(f"Account with _id {item_id} updated successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to update Account with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
 
-# DELETE
-@router.delete('/{item_id}')
-async def delete_account(item_id: str):
-    logging.info(f"Received request to delete account with _id: {item_id}")
+@router.delete(
+    "/{item_id}",
+    status_code=status.HTTP_200_OK,
+)
+async def delete_account(item_id: str) -> Any:
+    logging.info("DELETE Account %s", item_id)
     try:
         doc = await Account.get(PydanticObjectId(item_id))
         if not doc:
-            logging.warning(f"Account with _id {item_id} not found for deletion.")
-            raise HTTPException(status_code=404, detail='Account not found')
+            logging.warning("Account %s not found for deletion", item_id)
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"detail": f"Account {item_id} not found"},
+            )
         await doc.delete()
-        logging.info(f"Account with _id {item_id} deleted successfully.")
-    except HTTPException as he:
-        raise he
+        logging.info("Account %s deleted", item_id)
+        return {"detail": "Account deleted successfully"}
     except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to delete Account with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return {'message': 'Account deleted successfully'}
+        logging.exception("Error deleting Account %s", item_id)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": str(e)},
+        )
 
-# GET METADATA
-@router.get('/metadata')
-async def get_account_metadata():
-    """Get metadata for Account entity."""
-    return Account.get_metadata()
+
+@router.get(
+    "/metadata",
+    response_model=Dict[str, Any],
+)
+async def get_account_metadata() -> Any:
+    logging.info("FETCH Account metadata")
+    try:
+        return Account.get_metadata()
+    except Exception as e:
+        logging.exception("Error fetching metadata")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": str(e)},
+        )

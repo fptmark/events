@@ -1,11 +1,9 @@
-
-
 from beanie import Document, PydanticObjectId
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Extra, Field, validator
 from typing import Optional, List, Dict, Any, ClassVar
 from datetime import datetime, timezone
 import re
-import json
+import app.utilities.utils as helpers
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
@@ -15,49 +13,72 @@ class UniqueValidationError(Exception):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
 class Account(Document):
-    # Base fields
-    expiredAt: datetime = Field(None)
+    expiredAt: Optional[datetime] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    __ui_metadata__: ClassVar[Dict[str, Any]] = {   'entity': 'Account',
+    'fields': {   'createdAt': {   'autoGenerate': True,
+                                   'required': True,
+                                   'type': 'ISODate',
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True}},
+                  'expiredAt': {'required': False, 'type': 'ISODate'},
+                  'updatedAt': {   'autoUpdate': True,
+                                   'required': True,
+                                   'type': 'ISODate',
+                                   'ui': {   'displayAfterField': 'createdAt',
+                                             'displayPages': 'details',
+                                             'readOnly': True}}},
+    'operations': '',
+    'ui': {'buttonLabel': 'Manage Accounts', 'title': 'Accounts'}}
 
-    
-    # Class-level metadata for UI generation
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {'entity': 'Account', 'ui': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'}, 'operations': '', 'fields': {'expiredAt': {'type': 'ISODate', 'required': False}, 'createdAt': {'type': 'ISODate', 'required': True, 'autoGenerate': True, 'ui': {'readOnly': True, 'displayAfterField': '-1'}}, 'updatedAt': {'type': 'ISODate', 'required': True, 'autoUpdate': True, 'ui': {'readOnly': True, 'displayAfterField': 'createdAt', 'displayPages': 'details'}}}}
-    
     class Settings:
         name = "account"
-    
+
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
-        """Get UI metadata for this entity."""
-        return cls.__ui_metadata__
+        return helpers.get_metadata(cls.__ui_metadata__)
 
     async def save(self, *args, **kwargs):
-        # Update timestamp fields for auto-updating fields
-        current_time = datetime.now(timezone.utc)
-        self.updatedAt = current_time
+        self.updatedAt = datetime.now(timezone.utc)
         return await super().save(*args, **kwargs)
 
-
 class AccountCreate(BaseModel):
-    # Fields for create operations
-    expiredAt: datetime = Field(None)
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expiredAt: Optional[datetime] = Field(None)
+
+    @validator('expiredAt', pre=True)
+    def parse_expiredAt(cls, v):
+        if v in (None, '', 'null'):
+            return None
+        if isinstance(v, str):
+            return datetime.fromisoformat(v)
+        return v
     class Config:
         orm_mode = True
+        extra = Extra.ignore
 
+class AccountUpdate(BaseModel):
+    expiredAt: Optional[datetime] = Field(None)
+
+    @validator('expiredAt', pre=True)
+    def parse_expiredAt(cls, v):
+        if v in (None, '', 'null'):
+            return None
+        if isinstance(v, str):
+            return datetime.fromisoformat(v)
+        return v
+    class Config:
+        orm_mode = True
+        extra = Extra.ignore
 
 class AccountRead(BaseModel):
-    # Fields for read operations
     id: PydanticObjectId = Field(alias="_id")
     expiredAt: Optional[datetime] = Field(None)
-    createdAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
-
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+            
     class Config:
         orm_mode = True
         allow_population_by_field_name = True
         json_encoders = {PydanticObjectId: str}
-
-
