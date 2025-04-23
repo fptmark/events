@@ -20,7 +20,7 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.s
         <button class="btn btn-secondary" (click)="goBack()">Back</button>
       </div>
       
-      <div *ngIf="error" class="alert alert-danger">
+      <div *ngIf="error" class="alert alert-danger" style="white-space: pre-wrap;">
         {{ error }}
       </div>
       
@@ -408,27 +408,11 @@ export class EntityFormComponent implements OnInit {
         const control = this.entityForm.controls[fieldName];
         const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
         
-        if (control.disabled) {
-          // Add disabled field values to the processed data (they're excluded from formData by default)
-          const value = control.value;
-          if (value !== undefined && value !== null) {
-            processedData[fieldName] = value;
-          }
-        }
-        
-        // Special handling for specific field types
-        if (fieldMeta && fieldMeta.type === 'ISODate') {
-          const currentTime = new Date().toISOString();
-          
-          // For create operations, handle autoGenerate fields
-          if (this.isCreateMode() && fieldMeta.autoGenerate) {
-            processedData[fieldName] = currentTime;
-          }
-          
-          // For both create and edit operations, always update autoUpdate fields
-          if (fieldMeta.autoUpdate) {
-            processedData[fieldName] = currentTime;
-          }
+        // perform basic check using required property.  The server will perform more complex validation
+        // All non-required fileds, autoGen and autoUpdate (handled by the server).  Otherwise there must be a value
+        const value = control.value;
+        if ( !fieldMeta!.required || (value !== undefined && value !== null && value !== '') || fieldMeta!.autoUpdate || fieldMeta!.autoGenerate) {
+          processedData[fieldName] = value;
         }
       }
     } catch (error) {

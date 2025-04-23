@@ -3,6 +3,7 @@ import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors }
 import { FieldMetadata, MetadataService } from './metadata.service';
 import { EntityService } from './entity.service';
 import { ViewService, ViewMode, VIEW, EDIT, CREATE } from './view.service';
+import { Constants } from '../constants'; // Assuming idField is defined in constants.ts
 
 // No need for constants or FormMode type anymore
 @Injectable({
@@ -29,16 +30,15 @@ export class FormGeneratorService {
    */
   generateEntityForm(entityType: string, mode: ViewMode): { form: FormGroup, displayFields: string[] } {
     const formGroup: { [key: string]: AbstractControl } = {};
-    const idField = '_id'
     
     // Get fields to display from entity service
     let viewFields: string[] = this.entityService.getViewFields(entityType, mode)
     let displayFields: string[] // may add or delete the id field later
 
     // Manage ID field - it should be first in edit and view modes and removed in create mode
-    displayFields = viewFields.filter(fieldName => fieldName !== idField);
+    displayFields = viewFields.filter(fieldName => fieldName !== Constants.idField);
     if (this.viewService.inViewMode(mode) || this.viewService.inEditMode(mode)) { // Make sure the id field is first
-      displayFields.unshift(idField);
+      displayFields.unshift(Constants.idField);
     }
 
     // Process all fields to create form controls
@@ -128,7 +128,7 @@ export class FormGeneratorService {
    */
   getFieldAttributes(entityType: string, fieldName: string, mode: ViewMode): { fieldType: string, enabled: boolean } {
     // _id field is always a text field
-    if (fieldName === '_id') return {fieldType: 'text', enabled: false};
+    if (fieldName === Constants.idField) return {fieldType: 'text', enabled: false};
     
     const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
     if (!fieldMeta) return {fieldType: 'text', enabled: true};
@@ -165,7 +165,7 @@ export class FormGeneratorService {
         case 'ISODate':
           fieldType = 'date'; break;
         case 'String':
-          fieldType =  (fieldMeta?.maxLength ?? 0 > 100) ? 'textarea': 'text'
+          fieldType =  ((fieldMeta?.maxLength ?? 0) > 100) ? 'textarea': 'text'
           break
         case 'ObjectId':
           fieldType = 'ObjectId'; break
