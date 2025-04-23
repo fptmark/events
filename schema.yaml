@@ -65,35 +65,35 @@ _entities:
       username:
         type: String
         required: true
-        minLength: 3
-        maxLength: 50
+        min_length: 3
+        max_length: 50
       email:
         type: String
         required: true
-        minLength: 8
-        maxLength: 50
+        min_length: 8
+        max_length: 50
         pattern:
           regex: dictionary=main.email
           message: Bad email address format
       password:
         type: String
         required: true
-        minLength: 8
+        min_length: 8
         ui:
           displayPages: details
           display: secret
       firstName:
         type: String
         required: true
-        minLength: 3
-        maxLength: 100
+        min_length: 3
+        max_length: 100
         ui:
           displayName: First Name
       lastName:
         type: String
         required: true
-        minLength: 3
-        maxLength: 100
+        min_length: 3
+        max_length: 100
         ui:
           displayName: Last Name
       gender:
@@ -133,8 +133,6 @@ _entities:
         required: true
         displayName: accountId
         readOnly: true
-        ui:
-          link: entity/Account/${value}
     relationships:
     - Profile
     - UserEvent
@@ -153,7 +151,7 @@ _entities:
       name:
         type: String
         required: true
-        maxLength: 100
+        max_length: 100
       preferences:
         type: JSON
         required: false
@@ -162,7 +160,7 @@ _entities:
       radiusMiles:
         type: Integer
         required: false
-        min: 0
+        ge: 0
       createdAt:
         type: ISODate
         required: true
@@ -182,8 +180,6 @@ _entities:
         required: true
         displayName: userId
         readOnly: true
-        ui:
-          link: entity/User/${value}
     relationships:
     - TagAffinity
     ui:
@@ -197,12 +193,12 @@ _entities:
       tag:
         type: String
         required: true
-        maxLength: 50
+        max_length: 50
       affinity:
         type: Integer
         required: true
-        min: -100
-        max: 100
+        ge: -100
+        le: 100
       createdAt:
         type: ISODate
         required: true
@@ -222,8 +218,6 @@ _entities:
         required: true
         displayName: profileId
         readOnly: true
-        ui:
-          link: entity/Profile/${value}
     relationships: []
     ui:
       title: Tag Affinity
@@ -241,24 +235,24 @@ _entities:
       title:
         type: String
         required: true
-        maxLength: 200
+        max_length: 200
       dateTime:
         type: ISODate
         required: true
       location:
         type: String
         required: false
-        maxLength: 200
+        max_length: 200
       cost:
         type: Number
         required: false
-        min: 0
+        ge: 0
         ui:
           displayPages: details
       numOfExpectedAttendees:
         type: Integer
         required: false
-        min: 0
+        ge: 0
         ui:
           displayPages: details
       recurrence:
@@ -304,12 +298,12 @@ _entities:
       rating:
         type: Integer
         required: false
-        min: 1
-        max: 5
+        ge: 1
+        le: 5
       note:
         type: String
         required: false
-        maxLength: 500
+        max_length: 500
         ui:
           displayPages: details
       createdAt:
@@ -331,15 +325,11 @@ _entities:
         required: true
         displayName: userId
         readOnly: true
-        ui:
-          link: entity/User/${value}
       eventId:
         type: ObjectId
         required: true
         displayName: eventId
         readOnly: true
-        ui:
-          link: entity/Event/${value}
     relationships: []
     ui:
       title: User Events
@@ -405,8 +395,6 @@ _entities:
         required: true
         displayName: urlId
         readOnly: true
-        ui:
-          link: entity/Url/${value}
     relationships: []
     ui:
       title: Crawls
