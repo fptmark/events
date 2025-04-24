@@ -133,12 +133,6 @@ export class FormGeneratorService {
     const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
     if (!fieldMeta) return {fieldType: 'text', enabled: true};
     
-    // Usually for ISODate fields but perhaps others?
-    if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
-      const enabled = fieldMeta?.ui?.clientEdit ?? false;  // client_edit allows the client to edit an auto field
-      return { fieldType: 'text', enabled: enabled };
-    }
-
     // In edit mode, ObjectId fields should be simple text inputs for direct ID editing
     if (fieldMeta.type === "ObjectId") {
       if (this.viewService.inEditMode(mode)) {
@@ -153,6 +147,12 @@ export class FormGeneratorService {
       return { fieldType: 'text', enabled: false };
     } else {    // Create and edit modes
     
+      // Usually for ISODate fields but perhaps others?
+      if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
+        const enabled = fieldMeta?.ui?.clientEdit ?? false;  // client_edit allows the client to edit an auto field
+        return { fieldType: 'text', enabled: enabled };
+      }
+
       // Check if field has enum values - use select dropdown
       if (fieldMeta.enum && fieldMeta.enum.values && fieldMeta.enum.values.length > 0) {
         return { fieldType: 'select', enabled: true };
