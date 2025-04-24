@@ -44,7 +44,7 @@ export class EntityService {
   orderFields(fields: string[], metadata: any): string[] {
     const fieldMeta = metadata.fields || {};
     const placed = new Set<string>();
-    const chains: Record<string, string[]> = {};  // DFA target -> [fields]
+    const chains: Record<string, string[]> = {};
     const dangling: string[] = [];
     const idFields: string[] = [];
     const negativeDFAMap: Record<string, string[]> = {};
@@ -64,13 +64,8 @@ export class EntityService {
       }
     }
   
-    // Sort chains and negatives
-    for (const key in chains) {
-      chains[key].sort();
-    }
-    for (const key in negativeDFAMap) {
-      negativeDFAMap[key].sort();
-    }
+    for (const key in chains) chains[key].sort();
+    for (const key in negativeDFAMap) negativeDFAMap[key].sort();
   
     const validFields = new Set(fields);
     for (const start of Object.keys(chains)) {
@@ -82,36 +77,48 @@ export class EntityService {
     dangling.sort();
   
     // Separate Id fields
-    for (const field of noDFA) {
-      if (field !== '_id' && field.endsWith('Id')) {
-        idFields.push(field);
+    const noDFAFields = noDFA.filter(f => {
+      if (f !== '_id' && f.endsWith('Id')) {
+        idFields.push(f);
+        return false;
       }
-    }
+      return true;
+    }).sort();
     idFields.sort();
-  
-    const noDFAFields = noDFA.filter(f => !idFields.includes(f) && f !== '_id').sort();
   
     const ordered: string[] = [];
   
-    // Handle _id
-    if (fields.includes('_id') && !(fieldMeta['_id']?.ui?.displayAfterField)) {
+    // Place _id first if no DFA
+    if (fields.includes('_id') && (fieldMeta['_id']?.ui?.displayAfterField ?? '') === '') {
       ordered.push('_id');
       placed.add('_id');
     }
   
     // Place no-DFA fields
-    ordered.push(...noDFAFields);
-    noDFAFields.forEach(f => placed.add(f));
+    for (const f of noDFAFields) {
+      if (!placed.has(f)) {
+        ordered.push(f);
+        placed.add(f);
+      }
+    }
   
     // Place Id fields
-    ordered.push(...idFields);
-    idFields.forEach(f => placed.add(f));
+    for (const f of idFields) {
+      if (!placed.has(f)) {
+        ordered.push(f);
+        placed.add(f);
+      }
+    }
   
     // Place dangling DFAs
-    ordered.push(...dangling);
-    dangling.forEach(f => placed.add(f));
+    for (const f of dangling) {
+      if (!placed.has(f)) {
+        ordered.push(f);
+        placed.add(f);
+      }
+    }
   
-    // Helper to recursively insert chains
+    // Recursive chain inserter
     const insertChain = (start: string) => {
       if (placed.has(start)) return;
       ordered.push(start);
@@ -122,22 +129,20 @@ export class EntityService {
         }
       }
     };
-
-    // Handle negative DFA chains properly
-    const sortedNegatives = Object.keys(negativeDFAMap).sort((a, b) => parseInt(a) - parseInt(b));
+  
+    // Place DFA chains (valid)
+    for (const start in chains) {
+      insertChain(start);
+    }
+  
+    // Place negative DFA chains
+    const sortedNegatives = Object.keys(negativeDFAMap).sort((a, b) => parseInt(b) - parseInt(a));
     for (const neg of sortedNegatives) {
       for (const field of negativeDFAMap[neg]) {
         insertChain(field);
       }
     }
-
-    // Insert remaining DFA chains (non-negative, valid targets)
-    for (const start in chains) {
-      if (!placed.has(start) && validFields.has(start)) {
-        insertChain(start);
-      }
-    }
-
+  
     return ordered;
   }
 
@@ -170,24 +175,17 @@ export class EntityService {
     // Date field handling
     if (type === 'ISODate') {
       
-      // Determine format based on mode
-      if (this.viewService.inSummaryMode(mode)) {
-        format = format || 'short';
-      } else {
-        format = format || 'long';
-      }
-      
       // For edit mode, use current date for auto-update fields
       if (this.viewService.inEditMode(mode)) {
         if (metadata?.autoUpdate) {
-          value = new Date().toISOString().substring(0, 16);
+          value = new Date().toISOString().substring(0, 10); // Format for date (YYYY-MM-DD)
         }
       }
       
       // For create mode, use current date for auto-generate/update fields
       if (this.viewService.inCreateMode(mode)) {
         if (metadata?.autoGenerate || metadata?.autoUpdate) {
-          value = new Date().toISOString().substring(0, 16); // Format for datetime-local
+          value = new Date().toISOString().substring(0, 10); // Format for date (YYYY-MM-DD)
         }
       }
       
@@ -195,7 +193,7 @@ export class EntityService {
         return this.getDefaultValue(metadata);
       }
 
-      return this.formatDate(value, format);
+      return this.formatDate(value)
     }
 
     // Boolean handling
@@ -214,10 +212,11 @@ export class EntityService {
     return String(value);
   }
 
-  formatDate(value: string, format: string): string {
+  formatDate(value: string): string {
     try{
       const date = new Date(value);
-      return format === 'short' ? date.toLocaleDateString() : date.toLocaleString()
+      // Always show date only (no time component) regardless of format
+      return date.toLocaleDateString()
     }
     catch (e) {
       return value;
@@ -287,7 +286,7 @@ export class EntityService {
       case 'ISODate':
         // Always set current date for autoGenerate and autoUpdate fields
         if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
-          const now = new Date().toISOString();
+          const now = new Date().toISOString().substring(0, 10); // YYYY-MM-DD format
           return now;
         }
         return null;
