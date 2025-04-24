@@ -12,7 +12,7 @@ import { RestService } from '../../services/rest.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="container mt-4">
+    <div class="container-fluid mt-4">
       <h2>{{ metadataService.getTitle(entityType) }}</h2>
       
       <!-- Create button - permission checked once per page -->
@@ -42,13 +42,13 @@ import { RestService } from '../../services/rest.service';
             <thead>
               <tr>
                 <th *ngFor="let field of displayFields">{{ entityService.getFieldDisplayName(entityType, field) }}</th>
-                <th>Actions</th>
+                <th class="actions-column">Actions</th>
               </tr>
             </thead>
             <tbody>
               <tr *ngFor="let row of data">
                 <td *ngFor="let field of displayFields" [innerHTML]="entityService.formatFieldValue(entityType, field, 'summary', row[field])"></td>
-                <td>
+                <td class="actions-column">
                   <div class="btn-group btn-group-sm">
                     <button *ngIf="entityService.canRead(entityType)"
                       class="btn btn-info me-1" 
@@ -69,7 +69,53 @@ import { RestService } from '../../services/rest.service';
     </div>
   `,
   styles: [`
-    .container { max-width: 1200px; }
+    .container-fluid { 
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+    
+    /* Make table fill available space */
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+    }
+    
+    /* Ensure table expands to full width */
+    .table {
+      width: 100%;
+      table-layout: fixed;
+    }
+    
+    /* Fix action buttons visibility */
+    .btn-group {
+      white-space: nowrap;
+      display: flex;
+    }
+    
+    /* Ensure text truncation starts at beginning, not end */
+    td {
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      direction: rtl;  /* Right-to-left to truncate start of text */
+      text-align: left; /* Keep text aligned left */
+    }
+    
+    /* Actions column should not truncate */
+    .actions-column {
+      direction: ltr;
+      white-space: nowrap;
+      width: 150px;
+      min-width: 150px;
+    }
+    
+    /* Ensure headers match cell widths */
+    th {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   `]
 })
 export class EntityListComponent implements OnInit {

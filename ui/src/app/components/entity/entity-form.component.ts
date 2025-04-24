@@ -14,7 +14,7 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.s
   imports: [CommonModule, ReactiveFormsModule],
   providers: [RestService],
   template: `
-    <div class="container mt-4">
+    <div class="container-fluid mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>{{ mode }} {{ entityType | titlecase }}</h2>
         <button class="btn btn-secondary" (click)="goBack()">Back</button>
@@ -189,7 +189,10 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.s
     </div>
   `,
   styles: [`
-    .container { max-width: 1000px; }
+    .container-fluid { 
+      padding-left: 10px;
+      padding-right: 10px;
+    }
     
     /* Style for disabled (read-only) form controls */
     .form-control:disabled,

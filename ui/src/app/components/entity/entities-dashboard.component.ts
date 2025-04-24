@@ -8,7 +8,7 @@ import { CommonModule } from '@angular/common';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="container mt-4">
+    <div class="container-fluid mt-4">
       <h2>Entity Dashboard</h2>
       
       <div *ngIf="loading" class="text-center">
@@ -35,7 +35,10 @@ import { CommonModule } from '@angular/common';
     </div>
   `,
   styles: [`
-    .container { max-width: 1200px; }
+    .container-fluid { 
+      padding-left: 10px;
+      padding-right: 10px;
+    }
     .card { transition: transform 0.2s; }
     .card:hover { transform: translateY(-5px); }
   `]
