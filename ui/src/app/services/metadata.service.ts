@@ -23,11 +23,12 @@ export interface FieldMetadata {
   required?: boolean
   autoGenerate?: boolean
   autoUpdate?: boolean
+  client_edit?: boolean
   displayPages?: string
-  min?: number
-  max?: number
-  minLength?: number
-  maxLength?: number
+  ge?: number
+  le?: number
+  min_length?: number
+  max_length?: number
   enum?: {
     values?: string[]
     message?: string
