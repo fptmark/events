@@ -75,7 +75,7 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.s
                       
                       <!-- Date input -->
                       <input *ngSwitchCase="'date'" 
-                        type="datetime-local" 
+                        type="date" 
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
                         class="form-control"
