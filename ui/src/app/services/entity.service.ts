@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ConfigService } from './config.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { MetadataService } from './metadata.service';
+import { MetadataService, FieldMetadata } from './metadata.service';
 import { ViewService, ViewMode, VIEW, EDIT, CREATE } from './view.service';
 
 export interface EntityResponse<> {
@@ -24,20 +24,123 @@ export class EntityService {
 
    // view can be 'details', 'summary' and/or 'form' e.g. 'details|summary'
    getViewFields(entityName: string, currentView: string): string[] {
-    let metadata = this.metadataService.getEntityMetadata(entityName)
-    let fields = Object.keys(metadata.fields).filter(field => {
-      let fieldMetadata = metadata.fields[field]
+    const metadata = this.metadataService.getEntityMetadata(entityName)
+    const allFields = ['_id', ...Object.keys(metadata.fields)];
+
+    const visibleFields = allFields.filter(field => {
+      const fieldMetadata = metadata.fields[field]
       // Skip hidden fields
       if (fieldMetadata?.ui?.display === 'hidden') {
         return false
       }
       
       // Use ViewService to determine if field is visible in current view/mode
-      let displayPages = fieldMetadata.ui?.displayPages || ''
+      const displayPages = fieldMetadata?.ui?.displayPages ?? ''
       return this.viewService.existsInMode(displayPages, currentView);
     })
-    return fields
+    return this.orderFields(visibleFields, metadata);
   }
+
+  orderFields(fields: string[], metadata: any): string[] {
+    const fieldMeta = metadata.fields || {};
+    const placed = new Set<string>();
+    const chains: Record<string, string[]> = {};  // DFA target -> [fields]
+    const dangling: string[] = [];
+    const idFields: string[] = [];
+    const negativeDFAMap: Record<string, string[]> = {};
+    const noDFA: string[] = [];
+  
+    // Categorize fields
+    for (const field of fields) {
+      const dfa = fieldMeta[field]?.ui?.displayAfterField ?? '';
+      if (dfa.startsWith('-')) {
+        if (!negativeDFAMap[dfa]) negativeDFAMap[dfa] = [];
+        negativeDFAMap[dfa].push(field);
+      } else if (dfa) {
+        if (!chains[dfa]) chains[dfa] = [];
+        chains[dfa].push(field);
+      } else {
+        noDFA.push(field);
+      }
+    }
+  
+    // Sort chains and negatives
+    for (const key in chains) {
+      chains[key].sort();
+    }
+    for (const key in negativeDFAMap) {
+      negativeDFAMap[key].sort();
+    }
+  
+    const validFields = new Set(fields);
+    for (const start of Object.keys(chains)) {
+      if (!validFields.has(start)) {
+        dangling.push(...chains[start]);
+        delete chains[start];
+      }
+    }
+    dangling.sort();
+  
+    // Separate Id fields
+    for (const field of noDFA) {
+      if (field !== '_id' && field.endsWith('Id')) {
+        idFields.push(field);
+      }
+    }
+    idFields.sort();
+  
+    const noDFAFields = noDFA.filter(f => !idFields.includes(f) && f !== '_id').sort();
+  
+    const ordered: string[] = [];
+  
+    // Handle _id
+    if (fields.includes('_id') && !(fieldMeta['_id']?.ui?.displayAfterField)) {
+      ordered.push('_id');
+      placed.add('_id');
+    }
+  
+    // Place no-DFA fields
+    ordered.push(...noDFAFields);
+    noDFAFields.forEach(f => placed.add(f));
+  
+    // Place Id fields
+    ordered.push(...idFields);
+    idFields.forEach(f => placed.add(f));
+  
+    // Place dangling DFAs
+    ordered.push(...dangling);
+    dangling.forEach(f => placed.add(f));
+  
+    // Helper to recursively insert chains
+    const insertChain = (start: string) => {
+      if (placed.has(start)) return;
+      ordered.push(start);
+      placed.add(start);
+      if (chains[start]) {
+        for (const next of chains[start]) {
+          insertChain(next);
+        }
+      }
+    };
+
+    // Handle negative DFA chains properly
+    const sortedNegatives = Object.keys(negativeDFAMap).sort((a, b) => parseInt(a) - parseInt(b));
+    for (const neg of sortedNegatives) {
+      for (const field of negativeDFAMap[neg]) {
+        insertChain(field);
+      }
+    }
+
+    // Insert remaining DFA chains (non-negative, valid targets)
+    for (const start in chains) {
+      if (!placed.has(start) && validFields.has(start)) {
+        insertChain(start);
+      }
+    }
+
+    return ordered;
+  }
+
 
   getFieldDisplayName(entityName: string, fieldName: string): string {
     try {
