@@ -84,12 +84,12 @@ export class FormGeneratorService {
     }
     
     // These validations might be in the UI object or at root level
-    const minLength = fieldMeta.minLength;
+    const minLength = fieldMeta.min_length;
     if (minLength) {
       validators.push(Validators.minLength(minLength));
     }
     
-    const maxLength = fieldMeta.maxLength;
+    const maxLength = fieldMeta.max_length;
     if (maxLength) {
       validators.push(Validators.maxLength(maxLength));
     }
@@ -99,12 +99,12 @@ export class FormGeneratorService {
       validators.push(Validators.pattern(pattern.regex));
     }
     
-    const min = fieldMeta?.min
+    const min = fieldMeta?.ge
     if (min !== undefined) {
       validators.push(Validators.min(min));
     }
     
-    const max = fieldMeta?.max
+    const max = fieldMeta?.le
     if (max !== undefined) {
       validators.push(Validators.max(max));
     }
@@ -135,7 +135,8 @@ export class FormGeneratorService {
     
     // Usually for ISODate fields but perhaps others?
     if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
-      return { fieldType: 'text', enabled: false };
+      const enabled = fieldMeta?.client_edit ?? false;  // client_edit allows the client to edit an auto field
+      return { fieldType: 'text', enabled: enabled };
     }
 
     // In edit mode, ObjectId fields should be simple text inputs for direct ID editing
@@ -165,7 +166,7 @@ export class FormGeneratorService {
         case 'ISODate':
           fieldType = 'date'; break;
         case 'String':
-          fieldType =  ((fieldMeta?.maxLength ?? 0) > 100) ? 'textarea': 'text'
+          fieldType =  ((fieldMeta?.max_length ?? 0) > 100) ? 'textarea': 'text'
           break
         case 'ObjectId':
           fieldType = 'ObjectId'; break
