@@ -135,7 +135,7 @@ export class FormGeneratorService {
     
     // Usually for ISODate fields but perhaps others?
     if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
-      const enabled = fieldMeta?.client_edit ?? false;  // client_edit allows the client to edit an auto field
+      const enabled = fieldMeta?.ui?.clientEdit ?? false;  // client_edit allows the client to edit an auto field
       return { fieldType: 'text', enabled: enabled };
     }
 

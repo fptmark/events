@@ -23,16 +23,15 @@ _entities:
     fields:
       createdAt:
         type: ISODate
-        required: true
         autoGenerate: true
         ui:
           readOnly: true
       updatedAt:
         type: ISODate
-        required: true
         autoUpdate: true
         ui:
           readOnly: true
+          clientEdit: true
     relationships: []
     abstract: true
   Account:
@@ -42,17 +41,16 @@ _entities:
         required: false
       createdAt:
         type: ISODate
-        required: true
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
         type: ISODate
-        required: true
         autoUpdate: true
         ui:
           readOnly: true
+          clientEdit: true
           displayAfterField: createdAt
           displayPages: details
     relationships:
@@ -115,7 +113,6 @@ _entities:
           displayName: Owner
       createdAt:
         type: ISODate
-        required: true
         autoGenerate: true
         ui:
           readOnly: true
@@ -123,10 +120,10 @@ _entities:
           displayPages: summary
       updatedAt:
         type: ISODate
-        required: true
         autoUpdate: true
         ui:
           readOnly: true
+          clientEdit: true
           displayAfterField: '-2'
       accountId:
         type: ObjectId
@@ -163,17 +160,16 @@ _entities:
         ge: 0
       createdAt:
         type: ISODate
-        required: true
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
         type: ISODate
-        required: true
         autoUpdate: true
         ui:
           readOnly: true
+          clientEdit: true
           displayAfterField: '-2'
       userId:
         type: ObjectId
@@ -201,17 +197,16 @@ _entities:
         le: 100
       createdAt:
         type: ISODate
-        required: true
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
         type: ISODate
-        required: true
         autoUpdate: true
         ui:
           readOnly: true
+          clientEdit: true
           displayAfterField: '-2'
       profileId:
         type: ObjectId
@@ -273,17 +268,16 @@ _entities:
           displayPages: details
       createdAt:
         type: ISODate
-        required: true
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
         type: ISODate
-        required: true
         autoUpdate: true
         ui:
           readOnly: true
+          clientEdit: true
           displayAfterField: '-2'
     relationships:
     - UserEvent
@@ -308,17 +302,16 @@ _entities:
           displayPages: details
       createdAt:
         type: ISODate
-        required: true
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
         type: ISODate
-        required: true
         autoUpdate: true
         ui:
           readOnly: true
+          clientEdit: true
           displayAfterField: '-2'
       userId:
         type: ObjectId
@@ -347,17 +340,16 @@ _entities:
         required: false
       createdAt:
         type: ISODate
-        required: true
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
         type: ISODate
-        required: true
         autoUpdate: true
         ui:
           readOnly: true
+          clientEdit: true
           displayAfterField: '-2'
     relationships:
     - Crawl
@@ -378,17 +370,16 @@ _entities:
         required: false
       createdAt:
         type: ISODate
-        required: true
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
         type: ISODate
-        required: true
         autoUpdate: true
         ui:
           readOnly: true
+          clientEdit: true
           displayAfterField: '-2'
       urlId:
         type: ObjectId

@@ -1,8 +1,8 @@
 %% @dictionary main { email: "^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", url: "^https?://[^\s]+$" }
 erDiagram
     BaseEntity { 
-        ISODate createdAt %% @validate { required: true, autoGenerate: true } @ui {readOnly: true}
-        ISODate updatedAt %% @validate { required: true, autoUpdate: true } @ui {readOnly: true}
+        ISODate createdAt %% @validate {autoGenerate: true} @ui {readOnly: true}
+        ISODate updatedAt %% @validate {autoUpdate: true} @ui {readOnly: true, clientEdit: true}
 
         %% @abstract
     }
