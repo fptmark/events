@@ -48,7 +48,7 @@ import { RestService } from '../../services/rest.service';
             <tbody>
               <tr *ngFor="let row of data">
                 <td *ngFor="let field of displayFields" [innerHTML]="entityService.formatFieldValue(entityType, field, 'summary', row[field])"></td>
-                <td class="actions-column">
+                <td class="actions-column text-nowrap">
                   <div class="btn-group btn-group-sm">
                     <button *ngIf="entityService.canRead(entityType)"
                       class="btn btn-info me-1" 
@@ -78,12 +78,14 @@ import { RestService } from '../../services/rest.service';
     .table-responsive {
       width: 100%;
       overflow-x: auto;
+      margin-bottom: 20px; /* Add space below table */
+      padding-bottom: 5px; /* Ensure bottom of table is visible */
     }
     
-    /* Ensure table expands to full width */
+    /* Use auto table layout for more natural column sizing */
     .table {
       width: 100%;
-      table-layout: fixed;
+      table-layout: auto;
     }
     
     /* Fix action buttons visibility */
@@ -94,7 +96,7 @@ import { RestService } from '../../services/rest.service';
     
     /* Ensure text truncation starts at beginning, not end */
     td {
-      max-width: 200px;
+      max-width: 300px; /* Larger max-width for data cells */
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -102,12 +104,13 @@ import { RestService } from '../../services/rest.service';
       text-align: left; /* Keep text aligned left */
     }
     
-    /* Actions column should not truncate */
+    /* Actions column should not truncate and should have enough space */
     .actions-column {
       direction: ltr;
       white-space: nowrap;
-      width: 150px;
-      min-width: 150px;
+      width: 200px !important; /* Force minimum width with !important */
+      min-width: 200px !important;
+      padding-right: 15px !important; /* Add some extra padding */
     }
     
     /* Ensure headers match cell widths */
