@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { MetadataService, FieldMetadata } from './metadata.service';
 import { ViewService, ViewMode, VIEW, EDIT, CREATE } from './view.service';
 import { FieldOrderService } from './field-order.service';
+import { NavigationService } from './navigation.service';
 import { Router } from '@angular/router';
 
 export interface EntityResponse<> {
@@ -17,7 +18,8 @@ export class EntityService {
     private fieldOrderService: FieldOrderService,
     private metadataService: MetadataService,
     private router: Router,
-    private viewService: ViewService
+    private viewService: ViewService,
+    private navigationService: NavigationService
   ) {}
 
    // view can be 'details', 'summary' and/or 'form' e.g. 'details|summary'

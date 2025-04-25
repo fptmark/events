@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { MetadataService } from './services/metadata.service'
+import { NavigationService } from './services/navigation.service';
 
 @Component({
   selector: 'app-root',
@@ -79,6 +80,7 @@ export class AppComponent implements OnInit {
 
   constructor(
     public metadataService: MetadataService,
+    public navigationService: NavigationService
   ) { }
 
   ngOnInit() {
