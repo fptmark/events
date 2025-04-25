@@ -4,13 +4,12 @@ CONVERTER_DIR = $(S2R_DIR)/convert
 
 .PHONY: clean code run cli
 
-firsttime: setup schema code redis services
-	brew install mongo
-	brew install redis
+install: setup rebuild
+
+rebuild: schema code redis services
 	cp $(S2R_DIR)/config.json config.json
 
 redis:
-	brew install redis
 	brew services start redis
 
 services: $(S2R_DIR)/services/* schema.yaml
@@ -25,10 +24,11 @@ schema: schema.yaml schema.png
 
 clean: 
 	rm -rf app schema.yaml app.log schema.png
+	mkdir app
 
 code:	schema main db models routes services
 	mkdir -p app/utilities
-	cp -r $(S2R_DIR)/config.py app/utilities
+	cp -r $(S2R_DIR)/utils.py app/utilities
 
 models: $(GENERATOR_DIR)/gen_models.py schema.yaml $(GENERATOR_DIR)/templates/models/*
 	rm -rf app/models
@@ -47,7 +47,9 @@ db: $(GENERATOR_DIR)/gen_db.py schema.yaml $(GENERATOR_DIR)/templates/db/*
 	python $(GENERATOR_DIR)/gen_db.py schema.yaml .
 
 setup:	$(S2R_DIR)/requirements.txt
-	pip install -r r$(S2R_DIR)/equirements.txt
+	pip install -r r$(S2R_DIR)/requirements.txt
+	brew install mongo
+	brew install redis
 
 schema.yaml : schema.mmd $(CONVERTER_DIR)/schemaConvert.py
 	python $(CONVERTER_DIR)/schemaConvert.py schema.mmd .
