@@ -1,12 +1,13 @@
 import { Component, OnInit } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { EntityService } from '../../services/entity.service';
-import { MetadataService, EntityMetadata } from '../../services/metadata.service';
-import { FormGeneratorService } from '../../services/form-generator.service';
+import { EntityService } from '../services/entity.service';
+import { MetadataService, EntityMetadata } from '../services/metadata.service';
+import { FormGeneratorService } from '../services/form-generator.service';
 import { CommonModule } from '@angular/common';
-import { RestService } from '../../services/rest.service';
-import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../../services/view.service';
+import { RestService } from '../services/rest.service';
+import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../services/view.service';
+import { NavigationService } from '../services/navigation.service';
 
 @Component({
   selector: 'app-entity-form',
@@ -249,7 +250,8 @@ export class EntityFormComponent implements OnInit {
     private metadataService: MetadataService,
     public formGenerator: FormGeneratorService,
     public restService: RestService,
-    public viewService: ViewService
+    public viewService: ViewService,
+    private navigationService: NavigationService
   ) {}
   
   // Helper methods for template conditions - delegate to ViewService
@@ -456,11 +458,9 @@ export class EntityFormComponent implements OnInit {
   }
 
   goBack(): void {
-    if (this.isEditMode() && this.entityId) {
-      this.router.navigate(['/entity', this.entityType, this.entityId]);
-    } else {
-      this.router.navigate(['/entity', this.entityType]);
-    }
+    this.navigationService.goBack();
+    // Explicitly return void to prevent potential issue with Angular event handlers
+    return;
   }
   
   goToEdit(): void {

@@ -1,7 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { MetadataService, EntityMetadata } from '../../services/metadata.service';
+import { MetadataService, EntityMetadata } from '../services/metadata.service';
 import { CommonModule } from '@angular/common';
+import { NavigationService } from '../services/navigation.service';
 
 @Component({
   selector: 'app-entities-dashboard',
@@ -50,7 +51,8 @@ export class EntitiesDashboardComponent implements OnInit {
 
   constructor(
     public metadataService: MetadataService,
-    private router: Router
+    private router: Router,
+    private navigationService: NavigationService
   ) {}
 
   ngOnInit(): void {

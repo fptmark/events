@@ -1,11 +1,11 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { MetadataService } from '../../services/metadata.service';
-import { EntityService } from '../../services/entity.service';
-import { ConfigService } from '../../services/config.service';
+import { MetadataService } from '../services/metadata.service';
+import { EntityService } from '../services/entity.service';
+import { ConfigService } from '../services/config.service';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { RestService } from '../../services/rest.service';
+import { RestService } from '../services/rest.service';
 
 @Component({
   selector: 'app-entity-list',
