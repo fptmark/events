@@ -2,12 +2,20 @@ S2R_DIR = ~/Projects/schema2rest
 GENERATOR_DIR = $(S2R_DIR)/generators
 CONVERTER_DIR = $(S2R_DIR)/convert
 
+BACKEND ?= mongo
+
 .PHONY: clean code run cli
 
 install: setup rebuild
 
-rebuild: schema code redis services
-	cp $(S2R_DIR)/config.json config.json
+rebuild: 
+	rm -rf $(BACKEND)
+	echo "Using existing config.json"
+	mkdir -p $(BACKEND)/app
+	cp $(S2R_DIR)/src/utilities/utils.py $(BACKEND)/app
+	mkdir -p $(BACKEND)/app/services/auth
+	cp $(S2R_DIR)/src/services/auth/cookies/*.py $(BACKEND)/app/services
+	python $(S2R_DIR)/generate_code.py schema.mmd mongo mongo
 
 redis:
 	brew services start redis
@@ -20,41 +28,28 @@ services: $(S2R_DIR)/services/* schema.yaml
 
 all: schema code run 
 
-schema: schema.yaml schema.png 
+schema: schema.yaml 
 
 clean: 
 	rm -rf app schema.yaml app.log schema.png
 	mkdir app
 
-code:	schema main db models routes services
-	mkdir -p app/utilities
+code:	schema.yaml 
+	mkdir -p $(BACKEND)/app/utilities
 	cp -r $(S2R_DIR)/utils.py app/utilities
-
-models: $(GENERATOR_DIR)/gen_models.py schema.yaml $(GENERATOR_DIR)/templates/models/*
-	rm -rf app/models
-	python $(GENERATOR_DIR)/gen_models.py schema.yaml .
-
-routes: $(GENERATOR_DIR)/gen_routes.py schema.yaml $(GENERATOR_DIR)/templates/routes/*
-	rm -rf app/routes
-	python $(GENERATOR_DIR)/gen_routes.py schema.yaml .
-
-main: $(GENERATOR_DIR)/gen_main.py schema.yaml $(GENERATOR_DIR)/templates/main/*
-	rm -f app/main.py
-	python $(GENERATOR_DIR)/gen_main.py schema.yaml .
-
-db: $(GENERATOR_DIR)/gen_db.py schema.yaml $(GENERATOR_DIR)/templates/db/*
-	rm -rf app/db.py
-	python $(GENERATOR_DIR)/gen_db.py schema.yaml .
+	python -m generators.gen_main schema.yaml . $(BACKEND)
+	python -m generators.gen_db schema.yaml ./$(BACKEND) $(BACKEND)
+	python -m generators.gen_models schema.yaml ./$(BACKEND) $(BACKEND)
+	python -m generators.gen_routes schema.yaml ./$(BACKEND) $(BACKEND)
+	python -m generators.gen_service_routes schema.yaml ./$(BACKEND) $(BACKEND)
 
 setup:	$(S2R_DIR)/requirements.txt
 	pip install -r r$(S2R_DIR)/requirements.txt
 	brew install mongo
 	brew install redis
 
-schema.yaml : schema.mmd $(CONVERTER_DIR)/schemaConvert.py
-	python $(CONVERTER_DIR)/schemaConvert.py schema.mmd .
-
-schema.png: schema.mmd
+schema.yaml : schema.mmd 
+	python -m converter.schemaConvert schema.mmd .
 	cat schema.mmd | sed '/[[:alnum:]].*%%/ s/%%.*//' | mmdc -i - -o schema.png
 
 indexes:
