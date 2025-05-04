@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 import app.utilities.utils as utils
 from app.db import Database
 
-from app.services.a_ import CookiesAuth as Auth
+from app.services.redis_provider import CookiesAuth as Auth
 
 from app.routes.account_router import router as account_router
 from app.models.account_model import Account

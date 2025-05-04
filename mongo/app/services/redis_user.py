@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Response, HTTPException, Query
 from typing import Dict, Any
 
 # Dynamically import the concrete service implementation.
-from app.services.redis_provider import  as Redis_user
+from app.services.redis_provider import CookiesAuth
 
 # For metadata access
 from app.models.user_model import User
@@ -32,7 +32,7 @@ async def login_endpoint(request: Request, response: Response, include_metadata:
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid request body")
     try:
-        result = await Redis_user().login(payload)
+        result = await CookiesAuth().login(payload)
         return wrap_response(result, include_metadata)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -44,7 +44,7 @@ async def logout_endpoint(request: Request, response: Response, include_metadata
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid request body")
     try:
-        result = await Redis_user().logout(payload)
+        result = await CookiesAuth().logout(payload)
         return wrap_response(result, include_metadata)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -56,7 +56,7 @@ async def refresh_endpoint(request: Request, response: Response, include_metadat
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid request body")
     try:
-        result = await Redis_user().refresh(payload)
+        result = await CookiesAuth().refresh(payload)
         return wrap_response(result, include_metadata)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
