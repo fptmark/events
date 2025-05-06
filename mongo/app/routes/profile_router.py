@@ -28,7 +28,7 @@ async def create_profile(item: ProfileCreate):
 async def get_all_profiles():
     logging.info("Received request to fetch all profiles.")
     try:
-        docs = await Profile.find_all().to_list()
+        docs = await Profile.find_all()
         logging.info(f"Fetched {len(docs)} profile(s) successfully.")
     except Exception as e:
         msg = str(e).replace('\n', ' ')

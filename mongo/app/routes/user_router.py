@@ -28,7 +28,7 @@ async def create_user(item: UserCreate):
 async def get_all_users():
     logging.info("Received request to fetch all users.")
     try:
-        docs = await User.find_all().to_list()
+        docs = await User.find_all()
         logging.info(f"Fetched {len(docs)} user(s) successfully.")
     except Exception as e:
         msg = str(e).replace('\n', ' ')

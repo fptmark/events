@@ -28,7 +28,7 @@ async def create_crawl(item: CrawlCreate):
 async def get_all_crawls():
     logging.info("Received request to fetch all crawls.")
     try:
-        docs = await Crawl.find_all().to_list()
+        docs = await Crawl.find_all()
         logging.info(f"Fetched {len(docs)} crawl(s) successfully.")
     except Exception as e:
         msg = str(e).replace('\n', ' ')

@@ -28,7 +28,7 @@ async def create_userevent(item: UserEventCreate):
 async def get_all_userevents():
     logging.info("Received request to fetch all userevents.")
     try:
-        docs = await UserEvent.find_all().to_list()
+        docs = await UserEvent.find_all()
         logging.info(f"Fetched {len(docs)} userevent(s) successfully.")
     except Exception as e:
         msg = str(e).replace('\n', ' ')

@@ -28,7 +28,7 @@ async def create_account(item: AccountCreate):
 async def get_all_accounts():
     logging.info("Received request to fetch all accounts.")
     try:
-        docs = await Account.find_all().to_list()
+        docs = await Account.find_all()
         logging.info(f"Fetched {len(docs)} account(s) successfully.")
     except Exception as e:
         msg = str(e).replace('\n', ' ')

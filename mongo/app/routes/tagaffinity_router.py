@@ -28,7 +28,7 @@ async def create_tagaffinity(item: TagAffinityCreate):
 async def get_all_tagaffinitys():
     logging.info("Received request to fetch all tagaffinitys.")
     try:
-        docs = await TagAffinity.find_all().to_list()
+        docs = await TagAffinity.find_all()
         logging.info(f"Fetched {len(docs)} tagaffinity(s) successfully.")
     except Exception as e:
         msg = str(e).replace('\n', ' ')

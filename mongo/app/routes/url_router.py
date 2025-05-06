@@ -28,7 +28,7 @@ async def create_url(item: UrlCreate):
 async def get_all_urls():
     logging.info("Received request to fetch all urls.")
     try:
-        docs = await Url.find_all().to_list()
+        docs = await Url.find_all()
         logging.info(f"Fetched {len(docs)} url(s) successfully.")
     except Exception as e:
         msg = str(e).replace('\n', ' ')

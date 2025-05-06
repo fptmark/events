@@ -2,8 +2,8 @@ import sys
 from pathlib import Path
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-import app.utilities.utils as utils
-from app.db import Database
+import app.utils as utils
+from db import Database
 
 from app.services.redis_provider import CookiesAuth as Auth
 
@@ -97,7 +97,7 @@ async def startup_event():
     logger.info('Startup event called')
     logger.info(f"Running in {'development' if config.get('environment', 'production') == 'development' else 'production'} mode")
 
-    backend = config.get('backend', 'mongo')
+    backend = sys.argv[1] if len(sys.argv) > 1 else config.get('backend', 'mongo')
     uri = config.get(backend + '_uri', '')
     db = config.get('db_name', '')
     logger.info(f"Connecting to {backend} at {uri} with db {db}")

@@ -28,7 +28,7 @@ async def create_event(item: EventCreate):
 async def get_all_events():
     logging.info("Received request to fetch all events.")
     try:
-        docs = await Event.find_all().to_list()
+        docs = await Event.find_all()
         logging.info(f"Fetched {len(docs)} event(s) successfully.")
     except Exception as e:
         msg = str(e).replace('\n', ' ')
