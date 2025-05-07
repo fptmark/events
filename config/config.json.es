@@ -1,0 +1,14 @@
+{
+    "backend"		: "es",
+    "es_uri"		: "http://host.docker.internal:9200",
+    "db_name"		: "eventMgr",
+    "host"		: "127.0.0.1",
+    "server_port"	: 5500,
+    "log_level"		: "info",
+    "environment"	: "development",
+    "auth.cookies.redis" : {
+       "host": "127.0.0.1",
+       "port": 6379,
+       "db"  : 0
+    }
+}
