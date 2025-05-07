@@ -34,7 +34,7 @@ from app.models.crawl_model import Crawl
 
 import logging
 LOG_FILE = "app.log"
-config = utils.load_system_config()
+config = utils.load_system_config('config.json' if len(sys.argv) < 3 else sys.argv[2])
 is_dev = config.get('environment', 'production') == 'development'
 my_log_level = config.get('log_level', 'info' if is_dev else 'warning').upper()
 
