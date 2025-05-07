@@ -1,0 +1,48 @@
+
+services:
+  mongodb:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+    profiles: ["mongo"]
+    networks:
+      - devnet
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.1
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    profiles: ["es"]
+    networks:
+      - devnet
+
+  backend_mongo:
+    build:
+      context: ./mongo
+    ports:
+      - "5500:5500"
+    profiles: ["mongo"]
+
+  backend_es:
+    build:
+      context: ./es
+    ports:
+      - "5500:5500"
+    profiles: ["es"]
+
+  ui_angular:
+    build:
+      context: ./ui
+    ports:
+      - "4200:4200"
+    volumes:
+      - ./ui:/app
+    networks:
+      - devnet
+    profiles: ["ui"]
+
+networks:
+   devnet:
