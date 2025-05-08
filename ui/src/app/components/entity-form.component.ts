@@ -317,7 +317,7 @@ export class EntityFormComponent implements OnInit {
   /**
    * Handles click on an ObjectId field
    * In view mode: Navigate to the referenced entity
-   * In edit mode: Show selector with available IDs
+   * In edit/create mode: Show selector with available IDs
    * @param fieldName The field name
    */
   openLink(fieldName: string): void {
@@ -329,8 +329,8 @@ export class EntityFormComponent implements OnInit {
       
       const entityType = fieldName.substring(0, fieldName.length - 2);
       
-      // In edit mode, show ID selector
-      if (this.isEditMode()) {
+      // In edit or create mode, show ID selector
+      if (this.isEditMode() || this.isCreateMode()) {
         this.showIdSelector(fieldName, entityType);
         return;
       }

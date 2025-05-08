@@ -87,12 +87,12 @@
                       type="text" 
                       [id]="fieldName" 
                       [formControlName]="fieldName" 
-                      [class.link-input]="!isEditMode()"
+                      [class.link-input]="!isEditMode() && !isCreateMode()"
                       class="form-control"
                       [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
                       (click)="openLink(fieldName)"
-                      placeholder="{{ isEditMode() ? 'Click to select ID or enter manually' : 'Click to view entity' }}">
-                    <button *ngIf="isEditMode()" 
+                      placeholder="{{ isEditMode() || isCreateMode() ? 'Click to select ID or enter manually' : 'Click to view entity' }}">
+                    <button *ngIf="isEditMode() || isCreateMode()" 
                       class="btn btn-outline-secondary" 
                       type="button"
                       (click)="openLink(fieldName)">
