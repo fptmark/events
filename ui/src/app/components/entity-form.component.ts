@@ -9,7 +9,7 @@ import { RestService } from '../services/rest.service';
 import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../services/view.service';
 import { NavigationService } from '../services/navigation.service';
 import { ValidationError, ErrorResponse } from '../services/rest.service';
-import { EntitySelectorModalComponent } from './entity-selector-modal.component';
+import { EntitySelectorModalComponent, ColumnConfig } from './entity-selector-modal.component';
 
 @Component({
   selector: 'app-entity-form',
@@ -40,6 +40,7 @@ export class EntityFormComponent implements OnInit {
   entitySelectorEntities: any[] = [];
   entitySelectorType: string = '';
   currentFieldName: string = '';
+  entitySelectorColumns: ColumnConfig[] = [];
 
   mode: ViewMode = VIEW
   
@@ -317,6 +318,7 @@ export class EntityFormComponent implements OnInit {
    * Handles click on an ObjectId field
    * In view mode: Navigate to the referenced entity
    * In edit mode: Show selector with available IDs
+   * @param fieldName The field name
    */
   openLink(fieldName: string): void {
     try {
@@ -357,6 +359,21 @@ export class EntityFormComponent implements OnInit {
     
     // Store the field name for later use when an entity is selected
     this.currentFieldName = fieldName;
+    
+    // Get selector fields from metadata service
+    // The selector configuration is in the PARENT entity's metadata (this.entityType),
+    // not in the target entity type (entityType)
+    const selectorFields = this.metadataService.getSelectorFields(this.entityType, fieldName);
+    
+    // Always start with _id as the first column with bold formatting
+    this.entitySelectorColumns = [{ field: '_id', bold: true, displayName: "Id" }];
+    
+    // Add additional fields from selector config if available
+    if (selectorFields && selectorFields.length > 0) {
+      selectorFields.forEach(field => {
+        this.entitySelectorColumns.push({ field });
+      });
+    }
     
     // Fetch entities of this type
     this.restService.getEntityList(entityType).subscribe({

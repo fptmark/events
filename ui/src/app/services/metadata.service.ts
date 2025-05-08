@@ -18,6 +18,10 @@ export interface EntityMetadata {
   }
 }
   
+export interface SelectorConfig {
+  fields?: string[]
+}
+
 export interface FieldMetadata {
   type?: string
   required?: boolean
@@ -37,6 +41,7 @@ export interface FieldMetadata {
     regex?: string
     message?: string
   }
+  selector?: SelectorConfig
   ui?: UiFieldMetata 
 }
 
@@ -178,5 +183,21 @@ export class MetadataService {
     let operations = this.getEntityMetadata(entityName)?.operations || 'crud'
     operations = operations === 'all' ? 'crud' : operations
     return operations.includes(operation)
+  }
+  
+  /**
+   * Gets the selector configuration for a specific field
+   * @param entityType The entity type
+   * @param fieldName The field name
+   * @returns An array of field names to be displayed in the selector, or null if no selector is configured
+   */
+  getSelectorFields(entityType: string, fieldName: string): string[] | null {
+    const fieldMetadata = this.getFieldMetadata(entityType, fieldName);
+    
+    if (!fieldMetadata || !fieldMetadata.selector || !fieldMetadata.selector.fields) {
+      return null;
+    }
+    
+    return fieldMetadata.selector.fields;
   }
 }

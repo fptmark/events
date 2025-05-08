@@ -8,11 +8,36 @@
       <div *ngIf="entities.length === 0" class="text-center p-3">
         No {{ entityType }} entities found.
       </div>
-      <div *ngFor="let entity of entities" class="entity-item" (click)="selectEntity(entity)">
-        <strong>{{ entity._id }}</strong>
-        <div *ngIf="entity.name">{{ entity.name }}</div>
-        <div *ngIf="entity.title">{{ entity.title }}</div>
-      </div>
+      
+      <!-- Use custom columns if provided, otherwise fallback to default display -->
+      <ng-container *ngIf="displayColumns && displayColumns.length > 0; else defaultDisplay">
+        <table class="entity-table">
+          <thead>
+            <tr>
+              <!-- Create table headers from column configuration -->
+              <th *ngFor="let col of displayColumns">
+                {{ col.displayName || col.field }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let entity of entities" (click)="selectEntity(entity)">
+              <td *ngFor="let col of displayColumns" [class.bold]="col.bold">
+                {{ getFieldValue(entity, col.field) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </ng-container>
+      
+      <!-- Default display fallback -->
+      <ng-template #defaultDisplay>
+        <div *ngFor="let entity of entities" class="entity-item" (click)="selectEntity(entity)">
+          <strong>{{ entity._id }}</strong>
+          <div *ngIf="entity.name">{{ entity.name }}</div>
+          <div *ngIf="entity.title">{{ entity.title }}</div>
+        </div>
+      </ng-template>
     </div>
     <div class="entity-modal-footer">
       <button type="button" class="btn btn-secondary" (click)="closeModal()">Cancel</button>

@@ -14,8 +14,8 @@
 .entity-modal-content {
   background-color: white;
   border-radius: 5px;
-  width: 80%;
-  max-width: 600px;
+  width: 90%;
+  max-width: 800px;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
@@ -53,4 +53,31 @@
 
 .entity-item:hover {
   background-color: #f8f9fa;
+}
+
+/* Table layout for entity items */
+.entity-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.entity-table th {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 2px solid #dee2e6;
+  font-weight: 600;
+}
+
+.entity-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.entity-table tr:hover {
+  background-color: #f8f9fa;
+  cursor: pointer;
+}
+
+.entity-table .bold {
+  font-weight: bold;
 }

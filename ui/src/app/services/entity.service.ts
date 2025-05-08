@@ -118,11 +118,47 @@ export class EntityService {
       }
       
       // For display-only mode, use localized date format
-      return date.toLocaleDateString();
+      return this.formatDateMDY(date);
     }
     catch (e) {
       return value;
     }
+  }
+  
+  /**
+   * Format a date consistently as MM/DD/YYYY
+   * @param date The date to format
+   * @returns Formatted date string in MM/DD/YYYY format
+   */
+  formatDateMDY(date: Date | string | null | undefined): string {
+    if (!date) {
+      return '';
+    }
+    
+    let dateObj: Date;
+    if (typeof date === 'string') {
+      // Handle single-digit month/day in various formats
+      const dateStr = String(date).trim();
+      
+      // Try to parse the date
+      dateObj = new Date(dateStr);
+      
+      // If parsing fails, we could add more specific handling here
+    } else {
+      dateObj = date;
+    }
+    
+    // Check if date is valid
+    if (isNaN(dateObj.getTime())) {
+      return '';
+    }
+    
+    // Format as MM/DD/YYYY with padding for single digits
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0'); // Ensure 2 digits
+    const day = String(dateObj.getDate()).padStart(2, '0'); // Ensure 2 digits
+    const year = dateObj.getFullYear();
+    
+    return `${month}/${day}/${year}`;
   }
 
   canRead(entityType: string): boolean {
