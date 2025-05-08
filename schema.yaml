@@ -126,10 +126,12 @@ _entities:
           clientEdit: true
           displayAfterField: '-2'
       accountId:
+        selector:
+          fields:
+          - createdAt
+          - expiredAt
         type: ObjectId
         required: true
-        displayName: accountId
-        readOnly: true
     relationships:
     - Profile
     - UserEvent
@@ -172,10 +174,12 @@ _entities:
           clientEdit: true
           displayAfterField: '-2'
       userId:
+        selector:
+          fields:
+          - email
+          - username
         type: ObjectId
         required: true
-        displayName: userId
-        readOnly: true
     relationships:
     - TagAffinity
     ui:
@@ -211,8 +215,6 @@ _entities:
       profileId:
         type: ObjectId
         required: true
-        displayName: profileId
-        readOnly: true
     relationships: []
     ui:
       title: Tag Affinity
@@ -316,13 +318,9 @@ _entities:
       userId:
         type: ObjectId
         required: true
-        displayName: userId
-        readOnly: true
       eventId:
         type: ObjectId
         required: true
-        displayName: eventId
-        readOnly: true
     relationships: []
     ui:
       title: User Events
@@ -384,8 +382,6 @@ _entities:
       urlId:
         type: ObjectId
         required: true
-        displayName: urlId
-        readOnly: true
     relationships: []
     ui:
       title: Crawls

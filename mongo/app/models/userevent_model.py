@@ -28,10 +28,7 @@ class UserEvent(Document):
                                    'type': 'ISODate',
                                    'ui': {   'displayAfterField': '-1',
                                              'readOnly': True}},
-                  'eventId': {   'displayName': 'eventId',
-                                 'readOnly': True,
-                                 'required': True,
-                                 'type': 'ObjectId'},
+                  'eventId': {'required': True, 'type': 'ObjectId'},
                   'note': {   'max_length': 500,
                               'required': False,
                               'type': 'String',
@@ -45,10 +42,7 @@ class UserEvent(Document):
                                    'ui': {   'clientEdit': True,
                                              'displayAfterField': '-2',
                                              'readOnly': True}},
-                  'userId': {   'displayName': 'userId',
-                                'readOnly': True,
-                                'required': True,
-                                'type': 'ObjectId'}},
+                  'userId': {'required': True, 'type': 'ObjectId'}},
     'operations': '',
     'ui': {'buttonLabel': 'Manage Event Attendance', 'title': 'User Events'}}
 
