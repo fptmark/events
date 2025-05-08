@@ -6,9 +6,27 @@ import { ConfigService } from './config.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { MetadataService } from './metadata.service';
 
-export interface EntityResponse<> {
-  data: [];
-  // No metadata in entity responses anymore, it comes from all-entities
+// Base entity interface - all entities must have _id
+export interface Entity {
+  _id: string;
+  [key: string]: any;
+}
+
+// Delete response has message property
+export interface DeleteResponse {
+  message: string;
+}
+
+// Error response from the API
+export interface ErrorResponse {
+  detail: string | ValidationError[];
+}
+
+// Validation error format from FastAPI
+export interface ValidationError {
+  loc: string[];
+  msg: string;
+  type: string;
 }
 
 @Injectable({
@@ -21,20 +39,20 @@ export class RestService {
     private configService: ConfigService,
   ) {}
 
-  getEntity(entityType: string, id: string): Observable<EntityResponse> {
-    return this.http.get<EntityResponse>(`${this.configService.getApiUrl(entityType)}/${id}`);
+  getEntity(entityType: string, id: string): Observable<Entity> {
+    return this.http.get<Entity>(`${this.configService.getApiUrl(entityType)}/${id}`);
   }
 
-  getEntityList(entityType: string): Observable<EntityResponse> {
-    return this.http.get<EntityResponse>(`${this.configService.getApiUrl(entityType)}`);
+  getEntityList(entityType: string): Observable<Entity[]> {
+    return this.http.get<Entity[]>(`${this.configService.getApiUrl(entityType)}`);
   }
 
-  createEntity(entityType: string, entityData: any): Observable<EntityResponse> {
-    return this.http.post<EntityResponse>(this.configService.getApiUrl(entityType), entityData);
+  createEntity(entityType: string, entityData: any): Observable<Entity> {
+    return this.http.post<Entity>(this.configService.getApiUrl(entityType), entityData);
   }
 
-  updateEntity(entityType: string, id: string, entityData: any): Observable<EntityResponse> {
-    return this.http.put<EntityResponse>(`${this.configService.getApiUrl(entityType)}/${id}`, entityData);
+  updateEntity(entityType: string, id: string, entityData: any): Observable<Entity> {
+    return this.http.put<Entity>(`${this.configService.getApiUrl(entityType)}/${id}`, entityData);
   }
 
   // 

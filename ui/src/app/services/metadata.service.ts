@@ -137,6 +137,9 @@ export class MetadataService {
   }
 
   getFieldMetadata(entityType: string, fieldName: string): FieldMetadata | undefined {
+    if (fieldName == "_id") {     // auto map internal primary key to Id
+      return {"ui" : { "displayName" : "Id"}}
+    }
     let metadata = this.getEntityMetadata(entityType)
     if (!metadata.fields[fieldName]) {
       console.log(`No metadata found for field: ${fieldName} in entity: ${entityType}`);

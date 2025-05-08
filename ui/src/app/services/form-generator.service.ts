@@ -133,13 +133,9 @@ export class FormGeneratorService {
     const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
     if (!fieldMeta) return {fieldType: 'text', enabled: true};
     
-    // In edit mode, ObjectId fields should be simple text inputs for direct ID editing
+    // Always return ObjectId for both view and edit modes
     if (fieldMeta.type === "ObjectId") {
-      if (this.viewService.inEditMode(mode)) {
-        return {fieldType: 'text', enabled: true};  // editable
-      } else {
-        return {fieldType: 'ObjectId', enabled: true}; // clickable
-      }
+      return {fieldType: 'ObjectId', enabled: true}; // clickable in all modes
     }
 
     // For view mode, always use text inputs to avoid browser-specific rendering issues

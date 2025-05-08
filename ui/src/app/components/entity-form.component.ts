@@ -8,6 +8,7 @@ import { CommonModule } from '@angular/common';
 import { RestService } from '../services/rest.service';
 import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../services/view.service';
 import { NavigationService } from '../services/navigation.service';
+import { ValidationError, ErrorResponse } from '../services/rest.service';
 
 @Component({
   selector: 'app-entity-form',
@@ -47,7 +48,7 @@ import { NavigationService } from '../services/navigation.service';
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
                         class="form-select"
-                        [class.is-invalid]="isFieldInvalid(fieldName)">
+                        [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
                         <option value="">Select {{ getFieldDisplayName(fieldName) }}</option>
                         <option *ngFor="let option of getFieldOptions(fieldName)" [value]="option">
                           {{ option }}
@@ -60,7 +61,7 @@ import { NavigationService } from '../services/navigation.service';
                           [id]="fieldName" 
                           [formControlName]="fieldName" 
                           class="form-check-input"
-                          [class.is-invalid]="isFieldInvalid(fieldName)">
+                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
                         <label [for]="fieldName" class="form-check-label">
                           {{ getFieldDisplayName(fieldName) }}
                         </label>
@@ -71,7 +72,7 @@ import { NavigationService } from '../services/navigation.service';
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
                         class="form-control"
-                        [class.is-invalid]="isFieldInvalid(fieldName)"
+                        [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
                         rows="3"></textarea>
                       
                       <!-- Date input -->
@@ -80,7 +81,7 @@ import { NavigationService } from '../services/navigation.service';
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
                         class="form-control"
-                        [class.is-invalid]="isFieldInvalid(fieldName)">
+                        [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
                       
                       <!-- Password input -->
                       <input *ngSwitchCase="'password'" 
@@ -88,7 +89,7 @@ import { NavigationService } from '../services/navigation.service';
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
                         class="form-control"
-                        [class.is-invalid]="isFieldInvalid(fieldName)">
+                        [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
                         
                       <!-- Email input -->
                       <input *ngSwitchCase="'email'" 
@@ -96,24 +97,33 @@ import { NavigationService } from '../services/navigation.service';
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
                         class="form-control"
-                        [class.is-invalid]="isFieldInvalid(fieldName)">
+                        [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
                         
                       <!-- ObjectId input -->
-                      <input *ngSwitchCase="'ObjectId'" 
-                        type="text" 
-                        [id]="fieldName" 
-                        [formControlName]="fieldName" 
-                        class="form-control link-input"
-                        [class.is-invalid]="isFieldInvalid(fieldName)"
-                        (click)="openLink(fieldName)"
-                        placeholder="Select or enter ID">
+                      <div *ngSwitchCase="'ObjectId'" class="input-group">
+                        <input
+                          type="text" 
+                          [id]="fieldName" 
+                          [formControlName]="fieldName" 
+                          [class.link-input]="!isEditMode()"
+                          class="form-control"
+                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
+                          (click)="openLink(fieldName)"
+                          placeholder="{{ isEditMode() ? 'Click to select ID or enter manually' : 'Click to view entity' }}">
+                        <button *ngIf="isEditMode()" 
+                          class="btn btn-outline-secondary" 
+                          type="button"
+                          (click)="openLink(fieldName)">
+                          Select
+                        </button>
+                      </div>
                       
                       <!-- JSON input -->
                       <textarea *ngSwitchCase="'json'" 
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
                         class="form-control"
-                        [class.is-invalid]="isFieldInvalid(fieldName)"
+                        [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
                         rows="3"
                         placeholder="{ }"></textarea>
                       
@@ -122,7 +132,7 @@ import { NavigationService } from '../services/navigation.service';
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
                         class="form-control"
-                        [class.is-invalid]="isFieldInvalid(fieldName)"
+                        [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
                         rows="3"
                         placeholder="[]"></textarea>
                       
@@ -132,11 +142,12 @@ import { NavigationService } from '../services/navigation.service';
                         [id]="fieldName" 
                         [formControlName]="fieldName" 
                         class="form-control"
-                        [class.is-invalid]="isFieldInvalid(fieldName)">
+                        [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
                     </ng-container>
                     
                     <!-- Validation error messages -->
-                    <div *ngIf="isFieldInvalid(fieldName)" class="invalid-feedback">
+                    <div *ngIf="isFieldInvalid(fieldName) || getFieldValidationError(fieldName)" class="invalid-feedback">
+                      <!-- Client-side validation errors -->
                       <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['required']">
                         {{ getFieldDisplayName(fieldName) }} is required.
                       </div>
@@ -158,6 +169,11 @@ import { NavigationService } from '../services/navigation.service';
                       <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['max']">
                         {{ getFieldDisplayName(fieldName) }} cannot exceed 
                         {{ entityForm.get(fieldName)?.errors?.['max']?.max }}.
+                      </div>
+                      
+                      <!-- Server-side validation error (from API) -->
+                      <div *ngIf="getFieldValidationError(fieldName)">
+                        {{ getFieldValidationError(fieldName) }}
                       </div>
                     </div>
                   </div>
@@ -186,6 +202,29 @@ import { NavigationService } from '../services/navigation.service';
           </div>
           </div>
         </form>
+      </div>
+      
+      <!-- Entity Selection Modal -->
+      <div *ngIf="showModal" class="entity-modal">
+        <div class="entity-modal-content">
+          <div class="entity-modal-header">
+            <h5>Select {{ modalEntityType }}</h5>
+            <button type="button" class="btn-close" (click)="closeModal()"></button>
+          </div>
+          <div class="entity-modal-body">
+            <div *ngIf="modalEntities.length === 0" class="text-center p-3">
+              No {{ modalEntityType }} entities found.
+            </div>
+            <div *ngFor="let entity of modalEntities" class="entity-item" (click)="selectEntity(entity)">
+              <strong>{{ entity._id }}</strong>
+              <div *ngIf="entity.name">{{ entity.name }}</div>
+              <div *ngIf="entity.title">{{ entity.title }}</div>
+            </div>
+          </div>
+          <div class="entity-modal-footer">
+            <button type="button" class="btn btn-secondary" (click)="closeModal()">Cancel</button>
+          </div>
+        </div>
       </div>
     </div>
   `,
@@ -223,6 +262,60 @@ import { NavigationService } from '../services/navigation.service';
       box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25) !important;
       border-color: #86b7fe !important;
     }
+    
+    /* Modal styles */
+    .entity-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 1050;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .entity-modal-content {
+      background-color: #fff;
+      border-radius: 8px;
+      width: 80%;
+      max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .entity-modal-header {
+      padding: 15px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .entity-modal-body {
+      padding: 15px;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+    
+    .entity-item {
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+    
+    .entity-item:hover {
+      background-color: #f8f9fa;
+    }
+    
+    .entity-modal-footer {
+      padding: 15px;
+      border-top: 1px solid #eee;
+      text-align: right;
+    }
   `]
 })
 
@@ -240,6 +333,13 @@ export class EntityFormComponent implements OnInit {
   
   submitting: boolean = false;
   error: string = '';
+  validationErrors: ValidationError[] = [];
+
+  // Modal properties
+  showModal: boolean = false;
+  modalEntities: any[] = [];
+  modalFieldName: string = '';
+  modalEntityType: string = '';
 
   mode: ViewMode = VIEW
   
@@ -304,13 +404,14 @@ export class EntityFormComponent implements OnInit {
     // For edit/view mode, fetch the data first, then populate
     this.restService.getEntity(this.entityType, this.entityId).subscribe({
       next: (response) => {
-        this.entity = response.data || response;
+        this.entity = response;
+        debugger;
         
         if (!this.entity) {
           this.error = 'No entity data returned from the server.';
           return;
         }
-        
+
         // Populate form with entity data for edit/view mode
         this.populateFormValues(this.entity);
       },
@@ -427,6 +528,54 @@ export class EntityFormComponent implements OnInit {
     return processedData;
   }
 
+  /**
+   * Handles API errors, including validation errors
+   */
+  handleApiError(err: any): void {
+    this.error = '';
+    this.validationErrors = [];
+    
+    if (err.status === 422 && err.error?.detail) {
+      // Process validation errors from FastAPI (422 Unprocessable Entity)
+      const errorDetail = err.error.detail;
+      
+      if (Array.isArray(errorDetail)) {
+        // Store the validation errors directly using our ValidationError interface
+        this.validationErrors = errorDetail as ValidationError[];
+        
+        // Mark relevant form fields as invalid
+        this.validationErrors.forEach(error => {
+          if (error.loc && error.loc.length > 1) {
+            // Last element in loc array is the field name
+            const fieldName = error.loc[error.loc.length - 1];
+            
+            // Check if this field exists in our form
+            if (this.entityForm?.get(fieldName)) {
+              // Mark the field as touched so validation message shows
+              this.entityForm.get(fieldName)?.markAsTouched();
+            }
+          }
+        });
+      } else if (typeof errorDetail === 'string') {
+        // Handle string error message
+        this.error = errorDetail;
+      }
+    } else {
+      // Handle other types of errors (network, server, etc.)
+      this.error = err.message || 'An error occurred. Please try again.';
+    }
+  }
+  
+  /**
+   * Check if a field has validation errors from the API
+   */
+  getFieldValidationError(fieldName: string): string | null {
+    const error = this.validationErrors.find(err => 
+      err.loc && err.loc.length > 1 && err.loc[err.loc.length - 1] === fieldName
+    );
+    return error ? error.msg : null;
+  }
+
   createEntity(formData: any): void {
     this.restService.createEntity(this.entityType, formData).subscribe({
       next: (response) => {
@@ -436,7 +585,7 @@ export class EntityFormComponent implements OnInit {
       },
       error: (err) => {
         console.error('Error creating entity:', err);
-        this.error = 'Failed to create entity. Please check your data and try again.';
+        this.handleApiError(err);
         this.submitting = false;
       }
     });
@@ -451,7 +600,7 @@ export class EntityFormComponent implements OnInit {
       },
       error: (err) => {
         console.error('Error updating entity:', err);
-        this.error = 'Failed to update entity. Please check your data and try again.';
+        this.handleApiError(err);
         this.submitting = false;
       }
     });
@@ -470,29 +619,110 @@ export class EntityFormComponent implements OnInit {
   }
   
   /**
-   * Navigates to the link for a field
-   * Uses router.navigate instead of window.open to stay within the application
+   * Handles click on an ObjectId field
+   * In view mode: Navigate to the referenced entity
+   * In edit mode: Show selector with available IDs
    */
   openLink(fieldName: string): void {
     try {
-      // Get the value from the form field
+      // Check if field name follows the pattern <entity>Id
+      if (!fieldName.endsWith('Id')) {
+        console.error('Field name does not follow the expected pattern of <entity>Id:', fieldName);
+        return;
+      }
+      
+      const entityType = fieldName.substring(0, fieldName.length - 2);
+      
+      // In edit mode, show ID selector
+      if (this.isEditMode()) {
+        this.showIdSelector(fieldName, entityType);
+        return;
+      }
+      
+      // In view mode, navigate to the entity
       const value = this.entityForm?.get(fieldName)?.value;
       if (!value) {
         console.error('No value for field:', fieldName);
         return;
       }
       
-      // Check if field name follows the pattern <entity>Id
-      if (fieldName.endsWith('Id')) {
-        const entityType = fieldName.substring(0, fieldName.length - 2);
-        console.log(`Navigating to entity: ${entityType}/${value}`);
-        this.entityService.viewEntity(entityType, value);
-      } else {
-        console.error('Field name does not follow the expected pattern of <entity>Id:', fieldName);
-      }
+      console.log(`Navigating to entity: ${entityType}/${value}`);
+      this.entityService.viewEntity(entityType, value);
     } catch (error) {
       console.error('Error in openLink:', error);
     }
+  }
+  
+  /**
+   * Shows a selection modal with available entity IDs
+   * @param fieldName Original field name (e.g., "accountId")
+   * @param entityType Entity type derived from field name (e.g., "account")
+   */
+  showIdSelector(fieldName: string, entityType: string): void {
+    // Show loading indicator
+    this.error = '';
+    this.submitting = true;
+    
+    // Fetch entities of this type
+    this.restService.getEntityList(entityType).subscribe({
+      next: (entities) => {
+        this.submitting = false;
+        // Pass the original fieldName so we can update the right form field
+        this.showSelectionModal(fieldName, entityType, entities);
+      },
+      error: (err) => {
+        console.error(`Error loading ${entityType} entities:`, err);
+        this.submitting = false;
+        this.error = `Failed to load ${entityType} options.`;
+      }
+    });
+  }
+  
+  /**
+   * Shows the entity selection modal
+   */
+  showSelectionModal(fieldName: string, entityType: string, entities: any[]): void {
+    this.modalFieldName = fieldName;
+    this.modalEntityType = entityType;
+    this.modalEntities = entities;
+    this.showModal = true;
+  }
+  
+  /**
+   * Selects an entity from the modal
+   */
+  selectEntity(entity: any): void {
+    if (!this.entityForm) return;
+    
+    console.log('Selected entity:', entity);
+    console.log('modalFieldName:', this.modalFieldName);
+    
+    // In our model, the field name will be something like "accountId"
+    // But when we open the modal, we're currently setting modalFieldName to "_id"
+    // We need to fix this by using the original field name from the form
+    
+    // Set the selected ID in the form field
+    // Note: we need to use the original field name (e.g., "accountId"), not "_id"
+    const fieldName = this.modalFieldName;
+    const control = this.entityForm.get(fieldName);
+    
+    if (control) {
+      console.log('Setting form field:', fieldName, 'to value:', entity._id);
+      control.setValue(entity._id);
+      control.markAsDirty();
+    } else {
+      console.error('Form control not found:', fieldName);
+    }
+    
+    // Close the modal
+    this.closeModal();
+  }
+  
+  /**
+   * Closes the entity selection modal
+   */
+  closeModal(): void {
+    this.showModal = false;
   }
   
 }
