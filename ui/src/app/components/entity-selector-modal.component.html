@@ -1,0 +1,21 @@
+<div *ngIf="visible" class="entity-modal">
+  <div class="entity-modal-content">
+    <div class="entity-modal-header">
+      <h5>Select {{ entityType }}</h5>
+      <button type="button" class="btn-close" (click)="closeModal()"></button>
+    </div>
+    <div class="entity-modal-body">
+      <div *ngIf="entities.length === 0" class="text-center p-3">
+        No {{ entityType }} entities found.
+      </div>
+      <div *ngFor="let entity of entities" class="entity-item" (click)="selectEntity(entity)">
+        <strong>{{ entity._id }}</strong>
+        <div *ngIf="entity.name">{{ entity.name }}</div>
+        <div *ngIf="entity.title">{{ entity.title }}</div>
+      </div>
+    </div>
+    <div class="entity-modal-footer">
+      <button type="button" class="btn btn-secondary" (click)="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>

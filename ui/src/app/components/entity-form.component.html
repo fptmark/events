@@ -186,26 +186,12 @@
     </form>
   </div>
   
-  <!-- Entity Selection Modal -->
-  <div *ngIf="showModal" class="entity-modal">
-    <div class="entity-modal-content">
-      <div class="entity-modal-header">
-        <h5>Select {{ modalEntityType }}</h5>
-        <button type="button" class="btn-close" (click)="closeModal()"></button>
-      </div>
-      <div class="entity-modal-body">
-        <div *ngIf="modalEntities.length === 0" class="text-center p-3">
-          No {{ modalEntityType }} entities found.
-        </div>
-        <div *ngFor="let entity of modalEntities" class="entity-item" (click)="selectEntity(entity)">
-          <strong>{{ entity._id }}</strong>
-          <div *ngIf="entity.name">{{ entity.name }}</div>
-          <div *ngIf="entity.title">{{ entity.title }}</div>
-        </div>
-      </div>
-      <div class="entity-modal-footer">
-        <button type="button" class="btn btn-secondary" (click)="closeModal()">Cancel</button>
-      </div>
-    </div>
-  </div>
+  <!-- Entity Selector Modal -->
+  <app-entity-selector-modal
+    [visible]="showEntitySelector"
+    [entityType]="entitySelectorType"
+    [entities]="entitySelectorEntities"
+    (close)="onEntitySelectorClosed()"
+    (entitySelected)="onEntitySelected($event)">
+  </app-entity-selector-modal>
 </div>

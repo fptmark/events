@@ -9,24 +9,24 @@ import { RestService } from '../services/rest.service';
 import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../services/view.service';
 import { NavigationService } from '../services/navigation.service';
 import { ValidationError, ErrorResponse } from '../services/rest.service';
+import { EntitySelectorModalComponent } from './entity-selector-modal.component';
 
 @Component({
   selector: 'app-entity-form',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, EntitySelectorModalComponent],
   providers: [RestService],
   templateUrl: './entity-form.component.html',
   styleUrls: ['./entity-form.component.css']
 })
 
 export class EntityFormComponent implements OnInit {
-  readonly ID_FIELD = '_id'; // Changed from private to public
+  readonly ID_FIELD = '_id';
 
   entityType: string = '';
   entityId: string = '';
   
-  data: any[] = [];
-  entityMetadata: EntityMetadata | null = null;
+  // Removed unused variables
   entityForm: FormGroup | null = null;
   sortedFields: string[] = [];
   entity: any = null;
@@ -35,11 +35,11 @@ export class EntityFormComponent implements OnInit {
   error: string = '';
   validationErrors: ValidationError[] = [];
 
-  // Modal properties
-  showModal: boolean = false;
-  modalEntities: any[] = [];
-  modalFieldName: string = '';
-  modalEntityType: string = '';
+  // Entity selection state
+  showEntitySelector: boolean = false;
+  entitySelectorEntities: any[] = [];
+  entitySelectorType: string = '';
+  currentFieldName: string = '';
 
   mode: ViewMode = VIEW
   
@@ -105,7 +105,6 @@ export class EntityFormComponent implements OnInit {
     this.restService.getEntity(this.entityType, this.entityId).subscribe({
       next: (response) => {
         this.entity = response;
-        debugger;
         
         if (!this.entity) {
           this.error = 'No entity data returned from the server.';
@@ -122,7 +121,6 @@ export class EntityFormComponent implements OnInit {
     });
   }
 
-  // initForm method removed - logic moved directly into loadMetadataForCreate and loadEntityForEdit
 
   getFieldDisplayName(fieldName: string): string {
     if (fieldName === this.ID_FIELD) return 'ID';
@@ -150,15 +148,12 @@ export class EntityFormComponent implements OnInit {
   }
 
   isFieldInvalid(fieldName: string): boolean {
-    if (!this.entityForm) return false;
-    const control = this.entityForm.get(fieldName);
-    return !!control && control.invalid && (control.dirty || control.touched);
+    return !!this.entityForm?.get(fieldName)?.invalid && 
+           (!!this.entityForm?.get(fieldName)?.dirty || !!this.entityForm?.get(fieldName)?.touched);
   }
   
   isFieldReadOnly(fieldName: string): boolean {
-    if (!this.entityForm) return false;
-    const control = this.entityForm.get(fieldName);
-    return control?.disabled || false;
+    return this.entityForm?.get(fieldName)?.disabled || false;
   }
   
   
@@ -215,9 +210,10 @@ export class EntityFormComponent implements OnInit {
         const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
         
         // perform basic check using required property.  The server will perform more complex validation
-        // All non-required fileds, autoGen and autoUpdate (handled by the server).  Otherwise there must be a value
+        // If field is not required, or has a value, or is auto-handled by server, include it
         const value = control.value;
-        if ( !fieldMeta!.required || (value !== undefined && value !== null && value !== '') || fieldMeta!.autoUpdate || fieldMeta!.autoGenerate) {
+        if (!fieldMeta?.required || value !== undefined && value !== null && value !== '' || 
+            fieldMeta?.autoUpdate || fieldMeta?.autoGenerate) {
           processedData[fieldName] = value;
         }
       }
@@ -245,15 +241,12 @@ export class EntityFormComponent implements OnInit {
         
         // Mark relevant form fields as invalid
         this.validationErrors.forEach(error => {
-          if (error.loc && error.loc.length > 1) {
+          if (error.loc?.length > 1) {
             // Last element in loc array is the field name
             const fieldName = error.loc[error.loc.length - 1];
             
-            // Check if this field exists in our form
-            if (this.entityForm?.get(fieldName)) {
-              // Mark the field as touched so validation message shows
-              this.entityForm.get(fieldName)?.markAsTouched();
-            }
+            // Mark the field as touched so validation message shows
+            this.entityForm?.get(fieldName)?.markAsTouched();
           }
         });
       } else if (typeof errorDetail === 'string') {
@@ -271,38 +264,40 @@ export class EntityFormComponent implements OnInit {
    */
   getFieldValidationError(fieldName: string): string | null {
     const error = this.validationErrors.find(err => 
-      err.loc && err.loc.length > 1 && err.loc[err.loc.length - 1] === fieldName
+      err.loc?.length > 1 && err.loc[err.loc.length - 1] === fieldName
     );
-    return error ? error.msg : null;
+    return error?.msg || null;
+  }
+
+  /**
+   * Common handler for successful API operations
+   */
+  private handleApiSuccess(): void {
+    this.submitting = false;
+    // Navigate back to the entity list
+    this.router.navigate(['/entity', this.entityType]);
+  }
+
+  /**
+   * Common error handler for API operations
+   */
+  private handleApiFailure(err: any, operation: string): void {
+    console.error(`Error ${operation} entity:`, err);
+    this.handleApiError(err);
+    this.submitting = false;
   }
 
   createEntity(formData: any): void {
     this.restService.createEntity(this.entityType, formData).subscribe({
-      next: (response) => {
-        this.submitting = false;
-        // For now, just go back to the entity list to avoid navigation issues
-        this.router.navigate(['/entity', this.entityType]);
-      },
-      error: (err) => {
-        console.error('Error creating entity:', err);
-        this.handleApiError(err);
-        this.submitting = false;
-      }
+      next: () => this.handleApiSuccess(),
+      error: (err) => this.handleApiFailure(err, 'creating')
     });
   }
 
   updateEntity(formData: any): void {
     this.restService.updateEntity(this.entityType, this.entityId, formData).subscribe({
-      next: (response) => {
-        this.submitting = false;
-        // For now, just go back to the entity list to avoid navigation issues
-        this.router.navigate(['/entity', this.entityType]);
-      },
-      error: (err) => {
-        console.error('Error updating entity:', err);
-        this.handleApiError(err);
-        this.submitting = false;
-      }
+      next: () => this.handleApiSuccess(),
+      error: (err) => this.handleApiFailure(err, 'updating')
     });
   }
 
@@ -327,7 +322,6 @@ export class EntityFormComponent implements OnInit {
     try {
       // Check if field name follows the pattern <entity>Id
       if (!fieldName.endsWith('Id')) {
-        console.error('Field name does not follow the expected pattern of <entity>Id:', fieldName);
         return;
       }
       
@@ -342,11 +336,9 @@ export class EntityFormComponent implements OnInit {
       // In view mode, navigate to the entity
       const value = this.entityForm?.get(fieldName)?.value;
       if (!value) {
-        console.error('No value for field:', fieldName);
         return;
       }
       
-      console.log(`Navigating to entity: ${entityType}/${value}`);
       this.entityService.viewEntity(entityType, value);
     } catch (error) {
       console.error('Error in openLink:', error);
@@ -363,12 +355,17 @@ export class EntityFormComponent implements OnInit {
     this.error = '';
     this.submitting = true;
     
+    // Store the field name for later use when an entity is selected
+    this.currentFieldName = fieldName;
+    
     // Fetch entities of this type
     this.restService.getEntityList(entityType).subscribe({
       next: (entities) => {
         this.submitting = false;
-        // Pass the original fieldName so we can update the right form field
-        this.showSelectionModal(fieldName, entityType, entities);
+        // Show the entity selector modal
+        this.entitySelectorType = entityType;
+        this.entitySelectorEntities = entities;
+        this.showEntitySelector = true;
       },
       error: (err) => {
         console.error(`Error loading ${entityType} entities:`, err);
@@ -379,50 +376,28 @@ export class EntityFormComponent implements OnInit {
   }
   
   /**
-   * Shows the entity selection modal
+   * Handle entity selection from the modal
    */
-  showSelectionModal(fieldName: string, entityType: string, entities: any[]): void {
-    this.modalFieldName = fieldName;
-    this.modalEntityType = entityType;
-    this.modalEntities = entities;
-    this.showModal = true;
-  }
-  
-  /**
-   * Selects an entity from the modal
-   */
-  selectEntity(entity: any): void {
+  onEntitySelected(entity: any): void {
     if (!this.entityForm) return;
     
-    console.log('Selected entity:', entity);
-    console.log('modalFieldName:', this.modalFieldName);
-    
-    // In our model, the field name will be something like "accountId"
-    // But when we open the modal, we're currently setting modalFieldName to "_id"
-    // We need to fix this by using the original field name from the form
-    
     // Set the selected ID in the form field
-    // Note: we need to use the original field name (e.g., "accountId"), not "_id"
-    const fieldName = this.modalFieldName;
-    const control = this.entityForm.get(fieldName);
+    const control = this.entityForm.get(this.currentFieldName);
     
     if (control) {
-      console.log('Setting form field:', fieldName, 'to value:', entity._id);
       control.setValue(entity._id);
       control.markAsDirty();
-    } else {
-      console.error('Form control not found:', fieldName);
     }
     
     // Close the modal
-    this.closeModal();
+    this.showEntitySelector = false;
   }
   
   /**
-   * Closes the entity selection modal
+   * Handle closing of the entity selector
    */
-  closeModal(): void {
-    this.showModal = false;
+  onEntitySelectorClosed(): void {
+    this.showEntitySelector = false;
   }
   
 }
