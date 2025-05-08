@@ -73,14 +73,14 @@ export class EntityService {
       // For edit mode, use current date for auto-update fields
       if (this.viewService.inEditMode(mode)) {
         if (metadata?.autoUpdate) {
-          value = new Date().toISOString().substring(0, 10); // Format for date (YYYY-MM-DD)
+          value = new Date().toISOString().slice(0, 10); // Format for date (YYYY-MM-DD)
         }
       }
       
       // For create mode, use current date for auto-generate/update fields
       if (this.viewService.inCreateMode(mode)) {
         if (metadata?.autoGenerate || metadata?.autoUpdate) {
-          value = new Date().toISOString().substring(0, 10); // Format for date (YYYY-MM-DD)
+          value = new Date().toISOString().slice(0, 10); // Format for date (YYYY-MM-DD)
         }
       }
       
@@ -88,7 +88,7 @@ export class EntityService {
         return this.getDefaultValue(metadata);
       }
 
-      return this.formatDate(value)
+      return this.formatDate(value, mode)
     }
 
     // Boolean handling
@@ -107,11 +107,18 @@ export class EntityService {
     return String(value);
   }
 
-  formatDate(value: string): string {
-    try{
+  formatDate(value: string, mode?: ViewMode): string {
+    try {
       const date = new Date(value);
-      // Always show date only (no time component) regardless of format
-      return date.toLocaleDateString()
+      
+      // When in an edit-capable form, we need the date in YYYY-MM-DD format for HTML date input
+      if (mode && (mode === EDIT || mode === CREATE)) {
+        // Format as YYYY-MM-DD for HTML date input - simpler approach using ISO string
+        return date.toISOString().slice(0, 10);
+      }
+      
+      // For display-only mode, use localized date format
+      return date.toLocaleDateString();
     }
     catch (e) {
       return value;
@@ -181,7 +188,7 @@ export class EntityService {
       case 'ISODate':
         // Always set current date for autoGenerate and autoUpdate fields
         if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
-          const now = new Date().toISOString().substring(0, 10); // YYYY-MM-DD format
+          const now = new Date().toISOString().slice(0, 10); // YYYY-MM-DD format
           return now;
         }
         return null;
