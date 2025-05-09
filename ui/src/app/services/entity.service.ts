@@ -215,6 +215,8 @@ export class EntityService {
       case 'Integer':
         return required ? 0 : null;
       case 'Boolean':
+        // For boolean fields, always return false as default
+        // This ensures they are included in forms but don't block validation
         return false;
       case 'Array':
       case 'Array[String]':

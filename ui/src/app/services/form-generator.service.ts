@@ -77,45 +77,46 @@ export class FormGeneratorService {
   
   private getValidators(fieldMeta: FieldMetadata): any[] {
     const validators = [];
-    
+
     // Required is at the root level according to sample payload
-    if (fieldMeta.required) {
+    // Never add required validator for Boolean fields regardless of required flag
+    if (fieldMeta.required && fieldMeta.type !== 'Boolean') {
       validators.push(Validators.required);
     }
-    
+
     // These validations might be in the UI object or at root level
     const minLength = fieldMeta.min_length;
     if (minLength) {
       validators.push(Validators.minLength(minLength));
     }
-    
+
     const maxLength = fieldMeta.max_length;
     if (maxLength) {
       validators.push(Validators.maxLength(maxLength));
     }
-    
+
     const pattern = fieldMeta.pattern;
     if (pattern && pattern.regex) {
       validators.push(Validators.pattern(pattern.regex));
     }
-    
+
     const min = fieldMeta?.ge
     if (min !== undefined) {
       validators.push(Validators.min(min));
     }
-    
+
     const max = fieldMeta?.le
     if (max !== undefined) {
       validators.push(Validators.max(max));
     }
-    
+
     // Special case handling for email fields
     const type = fieldMeta.type;
-    
+
     if (pattern?.regex?.includes('@')) {
       validators.push(Validators.email);
     }
-    
+
     return validators;
   }
   
