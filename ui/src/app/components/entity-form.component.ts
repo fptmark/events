@@ -213,9 +213,9 @@ export class EntityFormComponent implements OnInit {
 
         // Special handling for boolean fields - always include in payload
         if (fieldMeta?.type === 'Boolean') {
-          // For all booleans, always include in the payload, regardless of 'required' flag
-          // Convert null/undefined to false to ensure valid boolean
-          processedData[fieldName] = value === null || value === undefined ? false : value;
+          // For checkboxes, convert to strict boolean value
+          // This handles cases where the value might be something other than a strict boolean
+          processedData[fieldName] = Boolean(value);
           continue;
         }
 
@@ -239,23 +239,34 @@ export class EntityFormComponent implements OnInit {
   handleApiError(err: any): void {
     this.error = '';
     this.validationErrors = [];
-    
+
+    // Log the error for debugging in console
+    console.error('API Error:', JSON.stringify(err, null, 2));
+
     if (err.status === 422 && err.error?.detail) {
       // Process validation errors from FastAPI (422 Unprocessable Entity)
       const errorDetail = err.error.detail;
-      
+
       if (Array.isArray(errorDetail)) {
         // Store the validation errors directly using our ValidationError interface
         this.validationErrors = errorDetail as ValidationError[];
-        
+
+        // For validation errors, don't set the general error message
+        // We'll show a simple alert and highlight fields instead
+        this.error = '';
+
         // Mark relevant form fields as invalid
         this.validationErrors.forEach(error => {
           if (error.loc?.length > 1) {
             // Last element in loc array is the field name
             const fieldName = error.loc[error.loc.length - 1];
-            
-            // Mark the field as touched so validation message shows
-            this.entityForm?.get(fieldName)?.markAsTouched();
+
+            // Mark the field as touched and dirty so validation message shows
+            const control = this.entityForm?.get(fieldName);
+            if (control) {
+              control.markAsTouched();
+              control.markAsDirty();
+            }
           }
         });
       } else if (typeof errorDetail === 'string') {
@@ -263,8 +274,11 @@ export class EntityFormComponent implements OnInit {
         this.error = errorDetail;
       }
     } else {
-      // Handle other types of errors (network, server, etc.)
-      this.error = err.message || 'An error occurred. Please try again.';
+      // For all other errors, show the full error details
+      // This includes server errors, network errors, etc.
+      this.error = err.status ?
+        `Error ${err.status}: ${err.statusText}\n${err.error?.detail || err.message || JSON.stringify(err.error)}` :
+        `Error: ${err.message || JSON.stringify(err)}`;
     }
   }
   
@@ -292,7 +306,11 @@ export class EntityFormComponent implements OnInit {
    */
   private handleApiFailure(err: any, operation: string): void {
     console.error(`Error ${operation} entity:`, err);
+
+    // Directly use handleApiError to show all error details
     this.handleApiError(err);
+
+    // Reset submitting flag so user can try again
     this.submitting = false;
   }
 

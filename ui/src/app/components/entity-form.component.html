@@ -4,11 +4,17 @@
     <button class="btn btn-secondary" (click)="goBack()">Back</button>
   </div>
   
-  <div *ngIf="error" class="alert alert-danger" style="white-space: pre-wrap;">
+  <!-- Display general errors (non-validation errors) -->
+  <div *ngIf="error && validationErrors.length === 0" class="alert alert-danger" style="white-space: pre-wrap;">
     {{ error }}
   </div>
-  
-  <div *ngIf="!error && entityForm">
+
+  <!-- Display a simpler validation summary when we have field validation errors -->
+  <div *ngIf="validationErrors.length > 0" class="alert alert-warning">
+    Please correct the highlighted fields below.
+  </div>
+
+  <div *ngIf="entityForm">
     <form [formGroup]="entityForm" (ngSubmit)="onSubmit()">
       <div class="card">
         <div class="card-body">
@@ -28,10 +34,22 @@
                     <!-- Checkbox gets special handling but within the same layout -->
                     <ng-container *ngIf="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType === 'checkbox'; else standardInputs">
                       <div class="checkbox-wrapper">
-                        <input type="checkbox"
-                          [id]="fieldName"
-                          [formControlName]="fieldName"
-                          class="form-check-input">
+                        <!-- In view mode, show a disabled but visually accurate checkbox -->
+                        <ng-container *ngIf="isViewMode(); else editableCheckbox">
+                          <input type="checkbox"
+                            [id]="fieldName"
+                            [checked]="entityForm?.get(fieldName)?.value"
+                            disabled
+                            class="form-check-input view-mode-checkbox">
+                        </ng-container>
+
+                        <!-- In edit/create mode, show an interactive checkbox -->
+                        <ng-template #editableCheckbox>
+                          <input type="checkbox"
+                            [id]="fieldName"
+                            [formControlName]="fieldName"
+                            class="form-check-input">
+                        </ng-template>
                       </div>
                     </ng-container>
                     
@@ -129,35 +147,37 @@
                       </ng-container>
                       
                       <!-- Validation error messages -->
-                      <div *ngIf="isFieldInvalid(fieldName) || getFieldValidationError(fieldName)" class="invalid-feedback">
-                        <!-- Client-side validation errors -->
+
+                      <!-- Client-side validation errors use Bootstrap's invalid-feedback -->
+                      <div *ngIf="isFieldInvalid(fieldName)" class="invalid-feedback d-block">
                         <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['required']">
                           {{ getFieldDisplayName(fieldName) }} is required.
                         </div>
                         <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['minlength']">
-                          {{ getFieldDisplayName(fieldName) }} must be at least 
+                          {{ getFieldDisplayName(fieldName) }} must be at least
                           {{ entityForm.get(fieldName)?.errors?.['minlength']?.requiredLength }} characters.
                         </div>
                         <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['maxlength']">
-                          {{ getFieldDisplayName(fieldName) }} cannot exceed 
+                          {{ getFieldDisplayName(fieldName) }} cannot exceed
                           {{ entityForm.get(fieldName)?.errors?.['maxlength']?.requiredLength }} characters.
                         </div>
                         <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['pattern']">
                           {{ getFieldDisplayName(fieldName) }} has an invalid format.
                         </div>
                         <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['min']">
-                          {{ getFieldDisplayName(fieldName) }} must be at least 
+                          {{ getFieldDisplayName(fieldName) }} must be at least
                           {{ entityForm.get(fieldName)?.errors?.['min']?.min }}.
                         </div>
                         <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['max']">
-                          {{ getFieldDisplayName(fieldName) }} cannot exceed 
+                          {{ getFieldDisplayName(fieldName) }} cannot exceed
                           {{ entityForm.get(fieldName)?.errors?.['max']?.max }}.
                         </div>
-                        
-                        <!-- Server-side validation error (from API) -->
-                        <div *ngIf="getFieldValidationError(fieldName)">
-                          {{ getFieldValidationError(fieldName) }}
-                        </div>
+                      </div>
+
+                      <!-- Server-side validation errors displayed separately with a distinct style -->
+                      <div *ngIf="getFieldValidationError(fieldName)" class="text-danger mt-1 small">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        {{ getFieldValidationError(fieldName) }}
                       </div>
                     </ng-template>
                   </div>

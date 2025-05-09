@@ -58,6 +58,22 @@
   /* No label in the wrapper as we're using the consistent label layout */
 }
 
+/* Style readonly checkboxes in view mode */
+.form-check-input.view-mode-checkbox {
+  opacity: 0.8; /* Make it look slightly inactive */
+  pointer-events: none; /* Prevent any interaction */
+  /* Override the default disabled checkbox styling */
+  background-color: var(--bs-body-bg) !important;
+  border-color: #dee2e6 !important;
+}
+
+/* Style for checked state in view mode */
+.form-check-input.view-mode-checkbox:checked {
+  background-color: #0d6efd !important; /* Bootstrap primary color */
+  border-color: #0d6efd !important;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e") !important;
+}
+
 /* Make textareas align with other inputs */
 textarea.form-control {
   min-height: 38px;
@@ -78,6 +94,30 @@ textarea.form-control {
   .col-4, .col-8 {
     width: 100%;
   }
+}
+
+/* Better error styling */
+.invalid-feedback.d-block {
+  display: block;
+  color: #dc3545;
+  margin-top: 0.25rem;
+}
+
+/* Add a fade-in animation for error messages */
+.text-danger {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Style inputs with server-side validation errors */
+input.form-control:has(+ .text-danger),
+select.form-select:has(+ .text-danger),
+textarea.form-control:has(+ .text-danger) {
+  border-color: #dc3545;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* Import common styles */
