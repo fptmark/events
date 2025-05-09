@@ -11,6 +11,7 @@ import { RestService } from '../services/rest.service';
   selector: 'app-entity-list',
   standalone: true,
   imports: [CommonModule],
+  styleUrls: ['../common.css'],
   template: `
     <div class="container-fluid mt-4">
       <h2>{{ metadataService.getTitle(entityType) }}</h2>
@@ -18,7 +19,7 @@ import { RestService } from '../services/rest.service';
       <!-- Create button - permission checked once per page -->
       <div *ngIf="metadataService.isValidOperation(entityType, 'c')">
         <div class="mb-3">
-          <button class="btn btn-primary" (click)="this.entityService.navigateToCreate(entityType)">Create {{ entityType }}</button>
+          <button class="btn btn-entity-create" (click)="this.entityService.navigateToCreate(entityType)">Create {{ entityType }}</button>
         </div>
       </div>
       
@@ -50,14 +51,16 @@ import { RestService } from '../services/rest.service';
                 <td *ngFor="let field of displayFields" [innerHTML]="entityService.formatFieldValue(entityType, field, 'summary', row[field])"></td>
                 <td class="actions-column text-nowrap">
                   <div class="btn-group btn-group-sm">
+                    <!-- Consistent button order: View, Edit, Create, Delete -->
                     <button *ngIf="entityService.canRead(entityType)"
-                      class="btn btn-info me-1" 
+                      class="btn btn-entity-view me-1"
                       (click)="this.entityService.viewEntity(entityType, row['_id'])">View</button>
                     <button *ngIf="entityService.canUpdate(entityType)"
-                      class="btn btn-warning me-1" 
+                      class="btn btn-entity-edit me-1"
                       (click)="this.entityService.editEntity(entityType, row['_id'])">Edit</button>
+                    <!-- Create not shown for individual rows since it applies to the entity type, not a specific row -->
                     <button *ngIf="entityService.canDelete(entityType)"
-                      class="btn btn-danger" 
+                      class="btn btn-entity-delete"
                       (click)="this.restService.deleteEntity(entityType, row._id, loadEntities.bind(this))">Delete</button>
                   </div>
                 </td>

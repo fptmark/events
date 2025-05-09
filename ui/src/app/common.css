@@ -1,0 +1,44 @@
+/* Consistent button styling for all entity operations */
+.btn-entity-create {
+  color: #fff;
+  background-color: #28a745; /* Bootstrap green */
+  border-color: #28a745;
+}
+
+.btn-entity-create:hover {
+  background-color: #218838;
+  border-color: #1e7e34;
+}
+
+.btn-entity-view {
+  color: #fff;
+  background-color: #17a2b8; /* Bootstrap info (light blue) */
+  border-color: #17a2b8;
+}
+
+.btn-entity-view:hover {
+  background-color: #138496;
+  border-color: #117a8b;
+}
+
+.btn-entity-edit {
+  color: #fff;
+  background-color: #007bff; /* Bootstrap primary (dark blue) */
+  border-color: #007bff;
+}
+
+.btn-entity-edit:hover {
+  background-color: #0069d9;
+  border-color: #0062cc;
+}
+
+.btn-entity-delete {
+  color: #fff;
+  background-color: #dc3545; /* Bootstrap danger (red) */
+  border-color: #dc3545;
+}
+
+.btn-entity-delete:hover {
+  background-color: #c82333;
+  border-color: #bd2130;
+}

@@ -33,3 +33,52 @@
 }
 
 /* Modal styles removed - now in entity-selector-modal.component.css */
+
+/* Form layout styles */
+.form-label {
+  margin-bottom: 0;
+  padding-right: 0.5rem;
+  display: flex;
+  justify-content: flex-start; /* Left-justify labels */
+  align-items: center;
+  min-height: 38px; /* Match Bootstrap default input height */
+}
+
+/* Custom checkbox styling to align with other inputs */
+.checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* Align to the left */
+  min-height: 38px; /* Match Bootstrap default input height */
+}
+
+.checkbox-wrapper .form-check-input {
+  margin-left: 0; /* Reset margin */
+  margin-right: 0; /* Reset margin */
+  /* No label in the wrapper as we're using the consistent label layout */
+}
+
+/* Make textareas align with other inputs */
+textarea.form-control {
+  min-height: 38px;
+}
+
+/* Make all form controls consistent height in view mode */
+:host .form-control:disabled {
+  min-height: 38px;
+}
+
+/* Fix alignment on smaller screens */
+@media (max-width: 768px) {
+  .form-label {
+    justify-content: flex-start;
+    margin-bottom: 0.25rem;
+  }
+
+  .col-4, .col-8 {
+    width: 100%;
+  }
+}
+
+/* Import common styles */
+@import '../common.css';
