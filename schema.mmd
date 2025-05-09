@@ -38,7 +38,7 @@ erDiagram
 
     Profile {
         String name          %% @validate { required: true, max_length: 100 }
-        JSON preferences     %% @validate { required: false } @ui { displayPages: "details"}
+        String preferences   %% @validate { required: false } @ui { displayPages: "details"}
         Integer radiusMiles  %% @validate { required: false, ge: 0 }
     
         %% @ui { title: "Profile", buttonLabel: "Manage User Profiles", description: "Manage User Preferences" }

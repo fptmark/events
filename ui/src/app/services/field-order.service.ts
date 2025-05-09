@@ -23,109 +23,70 @@ import { MetadataService, EntityMetadata } from './metadata.service';
 export class FieldOrderService {
 
   constructor(private metadataService: MetadataService) {}
-
   orderFields(fields: string[], metadata: EntityMetadata): string[] {
-    const fieldMeta = metadata.fields || {};
-    const placed = new Set<string>();
-    const chains: Record<string, string[]> = {};
-    const dangling: string[] = [];
+    // --- Preparation --------------------------------------------------------
+    const unused = new Set(fields);                    // cheap “membership” checks
+    const dfaPairs = new Map<string, string>();        // key → field that follows it
+    const negativeDFAs: Array<[string, number]> = [];  // [field, -N]
     const idFields: string[] = [];
-    const negativeDFAMap: Record<string, string[]> = {};
-    const noDFA: string[] = [];
-  
-    // Categorize fields
+
+    // --- 1. Categorise fields ----------------------------------------------
     for (const field of fields) {
-      const dfa = fieldMeta[field]?.ui?.displayAfterField ?? '';
-      if (dfa.startsWith('-')) {
-        if (!negativeDFAMap[dfa]) negativeDFAMap[dfa] = [];
-        negativeDFAMap[dfa].push(field);
-      } else if (dfa) {
-        if (!chains[dfa]) chains[dfa] = [];
-        chains[dfa].push(field);
-      } else {
-        noDFA.push(field);
-      }
-    }
-  
-    for (const key in chains) chains[key].sort();
-    for (const key in negativeDFAMap) negativeDFAMap[key].sort();
-  
-    const validFields = new Set(fields);
-    for (const start of Object.keys(chains)) {
-      if (!validFields.has(start)) {
-        dangling.push(...chains[start]);
-        delete chains[start];
-      }
-    }
-    dangling.sort();
-  
-    // Separate Id fields
-    const noDFAFields = noDFA.filter(f => {
-      if (f !== '_id' && f.endsWith('Id')) {
-        idFields.push(f);
-        return false;
-      }
-      return true;
-    }).sort();
-    idFields.sort();
-  
-    const ordered: string[] = [];
-  
-    // Place _id first if no DFA
-    if (fields.includes('_id') && (fieldMeta['_id']?.ui?.displayAfterField ?? '') === '') {
-      ordered.push('_id');
-      placed.add('_id');
-    }
-  
-    // Place no-DFA fields
-    for (const f of noDFAFields) {
-      if (!placed.has(f)) {
-        ordered.push(f);
-        placed.add(f);
-      }
-    }
-  
-    // Place Id fields
-    for (const f of idFields) {
-      if (!placed.has(f)) {
-        ordered.push(f);
-        placed.add(f);
-      }
-    }
-  
-    // Place dangling DFAs
-    for (const f of dangling) {
-      if (!placed.has(f)) {
-        ordered.push(f);
-        placed.add(f);
-      }
-    }
-  
-    // Recursive chain inserter
-    const insertChain = (start: string) => {
-      if (placed.has(start)) return;
-      ordered.push(start);
-      placed.add(start);
-      if (chains[start]) {
-        for (const next of chains[start]) {
-          insertChain(next);
+      const dfa = metadata.fields[field]?.ui?.displayAfterField ?? '';
+
+      if (dfa) {
+        // 1a. Negative positions
+        if (dfa.startsWith('-')) {
+          const n = Number(dfa);
+          if (Number.isNaN(n))
+            throw new Error(`Invalid negative DFA "${dfa}" on field ${field}`);
+          negativeDFAs.push([field, n]);
+          unused.delete(field);
+
+        // 1b. Normal DFA chains
+        } else if (fields.includes(dfa)) {
+          dfaPairs.set(dfa, field);   // “insert <field> after <dfa>”
+          unused.delete(field);
         }
       }
-    };
-  
-    // Place DFA chains (valid)
-    for (const start in chains) {
-      insertChain(start);
     }
-  
-    // Place negative DFA chains
-    const sortedNegatives = Object.keys(negativeDFAMap).sort((a, b) => parseInt(b) - parseInt(a));
-    for (const neg of sortedNegatives) {
-      for (const field of negativeDFAMap[neg]) {
-        insertChain(field);
+
+    // --- 2. Seed ordered list ----------------------------------------------
+    const ordered: string[] = [];
+
+    // 2a. _id first (if not part of a DFA chain)
+    if (unused.has('_id')) {
+      ordered.push('_id');
+      unused.delete('_id');
+    }
+
+    // 2b. Other “…Id” fields without DFA → staged for later insertion
+    for (const f of Array.from(unused)) {
+      if (f.toLowerCase().endsWith('id')) {
+        idFields.push(f);
+        unused.delete(f);
       }
     }
+
+    // 2c. Plain fields, alphabetically
+    ordered.push(...Array.from(unused).sort());
+    unused.clear();         // nothing left to process
+
+    // --- 3. Honour DFA chains ----------------------------------------------
+    for (const [before, after] of dfaPairs) {
+      const idx = ordered.indexOf(before);
+      if (idx !== -1) ordered.splice(idx + 1, 0, after);
+      else             ordered.push(after);   // fallback if “before” was itself in a chain
+    }
+
+    // --- 4. Append staged Id fields ----------------------------------------
+    ordered.push(...idFields.sort());
+
+    // --- 5. Append negative DFA fields in -1, -2, … order ------------------
+    negativeDFAs
+      .sort((a, b) => a[1] - b[1])
+      .forEach(([field]) => ordered.push(field));
+
     return ordered;
   }
-
 }
