@@ -71,9 +71,9 @@ class UserEventCreate(BaseModel):
     @field_validator('rating', mode='before')
     def validate_rating(cls, v):
         _custom = {}
-        if v is not None and v < 1:
+        if v is not None and int(v) < 1:
             raise ValueError('rating must be at least 1')
-        if v is not None and v > 5:
+        if v is not None and int(v) > 5:
             raise ValueError('rating must be at most 5')
         return v
      
@@ -100,9 +100,9 @@ class UserEventUpdate(BaseModel):
     @field_validator('rating', mode='before')
     def validate_rating(cls, v):
         _custom = {}
-        if v is not None and v < 1:
+        if v is not None and int(v) < 1:
             raise ValueError('rating must be at least 1')
-        if v is not None and v > 5:
+        if v is not None and int(v) > 5:
             raise ValueError('rating must be at most 5')
         return v
      

@@ -69,9 +69,9 @@ class TagAffinityCreate(BaseModel):
     @field_validator('affinity', mode='before')
     def validate_affinity(cls, v):
         _custom = {}
-        if v is not None and v < -100:
+        if v is not None and int(v) < -100:
             raise ValueError('affinity must be at least -100')
-        if v is not None and v > 100:
+        if v is not None and int(v) > 100:
             raise ValueError('affinity must be at most 100')
         return v
      
@@ -96,9 +96,9 @@ class TagAffinityUpdate(BaseModel):
     @field_validator('affinity', mode='before')
     def validate_affinity(cls, v):
         _custom = {}
-        if v is not None and v < -100:
+        if v is not None and int(v) < -100:
             raise ValueError('affinity must be at least -100')
-        if v is not None and v > 100:
+        if v is not None and int(v) > 100:
             raise ValueError('affinity must be at most 100')
         return v
      

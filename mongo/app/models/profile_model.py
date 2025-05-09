@@ -15,7 +15,7 @@ class UniqueValidationError(Exception):
 
 class Profile(Document):
     name: str = Field(..., max_length=100)
-    preferences: Optional[Dict[str, Any]] = Field(None)
+    preferences: Optional[str] = Field(None)
     radiusMiles: Optional[int] = Field(None, ge=0)
     userId: PydanticObjectId = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -30,7 +30,7 @@ class Profile(Document):
                               'required': True,
                               'type': 'String'},
                   'preferences': {   'required': False,
-                                     'type': 'JSON',
+                                     'type': 'String',
                                      'ui': {'displayPages': 'details'}},
                   'radiusMiles': {   'ge': 0,
                                      'required': False,
@@ -65,7 +65,7 @@ class Profile(Document):
 
 class ProfileCreate(BaseModel):
     name: str = Field(..., max_length=100)
-    preferences: Optional[Dict[str, Any]] = Field(None)
+    preferences: Optional[str] = Field(None)
     radiusMiles: Optional[int] = Field(None, ge=0)
     userId: PydanticObjectId = Field(...)
 
@@ -79,7 +79,7 @@ class ProfileCreate(BaseModel):
     @field_validator('radiusMiles', mode='before')
     def validate_radiusMiles(cls, v):
         _custom = {}
-        if v is not None and v < 0:
+        if v is not None and int(v) < 0:
             raise ValueError('radiusMiles must be at least 0')
         return v
      
@@ -91,7 +91,7 @@ class ProfileCreate(BaseModel):
 
 class ProfileUpdate(BaseModel):
     name: str = Field(..., max_length=100)
-    preferences: Optional[Dict[str, Any]] = Field(None)
+    preferences: Optional[str] = Field(None)
     radiusMiles: Optional[int] = Field(None, ge=0)
     userId: PydanticObjectId = Field(...)
 
@@ -105,7 +105,7 @@ class ProfileUpdate(BaseModel):
     @field_validator('radiusMiles', mode='before')
     def validate_radiusMiles(cls, v):
         _custom = {}
-        if v is not None and v < 0:
+        if v is not None and int(v) < 0:
             raise ValueError('radiusMiles must be at least 0')
         return v
      
@@ -118,7 +118,7 @@ class ProfileUpdate(BaseModel):
 class ProfileRead(BaseModel):
     id: PydanticObjectId = Field(alias="_id")
     name: str = Field(..., max_length=100)
-    preferences: Optional[Dict[str, Any]] = Field(None)
+    preferences: Optional[str] = Field(None)
     radiusMiles: Optional[int] = Field(None, ge=0)
     userId: PydanticObjectId = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

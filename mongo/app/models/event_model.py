@@ -123,14 +123,14 @@ class EventCreate(BaseModel):
     @field_validator('cost', mode='before')
     def validate_cost(cls, v):
         _custom = {}
-        if v is not None and v < 0:
+        if v is not None and float(v) < 0:
             raise ValueError('cost must be at least 0')
         return v
      
     @field_validator('numOfExpectedAttendees', mode='before')
     def validate_numOfExpectedAttendees(cls, v):
         _custom = {}
-        if v is not None and v < 0:
+        if v is not None and int(v) < 0:
             raise ValueError('numOfExpectedAttendees must be at least 0')
         return v
      
@@ -189,14 +189,14 @@ class EventUpdate(BaseModel):
     @field_validator('cost', mode='before')
     def validate_cost(cls, v):
         _custom = {}
-        if v is not None and v < 0:
+        if v is not None and float(v) < 0:
             raise ValueError('cost must be at least 0')
         return v
      
     @field_validator('numOfExpectedAttendees', mode='before')
     def validate_numOfExpectedAttendees(cls, v):
         _custom = {}
-        if v is not None and v < 0:
+        if v is not None and int(v) < 0:
             raise ValueError('numOfExpectedAttendees must be at least 0')
         return v
      
