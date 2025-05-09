@@ -15,7 +15,7 @@ async def create_url(item: UrlCreate):
     doc = Url(**item.dict(exclude_unset=True))
     try:
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"Url created successfully with _id: {doc._id}")
+        logging.info(f"Url created successfully with _id: {doc.id}")
     except Exception as e:
         msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create url.")

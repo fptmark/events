@@ -15,7 +15,7 @@ async def create_userevent(item: UserEventCreate):
     doc = UserEvent(**item.dict(exclude_unset=True))
     try:
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"UserEvent created successfully with _id: {doc._id}")
+        logging.info(f"UserEvent created successfully with _id: {doc.id}")
     except Exception as e:
         msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create userevent.")

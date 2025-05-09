@@ -15,7 +15,7 @@ async def create_event(item: EventCreate):
     doc = Event(**item.dict(exclude_unset=True))
     try:
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"Event created successfully with _id: {doc._id}")
+        logging.info(f"Event created successfully with _id: {doc.id}")
     except Exception as e:
         msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create event.")

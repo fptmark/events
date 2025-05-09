@@ -15,7 +15,7 @@ async def create_user(item: UserCreate):
     doc = User(**item.dict(exclude_unset=True))
     try:
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"User created successfully with _id: {doc._id}")
+        logging.info(f"User created successfully with _id: {doc.id}")
     except Exception as e:
         msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create user.")
