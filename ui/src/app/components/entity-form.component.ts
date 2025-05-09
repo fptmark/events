@@ -48,7 +48,7 @@ export class EntityFormComponent implements OnInit {
     private route: ActivatedRoute,
     private router: Router,
     public entityService: EntityService,
-    private metadataService: MetadataService,
+    public metadataService: MetadataService,
     public formGenerator: FormGeneratorService,
     public restService: RestService,
     public viewService: ViewService,
@@ -201,19 +201,27 @@ export class EntityFormComponent implements OnInit {
   processFormData(formData: any): any {
     // Clone the data to avoid modifying the form values directly
     const processedData = { ...formData };
-    
+
     try {
       if (!this.entityForm) return processedData;
-      
+
       // Process all form controls directly (including disabled fields)
       for (const fieldName in this.entityForm.controls) {
         const control = this.entityForm.controls[fieldName];
         const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
-        
-        // perform basic check using required property.  The server will perform more complex validation
-        // If field is not required, or has a value, or is auto-handled by server, include it
         const value = control.value;
-        if (!fieldMeta?.required || value !== undefined && value !== null && value !== '' || 
+
+        // Special handling for boolean fields - always include in payload
+        if (fieldMeta?.type === 'Boolean') {
+          // For all booleans, always include in the payload, regardless of 'required' flag
+          // Convert null/undefined to false to ensure valid boolean
+          processedData[fieldName] = value === null || value === undefined ? false : value;
+          continue;
+        }
+
+        // For other field types - normal validation
+        // If field is not required, or has a value, or is auto-handled by server, include it
+        if (!fieldMeta?.required || value !== undefined && value !== null && value !== '' ||
             fieldMeta?.autoUpdate || fieldMeta?.autoGenerate) {
           processedData[fieldName] = value;
         }
@@ -221,7 +229,7 @@ export class EntityFormComponent implements OnInit {
     } catch (error) {
       console.error('Error processing form data:', error);
     }
-    
+
     return processedData;
   }
 
