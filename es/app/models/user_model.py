@@ -78,9 +78,9 @@ class User(UserBaseModel):
     id: Optional[str] = Field(default=None, alias="_id")
  
     __ui_metadata__: ClassVar[Dict[str, Any]] = {   'entity': 'User',
-    'fields': {   'accountId': {   'displayName': 'accountId',
-                                   'readOnly': True,
-                                   'required': True,
+    'fields': {   'accountId': {   'required': True,
+                                   'selector': {   'fields': [   'createdAt',
+                                                                 'expiredAt']},
                                    'type': 'ObjectId'},
                   'createdAt': {   'autoGenerate': True,
                                    'type': 'ISODate',
