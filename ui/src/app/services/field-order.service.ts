@@ -9,14 +9,15 @@ import { MetadataService, EntityMetadata } from './metadata.service';
 // Algorithm:
 //    The concept is to use a field (DisplayFieldAfter) to determine the order of fields in a form.
 //    Also, id fields have a special treatment as do fields with negative DFA.
+//    Fields are processed in accordance to the following rules.
 //
 //  High Level Steps:
-// 1. Honor any DFA chains
-// 2. Sort fields not in a DFA chain by their field name
-// 3. If _id (PK) is not in a DFA chain, place it first
-// 4. Place fields with no DFA (ingore ID fields)
-// 5. Insert DFA chains based on the name of the first field.
-// 6. If any ID fields remain (FK), place them at the end of the list in field name order.
+// 1. Process DFA fields - process named DFA's seperately from negative DFA which go last
+// 2. Project Object Ids - the PK (id or _id) goes and other ObjectIds appear at the end but before negative DFA
+// 3. Place fields with no DFA (ingore ID fields)
+// 4. Build the ordered list.  All the non-DFA fields in their default order
+// 5. Insert any fields that are part of  DFA chain
+// 6. Add Object Id's next
 // 7. Place any negative DFA fields at the end of the list starting with -1, -2, -3, etc.
 
 
@@ -60,9 +61,10 @@ export class FieldOrderService {
       unused.delete('_id');
     }
 
-    // 2b. Other “…Id” fields without DFA → staged for later insertion
+    // 2b. Other “Id” fields without DFA 
     for (const f of Array.from(unused)) {
-      if (f.toLowerCase().endsWith('id')) {
+      const t = metadata.fields[f].type
+      if (t && t === "ObjectId"){
         idFields.push(f);
         unused.delete(f);
       }
