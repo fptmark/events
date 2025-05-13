@@ -168,10 +168,17 @@ export class FormGeneratorService {
         case 'ObjectId':
           fieldType = 'ObjectId'; break
         case 'Array':
-        case 'Array[String]': break
+        case 'Array[String]': 
           fieldType = 'array';
-        case 'JSON': break
+          break;
+        case 'JSON': 
           fieldType = 'json';
+          break;
+        case 'Integer':
+        case 'Number':
+        case 'Float':
+          fieldType = 'number';
+          break;
         default:
           fieldType = 'text';
       }

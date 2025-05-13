@@ -38,7 +38,7 @@
                         <ng-container *ngIf="isViewMode(); else editableCheckbox">
                           <input type="checkbox"
                             [id]="fieldName"
-                            [checked]="entityForm?.get(fieldName)?.value"
+                            [checked]="entityForm.get(fieldName)?.value"
                             disabled
                             class="form-check-input view-mode-checkbox">
                         </ng-container>
@@ -136,6 +136,14 @@
                           [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
                           rows="3"
                           placeholder="[]"></textarea>
+                        
+                        <!-- Number input for numeric fields -->
+                        <input *ngSwitchCase="'number'" 
+                          type="number" 
+                          [id]="fieldName" 
+                          [formControlName]="fieldName" 
+                          class="form-control"
+                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
                         
                         <!-- Default text input -->
                         <input *ngSwitchDefault 
