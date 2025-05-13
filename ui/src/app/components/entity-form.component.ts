@@ -297,8 +297,10 @@ export class EntityFormComponent implements OnInit {
    */
   private handleApiSuccess(): void {
     this.submitting = false;
-    // Navigate back to the entity list
-    this.router.navigate(['/entity', this.entityType]);
+    // Navigate back to the entity list with skipLocationChange to force reload
+    this.router.navigateByUrl('/', {skipLocationChange: true}).then(() => {
+      this.router.navigate(['/entity', this.entityType]);
+    });
   }
 
   /**
