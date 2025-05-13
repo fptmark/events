@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 import app.utils as utils
-from db import Database
+from app.db import Database
 
 from app.services.redis_provider import CookiesAuth as Auth
 
@@ -133,17 +133,6 @@ def get_entities_metadata():
         Url.get_metadata(),     
         Crawl.get_metadata(),     
     ]
-
-def deep_merge_dicts(dest, override):
-    for key, value in override.items():
-        if (
-            key in dest
-            and isinstance(dest[key], dict)
-            and isinstance(value, dict)
-        ):
-            deep_merge_dicts(dest[key], value)
-        else:
-            dest[key] = value
 
 if __name__ == '__main__':
     import uvicorn

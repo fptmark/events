@@ -1,41 +1,22 @@
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Self, ClassVar
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from beanie import PydanticObjectId
 from elasticsearch import NotFoundError
 import re
-from db import Database
+from app.db import Database
 import app.utils as helpers
 
-class UserBaseModel(BaseModel):
-    __index__ = "user"
-    __unique__ = [["username"], ["email"]]
-    __mappings__ = {   'accountId': {'type': 'keyword'},
-    'createdAt': {'format': 'strict_date_optional_time', 'type': 'date'},
-    'dob': {'format': 'strict_date_optional_time', 'type': 'date'},
-    'email': {   'fields': {   'keyword': {   'ignore_above': 256,
-                                              'type': 'keyword'}},
-                 'type': 'text'},
-    'firstName': {   'fields': {   'keyword': {   'ignore_above': 256,
-                                                  'type': 'keyword'}},
-                     'type': 'text'},
-    'gender': {   'fields': {   'keyword': {   'ignore_above': 256,
-                                               'type': 'keyword'}},
-                  'type': 'text'},
-    'isAccountOwner': {'type': 'boolean'},
-    'lastName': {   'fields': {   'keyword': {   'ignore_above': 256,
-                                                 'type': 'keyword'}},
-                    'type': 'text'},
-    'password': {   'fields': {   'keyword': {   'ignore_above': 256,
-                                                 'type': 'keyword'}},
-                    'type': 'text'},
-    'updatedAt': {'format': 'strict_date_optional_time', 'type': 'date'},
-    'username': {   'fields': {   'keyword': {   'ignore_above': 256,
-                                                 'type': 'keyword'}},
-                    'type': 'text'}}
+class UniqueValidationError(Exception):
+    def __init__(self, fields, query):
+        self.fields = fields
+        self.query = query
+    def __str__(self):
+        return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
-    model_config = ConfigDict(populate_by_name=True)
 
+class User(BaseModel):
+    id: Optional[str] = Field(default=None, alias="_id")
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$")
     password: str = Field(..., min_length=8)
@@ -44,38 +25,9 @@ class UserBaseModel(BaseModel):
     gender: Optional[str] = Field(None, description ="must be male or female")
     dob: Optional[datetime] = Field(None)
     isAccountOwner: bool = Field(...)
-    accountId: PydanticObjectId = Field(...)
-
+    accountId: str = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-    @property
-    def _id(self) -> Optional[str]:
-        return self.id
-    @_id.setter
-    def _id(self, value: Optional[str]) -> None:
-        self.id = value
-    async def save(self):
-        # get the Elasticsearch client
-        es = Database.get_es_client()
-        if not es:
-            raise RuntimeError("Elasticsearch client not initialized — did you forget to call Database.init()?")
-     
-        # save any autoupdate fields
-        self.updatedAt = datetime.now(timezone.utc)
-        # serialize & index
-        body = self.model_dump(by_alias=True, exclude={"id"})
-        resp = await es.index(
-            index=self.__index__,
-            id=self.id,
-            document=body,
-            refresh="wait_for",
-        )
-        self.id = resp["_id"]
-        return self
-
-class User(UserBaseModel):
-    id: Optional[str] = Field(default=None, alias="_id")
  
     __ui_metadata__: ClassVar[Dict[str, Any]] = {   'entity': 'User',
     'fields': {   'accountId': {   'required': True,
@@ -133,37 +85,60 @@ class User(UserBaseModel):
               'description': 'Manage User Profile',
               'title': 'Users'}}
 
+    class Settings:
+        name = "user"
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
         return helpers.get_metadata(cls.__ui_metadata__)
  
     @classmethod
-    def _from_es_hit(cls, hit: dict) -> "User":
-        data = hit["_source"]
-        data["id"] = hit["_id"]
-        return cls(**data)
+    async def find_all(cls) -> Sequence[Self]:
+        return await Database.find_all("user", cls)
 
+    # Method to imitate Beanie's find() method
     @classmethod
-    async def get(cls, item_id: str):
-        es = Database.get_es_client()
-        if not es:
-            raise RuntimeError("Elasticsearch client not initialized — did you forget to call Database.init()?")
-        try:
-            result = await es.get(index=cls.__index__, id=item_id)
-            return cls._from_es_hit(result.body)
-        except Exception:
-            return None
+    def find(cls):
+        # This is a simple adapter to keep the API compatible
+        # It provides a to_list() method that calls find_all()
+        class FindAdapter:
+            @staticmethod
+            async def to_list():
+                return await cls.find_all()
 
+        return FindAdapter()
+
+    # Replaces Beanie's get - uses common Database function
     @classmethod
-    async def find_all(cls) -> List[Self]:
-        es = Database.get_es_client()
-        if not es:
-            raise RuntimeError("Elasticsearch client not initialized — did you forget to call Database.init()?")
-        try:
-            result = await es.search(index=cls.__index__, query={"match_all": {}}, size=1000)
-            return [cls._from_es_hit(hit) for hit in result["hits"]["hits"]] #type: ignore[return-value]
-        except NotFoundError:
-            return []  # Return empty list if index doesn't exist
+    async def get(cls, id) -> Optional[Self]:
+        return await Database.get_by_id("user", str(id), cls)
+
+    # Replaces Beanie's save - uses common Database function
+    async def save(self, *args, **kwargs):
+        # Update timestamp
+        self.updatedAt = datetime.now(timezone.utc)
+
+        # Convert model to dict
+        data = self.model_dump(exclude={"id"})
+
+        # Save document using common function
+        result = await Database.save_document("user", self.id, data)
+
+        # Update ID if this was a new document
+        if not self.id and result and isinstance(result, dict) and result.get("_id"):
+            self.id = result["_id"]
+
+        return self
+
+    # Replaces Beanie's delete - uses common Database function
+    async def delete(self):
+        if self.id:
+            return await Database.delete_document("user", self.id)
+        return False
 
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict, Any
@@ -178,7 +153,7 @@ class UserCreate(BaseModel):
     gender: Optional[str] = Field(None, description ="must be male or female")
     dob: Optional[datetime] = Field(None)
     isAccountOwner: bool = Field(...)
-    accountId: PydanticObjectId = Field(...)
+    accountId: str = Field(...)
 
     @field_validator('username', mode='before')
     def validate_username(cls, v):
@@ -256,7 +231,7 @@ class UserUpdate(BaseModel):
     gender: Optional[str] = Field(None, description ="must be male or female")
     dob: Optional[datetime] = Field(None)
     isAccountOwner: bool = Field(...)
-    accountId: PydanticObjectId = Field(...)
+    accountId: str = Field(...)
 
     @field_validator('username', mode='before')
     def validate_username(cls, v):
@@ -335,7 +310,7 @@ class UserRead(BaseModel):
     gender: Optional[str] = Field(None, description ="must be male or female")
     dob: Optional[datetime] = Field(None)
     isAccountOwner: bool = Field(...)
-    accountId: PydanticObjectId = Field(...)
+    accountId: str = Field(...)
 
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

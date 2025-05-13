@@ -152,7 +152,7 @@ _entities:
         required: true
         max_length: 100
       preferences:
-        type: JSON
+        type: String
         required: false
         ui:
           displayPages: details

@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response
 from typing import List, Dict, Any
 from app.models.crawl_model import Crawl, CrawlCreate, CrawlRead
-from beanie import PydanticObjectId
 import logging
 import json
 
@@ -15,7 +14,7 @@ async def create_crawl(item: CrawlCreate):
     doc = Crawl(**item.dict(exclude_unset=True))
     try:
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"Crawl created successfully with _id: {doc._id}")
+        logging.info(f"Crawl created successfully with _id: {doc.id}")
     except Exception as e:
         msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create crawl.")
@@ -42,7 +41,7 @@ async def get_all_crawls():
 async def get_crawl(item_id: str):
     logging.info(f"Received request to fetch crawl with _id: {item_id}")
     try:
-        doc = await Crawl.get(PydanticObjectId(item_id))
+        doc = await Crawl.get(item_id)
         if not doc:
             logging.warning(f"Crawl with _id {item_id} not found.")
             raise HTTPException(status_code=404, detail='Crawl not found')
@@ -61,7 +60,7 @@ async def get_crawl(item_id: str):
 async def update_crawl(item_id: str, item: CrawlCreate):
     logging.info(f"Received request to update crawl with _id: {item_id}")
     try:
-        doc = await Crawl.get(PydanticObjectId(item_id))
+        doc = await Crawl.get(item_id)
         if not doc:
             logging.warning(f"Crawl with _id {item_id} not found for update.")
             raise HTTPException(status_code=404, detail='Crawl not found')
@@ -88,7 +87,7 @@ async def update_crawl(item_id: str, item: CrawlCreate):
 async def delete_crawl(item_id: str):
     logging.info(f"Received request to delete crawl with _id: {item_id}")
     try:
-        doc = await Crawl.get(PydanticObjectId(item_id))
+        doc = await Crawl.get(item_id)
         if not doc:
             logging.warning(f"Crawl with _id {item_id} not found for deletion.")
             raise HTTPException(status_code=404, detail='Crawl not found')

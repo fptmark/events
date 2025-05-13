@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response
 from typing import List, Dict, Any
 from app.models.event_model import Event, EventCreate, EventRead
-from beanie import PydanticObjectId
 import logging
 import json
 
@@ -15,7 +14,7 @@ async def create_event(item: EventCreate):
     doc = Event(**item.dict(exclude_unset=True))
     try:
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"Event created successfully with _id: {doc._id}")
+        logging.info(f"Event created successfully with _id: {doc.id}")
     except Exception as e:
         msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create event.")
@@ -42,7 +41,7 @@ async def get_all_events():
 async def get_event(item_id: str):
     logging.info(f"Received request to fetch event with _id: {item_id}")
     try:
-        doc = await Event.get(PydanticObjectId(item_id))
+        doc = await Event.get(item_id)
         if not doc:
             logging.warning(f"Event with _id {item_id} not found.")
             raise HTTPException(status_code=404, detail='Event not found')
@@ -61,7 +60,7 @@ async def get_event(item_id: str):
 async def update_event(item_id: str, item: EventCreate):
     logging.info(f"Received request to update event with _id: {item_id}")
     try:
-        doc = await Event.get(PydanticObjectId(item_id))
+        doc = await Event.get(item_id)
         if not doc:
             logging.warning(f"Event with _id {item_id} not found for update.")
             raise HTTPException(status_code=404, detail='Event not found')
@@ -88,7 +87,7 @@ async def update_event(item_id: str, item: EventCreate):
 async def delete_event(item_id: str):
     logging.info(f"Received request to delete event with _id: {item_id}")
     try:
-        doc = await Event.get(PydanticObjectId(item_id))
+        doc = await Event.get(item_id)
         if not doc:
             logging.warning(f"Event with _id {item_id} not found for deletion.")
             raise HTTPException(status_code=404, detail='Event not found')

@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response
 from typing import List, Dict, Any
 from app.models.tagaffinity_model import TagAffinity, TagAffinityCreate, TagAffinityRead
-from beanie import PydanticObjectId
 import logging
 import json
 
@@ -15,7 +14,7 @@ async def create_tagaffinity(item: TagAffinityCreate):
     doc = TagAffinity(**item.dict(exclude_unset=True))
     try:
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"TagAffinity created successfully with _id: {doc._id}")
+        logging.info(f"TagAffinity created successfully with _id: {doc.id}")
     except Exception as e:
         msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create tagaffinity.")
@@ -42,7 +41,7 @@ async def get_all_tagaffinitys():
 async def get_tagaffinity(item_id: str):
     logging.info(f"Received request to fetch tagaffinity with _id: {item_id}")
     try:
-        doc = await TagAffinity.get(PydanticObjectId(item_id))
+        doc = await TagAffinity.get(item_id)
         if not doc:
             logging.warning(f"TagAffinity with _id {item_id} not found.")
             raise HTTPException(status_code=404, detail='TagAffinity not found')
@@ -61,7 +60,7 @@ async def get_tagaffinity(item_id: str):
 async def update_tagaffinity(item_id: str, item: TagAffinityCreate):
     logging.info(f"Received request to update tagaffinity with _id: {item_id}")
     try:
-        doc = await TagAffinity.get(PydanticObjectId(item_id))
+        doc = await TagAffinity.get(item_id)
         if not doc:
             logging.warning(f"TagAffinity with _id {item_id} not found for update.")
             raise HTTPException(status_code=404, detail='TagAffinity not found')
@@ -88,7 +87,7 @@ async def update_tagaffinity(item_id: str, item: TagAffinityCreate):
 async def delete_tagaffinity(item_id: str):
     logging.info(f"Received request to delete tagaffinity with _id: {item_id}")
     try:
-        doc = await TagAffinity.get(PydanticObjectId(item_id))
+        doc = await TagAffinity.get(item_id)
         if not doc:
             logging.warning(f"TagAffinity with _id {item_id} not found for deletion.")
             raise HTTPException(status_code=404, detail='TagAffinity not found')

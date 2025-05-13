@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response
 from typing import List, Dict, Any
 from app.models.account_model import Account, AccountCreate, AccountRead
-from beanie import PydanticObjectId
 import logging
 import json
 
@@ -15,7 +14,7 @@ async def create_account(item: AccountCreate):
     doc = Account(**item.dict(exclude_unset=True))
     try:
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"Account created successfully with _id: {doc._id}")
+        logging.info(f"Account created successfully with _id: {doc.id}")
     except Exception as e:
         msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create account.")
@@ -42,7 +41,7 @@ async def get_all_accounts():
 async def get_account(item_id: str):
     logging.info(f"Received request to fetch account with _id: {item_id}")
     try:
-        doc = await Account.get(PydanticObjectId(item_id))
+        doc = await Account.get(item_id)
         if not doc:
             logging.warning(f"Account with _id {item_id} not found.")
             raise HTTPException(status_code=404, detail='Account not found')
@@ -61,7 +60,7 @@ async def get_account(item_id: str):
 async def update_account(item_id: str, item: AccountCreate):
     logging.info(f"Received request to update account with _id: {item_id}")
     try:
-        doc = await Account.get(PydanticObjectId(item_id))
+        doc = await Account.get(item_id)
         if not doc:
             logging.warning(f"Account with _id {item_id} not found for update.")
             raise HTTPException(status_code=404, detail='Account not found')
@@ -88,7 +87,7 @@ async def update_account(item_id: str, item: AccountCreate):
 async def delete_account(item_id: str):
     logging.info(f"Received request to delete account with _id: {item_id}")
     try:
-        doc = await Account.get(PydanticObjectId(item_id))
+        doc = await Account.get(item_id)
         if not doc:
             logging.warning(f"Account with _id {item_id} not found for deletion.")
             raise HTTPException(status_code=404, detail='Account not found')

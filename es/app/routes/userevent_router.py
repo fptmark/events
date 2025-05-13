@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response
 from typing import List, Dict, Any
 from app.models.userevent_model import UserEvent, UserEventCreate, UserEventRead
-from beanie import PydanticObjectId
 import logging
 import json
 
@@ -15,7 +14,7 @@ async def create_userevent(item: UserEventCreate):
     doc = UserEvent(**item.dict(exclude_unset=True))
     try:
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"UserEvent created successfully with _id: {doc._id}")
+        logging.info(f"UserEvent created successfully with _id: {doc.id}")
     except Exception as e:
         msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create userevent.")
@@ -42,7 +41,7 @@ async def get_all_userevents():
 async def get_userevent(item_id: str):
     logging.info(f"Received request to fetch userevent with _id: {item_id}")
     try:
-        doc = await UserEvent.get(PydanticObjectId(item_id))
+        doc = await UserEvent.get(item_id)
         if not doc:
             logging.warning(f"UserEvent with _id {item_id} not found.")
             raise HTTPException(status_code=404, detail='UserEvent not found')
@@ -61,7 +60,7 @@ async def get_userevent(item_id: str):
 async def update_userevent(item_id: str, item: UserEventCreate):
     logging.info(f"Received request to update userevent with _id: {item_id}")
     try:
-        doc = await UserEvent.get(PydanticObjectId(item_id))
+        doc = await UserEvent.get(item_id)
         if not doc:
             logging.warning(f"UserEvent with _id {item_id} not found for update.")
             raise HTTPException(status_code=404, detail='UserEvent not found')
@@ -88,7 +87,7 @@ async def update_userevent(item_id: str, item: UserEventCreate):
 async def delete_userevent(item_id: str):
     logging.info(f"Received request to delete userevent with _id: {item_id}")
     try:
-        doc = await UserEvent.get(PydanticObjectId(item_id))
+        doc = await UserEvent.get(item_id)
         if not doc:
             logging.warning(f"UserEvent with _id {item_id} not found for deletion.")
             raise HTTPException(status_code=404, detail='UserEvent not found')

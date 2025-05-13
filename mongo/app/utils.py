@@ -68,6 +68,7 @@ def get_metadata(metadata) -> Dict[str, Any]:
     entity_cfg = overrides.get(name)
     if entity_cfg:
         deep_merge_dicts(metadata, entity_cfg)
+    print(metadata)
     return metadata
 
 

@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response
 from typing import List, Dict, Any
 from app.models.url_model import Url, UrlCreate, UrlRead
-from beanie import PydanticObjectId
 import logging
 import json
 
@@ -15,7 +14,7 @@ async def create_url(item: UrlCreate):
     doc = Url(**item.dict(exclude_unset=True))
     try:
         await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"Url created successfully with _id: {doc._id}")
+        logging.info(f"Url created successfully with _id: {doc.id}")
     except Exception as e:
         msg = str(e).replace('\n', ' ')
         logging.exception("Failed to create url.")
@@ -42,7 +41,7 @@ async def get_all_urls():
 async def get_url(item_id: str):
     logging.info(f"Received request to fetch url with _id: {item_id}")
     try:
-        doc = await Url.get(PydanticObjectId(item_id))
+        doc = await Url.get(item_id)
         if not doc:
             logging.warning(f"Url with _id {item_id} not found.")
             raise HTTPException(status_code=404, detail='Url not found')
@@ -61,7 +60,7 @@ async def get_url(item_id: str):
 async def update_url(item_id: str, item: UrlCreate):
     logging.info(f"Received request to update url with _id: {item_id}")
     try:
-        doc = await Url.get(PydanticObjectId(item_id))
+        doc = await Url.get(item_id)
         if not doc:
             logging.warning(f"Url with _id {item_id} not found for update.")
             raise HTTPException(status_code=404, detail='Url not found')
@@ -88,7 +87,7 @@ async def update_url(item_id: str, item: UrlCreate):
 async def delete_url(item_id: str):
     logging.info(f"Received request to delete url with _id: {item_id}")
     try:
-        doc = await Url.get(PydanticObjectId(item_id))
+        doc = await Url.get(item_id)
         if not doc:
             logging.warning(f"Url with _id {item_id} not found for deletion.")
             raise HTTPException(status_code=404, detail='Url not found')
