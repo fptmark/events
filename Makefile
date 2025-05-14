@@ -58,7 +58,7 @@ indexes:
 	python $(GENERATOR_DIR)/update_indices.py schema.yaml
 
 run:	
-	PYTHONPATH=$(BACKEND) python $(BACKEND)/app/main.py $(BACKEND)
+	PYTHONPATH=$(BACKEND) python $(BACKEND)/app/main.py $(BACKEND)/config.json
 
 test: test.py
 	pytest -s test.py

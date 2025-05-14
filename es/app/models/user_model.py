@@ -2,7 +2,6 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Self, ClassVar
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from beanie import PydanticObjectId
 from elasticsearch import NotFoundError
 import re
 from app.db import Database
@@ -26,7 +25,7 @@ class User(BaseModel):
     gender: Optional[str] = Field(None, description ="must be male or female")
     dob: Optional[datetime] = Field(None)
     isAccountOwner: bool = Field(...)
-    accountId: PydanticObjectId = Field(...)
+    accountId: str = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
  
@@ -91,7 +90,6 @@ class User(BaseModel):
 
     model_config = ConfigDict(
         populate_by_name=True,
-        json_encoders={PydanticObjectId: str},
     )
 
     @classmethod
@@ -155,7 +153,7 @@ class UserCreate(BaseModel):
     gender: Optional[str] = Field(None, description ="must be male or female")
     dob: Optional[datetime] = Field(None)
     isAccountOwner: bool = Field(...)
-    accountId: PydanticObjectId = Field(...)
+    accountId: str = Field(...)
 
     @field_validator('username', mode='before')
     def validate_username(cls, v):
@@ -233,7 +231,7 @@ class UserUpdate(BaseModel):
     gender: Optional[str] = Field(None, description ="must be male or female")
     dob: Optional[datetime] = Field(None)
     isAccountOwner: bool = Field(...)
-    accountId: PydanticObjectId = Field(...)
+    accountId: str = Field(...)
 
     @field_validator('username', mode='before')
     def validate_username(cls, v):
@@ -312,9 +310,9 @@ class UserRead(BaseModel):
     gender: Optional[str] = Field(None, description ="must be male or female")
     dob: Optional[datetime] = Field(None)
     isAccountOwner: bool = Field(...)
-    accountId: PydanticObjectId = Field(...)
+    accountId: str = Field(...)
 
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True,  json_encoders={PydanticObjectId: str})
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)

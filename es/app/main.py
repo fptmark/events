@@ -34,7 +34,7 @@ from app.models.crawl_model import Crawl
 
 import logging
 LOG_FILE = "app.log"
-config = utils.load_system_config('config.json' if len(sys.argv) < 3 else sys.argv[2])
+config = utils.load_system_config('config.json' if len(sys.argv) < 2 else sys.argv[1])
 is_dev = config.get('environment', 'production') == 'development'
 my_log_level = config.get('log_level', 'info' if is_dev else 'warning').upper()
 
@@ -97,16 +97,19 @@ async def startup_event():
     logger.info('Startup event called')
     logger.info(f"Running in {'development' if config.get('environment', 'production') == 'development' else 'production'} mode")
 
-    backend = sys.argv[1] if len(sys.argv) > 1 else config.get('backend', 'mongo')
-    uri = config.get(backend + '_uri', '')
-    db = config.get('db_name', '')
-    logger.info(f"Connecting to {backend} at {uri} with db {db}")
-    await Database.init(uri, db)
-    logger.info(f"Connected to {backend}")
+    db_uri = config.get('db_uri', None)
+    db_name = config.get('db_name', None)
+    if db_uri and db_name:
+        logger.info(f"Connecting to datastore at {db_uri} with db {db_name}")
+        await Database.init(db_uri, db_name)
+        logger.info(f"Connected...")
+        # Initialize the auth service from the hard-coded import.  Need to init all services here
+        print(f'>>> Initializing service auth.cookies.redis')
+        await Auth.initialize(config['auth.cookies.redis'])
+    else:
+        logger.error("No db_uri or db_name provided in config.json. Exiting.")
+        sys.exit(1)
 
-    # Initialize the auth service from the hard-coded import.
-    print(f'>>> Initializing service auth.cookies.redis')
-    await Auth.initialize(config['auth.cookies.redis'])
 
 app.include_router(account_router, prefix='/api/account', tags=['Account'])
 app.include_router(user_router, prefix='/api/user', tags=['User'])
