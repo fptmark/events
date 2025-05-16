@@ -21,7 +21,7 @@ class Crawl(Document):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {   'entity': 'Crawl',
+    _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'Crawl',
     'fields': {   'createdAt': {   'autoGenerate': True,
                                    'type': 'ISODate',
                                    'ui': {   'displayAfterField': '-1',
@@ -33,7 +33,7 @@ class Crawl(Document):
                   'updatedAt': {   'autoUpdate': True,
                                    'type': 'ISODate',
                                    'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-2',
+                                             'displayAfterField': '-1',
                                              'readOnly': True}},
                   'urlId': {'required': True, 'type': 'ObjectId'}},
     'operations': 'rd',
@@ -46,7 +46,7 @@ class Crawl(Document):
 
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
-        return helpers.get_metadata(cls.__ui_metadata__)
+        return helpers.get_metadata(cls._metadata)
 
     @classmethod
     async def find_all(cls) -> Sequence[Self]:

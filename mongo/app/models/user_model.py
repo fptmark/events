@@ -26,7 +26,7 @@ class User(Document):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {   'entity': 'User',
+    _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'User',
     'fields': {   'accountId': {   'required': True,
                                    'selector': {   'fields': [   'createdAt',
                                                                  'expiredAt']},
@@ -71,7 +71,7 @@ class User(Document):
                   'updatedAt': {   'autoUpdate': True,
                                    'type': 'ISODate',
                                    'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-2',
+                                             'displayAfterField': '-1',
                                              'readOnly': True}},
                   'username': {   'max_length': 50,
                                   'min_length': 3,
@@ -87,7 +87,7 @@ class User(Document):
 
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
-        return helpers.get_metadata(cls.__ui_metadata__)
+        return helpers.get_metadata(cls._metadata)
 
     @classmethod
     async def find_all(cls) -> Sequence[Self]:

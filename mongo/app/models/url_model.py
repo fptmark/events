@@ -19,7 +19,7 @@ class Url(Document):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {   'entity': 'Url',
+    _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'Url',
     'fields': {   'createdAt': {   'autoGenerate': True,
                                    'type': 'ISODate',
                                    'ui': {   'displayAfterField': '-1',
@@ -28,7 +28,7 @@ class Url(Document):
                   'updatedAt': {   'autoUpdate': True,
                                    'type': 'ISODate',
                                    'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-2',
+                                             'displayAfterField': '-1',
                                              'readOnly': True}},
                   'url': {   'pattern': {   'message': 'Bad URL format',
                                             'regex': 'main.url'},
@@ -44,7 +44,7 @@ class Url(Document):
 
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
-        return helpers.get_metadata(cls.__ui_metadata__)
+        return helpers.get_metadata(cls._metadata)
 
     @classmethod
     async def find_all(cls) -> Sequence[Self]:

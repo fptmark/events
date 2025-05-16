@@ -23,7 +23,7 @@ class TagAffinity(BaseModel):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
  
-    __ui_metadata__: ClassVar[Dict[str, Any]] = {   'entity': 'TagAffinity',
+    _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'TagAffinity',
     'fields': {   'affinity': {   'ge': -100,
                                   'le': 100,
                                   'required': True,
@@ -37,7 +37,7 @@ class TagAffinity(BaseModel):
                   'updatedAt': {   'autoUpdate': True,
                                    'type': 'ISODate',
                                    'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-2',
+                                             'displayAfterField': '-1',
                                              'readOnly': True}}},
     'operations': '',
     'ui': {'buttonLabel': 'Manage Event Affinity', 'title': 'Tag Affinity'}}
@@ -51,7 +51,7 @@ class TagAffinity(BaseModel):
 
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
-        return helpers.get_metadata(cls.__ui_metadata__)
+        return helpers.get_metadata(cls._metadata)
  
     @classmethod
     async def find_all(cls) -> Sequence[Self]:
