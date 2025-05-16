@@ -71,7 +71,7 @@ export class FieldOrderService {
     }
 
     // 2c. Plain fields, alphabetically
-    ordered.push(...Array.from(unused).sort());
+    ordered.push(...Array.from(unused));
     unused.clear();         // nothing left to process
 
     // --- 3. Honour DFA chains ----------------------------------------------
