@@ -103,8 +103,28 @@ export class EntityService {
       return JSON.stringify(value);
     }
     
+    // Currency handling
+    if (metadata?.type === 'Currency' && typeof value === 'number') {
+      return this.formatCurrency(value);
+    }
+
     // Default string conversion
     return String(value);
+  }
+
+  /**
+   * Format currency value with $ sign, comma separators, and two decimal places
+   * @param value Numeric value to format
+   * @returns Formatted currency string
+   */
+  private formatCurrency(value: number): string {
+    // Use explicit options to ensure consistent formatting
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value);
   }
 
   formatDate(value: string, mode?: ViewMode): string {

@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import * as currencyLib from 'currency.js';
 import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { FieldMetadata, MetadataService } from './metadata.service';
 import { EntityService } from './entity.service';
@@ -110,14 +111,58 @@ export class FormGeneratorService {
       validators.push(Validators.max(max));
     }
 
-    // Special case handling for email fields
+    // Special case handling for specific field types
     const type = fieldMeta.type;
 
     if (pattern?.regex?.includes('@')) {
       validators.push(Validators.email);
     }
 
+    // Currency type validation
+    if (type === 'Currency') {
+      validators.push(this.currencyValidator);
+    }
+
     return validators;
+  }
+
+  private currencyValidator(control: AbstractControl): ValidationErrors | null {
+    const value = control.value;
+    
+    // Skip validation if empty and not required
+    if (!value && !control.hasValidator(Validators.required)) {
+      return null;
+    }
+    
+    // If value is already a number, it's valid
+    if (typeof value === 'number') {
+      return null;
+    }
+    
+    // Handle string input 
+    if (typeof value === 'string') {
+      try {
+        // currency.js will throw an error for invalid inputs
+        const parsed = currencyLib.default(value, { 
+          precision: 2,
+          symbol: '$',
+          decimal: '.',
+          separator: ',',
+          errorOnInvalid: true
+        });
+        
+        // Ensure value is not zero if required
+        if (control.hasValidator(Validators.required) && parsed.value === 0) {
+          return { 'required': true };
+        }
+      } catch {
+        return { 
+          'currencyFormat': 'Invalid currency format. Use $X,XXX.XX or (X,XXX.XX) for negative values.'
+        };
+      }
+    }
+    
+    return null;
   }
   
   /**

@@ -180,6 +180,10 @@
                           {{ getFieldDisplayName(fieldName) }} cannot exceed
                           {{ entityForm.get(fieldName)?.errors?.['max']?.max }}.
                         </div>
+                        <!-- Custom currency format error -->
+                        <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['currencyFormat']">
+                          {{ entityForm.get(fieldName)?.errors?.['currencyFormat'] }}
+                        </div>
                       </div>
 
                       <!-- Server-side validation errors displayed separately with a distinct style -->
