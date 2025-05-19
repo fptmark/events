@@ -184,10 +184,15 @@
                         <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['currencyFormat']">
                           {{ entityForm.get(fieldName)?.errors?.['currencyFormat'] }}
                         </div>
+                        <!-- Server-side validation error -->
+                        <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['server']">
+                          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                          {{ entityForm.get(fieldName)?.errors?.['server'] }}
+                        </div>
                       </div>
 
-                      <!-- Server-side validation errors displayed separately with a distinct style -->
-                      <div *ngIf="getFieldValidationError(fieldName)" class="text-danger mt-1 small">
+                      <!-- Fallback for server-side validation errors -->
+                      <div *ngIf="getFieldValidationError(fieldName) && !isFieldInvalid(fieldName)" class="text-danger mt-1 small">
                         <i class="bi bi-exclamation-triangle-fill me-1"></i>
                         {{ getFieldValidationError(fieldName) }}
                       </div>

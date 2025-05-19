@@ -22,7 +22,7 @@ export class EntityService {
     private navigationService: NavigationService
   ) {}
 
-   // view can be 'details', 'summary' and/or 'form' e.g. 'details|summary'
+   // view can be 'view', 'summary' and/or 'edit' e.g. 'view|summary'
    getViewFields(entityName: string, currentView: string): string[] {
     const metadata = this.metadataService.getEntityMetadata(entityName)
     const allFields = ['_id', ...Object.keys(metadata.fields)];
