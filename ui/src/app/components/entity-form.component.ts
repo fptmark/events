@@ -218,6 +218,16 @@ export class EntityFormComponent implements OnInit {
           processedData[fieldName] = Boolean(value);
           continue;
         }
+        
+        // Special handling for Currency fields
+        if (fieldMeta?.type === 'Currency') {
+          // If value is null/undefined/empty string and not required, don't include it
+          if ((value === null || value === undefined || value === '') && !fieldMeta.required) {
+            // Set to null explicitly to ensure server treats it as empty
+            processedData[fieldName] = null;
+            continue;
+          }
+        }
 
         // For other field types - normal validation
         // If field is not required, or has a value, or is auto-handled by server, include it
@@ -266,6 +276,11 @@ export class EntityFormComponent implements OnInit {
             if (control) {
               control.markAsTouched();
               control.markAsDirty();
+              
+              // Set custom error on the control to ensure it shows up in UI
+              const errors = control.errors ? { ...control.errors } : {};
+              errors['server'] = error.msg;
+              control.setErrors(errors);
             }
           }
         });
@@ -350,15 +365,20 @@ export class EntityFormComponent implements OnInit {
    */
   openLink(fieldName: string): void {
     try {
+      console.log(`openLink called for fieldName: ${fieldName}`);
+      
       // Check if field name follows the pattern <entity>Id
       if (!fieldName.endsWith('Id')) {
+        console.log(`Field ${fieldName} does not end with 'Id'`);
         return;
       }
       
       const entityType = fieldName.substring(0, fieldName.length - 2);
+      console.log(`Derived entity type: ${entityType}`);
       
       // In edit or create mode, show ID selector
       if (this.isEditMode() || this.isCreateMode()) {
+        console.log(`In edit/create mode, showing selector for ${entityType}`);
         this.showIdSelector(fieldName, entityType);
         return;
       }
@@ -366,9 +386,11 @@ export class EntityFormComponent implements OnInit {
       // In view mode, navigate to the entity
       const value = this.entityForm?.get(fieldName)?.value;
       if (!value) {
+        console.log(`No value for ${fieldName}`);
         return;
       }
       
+      console.log(`In view mode, navigating to ${entityType}/${value}`);
       this.entityService.viewEntity(entityType, value);
     } catch (error) {
       console.error('Error in openLink:', error);
