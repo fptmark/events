@@ -3,6 +3,8 @@ import { Component, OnInit } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { MetadataService } from './services/metadata.service'
 import { NavigationService } from './services/navigation.service';
+import { ConfigService } from './services/config.service';
+import { RestService } from './services/rest.service';
 
 @Component({
   selector: 'app-root',
@@ -23,7 +25,7 @@ import { NavigationService } from './services/navigation.service';
     <ng-container *ngIf="initialized">
       <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
-          <a class="navbar-brand" routerLink="/">Events Management</a>
+          <!-- <a class="navbar-brand" routerLink="/">Events Management</a> -->
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
             aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
@@ -33,11 +35,17 @@ import { NavigationService } from './services/navigation.service';
               <li class="nav-item">
                 <a class="nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">Dashboard</a>
               </li>
-              <li class="nav-item" *ngFor="let entity of metadataService.getRecent()">
+              <li class="nav-item">
+                <a class="nav-link" (click)="redirectToServerRoute('docs')" href="javascript:void(0)">OpenApi Docs</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" (click)="redirectToServerRoute('api/metadata')" href="javascript:void(0)">Metadata</a>
+              </li>
+              <!-- <li class="nav-item" *ngFor="let entity of metadataService.getRecent()">
                 <a class="nav-link" [routerLink]="['/entity', (entity | lowercase) ]" routerLinkActive="active">
                   {{ metadataService.getTitle(entity) }}
                 </a>
-              </li>
+              </li> -->
             </ul>
           </div>
         </div>
@@ -80,8 +88,14 @@ export class AppComponent implements OnInit {
 
   constructor(
     public metadataService: MetadataService,
-    public navigationService: NavigationService
+    public navigationService: NavigationService,
+    private configService: ConfigService,
+    private restService: RestService
   ) { }
+
+  redirectToServerRoute(route: string) {
+    window.open( `${this.configService.config.server_url}/${route}` )
+  }
 
   ngOnInit() {
     console.log('AppComponent: Initializing application');
