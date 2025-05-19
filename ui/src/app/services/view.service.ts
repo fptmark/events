@@ -48,7 +48,8 @@ export class ViewService {
     }
 
     existsInMode(displayPages: string | undefined, mode: string): boolean {
-        return this.existsInAllModes(displayPages) || displayPages?.includes(mode) || true
+        return !displayPages || this.existsInAllModes(displayPages) || displayPages.includes(mode);
+        // return this.existsInAllModes(displayPages) || displayPages?.includes(mode) || true
     }
 
     private existsInAllModes(displayPages: string | undefined): boolean {
