@@ -22,7 +22,15 @@ export class EntityService {
     private navigationService: NavigationService
   ) {}
 
-   // view can be 'view', 'summary' and/or 'edit' e.g. 'view|summary'
+   /**
+    * Get the fields that should be displayed for an entity in a specific view mode
+    * @param entityName The name of the entity
+    * @param currentView The current view mode (VIEW, EDIT, CREATE, SUMMARY)
+    * @returns An array of field names to display, ordered according to metadata
+    * 
+    * Important: Required fields are always included in EDIT and CREATE modes
+    * regardless of their displayPages setting
+    */
    getViewFields(entityName: string, currentView: string): string[] {
     const metadata = this.metadataService.getEntityMetadata(entityName)
     const allFields = ['_id', ...Object.keys(metadata.fields)];
@@ -32,6 +40,11 @@ export class EntityService {
       // Skip hidden fields
       if (fieldMetadata?.ui?.display === 'hidden') {
         return false
+      }
+      
+      // For edit and create modes, always include required fields regardless of displayPages
+      if ((currentView === EDIT || currentView === CREATE) && fieldMetadata?.required) {
+        return true;
       }
       
       // Use ViewService to determine if field is visible in current view/mode
