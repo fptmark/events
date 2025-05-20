@@ -10,12 +10,14 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../services/view.serv
 import { NavigationService } from '../services/navigation.service';
 import { ValidationError, ErrorResponse } from '../services/rest.service';
 import { EntitySelectorModalComponent, ColumnConfig } from './entity-selector-modal.component';
+import { NotificationService } from '../services/notification.service';
+import { NotificationComponent } from './notification.component';
 import currency from 'currency.js';
 
 @Component({
   selector: 'app-entity-form',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, EntitySelectorModalComponent],
+  imports: [CommonModule, ReactiveFormsModule, EntitySelectorModalComponent, NotificationComponent],
   providers: [RestService],
   templateUrl: './entity-form.component.html',
   styleUrls: ['./entity-form.component.css']
@@ -53,7 +55,8 @@ export class EntityFormComponent implements OnInit {
     public formGenerator: FormGeneratorService,
     public restService: RestService,
     public viewService: ViewService,
-    private navigationService: NavigationService
+    private navigationService: NavigationService,
+    private notificationService: NotificationService
   ) {}
   
   // Helper methods for template conditions - delegate to ViewService
@@ -145,6 +148,9 @@ export class EntityFormComponent implements OnInit {
     const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
     if (!fieldMeta) return false;
     
+    // Boolean fields should never show a required indicator since they always have a value
+    if (fieldMeta.type === 'Boolean') return false;
+    
     // Field required property is at the root level, not in the UI object
     return fieldMeta.required || false;
   }
@@ -188,6 +194,7 @@ export class EntityFormComponent implements OnInit {
     // Clear previous error messages
     this.error = '';
     this.validationErrors = [];
+    this.notificationService.clear();
     
     this.submitting = true;
     let formData = this.entityForm.value;
@@ -200,10 +207,8 @@ export class EntityFormComponent implements OnInit {
     if (this.entityForm.invalid) {
       this.submitting = false;
       
-      // If there's no general error set by processFormData, add a generic one
-      if (!this.error) {
-        this.error = 'Please fix the validation errors below before submitting.';
-      }
+      // Show validation error notification
+      this.notificationService.showError('Please fix the validation errors below before submitting.', undefined, this.entityType);
       return;
     }
     
@@ -232,7 +237,8 @@ export class EntityFormComponent implements OnInit {
         if (fieldMeta?.type === 'Boolean') {
           // For checkboxes, convert to strict boolean value
           // This handles cases where the value might be something other than a strict boolean
-          processedData[fieldName] = Boolean(value);
+          // Boolean fields should never be null or undefined, default to false if so
+          processedData[fieldName] = value === null || value === undefined ? false : Boolean(value);
           continue;
         }
         
@@ -263,8 +269,8 @@ export class EntityFormComponent implements OnInit {
               console.error('Currency parsing error:', e);
               control.setErrors({ 'currencyFormat': 'Invalid currency format. Use $X,XXX.XX or (X,XXX.XX) for negative values.' });
               
-              // Return false from onSubmit to prevent form submission
-              this.error = `Invalid currency format in ${this.getFieldDisplayName(fieldName)}`;
+              // Show error notification
+              this.notificationService.showError(`Invalid currency format in ${this.getFieldDisplayName(fieldName)}`, undefined, this.entityType);
               
               // Set this flag to make the error visible
               control.markAsTouched();
@@ -308,9 +314,8 @@ export class EntityFormComponent implements OnInit {
         // Store the validation errors directly using our ValidationError interface
         this.validationErrors = errorDetail as ValidationError[];
 
-        // For validation errors, don't set the general error message
-        // We'll show a simple alert and highlight fields instead
-        this.error = '';
+        // Show validation errors in the notification system
+        this.notificationService.showError('Please correct the highlighted fields below.', this.validationErrors, this.entityType);
 
         // Mark relevant form fields as invalid
         this.validationErrors.forEach(error => {
@@ -333,14 +338,15 @@ export class EntityFormComponent implements OnInit {
         });
       } else if (typeof errorDetail === 'string') {
         // Handle string error message
-        this.error = errorDetail;
+        this.notificationService.showError(errorDetail);
       }
     } else {
       // For all other errors, show the full error details
-      // This includes server errors, network errors, etc.
-      this.error = err.status ?
+      const errorMessage = err.status ?
         `Error ${err.status}: ${err.statusText}\n${err.error?.detail || err.message || JSON.stringify(err.error)}` :
         `Error: ${err.message || JSON.stringify(err)}`;
+      
+      this.notificationService.showError(errorMessage);
     }
   }
   
@@ -359,6 +365,11 @@ export class EntityFormComponent implements OnInit {
    */
   private handleApiSuccess(): void {
     this.submitting = false;
+    
+    // Show success notification
+    const operation = this.isCreateMode() ? 'created' : 'updated';
+    this.notificationService.showSuccess(`${this.entityType} was successfully ${operation}.`, true);
+    
     // Navigate back to the entity list with skipLocationChange to force reload
     this.router.navigateByUrl('/', {skipLocationChange: true}).then(() => {
       this.router.navigate(['/entity', this.entityType]);

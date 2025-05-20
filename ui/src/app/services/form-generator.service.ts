@@ -81,6 +81,7 @@ export class FormGeneratorService {
 
     // Required is at the root level according to sample payload
     // Never add required validator for Boolean fields regardless of required flag
+    // This is because Booleans always have a value (true/false)
     if (fieldMeta.required && fieldMeta.type !== 'Boolean') {
       validators.push(Validators.required);
     }
@@ -166,8 +167,13 @@ export class FormGeneratorService {
       return {fieldType: 'ObjectId', enabled: true}; // clickable in all modes
     }
 
-    // For view mode, always use text inputs to avoid browser-specific rendering issues
+    // For view mode, use appropriate read-only controls
     if (this.viewService.inViewMode(mode)) {
+      // Special case for Boolean fields - use checkbox even in view mode
+      if (fieldMeta.type === 'Boolean') {
+        return { fieldType: 'checkbox', enabled: false };
+      }
+      // For other fields, use text inputs in view mode
       return { fieldType: 'text', enabled: false };
     } else {    // Create and edit modes
     
