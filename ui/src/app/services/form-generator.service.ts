@@ -133,43 +133,17 @@ export class FormGeneratorService {
     if ((value === null || value === undefined || value === '' || 
          (typeof value === 'string' && value.trim() === '')) && 
         !control.hasValidator(Validators.required)) {
-      // Set to null for optional empty fields
-      control.setValue(null, { emitEvent: false });
       return null;
     }
     
-    // If value is already a number, it's valid
-    if (typeof value === 'number') {
-      return null;
+    // Required validation only - anything non-empty passes
+    if (control.hasValidator(Validators.required) && 
+        (value === null || value === undefined || value === '' || 
+         (typeof value === 'string' && value.trim() === ''))) {
+      return { 'required': true };
     }
     
-    // Handle string input 
-    if (typeof value === 'string') {
-      try {
-        // Use currency.js to handle all the parsing
-        const parsed = currencyLib.default(value, { 
-          precision: 2,
-          symbol: '$',
-          decimal: '.',
-          separator: ',',
-          errorOnInvalid: false // More lenient parsing
-        });
-        
-        // Ensure value is not zero if required
-        if (control.hasValidator(Validators.required) && parsed.value === 0) {
-          return { 'required': true };
-        }
-        
-        // Set the control value to the numeric value for server
-        control.setValue(parsed.value, { emitEvent: false });
-      } catch (e) {
-        console.error('Currency parsing error:', e);
-        return { 
-          'currencyFormat': 'Invalid currency format. Use $X,XXX.XX or (X,XXX.XX) for negative values.'
-        };
-      }
-    }
-    
+    // No real-time validation - allow any input
     return null;
   }
   

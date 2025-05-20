@@ -10,6 +10,7 @@ import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../services/view.serv
 import { NavigationService } from '../services/navigation.service';
 import { ValidationError, ErrorResponse } from '../services/rest.service';
 import { EntitySelectorModalComponent, ColumnConfig } from './entity-selector-modal.component';
+import currency from 'currency.js';
 
 @Component({
   selector: 'app-entity-form',
@@ -176,7 +177,7 @@ export class EntityFormComponent implements OnInit {
   }
 
   onSubmit(): void {
-    if (!this.entityForm || this.entityForm.invalid) return;
+    if (!this.entityForm) return;
     
     // For view mode, go to edit instead of submitting
     if (this.isViewMode()) {
@@ -184,11 +185,27 @@ export class EntityFormComponent implements OnInit {
       return;
     }
     
+    // Clear previous error messages
+    this.error = '';
+    this.validationErrors = [];
+    
     this.submitting = true;
     let formData = this.entityForm.value;
     
     // Process the form data before sending it to the API
+    // This also validates currency fields
     formData = this.processFormData(formData);
+    
+    // After processing, check if any fields were marked invalid
+    if (this.entityForm.invalid) {
+      this.submitting = false;
+      
+      // If there's no general error set by processFormData, add a generic one
+      if (!this.error) {
+        this.error = 'Please fix the validation errors below before submitting.';
+      }
+      return;
+    }
     
     if (this.isEditMode()) {
       this.updateEntity(formData);
@@ -222,10 +239,40 @@ export class EntityFormComponent implements OnInit {
         // Special handling for Currency fields
         if (fieldMeta?.type === 'Currency') {
           // If value is null/undefined/empty string and not required, don't include it
-          if ((value === null || value === undefined || value === '') && !fieldMeta.required) {
-            // Set to null explicitly to ensure server treats it as empty
+          const isEmpty = value == null || (typeof value === 'string' && value.trim() === '');
+          if (isEmpty && !fieldMeta.required) {
             processedData[fieldName] = null;
             continue;
+          }
+          
+          // Parse currency value at submission time
+          if (typeof value === 'string' && value.trim() !== '') {
+            try {
+              const parsed = currency(value, {
+                precision: 2, 
+                symbol: '$',
+                decimal: '.',
+                separator: ',',
+                errorOnInvalid: true
+              });
+              
+              processedData[fieldName] = parsed.value;
+              processedData[fieldName] = parsed.value;
+            } catch (e) {
+              // If parsing fails, mark the field as invalid
+              console.error('Currency parsing error:', e);
+              control.setErrors({ 'currencyFormat': 'Invalid currency format. Use $X,XXX.XX or (X,XXX.XX) for negative values.' });
+              
+              // Return false from onSubmit to prevent form submission
+              this.error = `Invalid currency format in ${this.getFieldDisplayName(fieldName)}`;
+              
+              // Set this flag to make the error visible
+              control.markAsTouched();
+              control.markAsDirty();
+              
+              // Skip this field in processed data
+              continue;
+            }
           }
         }
 
