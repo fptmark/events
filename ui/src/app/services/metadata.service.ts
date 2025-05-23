@@ -203,11 +203,13 @@ export class MetadataService {
    * @returns The show configuration or null if not found
    */
   getShowConfig(entityType: string, fieldName: string, view: string): ShowConfig | null {
+    // console.log('getShowConfig called with:', { entityType, fieldName, view });
+    
     const fieldMetadata = this.getFieldMetadata(entityType, fieldName);
     
     if (!fieldMetadata?.ui?.show) return null;
 
-    const raw = fieldMetadata.ui?.show;
+    const raw = fieldMetadata.ui.show;
     
     // Find the first displayInfo that matches the view
     const matchingDisplayInfo = raw.displayInfo.find(info => {
@@ -223,9 +225,11 @@ export class MetadataService {
       return null;
     }
 
-    return {
+    const result = {
       endpoint: raw.endpoint,
       displayInfo: matchingDisplayInfo
     };
+    // console.log('returning show config:', result);
+    return result;
   }
 }

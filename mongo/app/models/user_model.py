@@ -71,7 +71,7 @@ class User(Document):
                                              'show': {   'endpoint': 'account',
                                                          'displayInfo': [   {   'displayPages': 'summary',
                                                                                 'fields': [   'createdAt']},
-                                                                            {   'displayPages': 'edit',
+                                                                            {   'displayPages': 'edit|create',
                                                                                 'fields': [   'createdAt',
                                                                                               'expiredAt']}]}},
                                    'required': True},

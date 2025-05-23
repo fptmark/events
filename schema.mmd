@@ -26,13 +26,15 @@ erDiagram
         String gender            %% @validate { required: false, enum: { values: ["male", "female", "other"], message: "must be male or female" } }
         ISODate dob              %% @validate { required: false }
         Boolean isAccountOwner   %% @validate { required: true }, @ui { displayName: "Owner"}
+        Currency netWorth        %% @validate { ge: 0, le:10000000 }
+        ObjectId accountId       
     
         %% @ui { title: "Users", buttonLabel: "Manage Users", description: "Manage User Profile" }
     	%% @service auth.cookies.redis 
     	%% @include BaseEntity  
         %% @ui createdAt { displayPages: "summary" } 
+        %% @ui accountId { displayName: "Account", show: { endpoint: "account", displayInfo: [ {displayPages: "summary", fields:  ["createdAt"] }, { displayPages: "edit|create", fields: ["createdAt", "expiredAt" ]} ]} }
         %% @operations ["read", "create", "update"]
-	%% @selector { "Account":  { "fields": ["createdAt", "expiredAt" ]} }
     }
 
 
@@ -40,11 +42,11 @@ erDiagram
         String name          %% @validate { required: true, max_length: 100 }
         String preferences   %% @validate { required: false } @ui { displayPages: "details"}
         Integer radiusMiles  %% @validate { required: false, ge: 0 }
+        ObjectId userId     %% @ui {show: { "displayInfo": [ { "displayPages": "summary", "fields": ["email"] }, { "displayPages": "details|edit", "fields": ["email", "username" ]} ]} }
     
         %% @ui { title: "Profile", buttonLabel: "Manage User Profiles", description: "Manage User Preferences" }
     	%% @include BaseEntity
     	%% @unique name + userId
-	%% @selector { "User":  { "fields": ["email", "username" ]} }
     }
 
 
