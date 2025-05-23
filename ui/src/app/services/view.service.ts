@@ -1,4 +1,5 @@
 import { Injectable } from "@angular/core";
+import { MetadataService } from "./metadata.service"
 
 export const SUMMARY = 'summary';
 export const VIEW = 'view';
@@ -12,8 +13,7 @@ export type ViewMode = 'summary' | 'view' | 'create' | 'edit';
 
 export class ViewService {
 
-
-    constructor(){}
+    constructor(private metadataService: MetadataService){}
 
     inSummaryMode(mode: ViewMode): boolean {
         return mode === SUMMARY;
@@ -56,4 +56,23 @@ export class ViewService {
         return displayPages === 'all' || displayPages === '' || displayPages === undefined; 
     }
 
+    /**
+     * Gets the fields to be displayed for a foreign key field in a specific mode
+     * @param entityType The entity type containing the field
+     * @param fieldName The field name (typically ending with Id)
+     * @param mode The mode (summary, view, edit, create)
+     * @returns An array of field names to be displayed, or null if no configuration is found
+     */
+    getShowFields(entityType: string, fieldName: string, mode: string): string[] | null {
+        // Get the show configuration from metadata service (already matched to mode)
+        const showConfig = this.metadataService.getShowConfig(entityType, fieldName, mode);
+        
+        if (!showConfig) {
+            // No show config is fine - default behavior will apply
+            return null;
+        }
+        
+        // Return the fields to display - metadata service has already matched the mode
+        return showConfig.displayInfo.fields;
+    }
 }

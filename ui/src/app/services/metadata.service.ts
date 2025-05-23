@@ -18,8 +18,18 @@ export interface EntityMetadata {
   }
 }
   
-export interface SelectorConfig {
-  fields?: string[]
+interface DisplayInfo {
+  displayPages: string
+  fields: string[]
+}
+interface RawShowConfig {
+  endpoint: string
+  displayInfo: DisplayInfo[]
+}
+
+export interface ShowConfig {
+  endpoint: string
+  displayInfo: DisplayInfo
 }
 
 export interface FieldMetadata {
@@ -41,7 +51,7 @@ export interface FieldMetadata {
     regex?: string
     message?: string
   }
-  selector?: SelectorConfig
+  show?: RawShowConfig
   ui?: UiFieldMetata 
 }
 
@@ -186,18 +196,40 @@ export class MetadataService {
   }
   
   /**
-   * Gets the selector configuration for a specific field
+   * Gets the raw show configuration for a specific field
    * @param entityType The entity type
    * @param fieldName The field name
-   * @returns An array of field names to be displayed in the selector, or null if no selector is configured
+   * @param view The view mode to check
+   * @returns The show configuration or null if not found
    */
-  getSelectorFields(entityType: string, fieldName: string): string[] | null {
+  getShowConfig(entityType: string, fieldName: string, view: string): ShowConfig | null {
+    // console.log('getShowConfig called with:', { entityType, fieldName, view });
+    
     const fieldMetadata = this.getFieldMetadata(entityType, fieldName);
     
-    if (!fieldMetadata || !fieldMetadata.selector || !fieldMetadata.selector.fields) {
+    if (!fieldMetadata?.show) return null;
+
+    const raw = fieldMetadata.show;
+    
+    // Find the first displayInfo that matches the view
+    const matchingDisplayInfo = raw.displayInfo.find(info => {
+      // If displayPages is empty or 'all', it matches all views
+      if (!info.displayPages || info.displayPages === '' || info.displayPages === 'all') {
+        return true;
+      }
+      // Otherwise check if the view is in the displayPages string
+      return info.displayPages.includes(view);
+    });
+    
+    if (!matchingDisplayInfo) {
       return null;
     }
-    
-    return fieldMetadata.selector.fields;
+
+    const result = {
+      endpoint: raw.endpoint,
+      displayInfo: matchingDisplayInfo
+    };
+    // console.log('returning show config:', result);
+    return result;
   }
 }

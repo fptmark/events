@@ -177,6 +177,10 @@ export class EntityFormComponent implements OnInit {
       const control = this.entityForm.get(fieldName);
       if (!control) continue;
       
+      // Get field metadata
+      // const metadata = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+      
+      // Format and display the value
       const value = this.entityService.formatFieldValue(this.entityType, fieldName, this.mode, entityData?.[fieldName]);
       control.setValue(value);
     }
@@ -461,41 +465,34 @@ export class EntityFormComponent implements OnInit {
    * @param entityType Entity type derived from field name (e.g., "account")
    */
   showIdSelector(fieldName: string, entityType: string): void {
-    // Show loading indicator
-    this.error = '';
-    this.submitting = true;
+    // Get the show configuration for this field
+    const showConfig = this.metadataService.getShowConfig(this.entityType, fieldName, this.mode);
     
-    // Store the field name for later use when an entity is selected
-    this.currentFieldName = fieldName;
-    
-    // Get selector fields from metadata service
-    // The selector configuration is in the PARENT entity's metadata (this.entityType),
-    // not in the target entity type (entityType)
-    const selectorFields = this.metadataService.getSelectorFields(this.entityType, fieldName);
-    
-    // Always start with _id as the first column with bold formatting
+    // Set up columns for the selector
     this.entitySelectorColumns = [{ field: '_id', bold: true, displayName: "Id" }];
     
-    // Add additional fields from selector config if available
-    if (selectorFields && selectorFields.length > 0) {
-      selectorFields.forEach(field => {
-        this.entitySelectorColumns.push({ field });
+    // Add columns from show config if available
+    if (showConfig) {
+      showConfig.displayInfo.fields.forEach(field => {
+        this.entitySelectorColumns.push({ 
+          field,
+          displayName: this.entityService.getFieldDisplayName(entityType, field)
+        });
       });
     }
     
-    // Fetch entities of this type
+    // Fetch entities for the selector
     this.restService.getEntityList(entityType).subscribe({
-      next: (entities) => {
-        this.submitting = false;
+      next: (entities: any[]) => {
         // Show the entity selector modal
+        this.currentFieldName = fieldName;
         this.entitySelectorType = entityType;
         this.entitySelectorEntities = entities;
         this.showEntitySelector = true;
       },
-      error: (err) => {
-        console.error(`Error loading ${entityType} entities:`, err);
-        this.submitting = false;
-        this.error = `Failed to load ${entityType} options.`;
+      error: (err: Error) => {
+        console.error('Error fetching entities for selector:', err);
+        this.notificationService.showError('Failed to load entities for selection');
       }
     });
   }
@@ -504,17 +501,16 @@ export class EntityFormComponent implements OnInit {
    * Handle entity selection from the modal
    */
   onEntitySelected(entity: any): void {
-    if (!this.entityForm) return;
+    if (!entity || !this.currentFieldName) return;
     
-    // Set the selected ID in the form field
-    const control = this.entityForm.get(this.currentFieldName);
+    // Get the form control
+    const control = this.entityForm?.get(this.currentFieldName);
+    if (!control) return;
     
-    if (control) {
-      control.setValue(entity._id);
-      control.markAsDirty();
-    }
+    // Always set the ID value
+    control.setValue(entity._id);
     
-    // Close the modal
+    // Close the selector
     this.showEntitySelector = false;
   }
   

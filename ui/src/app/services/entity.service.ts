@@ -2,7 +2,6 @@ import { Injectable } from '@angular/core';
 import { MetadataService, FieldMetadata } from './metadata.service';
 import { ViewService, ViewMode, VIEW, EDIT, CREATE } from './view.service';
 import { FieldOrderService } from './field-order.service';
-import { NavigationService } from './navigation.service';
 import { Router } from '@angular/router';
 
 export interface EntityResponse<> {
@@ -19,7 +18,6 @@ export class EntityService {
     private metadataService: MetadataService,
     private router: Router,
     private viewService: ViewService,
-    private navigationService: NavigationService
   ) {}
 
    /**
@@ -74,11 +72,18 @@ export class EntityService {
     let format = metadata?.ui?.format 
 
     // format Foreign keys and date for non-create modes
-    if (this.viewService.inSummaryMode(mode) && metadata?.type === 'ObjectId') {
-      let entity = fieldName.substring(0, fieldName.length - 2) // Remove 'Id' suffix
-      let link = `entity/${entity}/${value}`
-      return `<a href=${link}>View</a>`
-    }
+    if (metadata?.type === 'ObjectId') {
+        let entity = fieldName.substring(0, fieldName.length - 2) // Remove 'Id' suffix
+        let link = `entity/${entity}/${value}`
+        if (this.viewService.inSummaryMode(mode)) {
+          return `<a href=${link}>View</a>`
+        } else if (this.viewService.inViewMode(mode)) {
+          return `<a href=${link}>${value}</a>`
+        } else if (this.viewService.inEditMode(mode)) {
+          return `<a href=${link}>${value}</a>`
+        }
+        console.error(`Invalid mode for foreign key field: ${mode}`);
+      }
 
     // Date field handling
     if (type === 'ISODate') {
