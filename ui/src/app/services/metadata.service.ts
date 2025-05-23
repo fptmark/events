@@ -51,7 +51,6 @@ export interface FieldMetadata {
     regex?: string
     message?: string
   }
-  show?: RawShowConfig
   ui?: UiFieldMetata 
 }
 
@@ -63,6 +62,7 @@ export interface UiFieldMetata {
   readOnly?: boolean
   format?: string
   display?: string    // 'hidden', 'secret'
+  show?: RawShowConfig
   [key: string]: any
 }
 
@@ -203,13 +203,11 @@ export class MetadataService {
    * @returns The show configuration or null if not found
    */
   getShowConfig(entityType: string, fieldName: string, view: string): ShowConfig | null {
-    // console.log('getShowConfig called with:', { entityType, fieldName, view });
-    
     const fieldMetadata = this.getFieldMetadata(entityType, fieldName);
     
-    if (!fieldMetadata?.show) return null;
+    if (!fieldMetadata?.ui?.show) return null;
 
-    const raw = fieldMetadata.show;
+    const raw = fieldMetadata.ui?.show;
     
     // Find the first displayInfo that matches the view
     const matchingDisplayInfo = raw.displayInfo.find(info => {
@@ -225,11 +223,9 @@ export class MetadataService {
       return null;
     }
 
-    const result = {
+    return {
       endpoint: raw.endpoint,
       displayInfo: matchingDisplayInfo
     };
-    // console.log('returning show config:', result);
-    return result;
   }
 }
