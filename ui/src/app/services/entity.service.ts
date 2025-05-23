@@ -80,7 +80,7 @@ export class EntityService {
         } else if (this.viewService.inViewMode(mode)) {
           return `<a href=${link}>${value}</a>`
         } else if (this.viewService.inEditMode(mode)) {
-          return `<a href=${link}>${value}</a>`
+          return value
         }
         console.error(`Invalid mode for foreign key field: ${mode}`);
       }

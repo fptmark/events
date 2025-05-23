@@ -13,6 +13,7 @@ import { EntitySelectorModalComponent, ColumnConfig } from './entity-selector-mo
 import { NotificationService } from '../services/notification.service';
 import { NotificationComponent } from './notification.component';
 import currency from 'currency.js';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 @Component({
   selector: 'app-entity-form',
@@ -56,7 +57,8 @@ export class EntityFormComponent implements OnInit {
     public restService: RestService,
     public viewService: ViewService,
     private navigationService: NavigationService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private sanitizer: DomSanitizer
   ) {}
   
   // Helper methods for template conditions - delegate to ViewService
@@ -178,11 +180,17 @@ export class EntityFormComponent implements OnInit {
       if (!control) continue;
       
       // Get field metadata
-      // const metadata = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+      const metadata = this.metadataService.getFieldMetadata(this.entityType, fieldName);
       
       // Format and display the value
       const value = this.entityService.formatFieldValue(this.entityType, fieldName, this.mode, entityData?.[fieldName]);
-      control.setValue(value);
+      
+      // If it's an ObjectId field in view mode, sanitize the HTML
+      if (metadata?.type === 'ObjectId' && this.isViewMode()) {
+        control.setValue(this.sanitizer.bypassSecurityTrustHtml(value));
+      } else {
+        control.setValue(value);
+      }
     }
   }
 
