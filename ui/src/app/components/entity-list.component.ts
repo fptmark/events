@@ -53,8 +53,8 @@ import { RestService } from '../services/rest.service';
                   <div class="btn-group btn-group-sm">
                     <!-- Consistent button order: View, Edit, Create, Delete -->
                     <button *ngIf="entityService.canRead(entityType)"
-                      class="btn btn-entity-view me-1"
-                      (click)="this.entityService.viewEntity(entityType, row['_id'])">View</button>
+                      class="btn btn-entity-details me-1"
+                      (click)="this.entityService.viewEntity(entityType, row['_id'])">Details</button>
                     <button *ngIf="entityService.canUpdate(entityType)"
                       class="btn btn-entity-edit me-1"
                       (click)="this.entityService.editEntity(entityType, row['_id'])">Edit</button>

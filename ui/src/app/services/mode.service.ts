@@ -2,16 +2,16 @@ import { Injectable } from "@angular/core";
 import { MetadataService } from "./metadata.service"
 
 export const SUMMARY = 'summary';
-export const VIEW = 'view';
+export const DETAILS = 'details';
 export const CREATE  = 'create';
 export const EDIT  = 'edit';
 
-export type ViewMode = 'summary' | 'view' | 'create' | 'edit';
+export type ViewMode = 'summary' | 'details' | 'create' | 'edit';
 @Injectable({
   providedIn: 'root'
 })
 
-export class ViewService {
+export class ModeService {
 
     constructor(private metadataService: MetadataService){}
 
@@ -19,8 +19,8 @@ export class ViewService {
         return mode === SUMMARY;
     }
 
-    inViewMode(mode: ViewMode): boolean {
-        return mode === VIEW;
+    inDetailsMode(mode: ViewMode): boolean {
+        return mode === DETAILS;
     }
 
     inCreateMode(mode: ViewMode): boolean {
@@ -35,8 +35,8 @@ export class ViewService {
         return this.existsInAllModes(displayPages) || displayPages.includes(SUMMARY);
     }
 
-    existsInViewMode(displayPages: string): boolean {
-        return this.existsInAllModes(displayPages) || displayPages.includes(VIEW);
+    existsInDetailsMode(displayPages: string): boolean {
+        return this.existsInAllModes(displayPages) || displayPages.includes(DETAILS);
     }
 
     existsInCreateMode(displayPages: string): boolean {

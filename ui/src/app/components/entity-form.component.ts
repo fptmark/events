@@ -6,7 +6,7 @@ import { MetadataService, EntityMetadata } from '../services/metadata.service';
 import { FormGeneratorService } from '../services/form-generator.service';
 import { CommonModule } from '@angular/common';
 import { RestService } from '../services/rest.service';
-import { ViewService, ViewMode, VIEW, EDIT, CREATE } from '../services/view.service';
+import { ModeService, ViewMode, DETAILS, EDIT, CREATE } from '../services/mode.service';
 import { NavigationService } from '../services/navigation.service';
 import { ValidationError, ErrorResponse } from '../services/rest.service';
 import { EntitySelectorModalComponent, ColumnConfig } from './entity-selector-modal.component';
@@ -46,7 +46,7 @@ export class EntityFormComponent implements OnInit {
   currentFieldName: string = '';
   entitySelectorColumns: ColumnConfig[] = [];
 
-  mode: ViewMode = VIEW
+  mode: ViewMode = DETAILS
   
   constructor(
     private route: ActivatedRoute,
@@ -55,23 +55,23 @@ export class EntityFormComponent implements OnInit {
     public metadataService: MetadataService,
     public formGenerator: FormGeneratorService,
     public restService: RestService,
-    public viewService: ViewService,
+    public modeService: ModeService,
     private navigationService: NavigationService,
     private notificationService: NotificationService,
     private sanitizer: DomSanitizer
   ) {}
   
-  // Helper methods for template conditions - delegate to ViewService
-  isViewMode(): boolean {
-    return this.viewService.inViewMode(this.mode);
+  // Helper methods for template conditions - delegate to ModeService
+  isDetailsMode(): boolean {
+    return this.modeService.inDetailsMode(this.mode);
   }
   
   isEditMode(): boolean {
-    return this.viewService.inEditMode(this.mode);
+    return this.modeService.inEditMode(this.mode);
   }
   
   isCreateMode(): boolean {
-    return this.viewService.inCreateMode(this.mode);
+    return this.modeService.inCreateMode(this.mode);
   }
 
   ngOnInit(): void {
@@ -87,7 +87,7 @@ export class EntityFormComponent implements OnInit {
       } else if (url.includes('/edit')) {
         this.mode = EDIT
       } else {
-        this.mode = VIEW
+        this.mode = DETAILS
       }
       
       this.loadEntity();
@@ -186,7 +186,7 @@ export class EntityFormComponent implements OnInit {
       const value = this.entityService.formatFieldValue(this.entityType, fieldName, this.mode, entityData?.[fieldName]);
       
       // If it's an ObjectId field in view mode, sanitize the HTML
-      if (metadata?.type === 'ObjectId' && this.isViewMode()) {
+      if (metadata?.type === 'ObjectId' && this.isDetailsMode()) {
         control.setValue(this.sanitizer.bypassSecurityTrustHtml(value));
       } else {
         control.setValue(value);
@@ -198,7 +198,7 @@ export class EntityFormComponent implements OnInit {
     if (!this.entityForm) return;
     
     // For view mode, go to edit instead of submitting
-    if (this.isViewMode()) {
+    if (this.isDetailsMode()) {
       this.goToEdit();
       return;
     }

@@ -27,13 +27,13 @@
                     <!-- Checkbox gets special handling but within the same layout -->
                     <ng-container *ngIf="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType === 'checkbox'; else standardInputs">
                       <div class="checkbox-wrapper">
-                        <!-- In view mode, show a disabled but visually accurate checkbox -->
-                        <ng-container *ngIf="isViewMode(); else editableCheckbox">
+                        <!-- In details mode, show a disabled but visually accurate checkbox -->
+                        <ng-container *ngIf="isDetailsMode(); else editableCheckbox">
                           <input type="checkbox"
                             [id]="fieldName"
                             [checked]="entityForm.get(fieldName)?.value"
                             disabled
-                            class="form-check-input view-mode-checkbox">
+                            class="form-check-input details-mode-checkbox">
                         </ng-container>
 
                         <!-- In edit/create mode, show an interactive checkbox -->
@@ -84,7 +84,7 @@
                             [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
                             placeholder="Enter ID or click Select">
                           <div
-                            *ngIf="isViewMode()"
+                            *ngIf="isDetailsMode()"
                             [id]="fieldName"
                             [innerHTML]="entityForm.get(fieldName)?.value"
                             class="form-control link-input"
@@ -188,10 +188,10 @@
         </div>
 
         <div class="card-footer d-flex justify-content-between">
-          <!-- Left side (for view mode) -->
+          <!-- Left side (for details mode) -->
           <div>
-            <ng-container *ngIf="isViewMode()">
-              <!-- View button not needed in view mode since we're already viewing -->
+            <ng-container *ngIf="isDetailsMode()">
+              <!-- Details button not needed in details mode since we're already viewing -->
               <button *ngIf="entityService.canUpdate(entityType)" type="button" class="btn btn-entity-edit me-2" (click)="goToEdit()">Edit</button>
               <button *ngIf="metadataService.isValidOperation(entityType, 'c')" type="button" class="btn btn-entity-create me-2" (click)="entityService.navigateToCreate(entityType)">Create</button>
               <button *ngIf="entityService.canDelete(entityType)" type="button" class="btn btn-entity-delete" (click)="restService.deleteEntity(entityType, entityId, goBack.bind(this))">Delete</button>
@@ -200,7 +200,7 @@
 
           <!-- Right side (for edit/create mode) -->
           <div>
-            <ng-container *ngIf="!isViewMode()">
+            <ng-container *ngIf="!isDetailsMode()">
               <button type="submit" class="btn btn-entity-edit" [disabled]="entityForm && entityForm.invalid || submitting">
                 {{ submitting ? 'Saving...' : 'Submit' }}
               </button>

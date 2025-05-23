@@ -10,15 +10,15 @@
   border-color: #1e7e34;
 }
 
-.btn-entity-view {
-  color: #fff;
-  background-color: #17a2b8; /* Bootstrap info (light blue) */
-  border-color: #17a2b8;
+.btn-entity-details {
+  background-color: #17a2b8;  /* Light blue */
+  color: white;
+  border: none;
 }
 
-.btn-entity-view:hover {
-  background-color: #138496;
-  border-color: #117a8b;
+.btn-entity-details:hover {
+  background-color: #138496;  /* Darker blue on hover */
+  color: white;
 }
 
 .btn-entity-edit {

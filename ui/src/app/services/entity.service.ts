@@ -1,8 +1,9 @@
 import { Injectable } from '@angular/core';
 import { MetadataService, FieldMetadata } from './metadata.service';
-import { ViewService, ViewMode, VIEW, EDIT, CREATE } from './view.service';
+import { ModeService, ViewMode, DETAILS, EDIT, CREATE } from './mode.service';
 import { FieldOrderService } from './field-order.service';
 import { Router } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
 
 export interface EntityResponse<> {
   data: [];
@@ -17,7 +18,8 @@ export class EntityService {
     private fieldOrderService: FieldOrderService,
     private metadataService: MetadataService,
     private router: Router,
-    private viewService: ViewService,
+    private modeService: ModeService,
+    private http: HttpClient,
   ) {}
 
    /**
@@ -45,9 +47,9 @@ export class EntityService {
         return true;
       }
       
-      // Use ViewService to determine if field is visible in current view/mode
+      // Use ModeService to determine if field is visible in current view/mode
       const displayPages = fieldMetadata?.ui?.displayPages ?? ''
-      return this.viewService.existsInMode(displayPages, currentView);
+      return this.modeService.existsInMode(displayPages, currentView);
     })
     return this.fieldOrderService.orderFields(visibleFields, metadata);
   }
@@ -75,11 +77,11 @@ export class EntityService {
     if (metadata?.type === 'ObjectId') {
         let entity = fieldName.substring(0, fieldName.length - 2) // Remove 'Id' suffix
         let link = `entity/${entity}/${value}`
-        if (this.viewService.inSummaryMode(mode)) {
+        if (this.modeService.inSummaryMode(mode)) {
           return `<a href=${link}>View</a>`
-        } else if (this.viewService.inViewMode(mode)) {
+        } else if (this.modeService.inDetailsMode(mode)) {
           return `<a href=${link}>${value}</a>`
-        } else if (this.viewService.inEditMode(mode)) {
+        } else if (this.modeService.inEditMode(mode)) {
           return value
         }
         console.error(`Invalid mode for foreign key field: ${mode}`);
@@ -89,20 +91,20 @@ export class EntityService {
     if (type === 'ISODate') {
       
       // For edit mode, use current date for auto-update fields
-      if (this.viewService.inEditMode(mode)) {
+      if (this.modeService.inEditMode(mode)) {
         if (metadata?.autoUpdate) {
           value = new Date().toISOString().slice(0, 10); // Format for date (YYYY-MM-DD)
         }
       }
       
       // For create mode, use current date for auto-generate/update fields
-      if (this.viewService.inCreateMode(mode)) {
+      if (this.modeService.inCreateMode(mode)) {
         if (metadata?.autoGenerate || metadata?.autoUpdate) {
           value = new Date().toISOString().slice(0, 10); // Format for date (YYYY-MM-DD)
         }
       }
       
-      if (this.viewService.inCreateMode(mode)) {
+      if (this.modeService.inCreateMode(mode)) {
         return this.getDefaultValue(metadata);
       }
 

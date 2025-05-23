@@ -60,19 +60,17 @@
   /* No label in the wrapper as we're using the consistent label layout */
 }
 
-/* Style readonly checkboxes in view mode */
-.form-check-input.view-mode-checkbox {
-  opacity: 0.8; /* Make it look slightly inactive */
-  pointer-events: none; /* Prevent any interaction */
-  /* Override the default disabled checkbox styling */
-  background-color: var(--bs-body-bg) !important;
-  border-color: #dee2e6 !important;
+/* Style readonly checkboxes in details mode */
+.form-check-input.details-mode-checkbox {
+  cursor: default;
+  opacity: 0.8;
+  pointer-events: none;
 }
 
-/* Style for checked state in view mode */
-.form-check-input.view-mode-checkbox:checked {
-  background-color: #0d6efd !important; /* Bootstrap primary color */
-  border-color: #0d6efd !important;
+/* Style for checked state in details mode */
+.form-check-input.details-mode-checkbox:checked {
+  background-color: #6c757d;
+  border-color: #6c757d;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e") !important;
 }
 
@@ -81,7 +79,7 @@ textarea.form-control {
   min-height: 38px;
 }
 
-/* Make all form controls consistent height in view mode */
+/* Make all form controls consistent height in details mode */
 :host .form-control:disabled {
   min-height: 38px;
 }

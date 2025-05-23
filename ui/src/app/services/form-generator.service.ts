@@ -3,7 +3,7 @@ import * as currencyLib from 'currency.js';
 import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { FieldMetadata, MetadataService } from './metadata.service';
 import { EntityService } from './entity.service';
-import { ViewService, ViewMode, VIEW, EDIT, CREATE } from './view.service';
+import { ModeService, ViewMode, DETAILS, EDIT, CREATE } from './mode.service';
 import { Constants } from '../constants'; // Assuming idField is defined in constants.ts
 
 // No need for constants or FormMode type anymore
@@ -17,7 +17,7 @@ export class FormGeneratorService {
     private fb: FormBuilder,
     private entityService: EntityService,
     private metadataService: MetadataService,
-    private viewService: ViewService
+    private modeService: ModeService
   ) {}
 
   /**
@@ -36,9 +36,9 @@ export class FormGeneratorService {
     let viewFields: string[] = this.entityService.getViewFields(entityType, mode)
     let displayFields: string[] // may add or delete the id field later
 
-    // Manage ID field - it should be first in edit and view modes and removed in create mode
+    // Manage ID field - it should be first in edit and details modes and removed in create mode
     displayFields = viewFields.filter(fieldName => fieldName !== Constants.idField);
-    if (this.viewService.inViewMode(mode) || this.viewService.inEditMode(mode)) { // Make sure the id field is first
+    if (this.modeService.inDetailsMode(mode) || this.modeService.inEditMode(mode)) { // Make sure the id field is first
       displayFields.unshift(Constants.idField);
     }
 
@@ -50,8 +50,8 @@ export class FormGeneratorService {
         // Get field validators and metadata
         const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
         
-        // Add validators if not in view mode and field has metadata
-        if (fieldMeta && !this.viewService.inViewMode(mode)) {
+        // Add validators if not in details mode and field has metadata
+        if (fieldMeta && !this.modeService.inDetailsMode(mode)) {
           validators = this.getValidators(fieldMeta);
         }
 
@@ -167,13 +167,13 @@ export class FormGeneratorService {
       return {fieldType: 'ObjectId', enabled: true}; // clickable in all modes
     }
 
-    // For view mode, use appropriate read-only controls
-    if (this.viewService.inViewMode(mode)) {
-      // Special case for Boolean fields - use checkbox even in view mode
+    // For details mode, use appropriate read-only controls
+    if (this.modeService.inDetailsMode(mode)) {
+      // Special case for Boolean fields - use checkbox even in details mode
       if (fieldMeta.type === 'Boolean') {
         return { fieldType: 'checkbox', enabled: false };
       }
-      // For other fields, use text inputs in view mode
+      // For other fields, use text inputs in details mode
       return { fieldType: 'text', enabled: false };
     } else {    // Create and edit modes
     
