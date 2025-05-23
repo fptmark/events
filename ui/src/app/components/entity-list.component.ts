@@ -6,6 +6,10 @@ import { ConfigService } from '../services/config.service';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { RestService } from '../services/rest.service';
+import { ModeService, SUMMARY } from '../services/mode.service';
+import { forkJoin, of } from 'rxjs';
+import { map, switchMap } from 'rxjs/operators';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 @Component({
   selector: 'app-entity-list',
@@ -48,7 +52,7 @@ import { RestService } from '../services/rest.service';
             </thead>
             <tbody>
               <tr *ngFor="let row of data">
-                <td *ngFor="let field of displayFields" [innerHTML]="entityService.formatFieldValue(entityType, field, 'summary', row[field])"></td>
+                <td *ngFor="let field of displayFields" [innerHTML]="row._formattedValues?.[field] | async"></td>
                 <td class="actions-column text-nowrap">
                   <div class="btn-group btn-group-sm">
                     <!-- Consistent button order: View, Edit, Create, Delete -->
@@ -142,7 +146,9 @@ export class EntityListComponent implements OnInit {
     private route: ActivatedRoute,
     public restService: RestService,
     private configService: ConfigService,
-    private http: HttpClient
+    private http: HttpClient,
+    private modeService: ModeService,
+    private sanitizer: DomSanitizer
   ) {}
 
   ngOnInit(): void {
@@ -159,7 +165,7 @@ export class EntityListComponent implements OnInit {
     this.error = '';
     
     // Wait for entities to be loaded
-    this.displayFields = this.entityService.getViewFields(this.entityType, 'summary');
+    this.displayFields = this.entityService.getViewFields(this.entityType, SUMMARY);
         
     // Get API endpoint from config service
     const apiUrl = this.configService.getApiUrl(this.entityType);
@@ -167,7 +173,35 @@ export class EntityListComponent implements OnInit {
     // Now fetch the entity data from the API
     this.http.get<any>(apiUrl).subscribe({
       next: (response) => {
-        this.data = Array.isArray(response) ? response : [response];
+        const entities = Array.isArray(response) ? response : [response];
+        
+        // Process each entity to handle async formatting for ObjectId fields with show configs
+        this.data = entities.map(entity => {
+          const processedEntity: any = { ...entity, _formattedValues: {} };
+
+          this.displayFields.forEach(field => {
+            const metadata = this.metadataService.getFieldMetadata(this.entityType, field);
+            const rawValue = entity[field];
+
+            // Check if it's an ObjectId field with a show configuration for the current mode (SUMMARY)
+            const showConfig = metadata?.ui?.show ? this.metadataService.getShowConfig(this.entityType, field, SUMMARY) : null;
+
+            if (metadata?.type === 'ObjectId' && showConfig) {
+              // Use the async formatter for ObjectId fields with show config
+              // Pass the already-fetched showConfig to avoid re-fetching
+              processedEntity._formattedValues[field] = this.entityService.formatObjectIdValue(this.entityType, field, SUMMARY, rawValue, showConfig).pipe(
+                 map(value => this.sanitizer.bypassSecurityTrustHtml(value)) // Sanitize HTML output
+              );
+            } else {
+              // For other field types or ObjectId without show config, use the synchronous formatter
+              // This also handles the case where an ObjectId field value is blank/null/undefined
+              const formattedValue = this.entityService.formatFieldValue(this.entityType, field, SUMMARY, rawValue);
+              processedEntity._formattedValues[field] = of(this.sanitizer.bypassSecurityTrustHtml(formattedValue)); // Wrap in Observable<SafeHtml>
+            }
+          });
+
+          return processedEntity;
+        });
             
           this.loading = false;
         },

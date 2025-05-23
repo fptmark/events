@@ -181,15 +181,39 @@ export class EntityFormComponent implements OnInit {
       
       // Get field metadata
       const metadata = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+      const rawValue = entityData?.[fieldName];
+
+      // Check if it's an ObjectId field with a show configuration for the current mode
+      const showConfig = metadata?.ui?.show ? this.metadataService.getShowConfig(this.entityType, fieldName, this.mode) : null;
       
-      // Format and display the value
-      const value = this.entityService.formatFieldValue(this.entityType, fieldName, this.mode, entityData?.[fieldName]);
-      
-      // If it's an ObjectId field in view mode, sanitize the HTML
-      if (metadata?.type === 'ObjectId' && this.isDetailsMode()) {
-        control.setValue(this.sanitizer.bypassSecurityTrustHtml(value));
+      if (metadata?.type === 'ObjectId' && showConfig) {
+        // For ObjectId fields with show config, use the async formatter
+        // Pass the already-fetched showConfig to avoid re-fetching
+        this.entityService.formatObjectIdValue(this.entityType, fieldName, this.mode, rawValue, showConfig).subscribe({
+          next: formattedValue => {
+            // If it's in details mode, sanitize the HTML output
+            if (this.isDetailsMode()) {
+              control.setValue(this.sanitizer.bypassSecurityTrustHtml(formattedValue));
+            } else {
+              control.setValue(formattedValue);
+            }
+          },
+          error: err => {
+            console.error(`Error formatting ObjectId field ${fieldName}:`, err);
+            // On error, fallback to displaying the raw ObjectId
+            control.setValue(rawValue);
+          }
+        });
       } else {
-        control.setValue(value);
+        // For other field types or ObjectId without show config, use the synchronous formatter
+        const formattedValue = this.entityService.formatFieldValue(this.entityType, fieldName, this.mode, rawValue);
+        
+        // If it's an ObjectId field in details mode (without show config), sanitize the HTML
+        if (metadata?.type === 'ObjectId' && this.isDetailsMode()) {
+           control.setValue(this.sanitizer.bypassSecurityTrustHtml(formattedValue));
+        } else {
+          control.setValue(formattedValue);
+        }
       }
     }
   }

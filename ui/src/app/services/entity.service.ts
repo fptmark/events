@@ -1,9 +1,14 @@
 import { Injectable } from '@angular/core';
-import { MetadataService, FieldMetadata } from './metadata.service';
+import { MetadataService, FieldMetadata, ShowConfig } from './metadata.service';
 import { ModeService, ViewMode, DETAILS, EDIT, CREATE } from './mode.service';
 import { FieldOrderService } from './field-order.service';
 import { Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
+import { Observable, of, forkJoin } from 'rxjs';
+import { map, catchError } from 'rxjs/operators';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import currency from 'currency.js';
+import { RestService } from './rest.service';
 
 export interface EntityResponse<> {
   data: [];
@@ -20,6 +25,8 @@ export class EntityService {
     private router: Router,
     private modeService: ModeService,
     private http: HttpClient,
+    private sanitizer: DomSanitizer,
+    private restService: RestService
   ) {}
 
    /**
@@ -275,5 +282,82 @@ export class EntityService {
       default:
         return null;
     }
+  }
+
+  /**
+   * Formats an ObjectId field value based on show configuration and mode.
+   * Fetches the referenced entity data if a show config is present for the mode.
+   * @param entityType The type of the entity containing the ObjectId field.
+   * @param fieldName The name of the ObjectId field (e.g., 'accountId').
+   * @param mode The current view mode (summary, details, edit, create).
+   * @param objectId The ObjectId value.
+   * @param showConfig Optional: The pre-fetched show configuration for this field and mode.
+   * @returns An Observable of the formatted string display value.
+   */
+  formatObjectIdValue(entityType: string, fieldName: string, mode: ViewMode, objectId: string | null | undefined, showConfig?: ShowConfig | null): Observable<string> {
+    // If no ObjectId value, return empty string Observable immediately
+    if (!objectId) {
+      return of('');
+    }
+
+    // Check for a show configuration for the current mode if not provided
+    const effectiveShowConfig = showConfig !== undefined ? showConfig : this.metadataService.getShowConfig(entityType, fieldName, mode);
+
+    // If no show config or no fields specified for this mode, return the ObjectId directly
+    // This uses the default formatting for ObjectIds without show configs (which formatFieldValue handles)
+    if (!effectiveShowConfig || !effectiveShowConfig.displayInfo.fields || effectiveShowConfig.displayInfo.fields.length === 0) {
+       // Call formatFieldValue for the default ObjectId formatting
+      const defaultFormatted = this.formatFieldValue(entityType, fieldName, mode, objectId);
+      return of(defaultFormatted);
+    }
+
+    // Fetch the referenced entity data using RestService
+    const referencedEntityType = effectiveShowConfig.endpoint; // Endpoint is the referenced entity type
+    const fieldsToDisplay = effectiveShowConfig.displayInfo.fields;
+
+    return this.restService.getEntity(referencedEntityType, objectId).pipe(
+      map(referencedEntity => {
+        if (!referencedEntity) {
+          // If referenced entity not found, fallback to showing ObjectId using default formatter
+          const defaultFormatted = this.formatFieldValue(entityType, fieldName, mode, objectId);
+          return defaultFormatted;
+        }
+
+        // Extract and format the specified fields
+        const formattedValues: string[] = [];
+        let allValuesBlank = true; // Flag to check if all show fields are blank
+
+        for (const field of fieldsToDisplay) {
+          const value = referencedEntity[field];
+
+          // Use existing formatFieldValue to format the individual field
+          // Note: formatFieldValue is synchronous, so this is okay within map
+          // We need to pass the *referenced* entity type to formatFieldValue
+          const formatted = this.formatFieldValue(referencedEntityType, field, mode, value);
+
+          formattedValues.push(formatted);
+
+          // Update blank flag - if any value is not blank, set to false
+          if (value !== null && value !== undefined && String(value).trim() !== '') {
+              allValuesBlank = false;
+          }
+        }
+
+        // If all show fields were blank, fallback to ObjectId using default formatter
+        if (allValuesBlank) {
+            const defaultFormatted = this.formatFieldValue(entityType, fieldName, mode, objectId);
+            return defaultFormatted;
+        }
+
+        // Join the formatted values (using semicolon as per example, though this might need to be configurable)
+        return formattedValues.join('; ');
+      }),
+      catchError(error => {
+        console.error(`Error fetching referenced entity ${referencedEntityType}/${objectId}:`, error);
+        // On error, fallback to showing ObjectId using default formatter
+        const defaultFormatted = this.formatFieldValue(entityType, fieldName, mode, objectId);
+        return of(defaultFormatted);
+      })
+    );
   }
 }
