@@ -50,60 +50,46 @@
                     <ng-template #standardInputs>
                       <ng-container [ngSwitch]="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType">
                         <!-- Select dropdown -->
-                        <select *ngSwitchCase="'select'"
-                          [id]="fieldName"
-                          [formControlName]="fieldName"
-                          class="form-select"
-                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
-                          <option value="">Select {{ getFieldDisplayName(fieldName) }}</option>
-                          <option *ngFor="let option of getFieldOptions(fieldName)" [value]="option">
-                            {{ option }}
-                          </option>
-                        </select>
-                        
+                        <ng-container *ngSwitchCase="'select'">
+                          <select
+                            [id]="fieldName"
+                            [formControlName]="fieldName"
+                            class="form-select"
+                            [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
+                            <option value="">Select {{ getFieldDisplayName(fieldName) }}</option>
+                            <option *ngFor="let option of getFieldOptions(fieldName)" [value]="option">
+                              {{ option }}
+                            </option>
+                          </select>
+                        </ng-container>
+
                         <!-- Textarea -->
-                        <textarea *ngSwitchCase="'textarea'" 
-                          [id]="fieldName" 
-                          [formControlName]="fieldName" 
-                          class="form-control"
-                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
-                          rows="3"></textarea>
-                        
-                        <!-- Date input -->
-                        <input *ngSwitchCase="'date'" 
-                          type="date" 
-                          [id]="fieldName" 
-                          [formControlName]="fieldName" 
-                          class="form-control"
-                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
-                        
-                        <!-- Password input -->
-                        <input *ngSwitchCase="'password'" 
-                          type="password" 
-                          [id]="fieldName" 
-                          [formControlName]="fieldName" 
-                          class="form-control"
-                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
-                          
-                        <!-- Email input -->
-                        <input *ngSwitchCase="'email'" 
-                          type="email" 
-                          [id]="fieldName" 
-                          [formControlName]="fieldName" 
-                          class="form-control"
-                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
-                          
+                        <ng-container *ngSwitchCase="'textarea'">
+                          <textarea
+                            [id]="fieldName" 
+                            [formControlName]="fieldName" 
+                            class="form-control"
+                            [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
+                            rows="3"></textarea>
+                        </ng-container>
+
                         <!-- ObjectId input -->
                         <div *ngSwitchCase="'ObjectId'" class="input-group">
                           <input
+                            *ngIf="isEditMode() || isCreateMode()"
                             type="text" 
                             [id]="fieldName" 
                             [formControlName]="fieldName" 
-                            [class.link-input]="!isEditMode() && !isCreateMode()"
                             class="form-control"
                             [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
-                            (click)="openLink(fieldName)"
-                            placeholder="{{ isEditMode() || isCreateMode() ? 'Click to select ID or enter manually' : 'Click to view entity' }}">
+                            placeholder="Enter ID or click Select">
+                          <div
+                            *ngIf="isViewMode()"
+                            [id]="fieldName"
+                            [innerHTML]="entityForm.get(fieldName)?.value"
+                            class="form-control link-input"
+                            (click)="openLink(fieldName)">
+                          </div>
                           <button *ngIf="isEditMode() || isCreateMode()" 
                             class="btn btn-outline-secondary" 
                             type="button"
@@ -111,7 +97,7 @@
                             Select
                           </button>
                         </div>
-                        
+
                         <!-- JSON input -->
                         <textarea *ngSwitchCase="'json'" 
                           [id]="fieldName" 
@@ -129,66 +115,70 @@
                           [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
                           rows="3"
                           placeholder="[]"></textarea>
-                        
-                        <!-- Number input for numeric fields -->
-                        <input *ngSwitchCase="'number'" 
-                          type="number" 
-                          [id]="fieldName" 
-                          [formControlName]="fieldName" 
-                          class="form-control"
-                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
-                        
-                        <!-- Default text input -->
-                        <input *ngSwitchDefault 
-                          type="text" 
-                          [id]="fieldName" 
-                          [formControlName]="fieldName" 
-                          class="form-control"
-                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
-                      </ng-container>
-                      
-                      <!-- Validation error messages -->
 
-                      <!-- Client-side validation errors use Bootstrap's invalid-feedback -->
-                      <div *ngIf="isFieldInvalid(fieldName)" class="invalid-feedback d-block">
-                        <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['required']">
-                          {{ getFieldDisplayName(fieldName) }} is required.
+                        <!-- Standard inputs (date, password, email, number, text) -->
+                        <ng-container *ngSwitchCase="'date'">
+                          <input
+                            type="date"
+                            [id]="fieldName" 
+                            [formControlName]="fieldName" 
+                            class="form-control"
+                            [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
+                        </ng-container>
+
+                        <!-- Default case for all other standard inputs -->
+                        <ng-container *ngSwitchDefault>
+                          <input
+                            [type]="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType"
+                            [id]="fieldName" 
+                            [formControlName]="fieldName" 
+                            class="form-control"
+                            [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
+                        </ng-container>
+                        
+                        <!-- Validation error messages -->
+
+                        <!-- Client-side validation errors use Bootstrap's invalid-feedback -->
+                        <div *ngIf="isFieldInvalid(fieldName)" class="invalid-feedback d-block">
+                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['required']">
+                            {{ getFieldDisplayName(fieldName) }} is required.
+                          </div>
+                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['minlength']">
+                            {{ getFieldDisplayName(fieldName) }} must be at least
+                            {{ entityForm.get(fieldName)?.errors?.['minlength']?.requiredLength }} characters.
+                          </div>
+                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['maxlength']">
+                            {{ getFieldDisplayName(fieldName) }} cannot exceed
+                            {{ entityForm.get(fieldName)?.errors?.['maxlength']?.requiredLength }} characters.
+                          </div>
+                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['pattern']">
+                            {{ getFieldDisplayName(fieldName) }} has an invalid format.
+                          </div>
+                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['min']">
+                            {{ getFieldDisplayName(fieldName) }} must be at least
+                            {{ entityForm.get(fieldName)?.errors?.['min']?.min }}.
+                          </div>
+                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['max']">
+                            {{ getFieldDisplayName(fieldName) }} cannot exceed
+                            {{ entityForm.get(fieldName)?.errors?.['max']?.max }}.
+                          </div>
+                          <!-- Custom currency format error -->
+                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['currencyFormat']">
+                            {{ entityForm.get(fieldName)?.errors?.['currencyFormat'] }}
+                          </div>
+                          <!-- Server-side validation error -->
+                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['server']">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                            {{ entityForm.get(fieldName)?.errors?.['server'] }}
+                          </div>
                         </div>
-                        <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['minlength']">
-                          {{ getFieldDisplayName(fieldName) }} must be at least
-                          {{ entityForm.get(fieldName)?.errors?.['minlength']?.requiredLength }} characters.
-                        </div>
-                        <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['maxlength']">
-                          {{ getFieldDisplayName(fieldName) }} cannot exceed
-                          {{ entityForm.get(fieldName)?.errors?.['maxlength']?.requiredLength }} characters.
-                        </div>
-                        <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['pattern']">
-                          {{ getFieldDisplayName(fieldName) }} has an invalid format.
-                        </div>
-                        <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['min']">
-                          {{ getFieldDisplayName(fieldName) }} must be at least
-                          {{ entityForm.get(fieldName)?.errors?.['min']?.min }}.
-                        </div>
-                        <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['max']">
-                          {{ getFieldDisplayName(fieldName) }} cannot exceed
-                          {{ entityForm.get(fieldName)?.errors?.['max']?.max }}.
-                        </div>
-                        <!-- Custom currency format error -->
-                        <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['currencyFormat']">
-                          {{ entityForm.get(fieldName)?.errors?.['currencyFormat'] }}
-                        </div>
-                        <!-- Server-side validation error -->
-                        <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['server']">
+
+                        <!-- Fallback for server-side validation errors -->
+                        <div *ngIf="getFieldValidationError(fieldName) && !isFieldInvalid(fieldName)" class="text-danger mt-1 small">
                           <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                          {{ entityForm.get(fieldName)?.errors?.['server'] }}
+                          {{ getFieldValidationError(fieldName) }}
                         </div>
-                      </div>
-
-                      <!-- Fallback for server-side validation errors -->
-                      <div *ngIf="getFieldValidationError(fieldName) && !isFieldInvalid(fieldName)" class="text-danger mt-1 small">
-                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                        {{ getFieldValidationError(fieldName) }}
-                      </div>
+                      </ng-container>
                     </ng-template>
                   </div>
                 </div>
