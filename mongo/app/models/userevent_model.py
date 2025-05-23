@@ -23,28 +23,28 @@ class UserEvent(Document):
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'UserEvent',
-    'fields': {   'attended': {'required': False, 'type': 'Boolean'},
-                  'createdAt': {   'autoGenerate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'eventId': {'required': True, 'type': 'ObjectId'},
-                  'note': {   'max_length': 500,
-                              'required': False,
-                              'type': 'String',
-                              'ui': {'displayPages': 'details'}},
-                  'rating': {   'ge': 1,
-                                'le': 5,
+    'fields': {   'attended': {'type': 'Boolean', 'required': False},
+                  'rating': {   'type': 'Integer',
                                 'required': False,
-                                'type': 'Integer'},
-                  'updatedAt': {   'autoUpdate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'userId': {'required': True, 'type': 'ObjectId'}},
+                                'ge': 1,
+                                'le': 5},
+                  'note': {   'type': 'String',
+                              'required': False,
+                              'max_length': 500,
+                              'ui': {'displayPages': 'details'}},
+                  'createdAt': {   'type': 'ISODate',
+                                   'autoGenerate': True,
+                                   'ui': {   'readOnly': True,
+                                             'displayAfterField': '-1'}},
+                  'updatedAt': {   'type': 'ISODate',
+                                   'autoUpdate': True,
+                                   'ui': {   'readOnly': True,
+                                             'clientEdit': True,
+                                             'displayAfterField': '-1'}},
+                  'userId': {'type': 'ObjectId', 'required': True},
+                  'eventId': {'type': 'ObjectId', 'required': True}},
     'operations': '',
-    'ui': {'buttonLabel': 'Manage Event Attendance', 'title': 'User Events'}}
+    'ui': {'title': 'User Events', 'buttonLabel': 'Manage Event Attendance'}}
 
     class Settings:
         name = "userevent"
@@ -70,7 +70,6 @@ class UserEventCreate(BaseModel):
 
     @field_validator('rating', mode='before')
     def validate_rating(cls, v):
-        _custom = {}
         if v is not None and int(v) < 1:
             raise ValueError('rating must be at least 1')
         if v is not None and int(v) > 5:
@@ -79,7 +78,6 @@ class UserEventCreate(BaseModel):
      
     @field_validator('note', mode='before')
     def validate_note(cls, v):
-        _custom = {}
         if v is not None and len(v) > 500:
             raise ValueError('note must be at most 500 characters')
         return v
@@ -99,7 +97,6 @@ class UserEventUpdate(BaseModel):
 
     @field_validator('rating', mode='before')
     def validate_rating(cls, v):
-        _custom = {}
         if v is not None and int(v) < 1:
             raise ValueError('rating must be at least 1')
         if v is not None and int(v) > 5:
@@ -108,7 +105,6 @@ class UserEventUpdate(BaseModel):
      
     @field_validator('note', mode='before')
     def validate_note(cls, v):
-        _custom = {}
         if v is not None and len(v) > 500:
             raise ValueError('note must be at most 500 characters')
         return v

@@ -22,31 +22,36 @@ class Profile(Document):
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'Profile',
-    'fields': {   'createdAt': {   'autoGenerate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'name': {   'max_length': 100,
+    'fields': {   'name': {   'type': 'String',
                               'required': True,
-                              'type': 'String'},
-                  'preferences': {   'required': False,
-                                     'type': 'String',
-                                     'ui': {'displayPages': 'details'}},
-                  'radiusMiles': {   'ge': 0,
+                              'max_length': 100},
+                  'preferences': {   'type': 'String',
                                      'required': False,
-                                     'type': 'Integer'},
-                  'updatedAt': {   'autoUpdate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'userId': {   'required': True,
-                                'selector': {'fields': ['email', 'username']},
-                                'type': 'ObjectId'}},
+                                     'ui': {'displayPages': 'details'}},
+                  'radiusMiles': {   'type': 'Integer',
+                                     'required': False,
+                                     'ge': 0},
+                  'createdAt': {   'type': 'ISODate',
+                                   'autoGenerate': True,
+                                   'ui': {   'readOnly': True,
+                                             'displayAfterField': '-1'}},
+                  'updatedAt': {   'type': 'ISODate',
+                                   'autoUpdate': True,
+                                   'ui': {   'readOnly': True,
+                                             'clientEdit': True,
+                                             'displayAfterField': '-1'}},
+                  'userId': {   '@show': {   'endpoint': 'user',
+                                             'displayInfo': [   {   'displayPages': 'summary',
+                                                                    'fields': [   'email']},
+                                                                {   'displayPages': 'details|edit',
+                                                                    'fields': [   'email',
+                                                                                  'username']}]},
+                                'type': 'ObjectId',
+                                'required': True}},
     'operations': '',
-    'ui': {   'buttonLabel': 'Manage User Profiles',
-              'description': 'Manage User Preferences',
-              'title': 'Profile'}}
+    'ui': {   'title': 'Profile',
+              'buttonLabel': 'Manage User Profiles',
+              'description': 'Manage User Preferences'}}
 
     class Settings:
         name = "profile"
@@ -71,14 +76,12 @@ class ProfileCreate(BaseModel):
 
     @field_validator('name', mode='before')
     def validate_name(cls, v):
-        _custom = {}
         if v is not None and len(v) > 100:
             raise ValueError('name must be at most 100 characters')
         return v
      
     @field_validator('radiusMiles', mode='before')
     def validate_radiusMiles(cls, v):
-        _custom = {}
         if v is not None and int(v) < 0:
             raise ValueError('radiusMiles must be at least 0')
         return v
@@ -97,14 +100,12 @@ class ProfileUpdate(BaseModel):
 
     @field_validator('name', mode='before')
     def validate_name(cls, v):
-        _custom = {}
         if v is not None and len(v) > 100:
             raise ValueError('name must be at most 100 characters')
         return v
      
     @field_validator('radiusMiles', mode='before')
     def validate_radiusMiles(cls, v):
-        _custom = {}
         if v is not None and int(v) < 0:
             raise ValueError('radiusMiles must be at least 0')
         return v

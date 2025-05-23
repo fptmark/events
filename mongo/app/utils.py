@@ -5,6 +5,7 @@ from typing import Dict, Any
 from pydantic import BaseModel
 from beanie import Document
 import logging
+import re
 
 
 # Path to the configuration file
@@ -70,6 +71,43 @@ def get_metadata(metadata) -> Dict[str, Any]:
         deep_merge_dicts(metadata, entity_cfg)
     return metadata
 
+def parse_currency(value):
+    if value is None:
+        return None
+    
+    if isinstance(value, (int, float)):
+        return value
+    
+    # Handle string values
+    if isinstance(value, str):
+        # Strip whitespace
+        value = value.strip()
+        
+        # If it's an empty string, return None (not 0) since it's optional
+        if not value or value in ('', 'null'):
+            return None
+            
+        # Remove $, commas, parentheses, whitespace
+        cleaned = re.sub(r'[$,\s()]', '', str(value))
+        
+        # Handle negative values in parentheses (e.g., "($1,000)")
+        if cleaned.startswith('(') and cleaned.endswith(')'):
+            cleaned = f'-{cleaned[1:-1]}'
+        
+        # Try parsing the cleaned value
+        try:
+            return float(cleaned)
+        except ValueError:
+            # If basic parsing fails, try more aggressive cleaning
+            # Remove any non-numeric characters except period and minus sign
+            cleaned = re.sub(r'[^0-9.\-]', '', cleaned)
+            
+            try:
+                return float(cleaned)
+            except ValueError:
+                return None
+                
+    return None
 
 
 # Helpers for routes

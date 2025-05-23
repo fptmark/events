@@ -19,19 +19,19 @@ class Account(Document):
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'Account',
-    'fields': {   'createdAt': {   'autoGenerate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'expiredAt': {'required': False, 'type': 'ISODate'},
-                  'updatedAt': {   'autoUpdate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'clientEdit': True,
+    'fields': {   'expiredAt': {'type': 'ISODate', 'required': False},
+                  'createdAt': {   'type': 'ISODate',
+                                   'autoGenerate': True,
+                                   'ui': {   'readOnly': True,
+                                             'displayAfterField': '-1'}},
+                  'updatedAt': {   'type': 'ISODate',
+                                   'autoUpdate': True,
+                                   'ui': {   'readOnly': True,
+                                             'clientEdit': True,
                                              'displayAfterField': 'createdAt',
-                                             'displayPages': 'details',
-                                             'readOnly': True}}},
+                                             'displayPages': 'details'}}},
     'operations': '',
-    'ui': {'buttonLabel': 'Manage Accounts', 'title': 'Accounts'}}
+    'ui': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'}}
 
     class Settings:
         name = "account"

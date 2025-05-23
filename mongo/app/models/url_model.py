@@ -20,24 +20,24 @@ class Url(Document):
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'Url',
-    'fields': {   'createdAt': {   'autoGenerate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'params': {'required': False, 'type': 'JSON'},
-                  'updatedAt': {   'autoUpdate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'url': {   'pattern': {   'message': 'Bad URL format',
-                                            'regex': 'main.url'},
+    'fields': {   'url': {   'type': 'String',
                              'required': True,
-                             'type': 'String'}},
+                             'pattern': {   'regex': 'main.url',
+                                            'message': 'Bad URL format'}},
+                  'params': {'type': 'JSON', 'required': False},
+                  'createdAt': {   'type': 'ISODate',
+                                   'autoGenerate': True,
+                                   'ui': {   'readOnly': True,
+                                             'displayAfterField': '-1'}},
+                  'updatedAt': {   'type': 'ISODate',
+                                   'autoUpdate': True,
+                                   'ui': {   'readOnly': True,
+                                             'clientEdit': True,
+                                             'displayAfterField': '-1'}}},
     'operations': '',
-    'ui': {   'buttonLabel': 'Manage Urls',
-              'description': 'Manage Event Urls',
-              'title': 'Url'}}
+    'ui': {   'title': 'Url',
+              'buttonLabel': 'Manage Urls',
+              'description': 'Manage Event Urls'}}
 
     class Settings:
         name = "url"
@@ -60,7 +60,6 @@ class UrlCreate(BaseModel):
 
     @field_validator('url', mode='before')
     def validate_url(cls, v):
-        _custom = {}
         if v is not None and not re.match(r'main.url', v):
             raise ValueError('Bad URL format')
         return v
@@ -77,7 +76,6 @@ class UrlUpdate(BaseModel):
 
     @field_validator('url', mode='before')
     def validate_url(cls, v):
-        _custom = {}
         if v is not None and not re.match(r'main.url', v):
             raise ValueError('Bad URL format')
         return v

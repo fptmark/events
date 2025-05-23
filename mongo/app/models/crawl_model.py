@@ -22,24 +22,24 @@ class Crawl(Document):
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'Crawl',
-    'fields': {   'createdAt': {   'autoGenerate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'errorsEncountered': {   'required': False,
-                                           'type': 'Array[String]'},
-                  'lastParsedDate': {'required': False, 'type': 'ISODate'},
-                  'parseStatus': {'required': False, 'type': 'JSON'},
-                  'updatedAt': {   'autoUpdate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'urlId': {'required': True, 'type': 'ObjectId'}},
+    'fields': {   'lastParsedDate': {'type': 'ISODate', 'required': False},
+                  'parseStatus': {'type': 'JSON', 'required': False},
+                  'errorsEncountered': {   'type': 'Array[String]',
+                                           'required': False},
+                  'createdAt': {   'type': 'ISODate',
+                                   'autoGenerate': True,
+                                   'ui': {   'readOnly': True,
+                                             'displayAfterField': '-1'}},
+                  'updatedAt': {   'type': 'ISODate',
+                                   'autoUpdate': True,
+                                   'ui': {   'readOnly': True,
+                                             'clientEdit': True,
+                                             'displayAfterField': '-1'}},
+                  'urlId': {'type': 'ObjectId', 'required': True}},
     'operations': 'rd',
-    'ui': {   'buttonLabel': 'Manage Crawls',
-              'description': 'Manage Crawls of Event sites',
-              'title': 'Crawls'}}
+    'ui': {   'title': 'Crawls',
+              'buttonLabel': 'Manage Crawls',
+              'description': 'Manage Crawls of Event sites'}}
 
     class Settings:
         name = "crawl"

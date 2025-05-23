@@ -26,46 +26,46 @@ class Event(Document):
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'Event',
-    'fields': {   'cost': {   'ge': 0,
-                              'required': False,
-                              'type': 'Number',
-                              'ui': {'displayPages': 'details'}},
-                  'createdAt': {   'autoGenerate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'dateTime': {'required': True, 'type': 'ISODate'},
-                  'location': {   'max_length': 200,
+    'fields': {   'url': {   'type': 'String',
+                             'required': True,
+                             'pattern': {   'regex': '^https?://[^s]+$',
+                                            'message': 'Bad URL format'}},
+                  'title': {   'type': 'String',
+                               'required': True,
+                               'max_length': 200},
+                  'dateTime': {'type': 'ISODate', 'required': True},
+                  'location': {   'type': 'String',
                                   'required': False,
-                                  'type': 'String'},
-                  'numOfExpectedAttendees': {   'ge': 0,
+                                  'max_length': 200},
+                  'cost': {   'type': 'Number',
+                              'required': False,
+                              'ge': 0,
+                              'ui': {'displayPages': 'details'}},
+                  'numOfExpectedAttendees': {   'type': 'Integer',
                                                 'required': False,
-                                                'type': 'Integer',
+                                                'ge': 0,
                                                 'ui': {   'displayPages': 'details'}},
-                  'recurrence': {   'enum': {   'values': [   'daily',
+                  'recurrence': {   'type': 'String',
+                                    'required': False,
+                                    'enum': {   'values': [   'daily',
                                                               'weekly',
                                                               'monthly',
                                                               'yearly']},
-                                    'required': False,
-                                    'type': 'String',
                                     'ui': {'displayPages': 'details'}},
-                  'tags': {   'required': False,
-                              'type': 'Array[String]',
+                  'tags': {   'type': 'Array[String]',
+                              'required': False,
                               'ui': {'displayPages': 'details'}},
-                  'title': {   'max_length': 200,
-                               'required': True,
-                               'type': 'String'},
-                  'updatedAt': {   'autoUpdate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'url': {   'pattern': {   'message': 'Bad URL format',
-                                            'regex': '^https?://[^s]+$'},
-                             'required': True,
-                             'type': 'String'}},
+                  'createdAt': {   'type': 'ISODate',
+                                   'autoGenerate': True,
+                                   'ui': {   'readOnly': True,
+                                             'displayAfterField': '-1'}},
+                  'updatedAt': {   'type': 'ISODate',
+                                   'autoUpdate': True,
+                                   'ui': {   'readOnly': True,
+                                             'clientEdit': True,
+                                             'displayAfterField': '-1'}}},
     'operations': '',
-    'ui': {'buttonLabel': 'Manage Events', 'title': 'Events'}}
+    'ui': {'title': 'Events', 'buttonLabel': 'Manage Events'}}
 
     class Settings:
         name = "event"
@@ -94,14 +94,12 @@ class EventCreate(BaseModel):
 
     @field_validator('url', mode='before')
     def validate_url(cls, v):
-        _custom = {}
         if v is not None and not re.match(r'^https?://[^s]+$', v):
             raise ValueError('Bad URL format')
         return v
      
     @field_validator('title', mode='before')
     def validate_title(cls, v):
-        _custom = {}
         if v is not None and len(v) > 200:
             raise ValueError('title must be at most 200 characters')
         return v
@@ -115,28 +113,24 @@ class EventCreate(BaseModel):
         return v
     @field_validator('location', mode='before')
     def validate_location(cls, v):
-        _custom = {}
         if v is not None and len(v) > 200:
             raise ValueError('location must be at most 200 characters')
         return v
      
     @field_validator('cost', mode='before')
     def validate_cost(cls, v):
-        _custom = {}
         if v is not None and float(v) < 0:
             raise ValueError('cost must be at least 0')
         return v
      
     @field_validator('numOfExpectedAttendees', mode='before')
     def validate_numOfExpectedAttendees(cls, v):
-        _custom = {}
         if v is not None and int(v) < 0:
             raise ValueError('numOfExpectedAttendees must be at least 0')
         return v
      
     @field_validator('recurrence', mode='before')
     def validate_recurrence(cls, v):
-        _custom = {}
         allowed = ['daily', 'weekly', 'monthly', 'yearly']
         if v is not None and v not in allowed:
             raise ValueError('recurrence must be one of ' + ','.join(allowed))
@@ -160,14 +154,12 @@ class EventUpdate(BaseModel):
 
     @field_validator('url', mode='before')
     def validate_url(cls, v):
-        _custom = {}
         if v is not None and not re.match(r'^https?://[^s]+$', v):
             raise ValueError('Bad URL format')
         return v
      
     @field_validator('title', mode='before')
     def validate_title(cls, v):
-        _custom = {}
         if v is not None and len(v) > 200:
             raise ValueError('title must be at most 200 characters')
         return v
@@ -181,28 +173,24 @@ class EventUpdate(BaseModel):
         return v
     @field_validator('location', mode='before')
     def validate_location(cls, v):
-        _custom = {}
         if v is not None and len(v) > 200:
             raise ValueError('location must be at most 200 characters')
         return v
      
     @field_validator('cost', mode='before')
     def validate_cost(cls, v):
-        _custom = {}
         if v is not None and float(v) < 0:
             raise ValueError('cost must be at least 0')
         return v
      
     @field_validator('numOfExpectedAttendees', mode='before')
     def validate_numOfExpectedAttendees(cls, v):
-        _custom = {}
         if v is not None and int(v) < 0:
             raise ValueError('numOfExpectedAttendees must be at least 0')
         return v
      
     @field_validator('recurrence', mode='before')
     def validate_recurrence(cls, v):
-        _custom = {}
         allowed = ['daily', 'weekly', 'monthly', 'yearly']
         if v is not None and v not in allowed:
             raise ValueError('recurrence must be one of ' + ','.join(allowed))

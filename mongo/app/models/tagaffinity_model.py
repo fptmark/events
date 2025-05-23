@@ -21,23 +21,23 @@ class TagAffinity(Document):
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'TagAffinity',
-    'fields': {   'affinity': {   'ge': -100,
-                                  'le': 100,
+    'fields': {   'tag': {'type': 'String', 'required': True, 'max_length': 50},
+                  'affinity': {   'type': 'Integer',
                                   'required': True,
-                                  'type': 'Integer'},
-                  'createdAt': {   'autoGenerate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'profileId': {'required': True, 'type': 'ObjectId'},
-                  'tag': {'max_length': 50, 'required': True, 'type': 'String'},
-                  'updatedAt': {   'autoUpdate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-1',
-                                             'readOnly': True}}},
+                                  'ge': -100,
+                                  'le': 100},
+                  'createdAt': {   'type': 'ISODate',
+                                   'autoGenerate': True,
+                                   'ui': {   'readOnly': True,
+                                             'displayAfterField': '-1'}},
+                  'updatedAt': {   'type': 'ISODate',
+                                   'autoUpdate': True,
+                                   'ui': {   'readOnly': True,
+                                             'clientEdit': True,
+                                             'displayAfterField': '-1'}},
+                  'profileId': {'type': 'ObjectId', 'required': True}},
     'operations': '',
-    'ui': {'buttonLabel': 'Manage Event Affinity', 'title': 'Tag Affinity'}}
+    'ui': {'title': 'Tag Affinity', 'buttonLabel': 'Manage Event Affinity'}}
 
     class Settings:
         name = "tagaffinity"
@@ -61,14 +61,12 @@ class TagAffinityCreate(BaseModel):
 
     @field_validator('tag', mode='before')
     def validate_tag(cls, v):
-        _custom = {}
         if v is not None and len(v) > 50:
             raise ValueError('tag must be at most 50 characters')
         return v
      
     @field_validator('affinity', mode='before')
     def validate_affinity(cls, v):
-        _custom = {}
         if v is not None and int(v) < -100:
             raise ValueError('affinity must be at least -100')
         if v is not None and int(v) > 100:
@@ -88,14 +86,12 @@ class TagAffinityUpdate(BaseModel):
 
     @field_validator('tag', mode='before')
     def validate_tag(cls, v):
-        _custom = {}
         if v is not None and len(v) > 50:
             raise ValueError('tag must be at most 50 characters')
         return v
      
     @field_validator('affinity', mode='before')
     def validate_affinity(cls, v):
-        _custom = {}
         if v is not None and int(v) < -100:
             raise ValueError('affinity must be at least -100')
         if v is not None and int(v) > 100:
