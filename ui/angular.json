@@ -36,7 +36,10 @@
             "styles": [
               "src/styles.css"
             ],
-            "scripts": []
+            "scripts": [],
+            "allowedCommonJsDependencies": [
+              "currency.js"
+            ]
           },
           "configurations": {
             "production": {
@@ -74,28 +77,6 @@
           },
           "defaultConfiguration": "development"
         },
-	"_server_disabled": {
-	  "builder": "@angular/build:application",
-	  "options": {
-	    "outputPath": "dist/ui/server",
-	    "browser": "dist/ui/browser",
-	    "main": "src/server.ts",
-	    "tsConfig": "tsconfig.server.json",
-	    "index": "src/index.html"
-	  },
-	  "configurations": {
-	    "production": {
-	      "outputHashing": "media",
-	      "sourceMap": false,
-	      "optimization": true
-	    },
-	    "development": {
-	      "sourceMap": true,
-	      "optimization": false
-	    }
-	  },
-	  "defaultConfiguration": "production"
-	},
         "extract-i18n": {
           "builder": "@angular-devkit/build-angular:extract-i18n"
         },
@@ -126,3 +107,4 @@
     "analytics": "98d46fd4-ab6e-4e0b-bd1c-d1db1412cb47"
   }
 }
+
