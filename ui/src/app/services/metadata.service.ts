@@ -1,9 +1,13 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { ConfigService } from './config.service';
-import { Observable, of } from 'rxjs';
+import { Observable, of, firstValueFrom } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 
+interface Metadata {
+  projectName: string
+  entities: EntityMetadata[]
+}
 export interface EntityMetadata {
   entity: string
   entityLowerCase?: string  // for easier comparison - internal use only
@@ -70,9 +74,11 @@ export interface UiFieldMetata {
   providedIn: 'root'
 })
 export class MetadataService {
-  private entities: EntityMetadata[] = [];
+  private metadata: Metadata = { projectName: '', entities: [] };
+  // private entities: EntityMetadata[] = [];
   private recentEntities: string[] = [];
   private initialized = false;
+  private initPromise: Promise<Metadata> | null = null;
 
   constructor(
     private http: HttpClient,
@@ -83,37 +89,54 @@ export class MetadataService {
    * Initialize the metadata service by loading entity data from the server
    * @returns An Observable that completes when metadata is loaded
    */
-  initialize(): Observable<EntityMetadata[]> {
+  initialize(): Observable<Metadata> {
     if (this.initialized) {
       console.log('Metadata: Already initialized, returning existing data');
-      return of(this.entities);
+      return of(this.metadata);
     }
 
     // Get API URL from config
     const entitiesUrl = this.configService.getApiUrl('metadata');
     console.log('Metadata: Loading entities from:', entitiesUrl);
     
-    // Return the observable so the caller can wait for it
-    return this.http.get<EntityMetadata[]>(entitiesUrl).pipe(
-      tap(entities => {
-        console.log('Metadata: Entities loaded successfully:', entities.length, 'entities');
-        this.entities = entities;
+    // Create the observable
+    const obs = this.http.get<Metadata>(entitiesUrl).pipe(
+      tap((metadata: Metadata) => {
+        console.log('Metadata: Entities loaded successfully:', metadata.entities.length, 'entities');
+        this.metadata = metadata;
         this.initialized = true;
       }),
       catchError(error => {
         console.error('Metadata: Failed to fetch entities:', error);
-        this.entities = []; // Ensure entities array is empty on error
+        this.metadata = {projectName: '', entities: []}; // Ensure entities array is empty on error
         this.initialized = true;
-        return of([]); // Return empty array to allow the app to continue
+        return of(this.metadata)
       })
     );
+
+    // Cache the promise for waitForInit
+    if (!this.initPromise) {
+      this.initPromise = firstValueFrom(obs);
+    }
+
+    return obs;
   }
   
   /**
-   * Check if the metadata has been initialized
+   * Wait for metadata to be initialized
+   * @returns A promise that resolves when metadata is loaded
    */
-  isInitialized(): boolean {
-    return this.initialized;
+  async waitForInit(): Promise<Metadata> {
+    if (this.initialized) {
+      return this.metadata;
+    }
+    
+    if (!this.initPromise) {
+      // Start initialization if not already started
+      this.initPromise = firstValueFrom(this.initialize());
+    }
+    
+    return this.initPromise;
   }
   
   addRecent(entityType: string){
@@ -133,7 +156,7 @@ export class MetadataService {
    */
   getEntityMetadata(entityName: string): EntityMetadata {
     // Case-insensitive lookup
-    const metadata = this.entities.find(e => e.entity.toLowerCase() === entityName.toLowerCase() )
+    const metadata = this.metadata.entities.find(e => e.entity.toLowerCase() === entityName.toLowerCase() )
   
     if (!metadata) {
       throw new Error(`No metadata found for entity: ${entityName}`);
@@ -143,7 +166,7 @@ export class MetadataService {
   }
 
   getEntityTypes(): string[] {
-    return this.entities.map( e => e.entity)
+    return this.metadata.entities.map( e => e.entity)
   }
 
   getEntityFields(entityType: string): string[] {
@@ -173,7 +196,7 @@ export class MetadataService {
    * Safe to call after application initialization
    */
   getAvailableEntities(): EntityMetadata[] {
-    return this.entities;
+    return this.metadata.entities;
   }
   
   getTitle(entityName: string): string {
@@ -187,6 +210,10 @@ export class MetadataService {
 
   getDescription(entityName: string): string {
     return this.getEntityMetadata(entityName)?.ui?.description || this.getButtonLabel(entityName)
+  }
+
+  getProjectName(): string {
+    return this.metadata.projectName
   }
 
   isValidOperation(entityName: string, operation: string): boolean {

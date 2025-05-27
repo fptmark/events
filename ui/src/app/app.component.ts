@@ -33,7 +33,7 @@ import { RestService } from './services/rest.service';
           <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav">
               <li class="nav-item">
-                <a class="nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">Dashboard</a>
+                <a class="nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">{{ metadataService.getProjectName() }} Management</a>
               </li>
               <li class="nav-item">
                 <a class="nav-link" (click)="redirectToServerRoute('docs')" href="javascript:void(0)">OpenApi Docs</a>
@@ -83,7 +83,6 @@ import { RestService } from './services/rest.service';
   `]
 })
 export class AppComponent implements OnInit {
-  title = 'Events Management';
   initialized = false;
 
   constructor(
@@ -94,23 +93,16 @@ export class AppComponent implements OnInit {
   ) { }
 
   redirectToServerRoute(route: string) {
-    window.open( `${this.configService.config.server_url}/${route}` )
+    window.open(`${this.configService.config.server_url}/${route}`);
   }
 
   ngOnInit() {
     console.log('AppComponent: Initializing application');
     
-    // Check if metadata is already initialized (should not happen on first load)
-    if (this.metadataService.isInitialized()) {
-      console.log('AppComponent: Metadata already initialized');
-      this.initialized = true;
-      return;
-    }
-    
     // Initialize the metadata service - this will load entity data
     this.metadataService.initialize().subscribe({
-      next: (entities) => {
-        console.log('AppComponent: Metadata loaded with', entities.length, 'entities');
+      next: () => {
+        console.log('AppComponent: Metadata loaded');
         this.initialized = true;
       },
       error: (err) => {

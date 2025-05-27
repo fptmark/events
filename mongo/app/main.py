@@ -126,16 +126,19 @@ def read_root():
 
 @app.get('/api/metadata')
 def get_entities_metadata():
-    return  [
-        Account.get_metadata(),     
-        User.get_metadata(),     
-        Profile.get_metadata(),     
-        TagAffinity.get_metadata(),     
-        Event.get_metadata(),     
-        UserEvent.get_metadata(),     
-        Url.get_metadata(),     
-        Crawl.get_metadata(),     
-    ]
+    return  {
+        'projectName': 'events',
+        'entities' :[
+            Account.get_metadata(),     
+            User.get_metadata(),     
+            Profile.get_metadata(),     
+            TagAffinity.get_metadata(),     
+            Event.get_metadata(),     
+            UserEvent.get_metadata(),     
+            Url.get_metadata(),     
+            Crawl.get_metadata(),     
+        ]
+    }
 
 if __name__ == '__main__':
     import uvicorn

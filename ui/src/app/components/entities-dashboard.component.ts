@@ -10,7 +10,7 @@ import { NavigationService } from '../services/navigation.service';
   imports: [CommonModule],
   template: `
     <div class="container-fluid mt-4">
-      <h2>Entity Dashboard</h2>
+      <h2>{{ metadataService.getProjectName() }} Dashboard</h2>
       
       <div *ngIf="loading" class="text-center">
         <p>Loading...</p>
@@ -55,21 +55,23 @@ export class EntitiesDashboardComponent implements OnInit {
     private navigationService: NavigationService
   ) {}
 
-  ngOnInit(): void {
-    console.log('EntitiesDashboardComponent: Initializing');
-    
-    // MetadataService is guaranteed to be initialized by the AppComponent
-    // We can safely get the entities directly
-    this.entityTypes = this.metadataService.getAvailableEntities();
-    console.log('EntitiesDashboardComponent: Entities loaded:', this.entityTypes.length);
-    
-    // Data is ready to display - no need for loading state
-    this.loading = false;
+  async ngOnInit(): Promise<void> {
+    try {
+      // Wait for metadata to be initialized
+      await this.metadataService.waitForInit();
+      
+      // Now we can safely get the entities
+      this.entityTypes = this.metadataService.getAvailableEntities();
+      this.loading = false;
+    } catch (err) {
+      console.error('Error loading dashboard:', err);
+      this.error = 'Failed to load dashboard. Please try again later.';
+      this.loading = false;
+    }
   }
 
-
   navigateToEntity(entityType: string): void {
-    this.metadataService.addRecent(entityType)
+    this.metadataService.addRecent(entityType);
     this.router.navigate(['/entity', entityType]);
   }
 }
