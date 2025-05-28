@@ -233,11 +233,9 @@ export class EntityFormComponent implements OnInit {
     this.notificationService.clear();
     
     this.submitting = true;
-    let formData = this.entityForm.value;
     
     // Process the form data before sending it to the API
-    // This also validates currency fields
-    formData = this.processFormData(formData);
+    const formData = this.processFormData();
     
     // After processing, check if any fields were marked invalid
     if (this.entityForm.invalid) {
@@ -256,9 +254,8 @@ export class EntityFormComponent implements OnInit {
   }
   
   // Process form data before submitting to the API
-  processFormData(formData: any): any {
-    // Clone the data to avoid modifying the form values directly
-    const processedData = { ...formData };
+  processFormData(): Record<string, any> {
+    const processedData: Record<string, any> = {};
 
     try {
       if (!this.entityForm) return processedData;
@@ -278,14 +275,13 @@ export class EntityFormComponent implements OnInit {
           continue;
         }
         
+        const isEmpty = value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
+        if (isEmpty && !fieldMeta?.required) {
+          continue;
+        }
+
         // Special handling for Currency fields
         if (fieldMeta?.type === 'Currency') {
-          // If value is null/undefined/empty string and not required, don't include it
-          const isEmpty = value == null || (typeof value === 'string' && value.trim() === '');
-          if (isEmpty && !fieldMeta.required) {
-            processedData[fieldName] = null;
-            continue;
-          }
           
           // Parse currency value at submission time
           if (typeof value === 'string' && value.trim() !== '') {
@@ -298,7 +294,6 @@ export class EntityFormComponent implements OnInit {
                 errorOnInvalid: true
               });
               
-              processedData[fieldName] = parsed.value;
               processedData[fieldName] = parsed.value;
             } catch (e) {
               // If parsing fails, mark the field as invalid
@@ -318,11 +313,10 @@ export class EntityFormComponent implements OnInit {
           }
         }
 
-        // For other field types - normal validation
-        // If field is not required, or has a value, or is auto-handled by server, include it
-        if (!fieldMeta?.required || value !== undefined && value !== null && value !== '' ||
-            fieldMeta?.autoUpdate || fieldMeta?.autoGenerate) {
-          processedData[fieldName] = value;
+        // For all other field types
+        // Include field if it's auto-generated/updated, required, or has a value
+        if (fieldMeta?.autoUpdate || fieldMeta?.autoGenerate || fieldMeta?.required || !isEmpty) {
+            processedData[fieldName] = isEmpty ? null : value;
         }
       }
     } catch (error) {
@@ -406,10 +400,8 @@ export class EntityFormComponent implements OnInit {
     const operation = this.isCreateMode() ? 'created' : 'updated';
     this.notificationService.showSuccess(`${this.entityType} was successfully ${operation}.`, true);
     
-    // Navigate back to the entity list with skipLocationChange to force reload
-    this.router.navigateByUrl('/', {skipLocationChange: true}).then(() => {
-      this.router.navigate(['/entity', this.entityType]);
-    });
+    // Force a full page reload to the list view
+    window.location.href = `/entity/${this.entityType}`;
   }
 
   /**
