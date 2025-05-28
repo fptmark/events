@@ -104,6 +104,8 @@ export class AppComponent implements OnInit {
       next: () => {
         console.log('AppComponent: Metadata loaded');
         this.initialized = true;
+        // Set the document title
+        document.title = `${this.metadataService.getProjectName()} Management`;
       },
       error: (err) => {
         console.error('AppComponent: Error loading metadata:', err);
