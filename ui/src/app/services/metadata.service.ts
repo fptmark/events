@@ -61,6 +61,7 @@ export interface FieldMetadata {
 export interface UiFieldMetata {
   displayName?: string
   displayAfterField?: string
+  spinnerStep?: number
   displayPages?: string
   clientEdit?: boolean
   readOnly?: boolean

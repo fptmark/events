@@ -21,7 +21,28 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
   imports: [CommonModule, ReactiveFormsModule, EntitySelectorModalComponent, NotificationComponent],
   providers: [RestService],
   templateUrl: './entity-form.component.html',
-  styleUrls: ['./entity-form.component.css']
+  styleUrls: ['./entity-form.component.css'],
+  styles: [`
+    /* Hide spinners by default */
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type=number] {
+      -moz-appearance: textfield;
+    }
+
+    /* Show spinners only when the class is present */
+    .show-spinner::-webkit-outer-spin-button,
+    .show-spinner::-webkit-inner-spin-button {
+      -webkit-appearance: inner-spin-button;
+      margin: 0;
+    }
+    .show-spinner {
+      -moz-appearance: spinner-textfield;
+    }
+  `]
 })
 
 export class EntityFormComponent implements OnInit {
@@ -545,4 +566,16 @@ export class EntityFormComponent implements OnInit {
     this.showEntitySelector = false;
   }
   
+  // Add method to determine if field should show spinner
+  shouldShowSpinner(fieldName: string): boolean {
+    const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+    const spinnerStep = fieldMeta?.ui?.['spinnerStep'];
+    return spinnerStep !== undefined && spinnerStep !== 0;
+  }
+
+  // Get the step value for number input spinners
+  getSpinnerStep(fieldName: string): number {
+    const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+    return fieldMeta?.ui?.['spinnerStep'] || 1;
+  }
 }

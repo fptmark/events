@@ -126,6 +126,16 @@
                             [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
                         </ng-container>
 
+                        <ng-container *ngSwitchCase="'number'">
+                          <input
+                            type="number"
+                            [formControlName]="fieldName"
+                            [class.show-spinner]="shouldShowSpinner(fieldName)"
+                            [step]="getSpinnerStep(fieldName)"
+                            class="form-control"
+                            [class.is-invalid]="isFieldInvalid(fieldName)">
+                        </ng-container>
+
                         <!-- Default case for all other standard inputs -->
                         <ng-container *ngSwitchDefault>
                           <input
