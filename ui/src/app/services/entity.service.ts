@@ -82,17 +82,9 @@ export class EntityService {
 
     // format Foreign keys and date for non-create modes
     if (metadata?.type === 'ObjectId') {
-        let entity = fieldName.substring(0, fieldName.length - 2) // Remove 'Id' suffix
-        let link = `entity/${entity}/${value}`
-        if (this.modeService.inSummaryMode(mode)) {
-          return `<a href=${link}>View</a>`
-        } else if (this.modeService.inDetailsMode(mode)) {
-          return `<a href=${link}>${value}</a>`
-        } else if (this.modeService.inEditMode(mode)) {
-          return value
-        }
-        console.error(`Invalid mode for foreign key field: ${mode}`);
-      }
+      let entity = fieldName.substring(0, fieldName.length - 2) // Remove 'Id' suffix
+      return this.formatObjectIdHTML(entity, value, value, mode)
+    }
 
     // Date field handling
     if (type === 'ISODate') {
@@ -300,20 +292,17 @@ export class EntityService {
       return of('');
     }
 
-    // Check for a show configuration for the current mode if not provided
-    const effectiveShowConfig = showConfig !== undefined ? showConfig : this.metadataService.getShowConfig(entityType, fieldName, mode);
-
     // If no show config or no fields specified for this mode, return the ObjectId directly
     // This uses the default formatting for ObjectIds without show configs (which formatFieldValue handles)
-    if (!effectiveShowConfig || !effectiveShowConfig.displayInfo.fields || effectiveShowConfig.displayInfo.fields.length === 0) {
+    if (!showConfig || !showConfig.displayInfo.fields || showConfig.displayInfo.fields.length === 0) {
        // Call formatFieldValue for the default ObjectId formatting
       const defaultFormatted = this.formatFieldValue(entityType, fieldName, mode, objectId);
       return of(defaultFormatted);
     }
 
     // Fetch the referenced entity data using RestService
-    const referencedEntityType = effectiveShowConfig.endpoint; // Endpoint is the referenced entity type
-    const fieldsToDisplay = effectiveShowConfig.displayInfo.fields;
+    const referencedEntityType = showConfig.endpoint; // Endpoint is the referenced entity type
+    const fieldsToDisplay = showConfig.displayInfo.fields;
 
     return this.restService.getEntity(referencedEntityType, objectId).pipe(
       map(referencedEntity => {
@@ -325,32 +314,18 @@ export class EntityService {
 
         // Extract and format the specified fields
         const formattedValues: string[] = [];
-        let allValuesBlank = true; // Flag to check if all show fields are blank
 
         for (const field of fieldsToDisplay) {
           const value = referencedEntity[field];
-
-          // Use existing formatFieldValue to format the individual field
-          // Note: formatFieldValue is synchronous, so this is okay within map
-          // We need to pass the *referenced* entity type to formatFieldValue
-          const formatted = this.formatFieldValue(referencedEntityType, field, mode, value);
-
-          formattedValues.push(formatted);
-
-          // Update blank flag - if any value is not blank, set to false
           if (value !== null && value !== undefined && String(value).trim() !== '') {
-              allValuesBlank = false;
+            const formatted = this.formatFieldValue(referencedEntityType, field, mode, value);
+            formattedValues.push(formatted);
           }
         }
 
-        // If all show fields were blank, fallback to ObjectId using default formatter
-        if (allValuesBlank) {
-            const defaultFormatted = this.formatFieldValue(entityType, fieldName, mode, objectId);
-            return defaultFormatted;
-        }
-
         // Join the formatted values (using semicolon as per example, though this might need to be configurable)
-        return formattedValues.join('; ');
+        const value = formattedValues.join('; ');
+        return this.formatObjectIdHTML(referencedEntityType, objectId, value, mode);
       }),
       catchError(error => {
         console.error(`Error fetching referenced entity ${referencedEntityType}/${objectId}:`, error);
@@ -360,4 +335,21 @@ export class EntityService {
       })
     );
   }
+
+  formatObjectIdHTML(entity: string, id: string, showValue: string, mode: ViewMode): string {
+    // Format the ObjectId value as a link
+    let link = `entity/${entity}/${id}`
+    if (this.modeService.inSummaryMode(mode)) {
+      showValue = showValue || 'View'
+      return `<a href=${link}>${showValue}</a>`
+    } else if (this.modeService.inDetailsMode(mode)) {
+      showValue = showValue || id; // Use id if no showValue provided
+      return `<a href=${link}>${showValue}</a>`
+    } else if (this.modeService.inEditMode(mode)) {
+      return id
+    }
+    console.error(`Invalid mode for foreign key field: ${mode}`);
+    return ''
+  }
+
 }
