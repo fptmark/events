@@ -13,7 +13,6 @@
         "build": {
           "builder": "@angular-devkit/build-angular:browser",
           "options": {
-            "optimization": false,
             "outputPath": "dist/ui/browser",
             "index": "src/index.html",
             "main": "src/main.ts",
@@ -51,37 +50,6 @@
           },
           "defaultConfiguration": "development"
         },
-        "server": {
-          "builder": "@angular-devkit/build-angular:server",
-          "options": {
-            "optimization": false,
-            "outputPath": "dist/ui/server",
-            "main": "server.ts",
-            "tsConfig": "tsconfig.server.json"
-          },
-          "configurations": {
-            "production": {
-              "fileReplacements": [
-                { "replace": "src/environments/environment.ts", "with": "src/environments/environment.prod.ts" }
-              ],
-              "sourceMap": false
-            }
-          },
-          "defaultConfiguration": "production"
-        },
-        "serve-ssr": {
-          "builder": "@nguniversal/builders:ssr-dev-server",
-          "options": {
-            "browserTarget": "ui:build",
-            "serverTarget": "ui:server"
-          },
-          "configurations": {
-            "production": {
-              "browserTarget": "ui:build:production",
-              "serverTarget": "ui:server:production"
-            }
-          }
-        },
         "extract-i18n": {
           "builder": "@angular-devkit/build-angular:extract-i18n"
         },
@@ -99,7 +67,12 @@
     }
   },
   "cli": {
-    "analytics": "98d46fd4-ab6e-4e0b-bd1c-d1db1412cb47"
+    "analytics": false,
+    "cache": {
+      "enabled": true,
+      "path": ".angular/cache",
+      "environment": "all"
+    }
   }
 }
 
