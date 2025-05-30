@@ -145,8 +145,6 @@ export class EntityListComponent implements OnInit {
     public entityService: EntityService,
     private route: ActivatedRoute,
     public restService: RestService,
-    private configService: ConfigService,
-    private http: HttpClient,
     private modeService: ModeService,
     private sanitizer: DomSanitizer
   ) {}
@@ -167,14 +165,9 @@ export class EntityListComponent implements OnInit {
     // Wait for entities to be loaded
     this.displayFields = this.entityService.getViewFields(this.entityType, SUMMARY);
         
-    // Get API endpoint from config service
-    const apiUrl = this.configService.getApiUrl(this.entityType);
-        
-    // Now fetch the entity data from the API
-    this.http.get<any>(apiUrl).subscribe({
-      next: (response) => {
-        const entities = Array.isArray(response) ? response : [response];
-        
+    // Use RestService instead of HttpClient directly
+    this.restService.getEntityList(this.entityType).subscribe({
+      next: (entities) => {
         // Process each entity to handle async formatting for ObjectId fields with show configs
         this.data = entities.map(entity => {
           const processedEntity: any = { ...entity, _formattedValues: {} };
@@ -203,14 +196,44 @@ export class EntityListComponent implements OnInit {
           return processedEntity;
         });
             
-          this.loading = false;
-        },
-        error: (err) => {
-          console.error('Error loading entities:', err);
-          this.error = 'Failed to load entities. Please try again later.';
-          this.loading = false;
+        this.loading = false;
+      },
+      error: (err) => {
+        console.error('Error loading entities:', err);
+        
+        let errorMessage = 'Failed to load entities. Please try again later.';
+        
+        if (err.error?.detail) {
+          // If it's a validation error from FastAPI
+          if (Array.isArray(err.error.detail)) {
+            const errors = err.error.detail.map((e: any) => {
+              const field = e.loc[e.loc.length - 1];
+              return `${field}: ${e.msg}`;
+            });
+            errorMessage = `Validation errors: ${errors.join(', ')}`;
+          } else if (typeof err.error.detail === 'string') {
+            errorMessage = err.error.detail;
+          }
+        } else if (err.status === 500 && err.error) {
+          // For other server errors, try to extract the message
+          const serverError = err.error.toString();
+          if (serverError.includes('ValidationError')) {
+            // Extract field name and record ID for validation errors
+            const fieldMatch = serverError.match(/Field required \[type=missing, input_value={'_id': ObjectId\('([^']+)'\)/);
+            const missingFieldMatch = serverError.match(/ValidationError: ([a-zA-Z0-9_]+)\n/);
+            
+            if (fieldMatch && missingFieldMatch) {
+              const recordId = fieldMatch[1];
+              const missingField = missingFieldMatch[1];
+              errorMessage = `Error: Missing ${missingField} field in record ${this.entityType}.id = ${recordId}`;
+            }
+          }
         }
-      })
+        
+        this.error = errorMessage;
+        this.loading = false;
+      }
+    });
   }
   
   // Custom actions are not currently implemented in the stateless approach
