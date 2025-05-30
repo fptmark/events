@@ -231,7 +231,6 @@ export class MetadataService {
    * @returns The show configuration or null if not found
    */
   getShowConfig(entityType: string, fieldName: string, view: string): ShowConfig | null {
-    // console.log('getShowConfig called with:', { entityType, fieldName, view });
     
     const fieldMetadata = this.getFieldMetadata(entityType, fieldName);
     
@@ -252,12 +251,12 @@ export class MetadataService {
     if (!matchingDisplayInfo) {
       return null;
     }
-
+    // If endpoint is not set, use the field name without the Id suffix
+    const endpoint = raw.endpoint || fieldName.substring(0, fieldName.length - 2);
     const result = {
-      endpoint: raw.endpoint,
+      endpoint: endpoint,
       displayInfo: matchingDisplayInfo
     };
-    // console.log('returning show config:', result);
     return result;
   }
 }
