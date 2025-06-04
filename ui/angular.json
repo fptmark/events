@@ -20,7 +20,9 @@
             "tsConfig": "tsconfig.app.json",
             "assets": [
               { "glob": "config.json", "input": "../", "output": "/" },
-              { "glob": "**/*", "input": "public" }
+              { "glob": "**/*", "input": "public", "output": "public", 
+                "ignore": [ "**/.DS_Store", "**/*.swp", "**/*.tmp",   "**/.vscode/**", "**/.idea/**", "**/*~" ]
+              }
             ],
             "styles": ["src/styles.css"],
             "scripts": [],
@@ -44,9 +46,17 @@
         },
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
+          "options": {
+            "buildTarget": "ui:build:development",
+            "poll": 2000
+          },
           "configurations": {
-            "production": { "buildTarget": "ui:build:production" },
-            "development": { "buildTarget": "ui:build:development" }
+            "production": {
+              "buildTarget": "ui:build:production"
+            },
+            "development": {
+              "buildTarget": "ui:build:development"
+            }
           },
           "defaultConfiguration": "development"
         },
