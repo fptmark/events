@@ -10,6 +10,7 @@ import { ModeService, SUMMARY } from '../services/mode.service';
 import { forkJoin, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { NotificationService } from '../services/notification.service';
 
 @Component({
   selector: 'app-entity-list',
@@ -146,7 +147,8 @@ export class EntityListComponent implements OnInit {
     private route: ActivatedRoute,
     public restService: RestService,
     private modeService: ModeService,
-    private sanitizer: DomSanitizer
+    private sanitizer: DomSanitizer,
+    private notificationService: NotificationService
   ) {}
 
   ngOnInit(): void {
@@ -202,10 +204,12 @@ export class EntityListComponent implements OnInit {
         console.error('Error loading entities:', err);
         
         let errorMessage = 'Failed to load entities. Please try again later.';
+        let validationErrors = undefined;
         
         if (err.error?.detail) {
           // If it's a validation error from FastAPI
           if (Array.isArray(err.error.detail)) {
+            validationErrors = err.error.detail;
             const errors = err.error.detail.map((e: any) => {
               const field = e.loc[e.loc.length - 1];
               return `${field}: ${e.msg}`;
@@ -230,7 +234,8 @@ export class EntityListComponent implements OnInit {
           }
         }
         
-        this.error = errorMessage;
+        // Show error using notification service
+        this.notificationService.showError(errorMessage, validationErrors, this.entityType);
         this.loading = false;
       }
     });

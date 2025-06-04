@@ -19,7 +19,15 @@ export interface DeleteResponse {
 
 // Error response from the API
 export interface ErrorResponse {
-  detail: string | ValidationError[];
+  detail: {
+    message: string
+    error_type: string
+    context?: {
+      id?: string
+      error?: string
+      [key: string]: any
+    }
+  }
 }
 
 // Validation error format from FastAPI
@@ -57,20 +65,20 @@ export class RestService {
 
   // 
   deleteEntity(entityType: string, id: string, onSuccess?: () => void): void {
-
     if (confirm('Are you sure you want to delete this item?')) {
       this.http.delete(`${this.configService.getApiUrl(entityType)}/${id}`).subscribe({
         next: () => {
-          alert('Entity deleted successfully.');
+          alert('Entity deleted successfully.')
           if (onSuccess) {
-            onSuccess();
+            onSuccess()
           }
         },
         error: (err) => {
-          console.error('Error deleting entity:', err);
-          alert('Failed to delete entity. Please try again later.');
+          console.error('Error deleting entity:', err)
+          const errorMsg = err.error?.detail?.message || 'Failed to delete entity. Please try again later.'
+          alert(errorMsg)
         }
-      });
+      })
     }
   }
   

@@ -82,8 +82,10 @@ export class EntityService {
 
     // format Foreign keys and date for non-create modes
     if (metadata?.type === 'ObjectId') {
-      let entity = fieldName.substring(0, fieldName.length - 2) // Remove 'Id' suffix
-      return this.formatObjectIdHTML(entity, value, value, mode)
+      // Check if there's a show config for this field
+      const showConfig = metadata?.ui?.show ? this.metadataService.getShowConfig(entityType, fieldName, mode) : null;
+      const entity = showConfig?.endpoint || fieldName.substring(0, fieldName.length - 2); // Use endpoint from show config or strip 'Id'
+      return this.formatObjectIdHTML(entity, value, value, mode);
     }
 
     // Date field handling
@@ -300,8 +302,14 @@ export class EntityService {
       return of(defaultFormatted);
     }
 
-    // Fetch the referenced entity data using RestService
-    const referencedEntityType = showConfig.endpoint; // Endpoint is the referenced entity type
+    // Get the referenced entity type from the endpoint
+    const referencedEntityType = showConfig.endpoint;
+    if (!referencedEntityType) {
+      // If no endpoint is specified, use default formatting
+      const defaultFormatted = this.formatFieldValue(entityType, fieldName, mode, objectId);
+      return of(defaultFormatted);
+    }
+
     const fieldsToDisplay = showConfig.displayInfo.fields;
 
     return this.restService.getEntity(referencedEntityType, objectId).pipe(

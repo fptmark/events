@@ -6,136 +6,168 @@ import {
   NOTIFICATION_SUCCESS, 
   NOTIFICATION_ERROR, 
   NOTIFICATION_WARNING, 
-  NOTIFICATION_INFO 
+  NOTIFICATION_INFO,
+  ErrorContext,
+  ValidationFailure
 } from '../services/notification.service';
 import { Subscription } from 'rxjs';
 import { MetadataService } from '../services/metadata.service';
+import { Observable } from 'rxjs';
+
+interface NotificationViewModel extends Notification {
+  context?: ErrorContext
+}
 
 @Component({
   selector: 'app-notification',
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div *ngIf="notification" 
-         class="alert mb-4" 
-         [ngClass]="getAlertClass()">
-        
-        <!-- Header with icon and dismiss button -->
-        <div class="d-flex justify-content-between align-items-center">
-            <div>
-                <i class="bi" [ngClass]="getIconClass()"></i>
-                <strong class="ms-2">{{ notification.title }}</strong>
+    <ng-container *ngIf="notification$ | async as vm">
+      <div class="notification-container" [ngClass]="vm.type">
+        <div class="notification-header">
+          <strong>{{ vm.title }}</strong>
+          <button class="close-button" (click)="clear()">×</button>
+        </div>
+        <div class="notification-content">
+          <p>{{ vm.message }}</p>
+          
+          <!-- Error Details -->
+          <ng-container *ngIf="vm.context as context">
+            <div class="error-details">
+              <!-- Missing Fields -->
+              <div *ngIf="context.missing_fields?.length" class="error-section">
+                <p class="error-subtitle">Missing Required Fields:</p>
+                <ul>
+                  <li *ngFor="let field of context.missing_fields">{{ getFieldDisplayName(field) }}</li>
+                </ul>
+              </div>
+              
+              <!-- Invalid Fields -->
+              <div *ngIf="context.invalid_fields?.length" class="error-section">
+                <p class="error-subtitle">Invalid Fields:</p>
+                <ul>
+                  <li *ngFor="let error of context.invalid_fields">
+                    {{ getFieldDisplayName(error.field) }}: {{ error.constraint }}
+                    <span *ngIf="error.value" class="error-value">(provided: {{ error.value }})</span>
+                  </li>
+                </ul>
+              </div>
+              
+              <!-- Unique Constraint Violations -->
+              <div *ngIf="context.conflicting_fields?.length" class="error-section">
+                <p class="error-subtitle">Duplicate Values Not Allowed:</p>
+                <ul>
+                  <li *ngFor="let field of context.conflicting_fields">{{ getFieldDisplayName(field) }}</li>
+                </ul>
+              </div>
+
+              <!-- Generic Error -->
+              <div *ngIf="context.error" class="error-section">
+                <p class="error-subtitle">Details:</p>
+                <p>{{ context.error }}</p>
+              </div>
             </div>
-            <button type="button" class="btn-close" (click)="clearNotification()"></button>
+          </ng-container>
         </div>
-        
-        <!-- Message -->
-        <div class="mt-2">{{ notification.message }}</div>
-        
-        <!-- Error details with optional expansion -->
-        <div *ngIf="notification.type === NOTIFICATION_ERROR && notification.errors && notification.errors.length > 0">
-            <button class="btn btn-sm btn-link p-0 mt-2" 
-                    (click)="toggleErrorDetails()">
-                {{ showErrorDetails ? 'Hide details' : 'Show details' }}
-            </button>
-            
-            <ul *ngIf="showErrorDetails" class="mt-2 mb-0">
-                <li *ngFor="let error of notification.errors">
-                    <strong>{{ getFieldDisplayName(error.field, error.entityType) }}:</strong> {{ error.message }}
-                </li>
-            </ul>
-        </div>
-    </div>
+      </div>
+    </ng-container>
   `,
   styles: [`
-    .alert {
+    .notification-container {
+      margin: 10px;
+      padding: 15px;
       border-radius: 4px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      position: relative;
     }
-    .btn-link {
-      text-decoration: none;
+    
+    .error-details {
+      margin-top: 10px;
+      padding: 10px;
+      background: rgba(0,0,0,0.05);
+      border-radius: 4px;
     }
-    .btn-link:hover {
-      text-decoration: underline;
+    
+    .error-section {
+      margin-bottom: 10px;
+    }
+    
+    .error-subtitle {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    
+    .error-value {
+      color: #666;
+      font-style: italic;
+    }
+    
+    ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    
+    li {
+      margin-bottom: 3px;
+    }
+
+    .success { background-color: #d4edda; border-color: #c3e6cb; color: #155724; }
+    .error { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; }
+    .warning { background-color: #fff3cd; border-color: #ffeeba; color: #856404; }
+    .info { background-color: #d1ecf1; border-color: #bee5eb; color: #0c5460; }
+
+    .close-button {
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      opacity: 0.5;
+    }
+    .close-button:hover {
+      opacity: 1;
     }
   `]
 })
 export class NotificationComponent implements OnInit, OnDestroy {
-  // Expose constants to template
-  readonly NOTIFICATION_SUCCESS = NOTIFICATION_SUCCESS;
-  readonly NOTIFICATION_ERROR = NOTIFICATION_ERROR;
-  readonly NOTIFICATION_WARNING = NOTIFICATION_WARNING;
-  readonly NOTIFICATION_INFO = NOTIFICATION_INFO;
-
-  notification: Notification | null = null;
-  showErrorDetails = false;
-  private subscription: Subscription | null = null;
+  private subscription: Subscription | null = null
   
   constructor(
     private notificationService: NotificationService,
     private metadataService: MetadataService
   ) {}
+
+  get notification$() {
+    return this.notificationService.notification$ as Observable<NotificationViewModel>
+  }
   
   ngOnInit(): void {
-    this.subscription = this.notificationService.notification$.subscribe(notification => {
-      this.notification = notification;
-      // Reset details flag when notification changes
-      this.showErrorDetails = false;
-    });
+    this.subscription = this.notification$.subscribe(() => {
+      // Reset any component state if needed
+    })
   }
   
   ngOnDestroy(): void {
-    if (this.subscription) {
-      this.subscription.unsubscribe();
-    }
+    this.subscription?.unsubscribe()
   }
   
-  getAlertClass(): string {
-    if (!this.notification) return '';
-    
-    switch (this.notification.type) {
-      case NOTIFICATION_SUCCESS: return 'alert-success';
-      case NOTIFICATION_ERROR: return 'alert-danger';
-      case NOTIFICATION_WARNING: return 'alert-warning';
-      case NOTIFICATION_INFO: return 'alert-info';
-      default: return 'alert-secondary';
-    }
-  }
-  
-  getIconClass(): string {
-    if (!this.notification) return '';
-    
-    switch (this.notification.type) {
-      case NOTIFICATION_SUCCESS: return 'bi-check-circle-fill';
-      case NOTIFICATION_ERROR: return 'bi-exclamation-triangle-fill';
-      case NOTIFICATION_WARNING: return 'bi-exclamation-circle-fill';
-      case NOTIFICATION_INFO: return 'bi-info-circle-fill';
-      default: return 'bi-bell-fill';
-    }
-  }
-  
-  clearNotification(): void {
-    this.notificationService.clear();
-  }
-  
-  toggleErrorDetails(): void {
-    this.showErrorDetails = !this.showErrorDetails;
+  clear(): void {
+    this.notificationService.clear()
   }
   
   getFieldDisplayName(fieldName: string, entityType?: string): string {
-    // If we have both entity type and metadata service, try to get the field's display name
     if (entityType && this.metadataService) {
       try {
-        const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
+        const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName)
         if (fieldMeta?.ui?.displayName) {
-          return fieldMeta.ui.displayName;
+          return fieldMeta.ui.displayName
         }
       } catch (e) {
-        // If there's any error getting the field metadata, fall back to formatting
+        // Fall back to formatting if metadata lookup fails
       }
     }
-    
-    // Format camelCase to Title Case with spaces
-    return fieldName.charAt(0).toUpperCase() + fieldName.slice(1).replace(/([A-Z])/g, ' $1');
+    return fieldName.charAt(0).toUpperCase() + fieldName.slice(1).replace(/([A-Z])/g, ' $1')
   }
 }

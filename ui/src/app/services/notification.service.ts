@@ -11,11 +11,48 @@ export const NOTIFICATION_INFO = 'info';
 export type NotificationType = typeof NOTIFICATION_SUCCESS | typeof NOTIFICATION_ERROR | 
                                typeof NOTIFICATION_WARNING | typeof NOTIFICATION_INFO;
 
+export interface ValidationFailure {
+  field: string
+  value?: any
+  constraint: string
+}
+
+export interface ValidationErrorItem {
+  field?: string
+  loc?: string[]
+  message?: string
+  msg?: string
+  value?: any
+}
+
+export interface ValidationErrorMap {
+  [field: string]: string | { message: string; value?: any }
+}
+
+export interface ErrorContext {
+  id?: string
+  error?: string
+  missing_fields?: string[]
+  invalid_fields?: ValidationFailure[]
+  conflicting_fields?: string[]
+  entity?: string
+  error_type: string
+  [key: string]: any
+}
+
+export interface ErrorResponse {
+  detail: {
+    message: string
+    error_type: string
+    context?: ErrorContext
+  }
+}
+
 export interface Notification {
   type: NotificationType;
   title: string;
   message: string;
-  errors?: Array<{field: string, message: string, entityType?: string}>;
+  context?: ErrorContext;
   autoClose?: boolean;
 }
 
@@ -50,24 +87,66 @@ export class NotificationService {
   }
   
   /**
-   * Show an error notification
-   * @param message The primary error message
-   * @param errors Optional list of detailed validation errors
-   * @param entityType Optional entity type for context (helps with field name formatting)
+   * Show an error notification with rich context
+   * @param messageOrError The error message or error response object
+   * @param validationErrors Optional validation errors
+   * @param entityType Optional entity type for context
    */
-  showError(message: string, errors?: ValidationError[], entityType?: string): void {
-    this.clear(); // Clear any existing notification
+  showError(messageOrError: string | any, validationErrors?: ValidationErrorItem[] | ValidationErrorMap, entityType?: string): void {
+    this.clear()
     
-    this.notificationSubject.next({
-      type: NOTIFICATION_ERROR,
-      title: 'Error',
-      message,
-      errors: errors?.map(err => ({
-        field: err.loc[err.loc.length - 1],
-        message: err.msg,
-        entityType // Include entity type for context
-      }))
-    });
+    let notification: Notification
+    
+    // Case 1: Error response object from backend
+    if (typeof messageOrError === 'object' && messageOrError.error?.detail) {
+      notification = {
+        type: NOTIFICATION_ERROR,
+        title: 'Error',
+        message: messageOrError.error.detail.message,
+        context: messageOrError.error.detail.context
+      }
+    }
+    // Case 2: Direct message with validation errors
+    else if (typeof messageOrError === 'string' && validationErrors) {
+      const context: ErrorContext = {
+        error_type: 'validation_error',
+        entity: entityType
+      }
+
+      if (Array.isArray(validationErrors)) {
+        // Handle array of validation errors
+        context.invalid_fields = validationErrors.map((error: ValidationErrorItem) => ({
+          field: error.field || error.loc?.join('.') || '',
+          constraint: error.message || error.msg || '',
+          value: error.value
+        }))
+      } else {
+        // Handle validation error object
+        context.invalid_fields = Object.entries(validationErrors).map(([field, error]) => ({
+          field,
+          constraint: typeof error === 'string' ? error : error.message || '',
+          value: typeof error === 'object' ? error.value : undefined
+        }))
+      }
+
+      notification = {
+        type: NOTIFICATION_ERROR,
+        title: 'Validation Error',
+        message: messageOrError,
+        context
+      }
+    }
+    // Case 3: Simple error message
+    else {
+      notification = {
+        type: NOTIFICATION_ERROR,
+        title: 'Error',
+        message: typeof messageOrError === 'string' ? messageOrError : 'An unexpected error occurred',
+        context: entityType ? { error_type: 'error', entity: entityType } : undefined
+      }
+    }
+
+    this.notificationSubject.next(notification)
   }
   
   /**
@@ -123,5 +202,37 @@ export class NotificationService {
     this.autoCloseTimer = setTimeout(() => {
       this.clear();
     }, delay);
+  }
+
+  /**
+   * Format error details for display
+   * @param context The error context
+   * @returns Formatted error message
+   */
+  formatErrorDetails(context: ErrorContext): string {
+    if (!context) return '';
+    
+    const details: string[] = [];
+    
+    if (context.error) {
+      details.push(`Error: ${context.error}`);
+    }
+    
+    if (context.missing_fields?.length) {
+      details.push(`Missing fields: ${context.missing_fields.join(', ')}`);
+    }
+    
+    if (context.invalid_fields?.length) {
+      details.push('Invalid fields:');
+      context.invalid_fields.forEach(failure => {
+        details.push(`  ${failure.field}: ${failure.constraint}`);
+      });
+    }
+    
+    if (context.conflicting_fields?.length) {
+      details.push(`Duplicate values for: ${context.conflicting_fields.join(', ')}`);
+    }
+    
+    return details.join('\n');
   }
 }

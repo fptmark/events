@@ -5,11 +5,12 @@ import { MetadataService } from './services/metadata.service'
 import { NavigationService } from './services/navigation.service';
 import { ConfigService } from './services/config.service';
 import { RestService } from './services/rest.service';
+import { NotificationComponent } from './components/notification.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, CommonModule],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, CommonModule, NotificationComponent],
   template: `
     <!-- App Loading State -->
     <div *ngIf="!initialized" class="loading-container">
@@ -52,6 +53,7 @@ import { RestService } from './services/rest.service';
       </nav>
       
       <div class="container-fluid py-3">
+        <app-notification></app-notification>
         <router-outlet></router-outlet>
       </div>
     </ng-container>
