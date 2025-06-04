@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MetadataService } from '../services/metadata.service';
 import { EntityService } from '../services/entity.service';
@@ -7,10 +7,11 @@ import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { RestService } from '../services/rest.service';
 import { ModeService, SUMMARY } from '../services/mode.service';
-import { forkJoin, of } from 'rxjs';
-import { map, switchMap } from 'rxjs/operators';
+import { forkJoin, of, Subject } from 'rxjs';
+import { map, switchMap, takeUntil } from 'rxjs/operators';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { NotificationService } from '../services/notification.service';
+import { RefreshService } from '../services/refresh.service';
 
 @Component({
   selector: 'app-entity-list',
@@ -66,7 +67,7 @@ import { NotificationService } from '../services/notification.service';
                     <!-- Create not shown for individual rows since it applies to the entity type, not a specific row -->
                     <button *ngIf="entityService.canDelete(entityType)"
                       class="btn btn-entity-delete"
-                      (click)="this.restService.deleteEntity(entityType, row._id, loadEntities.bind(this))">Delete</button>
+                      (click)="this.restService.deleteEntity(entityType, row._id)">Delete</button>
                   </div>
                 </td>
               </tr>
@@ -129,7 +130,9 @@ import { NotificationService } from '../services/notification.service';
     }
   `]
 })
-export class EntityListComponent implements OnInit {
+export class EntityListComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>()
+  
   entityType: string = '';
   data: any[] = []
   displayFields: string[] = [];
@@ -148,19 +151,38 @@ export class EntityListComponent implements OnInit {
     public restService: RestService,
     private modeService: ModeService,
     private sanitizer: DomSanitizer,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private refreshService: RefreshService
   ) {}
 
   ngOnInit(): void {
-    this.route.params.subscribe(params => {
+    // Subscribe to route params
+    this.route.params.pipe(
+      takeUntil(this.destroy$)
+    ).subscribe(params => {
       this.entityType = params['entityType'];
-      
-      // Load entities
       this.loadEntities();
     });
+
+    // Subscribe to refresh events
+    this.refreshService.refresh$.pipe(
+      takeUntil(this.destroy$)
+    ).subscribe(refreshedEntityType => {
+      console.log(`EntityListComponent: Received refresh event for ${refreshedEntityType}, current type is ${this.entityType}`);
+      if (refreshedEntityType === this.entityType) {
+        console.log('EntityListComponent: Reloading entities');
+        this.loadEntities();
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
   
   loadEntities(): void {
+    console.log(`EntityListComponent: Starting loadEntities for ${this.entityType}`)
     this.loading = true;
     this.error = '';
     
@@ -170,6 +192,7 @@ export class EntityListComponent implements OnInit {
     // Use RestService instead of HttpClient directly
     this.restService.getEntityList(this.entityType).subscribe({
       next: (entities) => {
+        console.log(`EntityListComponent: Loaded ${entities.length} ${this.entityType} entities`)
         this.loading = false;
         
         // Process each entity to handle async formatting for ObjectId fields with show configs
@@ -199,6 +222,7 @@ export class EntityListComponent implements OnInit {
         });
       },
       error: (err) => {
+        console.error(`EntityListComponent: Error loading ${this.entityType}:`, err)
         this.loading = false;
         // Only show error notification for actual errors, not empty results
         if (err.status !== 404) {

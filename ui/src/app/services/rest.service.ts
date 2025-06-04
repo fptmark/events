@@ -7,6 +7,7 @@ import { ConfigService } from './config.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { MetadataService } from './metadata.service';
 import { NotificationService } from './notification.service';
+import { RefreshService } from './refresh.service';
 
 // Base entity interface - all entities must have _id
 export interface Entity {
@@ -55,7 +56,8 @@ export class RestService {
   constructor(
     private http: HttpClient,
     private configService: ConfigService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private refreshService: RefreshService
   ) {}
 
   private handleError(error: any): Observable<never> {
@@ -78,31 +80,61 @@ export class RestService {
   }
 
   createEntity(entityType: string, entityData: any): Observable<Entity> {
+    console.log(`RestService: Attempting to create ${entityType}`)
     return this.http.post<Entity>(this.configService.getApiUrl(entityType), entityData).pipe(
+      map(response => {
+        console.log(`RestService: Successfully created ${entityType}, waiting for consistency`)
+        this.notificationService.showSuccess('Entity created successfully.')
+        // Add a small delay to allow Elasticsearch to process the creation
+        setTimeout(() => {
+          console.log(`RestService: Triggering refresh for ${entityType} after delay`)
+          this.refreshService.triggerRefresh(entityType)
+        }, 1000)
+        return response
+      }),
       catchError(error => this.handleError(error))
     );
   }
 
   updateEntity(entityType: string, id: string, entityData: any): Observable<Entity> {
+    console.log(`RestService: Attempting to update ${entityType} with id ${id}`)
     const baseUrl = this.configService.getApiUrl(entityType)
     return this.http.put<Entity>(`${baseUrl}/${id}`, entityData).pipe(
+      map(response => {
+        console.log(`RestService: Successfully updated ${entityType}, waiting for consistency`)
+        this.notificationService.showSuccess('Entity updated successfully.')
+        // Add a small delay to allow Elasticsearch to process the update
+        setTimeout(() => {
+          console.log(`RestService: Triggering refresh for ${entityType} after delay`)
+          this.refreshService.triggerRefresh(entityType)
+        }, 1000)
+        return response
+      }),
       catchError(error => this.handleError(error))
     );
   }
 
-  deleteEntity(entityType: string, id: string, onSuccess?: () => void): void {
+  deleteEntity(entityType: string, id: string): void {
     if (confirm('Are you sure you want to delete this item?')) {
+      console.log(`RestService: Attempting to delete ${entityType} with id ${id}`)
       const baseUrl = this.configService.getApiUrl(entityType)
       this.http.delete(`${baseUrl}/${id}`).pipe(
         catchError(error => this.handleError(error))
       ).subscribe({
         next: () => {
-          this.notificationService.showSuccess('Entity deleted successfully.');
-          if (onSuccess) {
-            onSuccess();
-          }
+          console.log(`RestService: Successfully deleted ${entityType}, waiting for consistency`)
+          this.notificationService.showSuccess('Entity deleted successfully.')
+          // Add a small delay to allow Elasticsearch to process the deletion
+          setTimeout(() => {
+            console.log(`RestService: Triggering refresh for ${entityType} after delay`)
+            this.refreshService.triggerRefresh(entityType)
+          }, 1000)
+        },
+        error: (error) => {
+          console.error(`RestService: Error deleting ${entityType}:`, error)
+          this.handleError(error)
         }
-      });
+      })
     }
   }
   

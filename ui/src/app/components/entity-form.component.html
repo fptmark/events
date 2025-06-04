@@ -204,7 +204,10 @@
               <!-- Details button not needed in details mode since we're already viewing -->
               <button *ngIf="entityService.canUpdate(entityType)" type="button" class="btn btn-entity-edit me-2" (click)="goToEdit()">Edit</button>
               <button *ngIf="metadataService.isValidOperation(entityType, 'c')" type="button" class="btn btn-entity-create me-2" (click)="entityService.navigateToCreate(entityType)">Create</button>
-              <button *ngIf="entityService.canDelete(entityType)" type="button" class="btn btn-entity-delete" (click)="restService.deleteEntity(entityType, entityId, goBack.bind(this))">Delete</button>
+              <button *ngIf="entityService.canDelete(entityType)" 
+                type="button" 
+                class="btn btn-entity-delete" 
+                (click)="restService.deleteEntity(entityType, entityId); goBack()">Delete</button>
             </ng-container>
           </div>
 

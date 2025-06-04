@@ -132,64 +132,36 @@ export class NotificationService {
    * @param entityType Optional entity type for context
    */
   showError(messageOrError: string | any, validationErrors?: ValidationErrorItem[] | ValidationErrorMap, entityType?: string): void {
-    // Don't show notification for 404 not_found errors
-    if (typeof messageOrError === 'object' && messageOrError.status === 404) {
-      return;
-    }
-    
     let message: string;
     let context: ErrorContext | undefined;
     
     // Case 1: Error response object from backend
     if (typeof messageOrError === 'object' && messageOrError.error?.detail) {
-      message = messageOrError.error.detail.message;
-      context = messageOrError.error.detail.context;
-      this.addError(message, context);
-    }
-    // Case 2: Direct message with validation errors
-    else if (typeof messageOrError === 'string' && validationErrors) {
-      message = messageOrError;
-      context = {
-        error_type: 'validation_error',
-        entity: entityType
-      };
+      const errorDetail = messageOrError.error.detail;
+      message = errorDetail.message;
+      context = errorDetail.context;
 
-      if (Array.isArray(validationErrors)) {
-        // Handle array of validation errors
-        context.invalid_fields = validationErrors.map((error: ValidationErrorItem) => ({
-          field: error.field || error.loc?.join('.') || '',
-          constraint: error.message || error.msg || '',
-          value: error.value
-        }));
-        
-        // Add individual error messages
-        validationErrors.forEach(error => {
-          if (error.message || error.msg) {
-            this.addError(error.message || error.msg || '', context);
-          }
-        });
-      } else {
-        // Handle validation error object
-        context.invalid_fields = Object.entries(validationErrors).map(([field, error]) => {
-          const errMessage = typeof error === 'string' ? error : error.message || '';
-          if (errMessage) {
-            this.addError(`${field}: ${errMessage}`, context);
-          }
-          return {
-            field,
-            constraint: errMessage,
-            value: typeof error === 'object' ? error.value : undefined
-          };
-        });
+      // Handle specific error types
+      switch (errorDetail.error_type) {
+        case 'not_found':
+          message = `${context?.entity || 'Item'} with ID ${context?.id} was not found. It may have been deleted by another user.`;
+          break;
+        case 'validation_error':
+          // Keep existing validation error handling
+          break;
+        case 'database_error':
+          message = `Database error: ${message}`;
+          break;
+        // Add more specific error types as needed
       }
-    }
-    // Case 3: Simple error message
-    else {
-      message = typeof messageOrError === 'string' ? messageOrError : 'An unexpected error occurred';
-      if (entityType) {
-        context = { error_type: 'error', entity: entityType };
-      }
+
       this.addError(message, context);
+    } else if (typeof messageOrError === 'string') {
+      // Case 2: Direct string message
+      this.addError(messageOrError);
+    } else {
+      // Case 3: Unknown error format
+      this.addError('An unexpected error occurred. Please try again.');
     }
   }
   

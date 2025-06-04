@@ -421,7 +421,7 @@ export class EntityFormComponent implements OnInit {
     const operation = this.isCreateMode() ? 'created' : 'updated';
     this.notificationService.showSuccess(`${this.entityType} was successfully ${operation}.`, true);
     
-    // Navigate using Angular router instead of full page reload
+    // Use Angular router instead of full page reload
     this.router.navigate(['/entity', this.entityType]);
   }
 
@@ -430,21 +430,25 @@ export class EntityFormComponent implements OnInit {
    */
   private handleApiFailure(err: any, operation: string): void {
     console.error(`Error ${operation} entity:`, err);
-    this.submitting = false;
+
+    // Directly use handleApiError to show all error details
     this.handleApiError(err);
+
+    // Reset submitting flag so user can try again
+    this.submitting = false;
   }
 
   createEntity(formData: any): void {
     this.restService.createEntity(this.entityType, formData).subscribe({
       next: () => this.handleApiSuccess(),
-      error: (err: any) => this.handleApiFailure(err, 'creating')
+      error: (err) => this.handleApiFailure(err, 'creating')
     });
   }
 
   updateEntity(formData: any): void {
     this.restService.updateEntity(this.entityType, this.entityId, formData).subscribe({
       next: () => this.handleApiSuccess(),
-      error: (err: any) => this.handleApiFailure(err, 'updating')
+      error: (err) => this.handleApiFailure(err, 'updating')
     });
   }
 
