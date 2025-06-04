@@ -39,7 +39,7 @@ import { NotificationService } from '../services/notification.service';
       <div *ngIf="!loading && !error">
         <!-- Check if there are any entities to display -->
         <div *ngIf="data.length === 0" class="alert alert-info">
-          No {{ entityType }} records found.
+          No {{ entityType }} records found. Click Create to add one.
         </div>
         
         <!-- Table layout with one row per entity -->
@@ -170,6 +170,8 @@ export class EntityListComponent implements OnInit {
     // Use RestService instead of HttpClient directly
     this.restService.getEntityList(this.entityType).subscribe({
       next: (entities) => {
+        this.loading = false;
+        
         // Process each entity to handle async formatting for ObjectId fields with show configs
         this.data = entities.map(entity => {
           const processedEntity: any = { ...entity, _formattedValues: {} };
@@ -183,60 +185,26 @@ export class EntityListComponent implements OnInit {
 
             if (metadata?.type === 'ObjectId' && showConfig) {
               // Use the async formatter for ObjectId fields with show config
-              // Pass the already-fetched showConfig to avoid re-fetching
               processedEntity._formattedValues[field] = this.entityService.formatObjectIdValue(this.entityType, field, SUMMARY, rawValue, showConfig).pipe(
-                 map(value => this.sanitizer.bypassSecurityTrustHtml(value)) // Sanitize HTML output
+                 map(value => this.sanitizer.bypassSecurityTrustHtml(value))
               );
             } else {
               // For other field types or ObjectId without show config, use the synchronous formatter
-              // This also handles the case where an ObjectId field value is blank/null/undefined
               const formattedValue = this.entityService.formatFieldValue(this.entityType, field, SUMMARY, rawValue);
-              processedEntity._formattedValues[field] = of(this.sanitizer.bypassSecurityTrustHtml(formattedValue)); // Wrap in Observable<SafeHtml>
+              processedEntity._formattedValues[field] = of(this.sanitizer.bypassSecurityTrustHtml(formattedValue));
             }
           });
 
           return processedEntity;
         });
-            
-        this.loading = false;
       },
       error: (err) => {
-        console.error('Error loading entities:', err);
-        
-        let errorMessage = 'Failed to load entities. Please try again later.';
-        let validationErrors = undefined;
-        
-        if (err.error?.detail) {
-          // If it's a validation error from FastAPI
-          if (Array.isArray(err.error.detail)) {
-            validationErrors = err.error.detail;
-            const errors = err.error.detail.map((e: any) => {
-              const field = e.loc[e.loc.length - 1];
-              return `${field}: ${e.msg}`;
-            });
-            errorMessage = `Validation errors: ${errors.join(', ')}`;
-          } else if (typeof err.error.detail === 'string') {
-            errorMessage = err.error.detail;
-          }
-        } else if (err.status === 500 && err.error) {
-          // For other server errors, try to extract the message
-          const serverError = err.error.toString();
-          if (serverError.includes('ValidationError')) {
-            // Extract field name and record ID for validation errors
-            const fieldMatch = serverError.match(/Field required \[type=missing, input_value={'_id': ObjectId\('([^']+)'\)/);
-            const missingFieldMatch = serverError.match(/ValidationError: ([a-zA-Z0-9_]+)\n/);
-            
-            if (fieldMatch && missingFieldMatch) {
-              const recordId = fieldMatch[1];
-              const missingField = missingFieldMatch[1];
-              errorMessage = `Error: Missing ${missingField} field in record ${this.entityType}.id = ${recordId}`;
-            }
-          }
-        }
-        
-        // Show error using notification service
-        this.notificationService.showError(errorMessage, validationErrors, this.entityType);
         this.loading = false;
+        // Only show error notification for actual errors, not empty results
+        if (err.status !== 404) {
+          this.error = err.error?.detail?.message || 'Failed to load entities';
+          this.notificationService.showError(err);
+        }
       }
     });
   }

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from bson.objectid import ObjectId
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pydantic import BaseModel
 from beanie import Document
 import logging
@@ -39,14 +39,14 @@ def load_settings(config_file: Path | None) -> Dict[str, Any]:
     return {}
 
 
-def serialize_mongo_document(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Serialize MongoDB document for JSON response.
-    Convert ObjectId to string.
-    """
-    if '_id' in doc and isinstance(doc['_id'], ObjectId):
-        doc['_id'] = str(doc['_id'])
-    return doc
+# def serialize_mongo_document(doc: Dict[str, Any]) -> Dict[str, Any]:
+#     """
+#     Serialize MongoDB document for JSON response.
+#     Convert ObjectId to string.
+#     """
+#     if '_id' in doc and isinstance(doc['_id'], ObjectId):
+#         doc['_id'] = str(doc['_id'])
+#     return doc
 
 
 # Helper for models
@@ -74,21 +74,34 @@ def get_metadata(metadata) -> Dict[str, Any]:
 
 # Helpers for routes
 
-async def apply_and_save(
-    doc: Document,
-    payload: BaseModel,
-    *,
-    exclude_unset: bool = True
-) -> Document:
-    """
-    Copy payload fields onto doc and call save().
-    """
-    data = payload.dict(exclude_unset=exclude_unset)
-    for field, value in data.items():
-        setattr(doc, field, value)
-    try:
-        await doc.save()
-    except Exception as e:
-        logging.exception("Error in apply_and_save()")
-        raise
-    return doc
+# async def apply_and_save(
+#     doc: Document,
+#     payload: BaseModel,
+#     *,
+#     exclude_unset: bool = True
+# ) -> Document:
+#     """
+#     Copy payload fields onto doc and call save().
+#     """
+#     data = payload.dict(exclude_unset=exclude_unset)
+#     for field, value in data.items():
+#         setattr(doc, field, value)
+#     try:
+#         await doc.save()
+#     except Exception as e:
+#         logging.exception("Error in apply_and_save()")
+#         raise
+#     return doc
+
+# class DatabaseError(Exception):
+#     """Base class for all database-related errors"""
+#     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+#         self.message = message
+#         self.details = details or {}
+#         super().__init__(message)
+
+# class ValidationError(DatabaseError):
+#     """Error for validation failures during database operations"""
+#     def __init__(self, message: str, field: Optional[str] = None, value: Any = None):
+#         details = {"field": field, "value": value} if field else {}
+#         super().__init__(message, details)

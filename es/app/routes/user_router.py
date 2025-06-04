@@ -1,109 +1,57 @@
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter
 from typing import List, Dict, Any
-from app.models.user_model import User, UserCreate, UserRead
-import logging
-import json
+from ..models.user_model import User, UserCreate, UserUpdate
+from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
-# CREATE
-@router.post('/')
-async def create_user(item: UserCreate):
-    logging.info("Received request to create a new user.")
-    # Instantiate a document from the model
-    doc = User(**item.dict(exclude_unset=True))
-    try:
-        await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"User created successfully with _id: {doc.id}")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to create user.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
+@router.get("", response_model=List[User])
+async def list_users() -> List[User]:
+    """List all users"""
+    users = await User.find_all()
+    return list(users)  # Convert Sequence to List
 
-# GET ALL
-@router.get('/')
-async def get_all_users():
-    logging.info("Received request to fetch all users.")
-    try:
-        docs = await User.find_all()
-        logging.info(f"Fetched {len(docs)} user(s) successfully.")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to fetch all users.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return docs
+@router.get("/{user_id}", response_model=User)
+async def get_user(user_id: str) -> User:
+    """Get a specific user by ID"""
+    user = await User.get(user_id)
+    if not user:
+        raise NotFoundError("User", user_id)
+    return user
 
-# GET ONE BY ID
-@router.get('/{item_id}')
-async def get_user(item_id: str):
-    logging.info(f"Received request to fetch user with _id: {item_id}")
-    try:
-        doc = await User.get(item_id)
-        if not doc:
-            logging.warning(f"User with _id {item_id} not found.")
-            raise HTTPException(status_code=404, detail='User not found')
-        logging.info(f"Fetched user with _id: {item_id} successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to fetch User with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
+@router.post("", response_model=User)
+async def create_user(user_data: UserCreate) -> User:
+    """Create a new user"""
+    user = User(**user_data.model_dump())
+    return await user.save()
 
-# UPDATE
-@router.put('/{item_id}')
-async def update_user(item_id: str, item: UserCreate):
-    logging.info(f"Received request to update user with _id: {item_id}")
-    try:
-        doc = await User.get(item_id)
-        if not doc:
-            logging.warning(f"User with _id {item_id} not found for update.")
-            raise HTTPException(status_code=404, detail='User not found')
-        update_data = item.dict(exclude_unset=True)
-        # Optionally prevent updating base fields:
-        update_data.pop('_id', None)
-        update_data.pop('createdAt', None)
-        # For updatedAt, BaseEntity.save() will update it automatically.
-        for key, value in update_data.items():
-            setattr(doc, key, value)
-        await doc.save()
-        logging.info(f"User with _id {item_id} updated successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to update User with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+@router.put("/{user_id}", response_model=User)
+async def update_user(user_id: str, user_data: UserUpdate) -> User:
+    """Update an existing user"""
+    # Check if user exists
+    existing = await User.get(user_id)
+    if not existing:
+        raise NotFoundError("User", user_id)
     
-    return doc
-
-# DELETE
-@router.delete('/{item_id}')
-async def delete_user(item_id: str):
-    logging.info(f"Received request to delete user with _id: {item_id}")
-    try:
-        doc = await User.get(item_id)
-        if not doc:
-            logging.warning(f"User with _id {item_id} not found for deletion.")
-            raise HTTPException(status_code=404, detail='User not found')
-        await doc.delete()
-        logging.info(f"User with _id {item_id} deleted successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to delete User with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+    # Update fields
+    user = User(**user_data.model_dump())
+    user.id = user_id
+    user.createdAt = existing.createdAt
     
-    return {'message': 'User deleted successfully'}
+    # Save changes
+    return await user.save()
 
-# GET METADATA
-@router.get('/metadata')
+@router.delete("/{user_id}")
+async def delete_user(user_id: str):
+    """Delete a user"""
+    user = await User.get(user_id)
+    if not user:
+        raise NotFoundError("User", user_id)
+    await user.delete()
+    return {"message": "User deleted successfully"}
+
+@router.get("/metadata")
 async def get_user_metadata():
     """Get metadata for User entity."""
     return User.get_metadata()

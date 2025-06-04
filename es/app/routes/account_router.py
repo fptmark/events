@@ -1,109 +1,56 @@
-from fastapi import APIRouter, HTTPException, Response
-from typing import List, Dict, Any
-from app.models.account_model import Account, AccountCreate, AccountRead
-import logging
-import json
+from fastapi import APIRouter
+from typing import List
+from ..models.account_model import Account, AccountCreate, AccountUpdate
+from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 
-# CREATE
-@router.post('/')
-async def create_account(item: AccountCreate):
-    logging.info("Received request to create a new account.")
-    # Instantiate a document from the model
-    doc = Account(**item.dict(exclude_unset=True))
-    try:
-        await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"Account created successfully with _id: {doc.id}")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to create account.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
+@router.get("", response_model=List[Account])
+async def list_accounts() -> List[Account]:
+    """List all accounts"""
+    accounts = await Account.find_all()
+    return list(accounts)  # Convert Sequence to List
 
-# GET ALL
-@router.get('/')
-async def get_all_accounts():
-    logging.info("Received request to fetch all accounts.")
-    try:
-        docs = await Account.find_all()
-        logging.info(f"Fetched {len(docs)} account(s) successfully.")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to fetch all accounts.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return docs
+@router.get("/{account_id}", response_model=Account)
+async def get_account(account_id: str) -> Account:
+    """Get a specific account by ID"""
+    account = await Account.get(account_id)
+    if not account:
+        raise NotFoundError("Account", account_id)
+    return account
 
-# GET ONE BY ID
-@router.get('/{item_id}')
-async def get_account(item_id: str):
-    logging.info(f"Received request to fetch account with _id: {item_id}")
-    try:
-        doc = await Account.get(item_id)
-        if not doc:
-            logging.warning(f"Account with _id {item_id} not found.")
-            raise HTTPException(status_code=404, detail='Account not found')
-        logging.info(f"Fetched account with _id: {item_id} successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to fetch Account with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
+@router.post("", response_model=Account)
+async def create_account(account_data: AccountCreate) -> Account:
+    """Create a new account"""
+    account = Account(**account_data.model_dump())
+    return await account.save()
 
-# UPDATE
-@router.put('/{item_id}')
-async def update_account(item_id: str, item: AccountCreate):
-    logging.info(f"Received request to update account with _id: {item_id}")
-    try:
-        doc = await Account.get(item_id)
-        if not doc:
-            logging.warning(f"Account with _id {item_id} not found for update.")
-            raise HTTPException(status_code=404, detail='Account not found')
-        update_data = item.dict(exclude_unset=True)
-        # Optionally prevent updating base fields:
-        update_data.pop('_id', None)
-        update_data.pop('createdAt', None)
-        # For updatedAt, BaseEntity.save() will update it automatically.
-        for key, value in update_data.items():
-            setattr(doc, key, value)
-        await doc.save()
-        logging.info(f"Account with _id {item_id} updated successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to update Account with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+@router.put("/{account_id}", response_model=Account)
+async def update_account(account_id: str, account_data: AccountUpdate) -> Account:
+    """Update an existing account"""
+    # Check if account exists
+    existing = await Account.get(account_id)
+    if not existing:
+        raise NotFoundError("Account", account_id)
     
-    return doc
-
-# DELETE
-@router.delete('/{item_id}')
-async def delete_account(item_id: str):
-    logging.info(f"Received request to delete account with _id: {item_id}")
-    try:
-        doc = await Account.get(item_id)
-        if not doc:
-            logging.warning(f"Account with _id {item_id} not found for deletion.")
-            raise HTTPException(status_code=404, detail='Account not found')
-        await doc.delete()
-        logging.info(f"Account with _id {item_id} deleted successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to delete Account with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+    # Update fields
+    account = Account(**account_data.model_dump())
+    account.id = account_id
+    account.createdAt = existing.createdAt
     
-    return {'message': 'Account deleted successfully'}
+    # Save changes
+    return await account.save()
 
-# GET METADATA
-@router.get('/metadata')
+@router.delete("/{account_id}")
+async def delete_account(account_id: str):
+    """Delete an account"""
+    account = await Account.get(account_id)
+    if not account:
+        raise NotFoundError("Account", account_id)
+    await account.delete()
+    return {"message": "Account deleted successfully"}
+
+@router.get("/metadata")
 async def get_account_metadata():
     """Get metadata for Account entity."""
     return Account.get_metadata()

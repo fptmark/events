@@ -1,109 +1,67 @@
-from fastapi import APIRouter, HTTPException, Response
-from typing import List, Dict, Any
-from app.models.event_model import Event, EventCreate, EventRead
-import logging
-import json
+from fastapi import APIRouter
+from typing import List, Optional
+from datetime import datetime
+from ..models.event_model import Event, EventCreate, EventUpdate
+from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 
-# CREATE
-@router.post('/')
-async def create_event(item: EventCreate):
-    logging.info("Received request to create a new event.")
-    # Instantiate a document from the model
-    doc = Event(**item.dict(exclude_unset=True))
-    try:
-        await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"Event created successfully with _id: {doc.id}")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to create event.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+@router.get("", response_model=List[Event])
+async def list_events(
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None
+) -> List[Event]:
+    """List all events with optional date filtering"""
+    events = await Event.find_all()
+    filtered_events = list(events)  # Convert Sequence to List
     
-    return doc
+    if from_date:
+        filtered_events = [e for e in filtered_events if e.dateTime >= from_date]
+    if to_date:
+        filtered_events = [e for e in filtered_events if e.dateTime <= to_date]
+        
+    return filtered_events
 
-# GET ALL
-@router.get('/')
-async def get_all_events():
-    logging.info("Received request to fetch all events.")
-    try:
-        docs = await Event.find_all()
-        logging.info(f"Fetched {len(docs)} event(s) successfully.")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to fetch all events.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+@router.get("/{event_id}", response_model=Event)
+async def get_event(event_id: str) -> Event:
+    """Get a specific event by ID"""
+    event = await Event.get(event_id)
+    if not event:
+        raise NotFoundError("Event", event_id)
+    return event
+
+@router.post("", response_model=Event)
+async def create_event(event_data: EventCreate) -> Event:
+    """Create a new event"""
+    event = Event(**event_data.model_dump())
+    return await event.save()
+
+@router.put("/{event_id}", response_model=Event)
+async def update_event(event_id: str, event_data: EventUpdate) -> Event:
+    """Update an existing event"""
+    # Check if event exists
+    existing = await Event.get(event_id)
+    if not existing:
+        raise NotFoundError("Event", event_id)
     
-    return docs
-
-# GET ONE BY ID
-@router.get('/{item_id}')
-async def get_event(item_id: str):
-    logging.info(f"Received request to fetch event with _id: {item_id}")
-    try:
-        doc = await Event.get(item_id)
-        if not doc:
-            logging.warning(f"Event with _id {item_id} not found.")
-            raise HTTPException(status_code=404, detail='Event not found')
-        logging.info(f"Fetched event with _id: {item_id} successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to fetch Event with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+    # Update fields
+    event = Event(**event_data.model_dump())
+    event.id = event_id
+    event.createdAt = existing.createdAt
     
-    return doc
+    # Save changes
+    return await event.save()
 
-# UPDATE
-@router.put('/{item_id}')
-async def update_event(item_id: str, item: EventCreate):
-    logging.info(f"Received request to update event with _id: {item_id}")
-    try:
-        doc = await Event.get(item_id)
-        if not doc:
-            logging.warning(f"Event with _id {item_id} not found for update.")
-            raise HTTPException(status_code=404, detail='Event not found')
-        update_data = item.dict(exclude_unset=True)
-        # Optionally prevent updating base fields:
-        update_data.pop('_id', None)
-        update_data.pop('createdAt', None)
-        # For updatedAt, BaseEntity.save() will update it automatically.
-        for key, value in update_data.items():
-            setattr(doc, key, value)
-        await doc.save()
-        logging.info(f"Event with _id {item_id} updated successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to update Event with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
+@router.delete("/{event_id}")
+async def delete_event(event_id: str):
+    """Delete an event"""
+    event = await Event.get(event_id)
+    if not event:
+        raise NotFoundError("Event", event_id)
+    await event.delete()
+    return {"message": "Event deleted successfully"}
 
-# DELETE
-@router.delete('/{item_id}')
-async def delete_event(item_id: str):
-    logging.info(f"Received request to delete event with _id: {item_id}")
-    try:
-        doc = await Event.get(item_id)
-        if not doc:
-            logging.warning(f"Event with _id {item_id} not found for deletion.")
-            raise HTTPException(status_code=404, detail='Event not found')
-        await doc.delete()
-        logging.info(f"Event with _id {item_id} deleted successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to delete Event with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return {'message': 'Event deleted successfully'}
-
-# GET METADATA
-@router.get('/metadata')
+@router.get("/metadata")
 async def get_event_metadata():
     """Get metadata for Event entity."""
     return Event.get_metadata()

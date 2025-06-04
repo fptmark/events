@@ -2,10 +2,10 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Self, ClassVar
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from elasticsearch import NotFoundError
 import re
 from app.db import Database
 import app.utils as helpers
+from ..errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
@@ -24,23 +24,23 @@ class TagAffinity(BaseModel):
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
  
     _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'TagAffinity',
-    'fields': {   'affinity': {   'ge': -100,
-                                  'le': 100,
+    'fields': {   'tag': {'type': 'String', 'required': True, 'max_length': 50},
+                  'affinity': {   'type': 'Integer',
                                   'required': True,
-                                  'type': 'Integer'},
-                  'createdAt': {   'autoGenerate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'profileId': {'required': True, 'type': 'ObjectId'},
-                  'tag': {'max_length': 50, 'required': True, 'type': 'String'},
-                  'updatedAt': {   'autoUpdate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-1',
-                                             'readOnly': True}}},
+                                  'ge': -100,
+                                  'le': 100},
+                  'createdAt': {   'type': 'ISODate',
+                                   'autoGenerate': True,
+                                   'ui': {   'readOnly': True,
+                                             'displayAfterField': '-1'}},
+                  'updatedAt': {   'type': 'ISODate',
+                                   'autoUpdate': True,
+                                   'ui': {   'readOnly': True,
+                                             'clientEdit': True,
+                                             'displayAfterField': '-1'}},
+                  'profileId': {'type': 'ObjectId', 'required': True}},
     'operations': '',
-    'ui': {'buttonLabel': 'Manage Event Affinity', 'title': 'Tag Affinity'}}
+    'ui': {'title': 'Tag Affinity', 'buttonLabel': 'Manage Event Affinity'}}
 
     class Settings:
         name = "tagaffinity"
@@ -49,13 +49,42 @@ class TagAffinity(BaseModel):
         populate_by_name=True,
     )
 
+    @field_validator('tag')
+    def validate_tag(cls, v: str) -> str:
+        if len(v) > 50:
+            raise ValidationError(
+                message="Tag too long",
+                entity="TagAffinity",
+                invalid_fields=[ValidationFailure("tag", "Tag must be at most 50 characters", v)]
+            )
+        return v
+
+    @field_validator('affinity')
+    def validate_affinity(cls, v: int) -> int:
+        if v < -100:
+            raise ValidationError(
+                message="Invalid affinity value",
+                entity="TagAffinity",
+                invalid_fields=[ValidationFailure("affinity", "Affinity must be at least -100", v)]
+            )
+        if v > 100:
+            raise ValidationError(
+                message="Invalid affinity value",
+                entity="TagAffinity",
+                invalid_fields=[ValidationFailure("affinity", "Affinity must be at most 100", v)]
+            )
+        return v
+
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
         return helpers.get_metadata(cls._metadata)
  
     @classmethod
     async def find_all(cls) -> Sequence[Self]:
-        return await Database.find_all("tagaffinity", cls)
+        try:
+            return await Database.find_all("tagaffinity", cls)
+        except Exception as e:
+            raise DatabaseError(str(e), "TagAffinity", "find_all")
 
     # Method to imitate Beanie's find() method
     @classmethod
@@ -69,33 +98,53 @@ class TagAffinity(BaseModel):
 
         return FindAdapter()
 
-    # Replaces Beanie's get - uses common Database function
     @classmethod
-    async def get(cls, id) -> Optional[Self]:
-        return await Database.get_by_id("tagaffinity", str(id), cls)
+    async def get(cls, id: str) -> Self:
+        try:
+            tagaffinity = await Database.get_by_id("tagaffinity", str(id), cls)
+            if not tagaffinity:
+                raise NotFoundError("TagAffinity", id)
+            return tagaffinity
+        except NotFoundError:
+            raise
+        except Exception as e:
+            raise DatabaseError(str(e), "TagAffinity", "get")
 
-    # Replaces Beanie's save - uses common Database function
-    async def save(self, *args, **kwargs):
-        # Update timestamp
-        self.updatedAt = datetime.now(timezone.utc)
+    async def save(self) -> Self:
+        try:
+            # Update timestamp
+            self.updatedAt = datetime.now(timezone.utc)
 
-        # Convert model to dict
-        data = self.model_dump(exclude={"id"})
+            # Convert model to dict
+            data = self.model_dump(exclude={"id"})
 
-        # Save document using common function
-        result = await Database.save_document("tagaffinity", self.id, data)
+            # Save document
+            result = await Database.save_document("tagaffinity", self.id, data)
 
-        # Update ID if this was a new document
-        if not self.id and result and isinstance(result, dict) and result.get("_id"):
-            self.id = result["_id"]
+            # Update ID if this was a new document
+            if not self.id and result and isinstance(result, dict) and result.get("_id"):
+                self.id = result["_id"]
 
-        return self
+            return self
+        except Exception as e:
+            raise DatabaseError(str(e), "TagAffinity", "save")
 
-    # Replaces Beanie's delete - uses common Database function
-    async def delete(self):
-        if self.id:
-            return await Database.delete_document("tagaffinity", self.id)
-        return False
+    async def delete(self) -> bool:
+        if not self.id:
+            raise ValidationError(
+                message="Cannot delete tag affinity without ID",
+                entity="TagAffinity",
+                invalid_fields=[ValidationFailure("id", "ID is required for deletion", None)]
+            )
+        try:
+            result = await Database.delete_document("tagaffinity", self.id)
+            if not result:
+                raise NotFoundError("TagAffinity", self.id)
+            return True
+        except NotFoundError:
+            raise
+        except Exception as e:
+            raise DatabaseError(str(e), "TagAffinity", "delete")
 
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict, Any
@@ -108,14 +157,12 @@ class TagAffinityCreate(BaseModel):
 
     @field_validator('tag', mode='before')
     def validate_tag(cls, v):
-        _custom = {}
         if v is not None and len(v) > 50:
             raise ValueError('tag must be at most 50 characters')
         return v
      
     @field_validator('affinity', mode='before')
     def validate_affinity(cls, v):
-        _custom = {}
         if v is not None and int(v) < -100:
             raise ValueError('affinity must be at least -100')
         if v is not None and int(v) > 100:
@@ -136,14 +183,12 @@ class TagAffinityUpdate(BaseModel):
 
     @field_validator('tag', mode='before')
     def validate_tag(cls, v):
-        _custom = {}
         if v is not None and len(v) > 50:
             raise ValueError('tag must be at most 50 characters')
         return v
      
     @field_validator('affinity', mode='before')
     def validate_affinity(cls, v):
-        _custom = {}
         if v is not None and int(v) < -100:
             raise ValueError('affinity must be at least -100')
         if v is not None and int(v) > 100:

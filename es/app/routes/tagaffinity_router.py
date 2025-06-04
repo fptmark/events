@@ -1,109 +1,48 @@
-from fastapi import APIRouter, HTTPException, Response
-from typing import List, Dict, Any
-from app.models.tagaffinity_model import TagAffinity, TagAffinityCreate, TagAffinityRead
-import logging
-import json
+from fastapi import APIRouter
+from typing import List
+from ..models.tagaffinity_model import TagAffinity
+from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 
-# CREATE
-@router.post('/')
-async def create_tagaffinity(item: TagAffinityCreate):
-    logging.info("Received request to create a new tagaffinity.")
-    # Instantiate a document from the model
-    doc = TagAffinity(**item.dict(exclude_unset=True))
-    try:
-        await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"TagAffinity created successfully with _id: {doc.id}")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to create tagaffinity.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
+@router.get("/", response_model=List[TagAffinity])
+async def list_tagaffinities() -> List[TagAffinity]:
+    """List all tag affinities"""
+    tagaffinities = await TagAffinity.find_all()
+    return list(tagaffinities)  # Convert Sequence to List
 
-# GET ALL
-@router.get('/')
-async def get_all_tagaffinitys():
-    logging.info("Received request to fetch all tagaffinitys.")
-    try:
-        docs = await TagAffinity.find_all()
-        logging.info(f"Fetched {len(docs)} tagaffinity(s) successfully.")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to fetch all tagaffinitys.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return docs
+@router.get("/{tagaffinity_id}", response_model=TagAffinity)
+async def get_tagaffinity(tagaffinity_id: str) -> TagAffinity:
+    """Get a specific tag affinity by ID"""
+    return await TagAffinity.get(tagaffinity_id)
 
-# GET ONE BY ID
-@router.get('/{item_id}')
-async def get_tagaffinity(item_id: str):
-    logging.info(f"Received request to fetch tagaffinity with _id: {item_id}")
-    try:
-        doc = await TagAffinity.get(item_id)
-        if not doc:
-            logging.warning(f"TagAffinity with _id {item_id} not found.")
-            raise HTTPException(status_code=404, detail='TagAffinity not found')
-        logging.info(f"Fetched tagaffinity with _id: {item_id} successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to fetch TagAffinity with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
+@router.post("/", response_model=TagAffinity)
+async def create_tagaffinity(tagaffinity: TagAffinity) -> TagAffinity:
+    """Create a new tag affinity"""
+    # Validation is handled by Pydantic model
+    return await tagaffinity.save()
 
-# UPDATE
-@router.put('/{item_id}')
-async def update_tagaffinity(item_id: str, item: TagAffinityCreate):
-    logging.info(f"Received request to update tagaffinity with _id: {item_id}")
-    try:
-        doc = await TagAffinity.get(item_id)
-        if not doc:
-            logging.warning(f"TagAffinity with _id {item_id} not found for update.")
-            raise HTTPException(status_code=404, detail='TagAffinity not found')
-        update_data = item.dict(exclude_unset=True)
-        # Optionally prevent updating base fields:
-        update_data.pop('_id', None)
-        update_data.pop('createdAt', None)
-        # For updatedAt, BaseEntity.save() will update it automatically.
-        for key, value in update_data.items():
-            setattr(doc, key, value)
-        await doc.save()
-        logging.info(f"TagAffinity with _id {item_id} updated successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to update TagAffinity with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+@router.put("/{tagaffinity_id}", response_model=TagAffinity)
+async def update_tagaffinity(tagaffinity_id: str, tagaffinity: TagAffinity) -> TagAffinity:
+    """Update an existing tag affinity"""
+    # Check if tag affinity exists
+    existing = await TagAffinity.get(tagaffinity_id)
     
-    return doc
-
-# DELETE
-@router.delete('/{item_id}')
-async def delete_tagaffinity(item_id: str):
-    logging.info(f"Received request to delete tagaffinity with _id: {item_id}")
-    try:
-        doc = await TagAffinity.get(item_id)
-        if not doc:
-            logging.warning(f"TagAffinity with _id {item_id} not found for deletion.")
-            raise HTTPException(status_code=404, detail='TagAffinity not found')
-        await doc.delete()
-        logging.info(f"TagAffinity with _id {item_id} deleted successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to delete TagAffinity with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+    # Update fields
+    tagaffinity.id = tagaffinity_id
+    tagaffinity.createdAt = existing.createdAt
     
-    return {'message': 'TagAffinity deleted successfully'}
+    # Save changes
+    return await tagaffinity.save()
 
-# GET METADATA
+@router.delete("/{tagaffinity_id}")
+async def delete_tagaffinity(tagaffinity_id: str):
+    """Delete a tag affinity"""
+    tagaffinity = await TagAffinity.get(tagaffinity_id)
+    await tagaffinity.delete()
+    return {"message": "Tag affinity deleted successfully"}
+
 @router.get('/metadata')
 async def get_tagaffinity_metadata():
     """Get metadata for TagAffinity entity."""
-    return TagAffinity.get_metadata()
+    return TagAffinity.get_metadata() 

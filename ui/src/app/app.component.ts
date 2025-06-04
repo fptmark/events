@@ -42,11 +42,6 @@ import { NotificationComponent } from './components/notification.component';
               <li class="nav-item">
                 <a class="nav-link" (click)="redirectToServerRoute('api/metadata')" href="javascript:void(0)">Metadata</a>
               </li>
-              <!-- <li class="nav-item" *ngFor="let entity of metadataService.getRecent()">
-                <a class="nav-link" [routerLink]="['/entity', (entity | lowercase) ]" routerLinkActive="active">
-                  {{ metadataService.getTitle(entity) }}
-                </a>
-              </li> -->
             </ul>
           </div>
         </div>

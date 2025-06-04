@@ -1,109 +1,56 @@
-from fastapi import APIRouter, HTTPException, Response
-from typing import List, Dict, Any
-from app.models.profile_model import Profile, ProfileCreate, ProfileRead
-import logging
-import json
+from fastapi import APIRouter
+from typing import List
+from ..models.profile_model import Profile, ProfileCreate, ProfileUpdate
+from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 
-# CREATE
-@router.post('/')
-async def create_profile(item: ProfileCreate):
-    logging.info("Received request to create a new profile.")
-    # Instantiate a document from the model
-    doc = Profile(**item.dict(exclude_unset=True))
-    try:
-        await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"Profile created successfully with _id: {doc.id}")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to create profile.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
+@router.get("", response_model=List[Profile])
+async def list_profiles() -> List[Profile]:
+    """List all profiles"""
+    profiles = await Profile.find_all()
+    return list(profiles)  # Convert Sequence to List
 
-# GET ALL
-@router.get('/')
-async def get_all_profiles():
-    logging.info("Received request to fetch all profiles.")
-    try:
-        docs = await Profile.find_all()
-        logging.info(f"Fetched {len(docs)} profile(s) successfully.")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to fetch all profiles.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return docs
+@router.get("/{profile_id}", response_model=Profile)
+async def get_profile(profile_id: str) -> Profile:
+    """Get a specific profile by ID"""
+    profile = await Profile.get(profile_id)
+    if not profile:
+        raise NotFoundError("Profile", profile_id)
+    return profile
 
-# GET ONE BY ID
-@router.get('/{item_id}')
-async def get_profile(item_id: str):
-    logging.info(f"Received request to fetch profile with _id: {item_id}")
-    try:
-        doc = await Profile.get(item_id)
-        if not doc:
-            logging.warning(f"Profile with _id {item_id} not found.")
-            raise HTTPException(status_code=404, detail='Profile not found')
-        logging.info(f"Fetched profile with _id: {item_id} successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to fetch Profile with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
+@router.post("", response_model=Profile)
+async def create_profile(profile_data: ProfileCreate) -> Profile:
+    """Create a new profile"""
+    profile = Profile(**profile_data.model_dump())
+    return await profile.save()
 
-# UPDATE
-@router.put('/{item_id}')
-async def update_profile(item_id: str, item: ProfileCreate):
-    logging.info(f"Received request to update profile with _id: {item_id}")
-    try:
-        doc = await Profile.get(item_id)
-        if not doc:
-            logging.warning(f"Profile with _id {item_id} not found for update.")
-            raise HTTPException(status_code=404, detail='Profile not found')
-        update_data = item.dict(exclude_unset=True)
-        # Optionally prevent updating base fields:
-        update_data.pop('_id', None)
-        update_data.pop('createdAt', None)
-        # For updatedAt, BaseEntity.save() will update it automatically.
-        for key, value in update_data.items():
-            setattr(doc, key, value)
-        await doc.save()
-        logging.info(f"Profile with _id {item_id} updated successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to update Profile with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+@router.put("/{profile_id}", response_model=Profile)
+async def update_profile(profile_id: str, profile_data: ProfileUpdate) -> Profile:
+    """Update an existing profile"""
+    # Check if profile exists
+    existing = await Profile.get(profile_id)
+    if not existing:
+        raise NotFoundError("Profile", profile_id)
     
-    return doc
-
-# DELETE
-@router.delete('/{item_id}')
-async def delete_profile(item_id: str):
-    logging.info(f"Received request to delete profile with _id: {item_id}")
-    try:
-        doc = await Profile.get(item_id)
-        if not doc:
-            logging.warning(f"Profile with _id {item_id} not found for deletion.")
-            raise HTTPException(status_code=404, detail='Profile not found')
-        await doc.delete()
-        logging.info(f"Profile with _id {item_id} deleted successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to delete Profile with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+    # Update fields
+    profile = Profile(**profile_data.model_dump())
+    profile.id = profile_id
+    profile.createdAt = existing.createdAt
     
-    return {'message': 'Profile deleted successfully'}
+    # Save changes
+    return await profile.save()
 
-# GET METADATA
-@router.get('/metadata')
+@router.delete("/{profile_id}")
+async def delete_profile(profile_id: str):
+    """Delete a profile"""
+    profile = await Profile.get(profile_id)
+    if not profile:
+        raise NotFoundError("Profile", profile_id)
+    await profile.delete()
+    return {"message": "Profile deleted successfully"}
+
+@router.get("/metadata")
 async def get_profile_metadata():
     """Get metadata for Profile entity."""
     return Profile.get_metadata()

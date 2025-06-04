@@ -54,6 +54,7 @@ export interface Notification {
   message: string;
   context?: ErrorContext;
   autoClose?: boolean;
+  errors?: string[];  // Add array to track multiple errors
 }
 
 @Injectable({
@@ -65,6 +66,44 @@ export class NotificationService {
   private autoCloseTimer: any = null;
   
   constructor() {}
+  
+  /**
+   * Check if there's an active notification
+   */
+  hasActiveNotification(): boolean {
+    return this.notificationSubject.value !== null;
+  }
+
+  /**
+   * Add an error to the current notification or create a new one
+   */
+  private addError(message: string, context?: ErrorContext): void {
+    const current = this.notificationSubject.value;
+    
+    if (current?.type === NOTIFICATION_ERROR) {
+      // Add to existing error notification
+      const errors = current.errors || [current.message];
+      if (!errors.includes(message)) {
+        errors.push(message);
+      }
+      
+      this.notificationSubject.next({
+        ...current,
+        message: errors.join('\n'),
+        errors,
+        context: context || current.context
+      });
+    } else {
+      // Create new error notification
+      this.notificationSubject.next({
+        type: NOTIFICATION_ERROR,
+        title: 'Error',
+        message,
+        context,
+        errors: [message]
+      });
+    }
+  }
   
   /**
    * Show a success notification
@@ -93,25 +132,27 @@ export class NotificationService {
    * @param entityType Optional entity type for context
    */
   showError(messageOrError: string | any, validationErrors?: ValidationErrorItem[] | ValidationErrorMap, entityType?: string): void {
-    this.clear()
+    // Don't show notification for 404 not_found errors
+    if (typeof messageOrError === 'object' && messageOrError.status === 404) {
+      return;
+    }
     
-    let notification: Notification
+    let message: string;
+    let context: ErrorContext | undefined;
     
     // Case 1: Error response object from backend
     if (typeof messageOrError === 'object' && messageOrError.error?.detail) {
-      notification = {
-        type: NOTIFICATION_ERROR,
-        title: 'Error',
-        message: messageOrError.error.detail.message,
-        context: messageOrError.error.detail.context
-      }
+      message = messageOrError.error.detail.message;
+      context = messageOrError.error.detail.context;
+      this.addError(message, context);
     }
     // Case 2: Direct message with validation errors
     else if (typeof messageOrError === 'string' && validationErrors) {
-      const context: ErrorContext = {
+      message = messageOrError;
+      context = {
         error_type: 'validation_error',
         entity: entityType
-      }
+      };
 
       if (Array.isArray(validationErrors)) {
         // Handle array of validation errors
@@ -119,34 +160,37 @@ export class NotificationService {
           field: error.field || error.loc?.join('.') || '',
           constraint: error.message || error.msg || '',
           value: error.value
-        }))
+        }));
+        
+        // Add individual error messages
+        validationErrors.forEach(error => {
+          if (error.message || error.msg) {
+            this.addError(error.message || error.msg || '', context);
+          }
+        });
       } else {
         // Handle validation error object
-        context.invalid_fields = Object.entries(validationErrors).map(([field, error]) => ({
-          field,
-          constraint: typeof error === 'string' ? error : error.message || '',
-          value: typeof error === 'object' ? error.value : undefined
-        }))
-      }
-
-      notification = {
-        type: NOTIFICATION_ERROR,
-        title: 'Validation Error',
-        message: messageOrError,
-        context
+        context.invalid_fields = Object.entries(validationErrors).map(([field, error]) => {
+          const errMessage = typeof error === 'string' ? error : error.message || '';
+          if (errMessage) {
+            this.addError(`${field}: ${errMessage}`, context);
+          }
+          return {
+            field,
+            constraint: errMessage,
+            value: typeof error === 'object' ? error.value : undefined
+          };
+        });
       }
     }
     // Case 3: Simple error message
     else {
-      notification = {
-        type: NOTIFICATION_ERROR,
-        title: 'Error',
-        message: typeof messageOrError === 'string' ? messageOrError : 'An unexpected error occurred',
-        context: entityType ? { error_type: 'error', entity: entityType } : undefined
+      message = typeof messageOrError === 'string' ? messageOrError : 'An unexpected error occurred';
+      if (entityType) {
+        context = { error_type: 'error', entity: entityType };
       }
+      this.addError(message, context);
     }
-
-    this.notificationSubject.next(notification)
   }
   
   /**

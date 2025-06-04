@@ -1,108 +1,55 @@
-from fastapi import APIRouter, HTTPException, Response
-from typing import List, Dict, Any
-from app.models.crawl_model import Crawl, CrawlCreate, CrawlRead
-import logging
-import json
+from fastapi import APIRouter
+from typing import List
+from ..models.crawl_model import Crawl, CrawlCreate, CrawlUpdate
+from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 
-# CREATE
-@router.post('/')
-async def create_crawl(item: CrawlCreate):
-    logging.info("Received request to create a new crawl.")
-    # Instantiate a document from the model
-    doc = Crawl(**item.dict(exclude_unset=True))
-    try:
-        await doc.save()  # This triggers BaseEntity's default factories and save() override.
-        logging.info(f"Crawl created successfully with _id: {doc.id}")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to create crawl.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
+@router.get("/", response_model=List[Crawl])
+async def list_crawls() -> List[Crawl]:
+    """List all crawls"""
+    crawls = await Crawl.find_all()
+    return list(crawls)  # Convert Sequence to List
 
-# GET ALL
-@router.get('/')
-async def get_all_crawls():
-    logging.info("Received request to fetch all crawls.")
-    try:
-        docs = await Crawl.find_all()
-        logging.info(f"Fetched {len(docs)} crawl(s) successfully.")
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception("Failed to fetch all crawls.")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return docs
+@router.get("/{crawl_id}", response_model=Crawl)
+async def get_crawl(crawl_id: str) -> Crawl:
+    """Get a specific crawl by ID"""
+    crawl = await Crawl.get(crawl_id)
+    if not crawl:
+        raise NotFoundError("Crawl", crawl_id)
+    return crawl
 
-# GET ONE BY ID
-@router.get('/{item_id}')
-async def get_crawl(item_id: str):
-    logging.info(f"Received request to fetch crawl with _id: {item_id}")
-    try:
-        doc = await Crawl.get(item_id)
-        if not doc:
-            logging.warning(f"Crawl with _id {item_id} not found.")
-            raise HTTPException(status_code=404, detail='Crawl not found')
-        logging.info(f"Fetched crawl with _id: {item_id} successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to fetch Crawl with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
-    
-    return doc
+@router.post("/", response_model=Crawl)
+async def create_crawl(crawl_data: CrawlCreate) -> Crawl:
+    """Create a new crawl"""
+    crawl = Crawl(**crawl_data.model_dump())
+    return await crawl.save()
 
-# UPDATE
-@router.put('/{item_id}')
-async def update_crawl(item_id: str, item: CrawlCreate):
-    logging.info(f"Received request to update crawl with _id: {item_id}")
-    try:
-        doc = await Crawl.get(item_id)
-        if not doc:
-            logging.warning(f"Crawl with _id {item_id} not found for update.")
-            raise HTTPException(status_code=404, detail='Crawl not found')
-        update_data = item.dict(exclude_unset=True)
-        # Optionally prevent updating base fields:
-        update_data.pop('_id', None)
-        update_data.pop('createdAt', None)
-        # For updatedAt, BaseEntity.save() will update it automatically.
-        for key, value in update_data.items():
-            setattr(doc, key, value)
-        await doc.save()
-        logging.info(f"Crawl with _id {item_id} updated successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to update Crawl with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+@router.put("/{crawl_id}", response_model=Crawl)
+async def update_crawl(crawl_id: str, crawl_data: CrawlUpdate) -> Crawl:
+    """Update an existing crawl"""
+    # Check if crawl exists
+    existing = await Crawl.get(crawl_id)
+    if not existing:
+        raise NotFoundError("Crawl", crawl_id)
     
-    return doc
-
-# DELETE
-@router.delete('/{item_id}')
-async def delete_crawl(item_id: str):
-    logging.info(f"Received request to delete crawl with _id: {item_id}")
-    try:
-        doc = await Crawl.get(item_id)
-        if not doc:
-            logging.warning(f"Crawl with _id {item_id} not found for deletion.")
-            raise HTTPException(status_code=404, detail='Crawl not found')
-        await doc.delete()
-        logging.info(f"Crawl with _id {item_id} deleted successfully.")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        msg = str(e).replace('\n', ' ')
-        logging.exception(f"Failed to delete Crawl with _id: {item_id}")
-        raise HTTPException(status_code=500, detail=f'Internal Server Error: {msg}')
+    # Update fields
+    crawl = Crawl(**crawl_data.model_dump())
+    crawl.id = crawl_id
+    crawl.createdAt = existing.createdAt
     
-    return {'message': 'Crawl deleted successfully'}
+    # Save changes
+    return await crawl.save()
 
-# GET METADATA
+@router.delete("/{crawl_id}")
+async def delete_crawl(crawl_id: str):
+    """Delete a crawl"""
+    crawl = await Crawl.get(crawl_id)
+    if not crawl:
+        raise NotFoundError("Crawl", crawl_id)
+    await crawl.delete()
+    return {"message": "Crawl deleted successfully"}
+
 @router.get('/metadata')
 async def get_crawl_metadata():
     """Get metadata for Crawl entity."""

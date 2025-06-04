@@ -2,10 +2,10 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Self, ClassVar
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from elasticsearch import NotFoundError
 import re
 from app.db import Database
 import app.utils as helpers
+from ..errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
@@ -17,30 +17,30 @@ class UniqueValidationError(Exception):
 
 class Url(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id")
-    url: str = Field(..., pattern=r"main.url")
+    url: str = Field(..., pattern=r"^https?://[^s]+$")
     params: Optional[Dict[str, Any]] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
  
     _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'Url',
-    'fields': {   'createdAt': {   'autoGenerate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'params': {'required': False, 'type': 'JSON'},
-                  'updatedAt': {   'autoUpdate': True,
-                                   'type': 'ISODate',
-                                   'ui': {   'clientEdit': True,
-                                             'displayAfterField': '-1',
-                                             'readOnly': True}},
-                  'url': {   'pattern': {   'message': 'Bad URL format',
-                                            'regex': 'main.url'},
+    'fields': {   'url': {   'type': 'String',
                              'required': True,
-                             'type': 'String'}},
+                             'pattern': {   'regex': '^https?://[^s]+$',
+                                            'message': 'Bad URL format'}},
+                  'params': {'type': 'JSON', 'required': False},
+                  'createdAt': {   'type': 'ISODate',
+                                   'autoGenerate': True,
+                                   'ui': {   'readOnly': True,
+                                             'displayAfterField': '-1'}},
+                  'updatedAt': {   'type': 'ISODate',
+                                   'autoUpdate': True,
+                                   'ui': {   'readOnly': True,
+                                             'clientEdit': True,
+                                             'displayAfterField': '-1'}}},
     'operations': '',
-    'ui': {   'buttonLabel': 'Manage Urls',
-              'description': 'Manage Event Urls',
-              'title': 'Url'}}
+    'ui': {   'title': 'Url',
+              'buttonLabel': 'Manage Urls',
+              'description': 'Manage Event Urls'}}
 
     class Settings:
         name = "url"
@@ -49,13 +49,26 @@ class Url(BaseModel):
         populate_by_name=True,
     )
 
+    @field_validator('url')
+    def validate_url(cls, v: str) -> str:
+        if not re.match(r'^https?://[^s]+$', v):
+            raise ValidationError(
+                message="Invalid URL format",
+                entity="Url",
+                invalid_fields=[ValidationFailure("url", "URL must start with http:// or https://", v)]
+            )
+        return v
+
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
         return helpers.get_metadata(cls._metadata)
  
     @classmethod
     async def find_all(cls) -> Sequence[Self]:
-        return await Database.find_all("url", cls)
+        try:
+            return await Database.find_all("url", cls)
+        except Exception as e:
+            raise DatabaseError(str(e), "Url", "find_all")
 
     # Method to imitate Beanie's find() method
     @classmethod
@@ -69,33 +82,53 @@ class Url(BaseModel):
 
         return FindAdapter()
 
-    # Replaces Beanie's get - uses common Database function
     @classmethod
-    async def get(cls, id) -> Optional[Self]:
-        return await Database.get_by_id("url", str(id), cls)
+    async def get(cls, id: str) -> Self:
+        try:
+            url = await Database.get_by_id("url", str(id), cls)
+            if not url:
+                raise NotFoundError("Url", id)
+            return url
+        except NotFoundError:
+            raise
+        except Exception as e:
+            raise DatabaseError(str(e), "Url", "get")
 
-    # Replaces Beanie's save - uses common Database function
-    async def save(self, *args, **kwargs):
-        # Update timestamp
-        self.updatedAt = datetime.now(timezone.utc)
+    async def save(self) -> Self:
+        try:
+            # Update timestamp
+            self.updatedAt = datetime.now(timezone.utc)
 
-        # Convert model to dict
-        data = self.model_dump(exclude={"id"})
+            # Convert model to dict
+            data = self.model_dump(exclude={"id"})
 
-        # Save document using common function
-        result = await Database.save_document("url", self.id, data)
+            # Save document
+            result = await Database.save_document("url", self.id, data)
 
-        # Update ID if this was a new document
-        if not self.id and result and isinstance(result, dict) and result.get("_id"):
-            self.id = result["_id"]
+            # Update ID if this was a new document
+            if not self.id and result and isinstance(result, dict) and result.get("_id"):
+                self.id = result["_id"]
 
-        return self
+            return self
+        except Exception as e:
+            raise DatabaseError(str(e), "Url", "save")
 
-    # Replaces Beanie's delete - uses common Database function
-    async def delete(self):
-        if self.id:
-            return await Database.delete_document("url", self.id)
-        return False
+    async def delete(self) -> bool:
+        if not self.id:
+            raise ValidationError(
+                message="Cannot delete URL without ID",
+                entity="Url",
+                invalid_fields=[ValidationFailure("id", "ID is required for deletion", None)]
+            )
+        try:
+            result = await Database.delete_document("url", self.id)
+            if not result:
+                raise NotFoundError("Url", self.id)
+            return True
+        except NotFoundError:
+            raise
+        except Exception as e:
+            raise DatabaseError(str(e), "Url", "delete")
 
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict, Any
@@ -107,7 +140,6 @@ class UrlCreate(BaseModel):
 
     @field_validator('url', mode='before')
     def validate_url(cls, v):
-        _custom = {}
         if v is not None and not re.match(r'main.url', v):
             raise ValueError('Bad URL format')
         return v
@@ -125,7 +157,6 @@ class UrlUpdate(BaseModel):
 
     @field_validator('url', mode='before')
     def validate_url(cls, v):
-        _custom = {}
         if v is not None and not re.match(r'main.url', v):
             raise ValueError('Bad URL format')
         return v
