@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from typing import List
-from ..models.userevent_model import UserEvent
-from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
+from app.models.userevent_model import UserEvent
+from app.errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 
@@ -39,6 +39,8 @@ async def update_userevent(userevent_id: str, userevent: UserEvent) -> UserEvent
 async def delete_userevent(userevent_id: str):
     """Delete a user event"""
     userevent = await UserEvent.get(userevent_id)
+    if not userevent:
+        raise NotFoundError("UserEvent", userevent_id)
     await userevent.delete()
     return {"message": "User event deleted successfully"}
 

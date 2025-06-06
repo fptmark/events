@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from typing import List
-from ..models.url_model import Url
-from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
+from app.models.url_model import Url
+from app.errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 
@@ -39,6 +39,8 @@ async def update_url(url_id: str, url: Url) -> Url:
 async def delete_url(url_id: str):
     """Delete a URL"""
     url = await Url.get(url_id)
+    if not url:
+        raise NotFoundError("Url", url_id)
     await url.delete()
     return {"message": "URL deleted successfully"}
 

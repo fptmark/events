@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from typing import List
-from ..models.profile_model import Profile, ProfileCreate, ProfileUpdate
-from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
+from app.models.profile_model import Profile, ProfileCreate, ProfileUpdate
+from app.errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 import re
 from app.db import Database
 import app.utils as helpers
-from ..errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
+from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):

@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from typing import List
-from ..models.tagaffinity_model import TagAffinity
-from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
+from app.models.tagaffinity_model import TagAffinity
+from app.errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 
@@ -39,6 +39,8 @@ async def update_tagaffinity(tagaffinity_id: str, tagaffinity: TagAffinity) -> T
 async def delete_tagaffinity(tagaffinity_id: str):
     """Delete a tag affinity"""
     tagaffinity = await TagAffinity.get(tagaffinity_id)
+    if not tagaffinity:
+        raise NotFoundError("TagAffinity", tagaffinity_id)
     await tagaffinity.delete()
     return {"message": "Tag affinity deleted successfully"}
 

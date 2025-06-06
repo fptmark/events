@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 import re
 from app.db import Database
 import app.utils as helpers
-from ..errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
+from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
 class User(BaseModel):
     """User model for database operations"""
@@ -239,36 +239,47 @@ class User(BaseModel):
                         {"term": {"_id": exclude_id}}
                     ]
 
-                # Execute targeted search
-                res = await es.search(
-                    index="user",
-                    query=query,
-                    size=1  # We only need to know if any exist
-                )
-
-                hits = res.get("hits", {}).get("hits", [])
-                if hits:
-                    # Determine which field value caused the duplicate
-                    duplicate_values = {
-                        field: data[field] 
-                        for field in unique_fields
-                    }
-                    raise ValidationError(
-                        message=f"Duplicate values found: {duplicate_values}",
-                        entity="User",
-                        invalid_fields=[
-                            ValidationFailure(
-                                field=field,
-                                message="Value must be unique",
-                                value=data[field]
-                            )
-                            for field in unique_fields
-                        ]
+                try:
+                    # Execute targeted search
+                    res = await es.search(
+                        index="user",
+                        query=query,
+                        size=1  # We only need to know if any exist
                     )
 
-        except ValidationError:
+                    hits = res.get("hits", {}).get("hits", [])
+                    if hits:
+                        # For multiple fields, use the first one as the main field
+                        # and include others in the value
+                        main_field = unique_fields[0]
+                        if len(unique_fields) > 1:
+                            value = {field: data[field] for field in unique_fields}
+                        else:
+                            value = data[main_field]
+                        raise DuplicateError("User", main_field, value)
+                except Exception as e:
+                    if "index_not_found_exception" in str(e):
+                        # Index doesn't exist, raise specific error about missing index
+                        fields_str = " + ".join(unique_fields)
+                        raise ValidationError(
+                            message=f"Required unique index on {fields_str} is missing: operation aborted",
+                            entity="User",
+                            invalid_fields=[
+                                ValidationFailure(
+                                    field=field,
+                                    message="Required unique index is missing",
+                                    value=data.get(field)
+                                )
+                                for field in unique_fields
+                            ]
+                        )
+                    raise
+
+        except (ValidationError, DuplicateError):
+            # Re-raise validation and duplicate errors as is
             raise
         except Exception as e:
+            # For any other database errors
             raise DatabaseError(str(e), "User", "check_unique")
 
     async def save(self) -> Self:
@@ -286,6 +297,10 @@ class User(BaseModel):
             if not self.id and result and isinstance(result, dict):
                 self.id = result.get("_id")
             return self
+        except (ValidationError, DuplicateError) as e:
+            # Log the error for debugging
+            print(f"Error in save: {type(e).__name__}, {str(e)}, {e.to_dict() if hasattr(e, 'to_dict') else ''}")
+            raise
         except Exception as e:
             # Handle database-specific uniqueness errors
             if isinstance(e, DatabaseError) and "duplicate key" in str(e).lower():
@@ -301,7 +316,10 @@ class User(BaseModel):
                         )
                     ]
                 )
-            raise DatabaseError(str(e), "User", "save")
+            # For all other database errors, wrap with DatabaseError
+            if not isinstance(e, DatabaseError):
+                raise DatabaseError(str(e), "User", "save")
+            raise
 
     async def delete(self) -> bool:
         if not self.id:

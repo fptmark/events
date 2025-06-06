@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from typing import List, Optional
 from datetime import datetime
-from ..models.event_model import Event, EventCreate, EventUpdate
-from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
+from app.models.event_model import Event, EventCreate, EventUpdate
+from app.errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 

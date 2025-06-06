@@ -1,7 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from typing import List
-from ..models.account_model import Account, AccountCreate, AccountUpdate
-from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
+from app.models.account_model import Account, AccountCreate, AccountUpdate
+from app.errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 
@@ -43,12 +43,33 @@ async def update_account(account_id: str, account_data: AccountUpdate) -> Accoun
 
 @router.delete("/{account_id}")
 async def delete_account(account_id: str):
-    """Delete an account"""
-    account = await Account.get(account_id)
-    if not account:
-        raise NotFoundError("Account", account_id)
-    await account.delete()
-    return {"message": "Account deleted successfully"}
+    """Delete an account by ID."""
+    try:
+        account = await Account.get(account_id)
+        if not account:
+            raise NotFoundError("Account", account_id)
+        await account.delete()
+        return {"message": "Account deleted successfully"}
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": str(e),
+                "error_type": "not_found",
+                "context": {
+                    "id": account_id
+                }
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "An unexpected error occurred while deleting the account",
+                "error_type": "internal_error",
+                "context": {"error": str(e)}
+            }
+        )
 
 @router.get("/metadata")
 async def get_account_metadata():

@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from typing import List
-from ..models.crawl_model import Crawl, CrawlCreate, CrawlUpdate
-from ..errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
+from app.models.crawl_model import Crawl, CrawlCreate, CrawlUpdate
+from app.errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
 router = APIRouter()
 

@@ -6,6 +6,7 @@ from elasticsearch import NotFoundError
 import re
 from app.db import Database
 import app.utils as helpers
+from app.errors import ValidationError, ValidationFailure, DuplicateError, DatabaseError
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
