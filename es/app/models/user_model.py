@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, ClassVar, Sequence, Self, List
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 import re
-from app.db import Database
+from app.db import DatabaseFactory
 import app.utils as helpers
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
@@ -190,14 +190,14 @@ class User(BaseModel):
     @classmethod
     async def find_all(cls) -> Sequence[Self]:
         try:
-            return await Database.find_all("user", cls)
+            return await DatabaseFactory.find_all("user", cls)
         except Exception as e:
             raise DatabaseError(str(e), "User", "find_all")
 
     @classmethod
     async def get(cls, id: str) -> Self:
         try:
-            user = await Database.get_by_id("user", str(id), cls)
+            user = await DatabaseFactory.get_by_id("user", str(id), cls)
             if not user:
                 raise NotFoundError("User", id)
             return user
@@ -208,78 +208,28 @@ class User(BaseModel):
 
     @classmethod
     async def check_unique_constraints(cls, data: Dict[str, Any], exclude_id: Optional[str] = None) -> None:
-        """Check uniqueness constraints using ES bool queries"""
+        """Check uniqueness constraints using database-agnostic interface"""
         try:
-            es = Database.client()
+            # Use the database-agnostic unique constraint checker
+            conflicting_fields = await DatabaseFactory.check_unique_constraints(
+                "user", cls._metadata['uniques'], data, exclude_id
+            )
             
-            # Check each unique constraint set
-            for unique_fields in cls._metadata['uniques']:
-                # Build terms for all fields in this unique constraint
-                must_terms = []
-                for field in unique_fields:
-                    if field not in data:
-                        # Skip this constraint if we don't have all fields
-                        break
-                    must_terms.append({"term": {field: data[field]}})
+            if conflicting_fields:
+                # For multiple fields, use the first one as the main field
+                # and include others in the value  
+                main_field = conflicting_fields[0]
+                if len(conflicting_fields) > 1:
+                    value = {field: data[field] for field in conflicting_fields if field in data}
+                else:
+                    value = data.get(main_field)
+                raise DuplicateError("User", main_field, value)
                 
-                if len(must_terms) != len(unique_fields):
-                    # Skip if we didn't get all fields for this constraint
-                    continue
-
-                # Build the ES query
-                query = {
-                    "bool": {
-                        "must": must_terms
-                    }
-                }
-
-                # Add exclusion for updates
-                if exclude_id:
-                    query["bool"]["must_not"] = [
-                        {"term": {"_id": exclude_id}}
-                    ]
-
-                try:
-                    # Execute targeted search
-                    res = await es.search(
-                        index="user",
-                        query=query,
-                        size=1  # We only need to know if any exist
-                    )
-
-                    hits = res.get("hits", {}).get("hits", [])
-                    if hits:
-                        # For multiple fields, use the first one as the main field
-                        # and include others in the value
-                        main_field = unique_fields[0]
-                        if len(unique_fields) > 1:
-                            value = {field: data[field] for field in unique_fields}
-                        else:
-                            value = data[main_field]
-                        raise DuplicateError("User", main_field, value)
-                except Exception as e:
-                    if "index_not_found_exception" in str(e):
-                        # Index doesn't exist, raise specific error about missing index
-                        fields_str = " + ".join(unique_fields)
-                        raise ValidationError(
-                            message=f"Required unique index on {fields_str} is missing: operation aborted",
-                            entity="User",
-                            invalid_fields=[
-                                ValidationFailure(
-                                    field=field,
-                                    message="Required unique index is missing",
-                                    value=data.get(field)
-                                )
-                                for field in unique_fields
-                            ]
-                        )
-                    raise
-
-        except (ValidationError, DuplicateError):
-            # Re-raise validation and duplicate errors as is
+        except (DuplicateError, ValidationError):
+            # Re-raise validation and duplicate errors unchanged
             raise
         except Exception as e:
-            # For any other database errors
+            # Only wrap unexpected system errors
             raise DatabaseError(str(e), "User", "check_unique")
 
     async def save(self) -> Self:
@@ -292,10 +242,13 @@ class User(BaseModel):
             
             # If no duplicates found, proceed with save
             self.updatedAt = datetime.now(timezone.utc)
-            result = await Database.save_document("user", self.id, data)
+            result = await DatabaseFactory.save_document("user", self.id, data)
             
-            if not self.id and result and isinstance(result, dict):
-                self.id = result.get("_id")
+            # Handle ID assignment for new documents
+            if not self.id and result:
+                id_field = DatabaseFactory.get_id_field()
+                if isinstance(result, dict) and id_field in result:
+                    self.id = result.get(id_field)
             return self
         except (ValidationError, DuplicateError) as e:
             # Log the error for debugging
@@ -329,7 +282,7 @@ class User(BaseModel):
                 invalid_fields=[ValidationFailure("id", "ID is required for deletion", None)]
             )
         try:
-            result = await Database.delete_document("user", self.id)
+            result = await DatabaseFactory.delete_document("user", self.id)
             if not result:
                 raise NotFoundError("User", self.id)
             return True

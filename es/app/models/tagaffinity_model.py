@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Self, ClassVar
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 import re
-from app.db import Database
+from app.db import DatabaseFactory
 import app.utils as helpers
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
@@ -82,7 +82,7 @@ class TagAffinity(BaseModel):
     @classmethod
     async def find_all(cls) -> Sequence[Self]:
         try:
-            return await Database.find_all("tagaffinity", cls)
+            return await DatabaseFactory.find_all("tagaffinity", cls)
         except Exception as e:
             raise DatabaseError(str(e), "TagAffinity", "find_all")
 
@@ -101,7 +101,7 @@ class TagAffinity(BaseModel):
     @classmethod
     async def get(cls, id: str) -> Self:
         try:
-            tagaffinity = await Database.get_by_id("tagaffinity", str(id), cls)
+            tagaffinity = await DatabaseFactory.get_by_id("tagaffinity", str(id), cls)
             if not tagaffinity:
                 raise NotFoundError("TagAffinity", id)
             return tagaffinity
@@ -119,11 +119,11 @@ class TagAffinity(BaseModel):
             data = self.model_dump(exclude={"id"})
 
             # Save document
-            result = await Database.save_document("tagaffinity", self.id, data)
+            result = await DatabaseFactory.save_document("tagaffinity", self.id, data)
 
             # Update ID if this was a new document
-            if not self.id and result and isinstance(result, dict) and result.get("_id"):
-                self.id = result["_id"]
+            if not self.id and result and isinstance(result, dict) and result.get(DatabaseFactory.get_id_field()):
+                self.id = result[DatabaseFactory.get_id_field()]
 
             return self
         except Exception as e:
@@ -137,7 +137,7 @@ class TagAffinity(BaseModel):
                 invalid_fields=[ValidationFailure("id", "ID is required for deletion", None)]
             )
         try:
-            result = await Database.delete_document("tagaffinity", self.id)
+            result = await DatabaseFactory.delete_document("tagaffinity", self.id)
             if not result:
                 raise NotFoundError("TagAffinity", self.id)
             return True

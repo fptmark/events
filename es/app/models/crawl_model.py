@@ -2,11 +2,10 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Self, ClassVar
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from elasticsearch import NotFoundError
 import re
-from app.db import Database
+from app.db import DatabaseFactory
 import app.utils as helpers
-from app.errors import ValidationError, ValidationFailure, DuplicateError, DatabaseError
+from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
@@ -207,7 +206,7 @@ class Crawl(CrawlBase):
  
     @classmethod
     async def find_all(cls) -> Sequence[Self]:
-        return await Database.find_all("crawl", cls)
+        return await DatabaseFactory.find_all("crawl", cls)
 
     # Method to imitate Beanie's find() method
     @classmethod
@@ -224,7 +223,7 @@ class Crawl(CrawlBase):
     # Replaces Beanie's get - uses common Database function
     @classmethod
     async def get(cls, id) -> Optional[Self]:
-        return await Database.get_by_id("crawl", str(id), cls)
+        return await DatabaseFactory.get_by_id("crawl", str(id), cls)
 
     # Replaces Beanie's save - uses common Database function
     async def save(self, *args, **kwargs):
@@ -235,18 +234,18 @@ class Crawl(CrawlBase):
         data = self.model_dump(exclude={"id"})
 
         # Save document using common function
-        result = await Database.save_document("crawl", self.id, data)
+        result = await DatabaseFactory.save_document("crawl", self.id, data)
 
         # Update ID if this was a new document
-        if not self.id and result and isinstance(result, dict) and result.get("_id"):
-            self.id = result["_id"]
+        if not self.id and result and isinstance(result, dict) and result.get(DatabaseFactory.get_id_field()):
+            self.id = result[DatabaseFactory.get_id_field()]
 
         return self
 
     # Replaces Beanie's delete - uses common Database function
     async def delete(self):
         if self.id:
-            return await Database.delete_document("crawl", self.id)
+            return await DatabaseFactory.delete_document("crawl", self.id)
         return False
 
 class CrawlCreate(CrawlBase):

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Self, ClassVar
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 import re
-from app.db import Database
+from app.db import DatabaseFactory
 import app.utils as helpers
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
@@ -90,7 +90,7 @@ class UserEvent(BaseModel):
     @classmethod
     async def find_all(cls) -> Sequence[Self]:
         try:
-            return await Database.find_all("userevent", cls)
+            return await DatabaseFactory.find_all("userevent", cls)
         except Exception as e:
             raise DatabaseError(str(e), "UserEvent", "find_all")
 
@@ -109,7 +109,7 @@ class UserEvent(BaseModel):
     @classmethod
     async def get(cls, id: str) -> Self:
         try:
-            userevent = await Database.get_by_id("userevent", str(id), cls)
+            userevent = await DatabaseFactory.get_by_id("userevent", str(id), cls)
             if not userevent:
                 raise NotFoundError("UserEvent", id)
             return userevent
@@ -127,11 +127,11 @@ class UserEvent(BaseModel):
             data = self.model_dump(exclude={"id"})
 
             # Save document
-            result = await Database.save_document("userevent", self.id, data)
+            result = await DatabaseFactory.save_document("userevent", self.id, data)
 
             # Update ID if this was a new document
-            if not self.id and result and isinstance(result, dict) and result.get("_id"):
-                self.id = result["_id"]
+            if not self.id and result and isinstance(result, dict) and result.get(DatabaseFactory.get_id_field()):
+                self.id = result[DatabaseFactory.get_id_field()]
 
             return self
         except Exception as e:
@@ -145,7 +145,7 @@ class UserEvent(BaseModel):
                 invalid_fields=[ValidationFailure("id", "ID is required for deletion", None)]
             )
         try:
-            result = await Database.delete_document("userevent", self.id)
+            result = await DatabaseFactory.delete_document("userevent", self.id)
             if not result:
                 raise NotFoundError("UserEvent", self.id)
             return True
