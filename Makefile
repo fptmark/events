@@ -10,15 +10,18 @@ BACKEND ?= mongo
 install: setup firsttime rebuild
 
 firsttime: 
-	rm -rf $(BACKEND)
+	rm -rf app
 	echo "Using existing config.json"
-	mkdir -p $(BACKEND)/app
-	cp $(S2R_DIR)/src/utilities/utils.py $(BACKEND)/app
-	mkdir -p $(BACKEND)/app/services/auth
-	cp $(S2R_DIR)/src/services/auth/cookies/*.py $(BACKEND)/app/services
+	mkdir -p app
+	cp $(S2R_DIR)/src/utilities/utils.py app
+	mkdir -p app/services/auth
+	cp $(S2R_DIR)/src/services/auth/cookies/*.py app/services
 
 rebuild:
-	$(PYPATH) python $(S2R_DIR)/src/generate_code.py schema.mmd . $(BACKEND) 
+	$(PYPATH) python $(S2R_DIR)/src/generate_code.py schema.mmd . Events $(BACKEND) 
+
+models:
+	$(PYPATH) python -m generators.models.gen_model_main schema.yaml . $(BACKEND)
 
 redis:
 	brew services start redis
@@ -37,8 +40,8 @@ clean:
 	rm -rf app schema.yaml app.log schema.png
 
 code:	schema.yaml 
-	mkdir -p $(BACKEND)/app/utilities
-	cp -r $(S2R_DIR)/src/utilities/utils.py $(BACKEND)/app/utilities
+	mkdir -p app/utilities
+	cp -r $(S2R_DIR)/src/utilities/utils.py app/utilities
 	$(PYPATH) python -m generators.gen_main schema.yaml . $(BACKEND)
 	$(PYPATH) python -m generators.gen_db schema.yaml . $(BACKEND)
 	$(PYPATH) python -m generators.gen_models schema.yaml . $(BACKEND)
@@ -58,7 +61,7 @@ indexes:
 	python $(GENERATOR_DIR)/update_indices.py schema.yaml
 
 run:	
-	PYTHONPATH=$(BACKEND) python $(BACKEND)/app/main.py $(BACKEND)/config.json
+	PYTHONPATH=. python app/main.py $(BACKEND).json --db-type elasticsearch
 
 test: test.py
 	pytest -s test.py
@@ -66,4 +69,9 @@ test: test.py
 cli:
 	PYTHONPATH=. python cli/cli.py
 
-
+runes:
+	docker run -d --name es \
+	  -p 9200:9200 -p 9300:9300 \
+	  -e discovery.type=single-node \
+	  -e xpack.security.enabled=false \
+	  elasticsearch:8.12.2
