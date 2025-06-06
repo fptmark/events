@@ -1,14 +1,17 @@
 import json
 from pathlib import Path
 from bson.objectid import ObjectId
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TypeVar, Type
 from pydantic import BaseModel
 from beanie import Document
 import logging
+from datetime import datetime, timezone
 
 
 # Path to the configuration file
 CONFIG_FILE = 'config.json'
+
+T = TypeVar('T')
 
 def load_system_config(config_file: str = CONFIG_FILE) -> Dict[str, Any]:
     """
@@ -62,7 +65,8 @@ def deep_merge_dicts(dest, override):
         else:
             dest[key] = value
 
-def get_metadata(metadata) -> Dict[str, Any]:
+def get_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Get metadata for a model with proper type hints"""
     overrides = load_settings(Path('overrides.json')) or {}
     name = metadata.get('entity', '')
     entity_cfg = overrides.get(name)
@@ -105,3 +109,21 @@ def get_metadata(metadata) -> Dict[str, Any]:
 #     def __init__(self, message: str, field: Optional[str] = None, value: Any = None):
 #         details = {"field": field, "value": value} if field else {}
 #         super().__init__(message, details)
+
+def format_datetime(dt: Optional[datetime] = None) -> str:
+    """Format a datetime object to ISO format"""
+    if dt is None:
+        dt = datetime.now(timezone.utc)
+    return dt.isoformat()
+
+def parse_datetime(dt_str: str) -> datetime:
+    """Parse an ISO format datetime string"""
+    return datetime.fromisoformat(dt_str)
+
+def validate_id(id: str) -> bool:
+    """Validate if a string is a valid ID format"""
+    return bool(id and isinstance(id, str) and len(id) > 0)
+
+def sanitize_field_name(field: str) -> str:
+    """Sanitize a field name for database operations"""
+    return field.strip().replace('.', '_')

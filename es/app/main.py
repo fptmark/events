@@ -12,7 +12,8 @@ from errors import (
     ValidationError, 
     NotFoundError, 
     DuplicateError, 
-    ValidationFailure
+    ValidationFailure,
+    normalize_error_response
 )
 
 from app.services.redis_provider import CookiesAuth as Auth
@@ -63,14 +64,21 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 # Create the FastAPI app.
 app = FastAPI(
     # Enable automatic slash handling and include both versions in OpenAPI schema
-    include_in_schema=True
+    include_in_schema=True,
+    # Disable Starlette's built-in exception middleware so our handlers work
+    exception_handlers={}
 )
 
 # Add CORS middleware
-angular = config.get('angular-ui-url', 'http://localhost:4200')
+server_port = config.get('server_port', 5500)
+cors_origins = [
+    f"http://localhost:4200",  # Angular dev server
+    f"http://localhost:{server_port}"  # Backend API server
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[angular],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=[
         "GET",
@@ -94,12 +102,13 @@ app.include_router(userevent_router, prefix='/api/userevent', tags=['UserEvent']
 app.include_router(url_router, prefix='/api/url', tags=['Url'])
 app.include_router(crawl_router, prefix='/api/crawl', tags=['Crawl'])
 
-@app.middleware("http")
-async def log_all_requests(request: Request, call_next):
-    logger.info(f"→ {request.method} {request.url}")
-    resp = await call_next(request)
-    logger.info(f"← {resp.status_code} {request.method} {request.url}")
-    return resp
+# Removed logging middleware - it was interfering with exception handling
+# @app.middleware("http") 
+# async def log_all_requests(request: Request, call_next):
+#     logger.info(f"→ {request.method} {request.url}")
+#     resp = await call_next(request)
+#     logger.info(f"← {resp.status_code} {request.method} {request.url}")
+#     return resp
 
 @app.exception_handler(DatabaseError)
 async def database_error_handler(request: Request, exc: DatabaseError):
@@ -107,96 +116,47 @@ async def database_error_handler(request: Request, exc: DatabaseError):
     logger.error(f"Database error: {exc}")
     return JSONResponse(
         status_code=500,
-        content={
-            "detail": {
-                "message": str(exc),
-                "error_type": "database_error",
-                "context": {"error": str(exc)}
-            }
-        }
+        content=normalize_error_response(exc, str(request.url.path))
     )
 
 @app.exception_handler(ValidationError)
 async def validation_error_handler(request: Request, exc: ValidationError):
     """Handle validation errors"""
+    logger.error(f"Validation error: {exc}")
     return JSONResponse(
-        status_code=400,
-        content={
-            "detail": {
-                "message": str(exc),
-                "error_type": "validation_error",
-                "entity": exc.entity,
-                "invalid_fields": [
-                    {
-                        "field": f.field,
-                        "message": f.message,
-                        "value": f.value
-                    } for f in exc.invalid_fields
-                ]
-            }
-        }
+        status_code=422,
+        content=normalize_error_response(exc, str(request.url.path))
     )
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle FastAPI request validation errors"""
-    failures = []
-    for err in exc.errors():
-        field = err["loc"][-1] if err["loc"] else "unknown"
-        failures.append(ValidationFailure(
-            field=field,
-            message=err["msg"],
-            value=err.get("input")
-        ))
-    
     return JSONResponse(
         status_code=422,
-        content={
-            "detail": {
-                "message": "Invalid request data",
-                "error_type": "validation_error",
-                "entity": request.url.path.split("/")[-1],  # Extract entity from URL
-                "invalid_fields": [
-                    {
-                        "field": f.field,
-                        "message": f.message,
-                        "value": f.value
-                    } for f in failures
-                ]
-            }
-        }
+        content=normalize_error_response(exc, str(request.url.path))
     )
 
 @app.exception_handler(NotFoundError)
 async def not_found_error_handler(request: Request, exc: NotFoundError):
     return JSONResponse(
         status_code=404,
-        content=exc.to_dict()
+        content=normalize_error_response(exc, str(request.url.path))
     )
 
 @app.exception_handler(DuplicateError)
 async def duplicate_error_handler(request: Request, exc: DuplicateError):
     return JSONResponse(
         status_code=409,
-        content=exc.to_dict()
+        content=normalize_error_response(exc, str(request.url.path))
     )
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     """Handle any unhandled exceptions"""
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
-    
     return JSONResponse(
         status_code=500,
-        content={
-            "detail": {
-                "message": "An unexpected error occurred",
-                "error_type": "internal_server_error",
-                "context": {
-                    "error": str(exc)
-                }
-            }
-        }
+        content=normalize_error_response(exc, str(request.url.path))
     )
 
 @app.on_event('startup')

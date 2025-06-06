@@ -146,12 +146,32 @@ class Database:
         es = cls.client()
 
         try:
+            # First check if index exists
             if not await es.indices.exists(index=index):
-                await es.indices.create(index=index)
+                try:
+                    # Try to create the index
+                    await es.indices.create(index=index)
+                except Exception as e:
+                    # If index creation fails, raise a specific validation error
+                    raise ValidationError(
+                        message=f"Required index '{index}' is missing and could not be created",
+                        entity=index,
+                        invalid_fields=[
+                            ValidationFailure(
+                                field="index",
+                                message="Required index is missing",
+                                value=index
+                            )
+                        ]
+                    )
 
+            # Now try to save the document
             return (await es.index(index=index, id=doc_id, document=data)
                     if doc_id else
                     await es.index(index=index, document=data))
+        except ValidationError:
+            # Re-raise validation errors
+            raise
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
