@@ -49,11 +49,23 @@ export class ValidationService {
 
   /**
    * Convert API error response to ValidationFailures
+   * Detects validation errors regardless of status code by looking for the structure
    */
   convertApiErrorToValidationFailures(error: any): ValidationFailure[] {
-    if (error?.status === 422 && error.error?.detail?.context?.invalid_fields) {
+    // Check for our standardized error format with invalid_fields
+    if (error.error?.detail?.context?.invalid_fields) {
       return error.error.detail.context.invalid_fields;
     }
+    
+    // Check for FastAPI validation error array format
+    if (Array.isArray(error.error?.detail)) {
+      return error.error.detail.map((e: any) => ({
+        field: e.loc[e.loc.length - 1],
+        constraint: e.msg,
+        value: e.input
+      }));
+    }
+    
     return [];
   }
 

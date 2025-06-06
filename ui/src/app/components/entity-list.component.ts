@@ -11,6 +11,7 @@ import { forkJoin, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { NotificationService } from '../services/notification.service';
+import { ValidationService } from '../services/validation.service';
 
 @Component({
   selector: 'app-entity-list',
@@ -148,7 +149,8 @@ export class EntityListComponent implements OnInit {
     public restService: RestService,
     private modeService: ModeService,
     private sanitizer: DomSanitizer,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private validationService: ValidationService
   ) {}
 
   ngOnInit(): void {
@@ -206,16 +208,14 @@ export class EntityListComponent implements OnInit {
         let errorMessage = 'Failed to load entities. Please try again later.';
         let validationErrors = undefined;
         
-        if (err.error?.detail) {
-          // If it's a validation error from FastAPI
-          if (Array.isArray(err.error.detail)) {
-            validationErrors = err.error.detail;
-            const errors = err.error.detail.map((e: any) => {
-              const field = e.loc[e.loc.length - 1];
-              return `${field}: ${e.msg}`;
-            });
-            errorMessage = `Validation errors: ${errors.join(', ')}`;
-          } else if (typeof err.error.detail === 'string') {
+        // Try to extract validation errors using the validation service
+        validationErrors = this.validationService.convertApiErrorToValidationFailures(err);
+        
+        if (validationErrors.length > 0) {
+          const errors = validationErrors.map((e: any) => `${e.field}: ${e.constraint}`);
+          errorMessage = `Validation errors: ${errors.join(', ')}`;
+        } else if (err.error?.detail) {
+          if (typeof err.error.detail === 'string') {
             errorMessage = err.error.detail;
           }
         } else if (err.status === 500 && err.error) {

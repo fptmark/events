@@ -258,13 +258,16 @@ export class EntityFormComponent implements OnInit {
       // Show validation error notification with form validation errors
       const invalidControls = Object.keys(this.entityForm.controls)
         .filter(key => this.entityForm?.get(key)?.errors)
-        .map(field => ({
-          field,
-          constraint: Object.keys(this.entityForm?.get(field)?.errors || {})
-            .map(key => this.getValidationMessage(field, key))
-            .join(', '),
-          value: this.entityForm?.get(field)?.value
-        }));
+        .map(field => {
+          const fieldControl = this.entityForm?.get(field);
+          return {
+            field,
+            constraint: Object.keys(fieldControl?.errors || {})
+              .map(key => this.validationService.getValidationMessage(this.entityType, field, {[key]: fieldControl?.errors?.[key]}) || '')
+              .join(', '),
+            value: fieldControl?.value
+          };
+        });
 
       this.notificationService.showError({
         message: 'Please fix the validation errors below before submitting.',
@@ -388,13 +391,15 @@ export class EntityFormComponent implements OnInit {
     // Extract error message from server response
     const errorMessage = err.error?.detail || 'An error occurred while processing your request.';
     
-    // For 422 validation errors, try to extract field-specific errors
-    if (err.status === 422 && err.error?.detail?.context?.invalid_fields) {
-      const invalidFields = err.error.detail.context.invalid_fields;
-      this.validationErrors = invalidFields;
+    // Try to extract field-specific validation errors regardless of status code
+    const validationFailures = this.validationService.convertApiErrorToValidationFailures(err);
+    
+    if (validationFailures.length > 0) {
+      // Handle structured validation errors
+      this.validationErrors = validationFailures;
       
       // Mark form fields as invalid with server errors
-      invalidFields.forEach((error: ValidationFailure) => {
+      validationFailures.forEach((error: ValidationFailure) => {
         const control = this.entityForm?.get(error.field);
         if (control) {
           control.markAsTouched();
@@ -406,7 +411,7 @@ export class EntityFormComponent implements OnInit {
       // Show validation error notification
       this.notificationService.showError('Please fix the validation errors highlighted below.');
     } else {
-      // For other 4xx errors (404, 409, etc.), show the server message
+      // For other errors, show the server message
       this.notificationService.showError(errorMessage);
     }
   }
@@ -562,31 +567,6 @@ export class EntityFormComponent implements OnInit {
     return fieldMeta?.ui?.['spinnerStep'] || 1;
   }
 
-  private getValidationMessage(field: string, errorKey: string): string {
-    const control = this.entityForm?.get(field);
-    if (!control?.errors) return '';
-
-    switch (errorKey) {
-      case 'required':
-        return `${this.getFieldDisplayName(field)} is required`;
-      case 'minlength':
-        return `${this.getFieldDisplayName(field)} must be at least ${control.errors[errorKey].requiredLength} characters`;
-      case 'maxlength':
-        return `${this.getFieldDisplayName(field)} cannot exceed ${control.errors[errorKey].requiredLength} characters`;
-      case 'pattern':
-        return `${this.getFieldDisplayName(field)} has an invalid format`;
-      case 'min':
-        return `${this.getFieldDisplayName(field)} must be at least ${control.errors[errorKey].min}`;
-      case 'max':
-        return `${this.getFieldDisplayName(field)} cannot exceed ${control.errors[errorKey].max}`;
-      case 'currencyFormat':
-        return control.errors[errorKey];
-      case 'server':
-        return control.errors[errorKey];
-      default:
-        return `${this.getFieldDisplayName(field)} is invalid`;
-    }
-  }
 
   isFieldInvalid(fieldName: string): boolean {
     const control = this.entityForm?.get(fieldName);
