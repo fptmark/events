@@ -6,7 +6,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ConfigService } from './config.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { MetadataService } from './metadata.service';
-import { NotificationService } from './notification.service';
+import { NotificationService, ErrorDetail, ValidationFailure } from './notification.service';
 import { RefreshService } from './refresh.service';
 
 // Base entity interface - all entities must have _id
@@ -28,30 +28,16 @@ export interface DeleteResponse {
   message: string;
 }
 
-// Error response from the API
-export interface ErrorResponse {
-  detail: {
-    message: string
-    error_type: string
-    context?: {
-      id?: string
-      error?: string
-      [key: string]: any
-    }
-  }
-}
-
-// Validation error format from FastAPI
-export interface ValidationError {
-  loc: string[];
-  msg: string;
-  type: string;
+/**
+ * Server error response interface - now consistent for all error types
+ */
+interface ServerErrorResponse {
+  detail: ErrorDetail;
 }
 
 @Injectable({
   providedIn: 'root'
 })
-
 export class RestService {
   constructor(
     private http: HttpClient,
@@ -60,10 +46,33 @@ export class RestService {
     private refreshService: RefreshService
   ) {}
 
-  private handleError(error: any): Observable<never> {
-    // Let the notification service handle the error display
-    this.notificationService.showError(error);
-    return throwError(() => error);
+
+  private handleError(server_msg: any): Observable<never> {
+    console.log('RestService handleError - Complete error:', server_msg);
+    console.log('RestService handleError - Status:', server_msg.status);
+    
+    // Only handle network/system errors - let components handle business logic errors
+    const status = server_msg.status;
+    
+    // Network errors (no response from server)
+    if (status === 0 || !server_msg.error) {
+      console.log('RestService: Handling network error');
+      this.notificationService.clear();
+      this.notificationService.showError('Unable to connect to server. Please check your connection.');
+      return throwError(() => server_msg);
+    }
+    
+    // Server errors (5xx) - these are system issues, not business logic
+    if (status >= 500) {
+      console.log('RestService: Handling server error');
+      this.notificationService.clear();
+      this.notificationService.showError('Server error occurred. Please try again later.');
+      return throwError(() => server_msg);
+    }
+    
+    // Business logic errors (4xx) - let components handle these
+    console.log('RestService: Passing through business logic error to component');
+    return throwError(() => server_msg);
   }
 
   getEntity(entityType: string, id: string): Observable<Entity> {
@@ -137,5 +146,4 @@ export class RestService {
       })
     }
   }
-  
 }

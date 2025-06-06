@@ -81,6 +81,7 @@ import { NotificationComponent } from './components/notification.component';
 })
 export class AppComponent implements OnInit {
   initialized = false;
+  title = 'ui';
 
   constructor(
     public metadataService: MetadataService,
@@ -103,6 +104,7 @@ export class AppComponent implements OnInit {
         this.initialized = true;
         // Set the document title
         document.title = `${this.metadataService.getProjectName()} Management`;
+        this.title = this.metadataService.getProjectName();
       },
       error: (err) => {
         console.error('AppComponent: Error loading metadata:', err);

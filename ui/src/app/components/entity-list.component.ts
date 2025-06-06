@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MetadataService } from '../services/metadata.service';
 import { EntityService } from '../services/entity.service';
@@ -7,11 +7,10 @@ import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { RestService } from '../services/rest.service';
 import { ModeService, SUMMARY } from '../services/mode.service';
-import { forkJoin, of, Subject } from 'rxjs';
-import { map, switchMap, takeUntil } from 'rxjs/operators';
+import { forkJoin, of } from 'rxjs';
+import { map, switchMap } from 'rxjs/operators';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { NotificationService } from '../services/notification.service';
-import { RefreshService } from '../services/refresh.service';
 
 @Component({
   selector: 'app-entity-list',
@@ -40,7 +39,7 @@ import { RefreshService } from '../services/refresh.service';
       <div *ngIf="!loading && !error">
         <!-- Check if there are any entities to display -->
         <div *ngIf="data.length === 0" class="alert alert-info">
-          No {{ entityType }} records found. Click Create to add one.
+          No {{ entityType }} records found.
         </div>
         
         <!-- Table layout with one row per entity -->
@@ -130,9 +129,7 @@ import { RefreshService } from '../services/refresh.service';
     }
   `]
 })
-export class EntityListComponent implements OnInit, OnDestroy {
-  private destroy$ = new Subject<void>()
-  
+export class EntityListComponent implements OnInit {
   entityType: string = '';
   data: any[] = []
   displayFields: string[] = [];
@@ -151,38 +148,19 @@ export class EntityListComponent implements OnInit, OnDestroy {
     public restService: RestService,
     private modeService: ModeService,
     private sanitizer: DomSanitizer,
-    private notificationService: NotificationService,
-    private refreshService: RefreshService
+    private notificationService: NotificationService
   ) {}
 
   ngOnInit(): void {
-    // Subscribe to route params
-    this.route.params.pipe(
-      takeUntil(this.destroy$)
-    ).subscribe(params => {
+    this.route.params.subscribe(params => {
       this.entityType = params['entityType'];
+      
+      // Load entities
       this.loadEntities();
     });
-
-    // Subscribe to refresh events
-    this.refreshService.refresh$.pipe(
-      takeUntil(this.destroy$)
-    ).subscribe(refreshedEntityType => {
-      console.log(`EntityListComponent: Received refresh event for ${refreshedEntityType}, current type is ${this.entityType}`);
-      if (refreshedEntityType === this.entityType) {
-        console.log('EntityListComponent: Reloading entities');
-        this.loadEntities();
-      }
-    });
-  }
-
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
   }
   
   loadEntities(): void {
-    console.log(`EntityListComponent: Starting loadEntities for ${this.entityType}`)
     this.loading = true;
     this.error = '';
     
@@ -192,9 +170,6 @@ export class EntityListComponent implements OnInit, OnDestroy {
     // Use RestService instead of HttpClient directly
     this.restService.getEntityList(this.entityType).subscribe({
       next: (entities) => {
-        console.log(`EntityListComponent: Loaded ${entities.length} ${this.entityType} entities`)
-        this.loading = false;
-        
         // Process each entity to handle async formatting for ObjectId fields with show configs
         this.data = entities.map(entity => {
           const processedEntity: any = { ...entity, _formattedValues: {} };
@@ -208,27 +183,67 @@ export class EntityListComponent implements OnInit, OnDestroy {
 
             if (metadata?.type === 'ObjectId' && showConfig) {
               // Use the async formatter for ObjectId fields with show config
+              // Pass the already-fetched showConfig to avoid re-fetching
               processedEntity._formattedValues[field] = this.entityService.formatObjectIdValue(this.entityType, field, SUMMARY, rawValue, showConfig).pipe(
-                 map(value => this.sanitizer.bypassSecurityTrustHtml(value))
+                 map(value => this.sanitizer.bypassSecurityTrustHtml(value)) // Sanitize HTML output
               );
             } else {
               // For other field types or ObjectId without show config, use the synchronous formatter
+              // This also handles the case where an ObjectId field value is blank/null/undefined
               const formattedValue = this.entityService.formatFieldValue(this.entityType, field, SUMMARY, rawValue);
-              processedEntity._formattedValues[field] = of(this.sanitizer.bypassSecurityTrustHtml(formattedValue));
+              processedEntity._formattedValues[field] = of(this.sanitizer.bypassSecurityTrustHtml(formattedValue)); // Wrap in Observable<SafeHtml>
             }
           });
 
           return processedEntity;
         });
+            
+        this.loading = false;
       },
       error: (err) => {
-        console.error(`EntityListComponent: Error loading ${this.entityType}:`, err)
-        this.loading = false;
-        // Only show error notification for actual errors, not empty results
-        if (err.status !== 404) {
-          this.error = err.error?.detail?.message || 'Failed to load entities';
-          this.notificationService.showError(err);
+        console.error('Error loading entities:', err);
+        
+        let errorMessage = 'Failed to load entities. Please try again later.';
+        let validationErrors = undefined;
+        
+        if (err.error?.detail) {
+          // If it's a validation error from FastAPI
+          if (Array.isArray(err.error.detail)) {
+            validationErrors = err.error.detail;
+            const errors = err.error.detail.map((e: any) => {
+              const field = e.loc[e.loc.length - 1];
+              return `${field}: ${e.msg}`;
+            });
+            errorMessage = `Validation errors: ${errors.join(', ')}`;
+          } else if (typeof err.error.detail === 'string') {
+            errorMessage = err.error.detail;
+          }
+        } else if (err.status === 500 && err.error) {
+          // For other server errors, try to extract the message
+          const serverError = err.error.toString();
+          if (serverError.includes('ValidationError')) {
+            // Extract field name and record ID for validation errors
+            const fieldMatch = serverError.match(/Field required \[type=missing, input_value={'_id': ObjectId\('([^']+)'\)/);
+            const missingFieldMatch = serverError.match(/ValidationError: ([a-zA-Z0-9_]+)\n/);
+            
+            if (fieldMatch && missingFieldMatch) {
+              const recordId = fieldMatch[1];
+              const missingField = missingFieldMatch[1];
+              errorMessage = `Error: Missing ${missingField} field in record ${this.entityType}.id = ${recordId}`;
+            }
+          }
         }
+        
+        // Show error using notification service
+        this.notificationService.showError({
+          message: errorMessage,
+          error_type: 'validation_error',
+          context: {
+              entity: this.entityType,
+              invalid_fields: validationErrors
+          }
+        });
+        this.loading = false;
       }
     });
   }

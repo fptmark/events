@@ -6,6 +6,7 @@ import { ConfigService } from './services/config.service';
 import { MetadataService } from './services/metadata.service';
 import { EntityService } from './services/entity.service';
 import { FormGeneratorService } from './services/form-generator.service';
+import { RefreshService } from './services/refresh.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -15,6 +16,7 @@ export const appConfig: ApplicationConfig = {
     ConfigService,
     MetadataService,
     EntityService,
-    FormGeneratorService
+    FormGeneratorService,
+    RefreshService
   ]
 };

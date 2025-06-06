@@ -7,7 +7,7 @@ import {
   NOTIFICATION_ERROR, 
   NOTIFICATION_WARNING, 
   NOTIFICATION_INFO,
-  ErrorContext,
+  ErrorDetail,
   ValidationFailure
 } from '../services/notification.service';
 import { Subscription } from 'rxjs';
@@ -15,7 +15,7 @@ import { MetadataService } from '../services/metadata.service';
 import { Observable } from 'rxjs';
 
 interface NotificationViewModel extends Notification {
-  context?: ErrorContext
+  error?: ErrorDetail
 }
 
 @Component({
@@ -30,42 +30,19 @@ interface NotificationViewModel extends Notification {
           <button class="close-button" (click)="clear()">×</button>
         </div>
         <div class="notification-content">
-          <p>{{ vm.message }}</p>
+          <ul class="notification-messages">
+            <li *ngFor="let message of vm.messages">{{ message }}</li>
+          </ul>
           
           <!-- Error Details -->
-          <ng-container *ngIf="vm.context as context">
+          <ng-container *ngIf="vm.error?.context as context">
             <div class="error-details">
-              <!-- Missing Fields -->
-              <div *ngIf="context.missing_fields?.length" class="error-section">
-                <p class="error-subtitle">Missing Required Fields:</p>
-                <ul>
-                  <li *ngFor="let field of context.missing_fields">{{ getFieldDisplayName(field) }}</li>
-                </ul>
-              </div>
-              
-              <!-- Invalid Fields -->
-              <div *ngIf="context.invalid_fields?.length" class="error-section">
-                <p class="error-subtitle">Invalid Fields:</p>
-                <ul>
-                  <li *ngFor="let error of context.invalid_fields">
-                    {{ getFieldDisplayName(error.field) }}: {{ error.constraint }}
-                    <span *ngIf="error.value" class="error-value">(provided: {{ error.value }})</span>
-                  </li>
-                </ul>
-              </div>
-              
-              <!-- Unique Constraint Violations -->
+              <!-- Minimal error context display -->
               <div *ngIf="context.conflicting_fields?.length" class="error-section">
                 <p class="error-subtitle">Duplicate Values Not Allowed:</p>
                 <ul>
                   <li *ngFor="let field of context.conflicting_fields">{{ getFieldDisplayName(field) }}</li>
                 </ul>
-              </div>
-
-              <!-- Generic Error -->
-              <div *ngIf="context.error" class="error-section">
-                <p class="error-subtitle">Details:</p>
-                <p>{{ context.error }}</p>
               </div>
             </div>
           </ng-container>
@@ -144,8 +121,8 @@ export class NotificationComponent implements OnInit, OnDestroy {
   }
   
   ngOnInit(): void {
-    this.subscription = this.notification$.subscribe(() => {
-      // Reset any component state if needed
+    this.subscription = this.notification$.subscribe((notification) => {
+      // Notification received and will be displayed via template
     })
   }
   

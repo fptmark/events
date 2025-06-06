@@ -1,6 +1,5 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
-import { ValidationError } from './rest.service';
 
 // Notification type constants
 export const NOTIFICATION_SUCCESS = 'success';
@@ -8,53 +7,41 @@ export const NOTIFICATION_ERROR = 'error';
 export const NOTIFICATION_WARNING = 'warning';
 export const NOTIFICATION_INFO = 'info';
 
-export type NotificationType = typeof NOTIFICATION_SUCCESS | typeof NOTIFICATION_ERROR | 
-                               typeof NOTIFICATION_WARNING | typeof NOTIFICATION_INFO;
+export type NotificationType = typeof NOTIFICATION_SUCCESS | typeof NOTIFICATION_ERROR | typeof NOTIFICATION_WARNING | typeof NOTIFICATION_INFO;
+
+/**
+ * Internal error interfaces used throughout the application.
+ * This format is protocol-agnostic and suitable for any error source
+ * (REST, GraphQL, WebSocket, client-side validation, etc.)
+ */
 
 export interface ValidationFailure {
-  field: string
-  value?: any
-  constraint: string
-}
-
-export interface ValidationErrorItem {
-  field?: string
-  loc?: string[]
-  message?: string
-  msg?: string
-  value?: any
-}
-
-export interface ValidationErrorMap {
-  [field: string]: string | { message: string; value?: any }
+  field: string;
+  constraint: string;
+  value?: any;
 }
 
 export interface ErrorContext {
-  id?: string
-  error?: string
-  missing_fields?: string[]
-  invalid_fields?: ValidationFailure[]
-  conflicting_fields?: string[]
-  entity?: string
-  error_type: string
-  [key: string]: any
+  error?: string;
+  entity?: string;
+  invalid_fields?: ValidationFailure[];
+  missing_fields?: string[];
+  conflicting_fields?: string[];
+  [key: string]: any;
 }
 
-export interface ErrorResponse {
-  detail: {
-    message: string
-    error_type: string
-    context?: ErrorContext
-  }
+export interface ErrorDetail {
+  message: string;
+  error_type: string;
+  context?: ErrorContext;
 }
 
 export interface Notification {
   type: NotificationType;
   title: string;
-  message: string;
-  context?: ErrorContext;
+  messages: string[];
+  error?: ErrorDetail;
   autoClose?: boolean;
-  errors?: string[];  // Add array to track multiple errors
 }
 
 @Injectable({
@@ -66,57 +53,19 @@ export class NotificationService {
   private autoCloseTimer: any = null;
   
   constructor() {}
-  
-  /**
-   * Check if there's an active notification
-   */
-  hasActiveNotification(): boolean {
-    return this.notificationSubject.value !== null;
-  }
 
   /**
-   * Add an error to the current notification or create a new one
-   */
-  private addError(message: string, context?: ErrorContext): void {
-    const current = this.notificationSubject.value;
-    
-    if (current?.type === NOTIFICATION_ERROR) {
-      // Add to existing error notification
-      const errors = current.errors || [current.message];
-      if (!errors.includes(message)) {
-        errors.push(message);
-      }
-      
-      this.notificationSubject.next({
-        ...current,
-        message: errors.join('\n'),
-        errors,
-        context: context || current.context
-      });
-    } else {
-      // Create new error notification
-      this.notificationSubject.next({
-        type: NOTIFICATION_ERROR,
-        title: 'Error',
-        message,
-        context,
-        errors: [message]
-      });
-    }
-  }
-  
-  /**
    * Show a success notification
-   * @param message The success message to display
-   * @param autoClose Whether to automatically close the notification after a delay (default: true)
+   * @param message The success message
+   * @param autoClose Whether to auto close the notification
    */
   showSuccess(message: string, autoClose: boolean = true): void {
-    this.clear(); // Clear any existing notification
+    this.clear();
     
     this.notificationSubject.next({
       type: NOTIFICATION_SUCCESS,
       title: 'Success',
-      message,
+      messages: [message],
       autoClose
     });
     
@@ -127,70 +76,51 @@ export class NotificationService {
   
   /**
    * Show an error notification with rich context
-   * @param messageOrError The error message or error response object
-   * @param validationErrors Optional validation errors
-   * @param entityType Optional entity type for context
+   * @param error The error details or simple message
    */
-  showError(messageOrError: string | any, validationErrors?: ValidationErrorItem[] | ValidationErrorMap, entityType?: string): void {
-    let message: string;
-    let context: ErrorContext | undefined;
+  showError(error: ErrorDetail | string): void {
+    this.clear();
     
-    // Case 1: Error response object from backend
-    if (typeof messageOrError === 'object' && messageOrError.error?.detail) {
-      const errorDetail = messageOrError.error.detail;
-      message = errorDetail.message;
-      context = errorDetail.context;
-
-      // Handle specific error types
-      switch (errorDetail.error_type) {
-        case 'not_found':
-          message = `${context?.entity || 'Item'} with ID ${context?.id} was not found. It may have been deleted by another user.`;
-          break;
-        case 'validation_error':
-          // Keep existing validation error handling
-          break;
-        case 'database_error':
-          message = `Database error: ${message}`;
-          break;
-        // Add more specific error types as needed
-      }
-
-      this.addError(message, context);
-    } else if (typeof messageOrError === 'string') {
-      // Case 2: Direct string message
-      this.addError(messageOrError);
+    let notification: Notification;
+    
+    if (typeof error === 'string') {
+      // Simple error message - convert to ErrorDetail format
+      notification = {
+        type: NOTIFICATION_ERROR,
+        title: 'Error',
+        messages: [error],
+        error: {
+          message: error,
+          error_type: 'error'
+        }
+      };
     } else {
-      // Case 3: Unknown error format
-      this.addError('An unexpected error occurred. Please try again.');
+      // Error detail object
+      const messages = error.context?.error ? [error.context.error] : [error.message];
+      
+      notification = {
+        type: NOTIFICATION_ERROR,
+        title: 'Error',
+        messages: messages,
+        error
+      };
     }
+
+    this.notificationSubject.next(notification);
   }
-  
+
   /**
    * Show a warning notification
-   * @param message The warning message to display
+   * @param message The warning message
+   * @param autoClose Whether to auto close the notification
    */
-  showWarning(message: string): void {
-    this.clear(); // Clear any existing notification
+  showWarning(message: string, autoClose: boolean = true): void {
+    this.clear();
     
     this.notificationSubject.next({
       type: NOTIFICATION_WARNING,
       title: 'Warning',
-      message
-    });
-  }
-  
-  /**
-   * Show an informational notification
-   * @param message The info message to display
-   * @param autoClose Whether to automatically close the notification after a delay (default: true)
-   */
-  showInfo(message: string, autoClose: boolean = true): void {
-    this.clear(); // Clear any existing notification
-    
-    this.notificationSubject.next({
-      type: NOTIFICATION_INFO,
-      title: 'Information',
-      message,
+      messages: [message],
       autoClose
     });
     
@@ -198,7 +128,27 @@ export class NotificationService {
       this.setAutoCloseTimer();
     }
   }
-  
+
+  /**
+   * Show an info notification
+   * @param message The info message
+   * @param autoClose Whether to auto close the notification
+   */
+  showInfo(message: string, autoClose: boolean = true): void {
+    this.clear();
+    
+    this.notificationSubject.next({
+      type: NOTIFICATION_INFO,
+      title: 'Info',
+      messages: [message],
+      autoClose
+    });
+    
+    if (autoClose) {
+      this.setAutoCloseTimer();
+    }
+  }
+
   /**
    * Clear the current notification
    */
@@ -222,13 +172,14 @@ export class NotificationService {
 
   /**
    * Format error details for display
-   * @param context The error context
+   * @param error The error details
    * @returns Formatted error message
    */
-  formatErrorDetails(context: ErrorContext): string {
-    if (!context) return '';
+  formatErrorDetails(error: ErrorDetail): string {
+    if (!error?.context) return '';
     
     const details: string[] = [];
+    const context = error.context;
     
     if (context.error) {
       details.push(`Error: ${context.error}`);

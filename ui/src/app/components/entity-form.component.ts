@@ -8,18 +8,16 @@ import { CommonModule } from '@angular/common';
 import { RestService } from '../services/rest.service';
 import { ModeService, ViewMode, DETAILS, EDIT, CREATE } from '../services/mode.service';
 import { NavigationService } from '../services/navigation.service';
-import { ValidationError, ErrorResponse } from '../services/rest.service';
 import { EntitySelectorModalComponent, ColumnConfig } from './entity-selector-modal.component';
-import { NotificationService } from '../services/notification.service';
-import { NotificationComponent } from './notification.component';
+import { NotificationService, ValidationFailure, ErrorDetail } from '../services/notification.service';
 import currency from 'currency.js';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { ValidationService } from '../services/validation.service';
 
 @Component({
   selector: 'app-entity-form',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, EntitySelectorModalComponent, NotificationComponent],
-  providers: [RestService],
+  imports: [CommonModule, ReactiveFormsModule, EntitySelectorModalComponent],
   templateUrl: './entity-form.component.html',
   styleUrls: ['./entity-form.component.css'],
   styles: [`
@@ -51,14 +49,13 @@ export class EntityFormComponent implements OnInit {
   entityType: string = '';
   entityId: string = '';
   
-  // Removed unused variables
   entityForm: FormGroup | null = null;
   sortedFields: string[] = [];
   entity: any = null;
   
   submitting: boolean = false;
   error: string = '';
-  validationErrors: ValidationError[] = [];
+  validationErrors: ValidationFailure[] = [];
 
   // Entity selection state
   showEntitySelector: boolean = false;
@@ -79,6 +76,7 @@ export class EntityFormComponent implements OnInit {
     public modeService: ModeService,
     private navigationService: NavigationService,
     private notificationService: NotificationService,
+    private validationService: ValidationService,
     private sanitizer: DomSanitizer
   ) {}
   
@@ -178,11 +176,6 @@ export class EntityFormComponent implements OnInit {
     return fieldMeta.required || false;
   }
 
-  isFieldInvalid(fieldName: string): boolean {
-    return !!this.entityForm?.get(fieldName)?.invalid && 
-           (!!this.entityForm?.get(fieldName)?.dirty || !!this.entityForm?.get(fieldName)?.touched);
-  }
-  
   isFieldReadOnly(fieldName: string): boolean {
     return this.entityForm?.get(fieldName)?.disabled || false;
   }
@@ -262,8 +255,25 @@ export class EntityFormComponent implements OnInit {
     if (this.entityForm.invalid) {
       this.submitting = false;
       
-      // Show validation error notification
-      this.notificationService.showError('Please fix the validation errors below before submitting.', undefined, this.entityType);
+      // Show validation error notification with form validation errors
+      const invalidControls = Object.keys(this.entityForm.controls)
+        .filter(key => this.entityForm?.get(key)?.errors)
+        .map(field => ({
+          field,
+          constraint: Object.keys(this.entityForm?.get(field)?.errors || {})
+            .map(key => this.getValidationMessage(field, key))
+            .join(', '),
+          value: this.entityForm?.get(field)?.value
+        }));
+
+      this.notificationService.showError({
+        message: 'Please fix the validation errors below before submitting.',
+        error_type: 'validation_error',
+        context: {
+          entity: this.entityType,
+          invalid_fields: invalidControls
+        }
+      });
       return;
     }
     
@@ -322,7 +332,17 @@ export class EntityFormComponent implements OnInit {
               control.setErrors({ 'currencyFormat': 'Invalid currency format. Use $X,XXX.XX or (X,XXX.XX) for negative values.' });
               
               // Show error notification
-              this.notificationService.showError(`Invalid currency format in ${this.getFieldDisplayName(fieldName)}`, undefined, this.entityType);
+              this.notificationService.showError({
+                message: `Invalid currency format in ${this.getFieldDisplayName(fieldName)}`,
+                error_type: 'validation_error',
+                context: {
+                  entity: this.entityType,
+                  invalid_fields: [{
+                    field: fieldName,
+                    constraint: 'Invalid currency format. Use $X,XXX.XX or (X,XXX.XX) for negative values.'
+                  }]
+                }
+              });
               
               // Set this flag to make the error visible
               control.markAsTouched();
@@ -348,70 +368,6 @@ export class EntityFormComponent implements OnInit {
   }
 
   /**
-   * Handles API errors, including validation errors
-   */
-  handleApiError(err: any): void {
-    this.error = '';
-    this.validationErrors = [];
-
-    // Log the error for debugging in console
-    console.error('API Error:', JSON.stringify(err, null, 2));
-
-    if (err.status === 422 && err.error?.detail) {
-      // Process validation errors from FastAPI (422 Unprocessable Entity)
-      const errorDetail = err.error.detail;
-
-      if (Array.isArray(errorDetail)) {
-        // Store the validation errors directly using our ValidationError interface
-        this.validationErrors = errorDetail as ValidationError[];
-
-        // Show validation errors in the notification system
-        this.notificationService.showError('Please correct the highlighted fields below.', this.validationErrors, this.entityType);
-
-        // Mark relevant form fields as invalid
-        this.validationErrors.forEach(error => {
-          if (error.loc?.length > 1) {
-            // Last element in loc array is the field name
-            const fieldName = error.loc[error.loc.length - 1];
-
-            // Mark the field as touched and dirty so validation message shows
-            const control = this.entityForm?.get(fieldName);
-            if (control) {
-              control.markAsTouched();
-              control.markAsDirty();
-              
-              // Set custom error on the control to ensure it shows up in UI
-              const errors = control.errors ? { ...control.errors } : {};
-              errors['server'] = error.msg;
-              control.setErrors(errors);
-            }
-          }
-        });
-      } else if (typeof errorDetail === 'string') {
-        // Handle string error message
-        this.notificationService.showError(errorDetail);
-      }
-    } else {
-      // For all other errors, show the full error details
-      const errorMessage = err.status ?
-        `Error ${err.status}: ${err.statusText}\n${err.error?.detail || err.message || JSON.stringify(err.error)}` :
-        `Error: ${err.message || JSON.stringify(err)}`;
-      
-      this.notificationService.showError(errorMessage);
-    }
-  }
-  
-  /**
-   * Check if a field has validation errors from the API
-   */
-  getFieldValidationError(fieldName: string): string | null {
-    const error = this.validationErrors.find(err => 
-      err.loc?.length > 1 && err.loc[err.loc.length - 1] === fieldName
-    );
-    return error?.msg || null;
-  }
-
-  /**
    * Common handler for successful API operations
    */
   private handleApiSuccess(): void {
@@ -425,16 +381,43 @@ export class EntityFormComponent implements OnInit {
     this.router.navigate(['/entity', this.entityType]);
   }
 
-  /**
-   * Common error handler for API operations
-   */
+  handleApiError(err: any): void {
+    // Clear any existing notifications
+    this.notificationService.clear();
+    
+    // Extract error message from server response
+    const errorMessage = err.error?.detail || 'An error occurred while processing your request.';
+    
+    // For 422 validation errors, try to extract field-specific errors
+    if (err.status === 422 && err.error?.detail?.context?.invalid_fields) {
+      const invalidFields = err.error.detail.context.invalid_fields;
+      this.validationErrors = invalidFields;
+      
+      // Mark form fields as invalid with server errors
+      invalidFields.forEach((error: ValidationFailure) => {
+        const control = this.entityForm?.get(error.field);
+        if (control) {
+          control.markAsTouched();
+          control.markAsDirty();
+          control.setErrors({ server: error.constraint });
+        }
+      });
+      
+      // Show validation error notification
+      this.notificationService.showError('Please fix the validation errors highlighted below.');
+    } else {
+      // For other 4xx errors (404, 409, etc.), show the server message
+      this.notificationService.showError(errorMessage);
+    }
+  }
+
   private handleApiFailure(err: any, operation: string): void {
     console.error(`Error ${operation} entity:`, err);
-
-    // Directly use handleApiError to show all error details
+    
+    // Handle form validation state
     this.handleApiError(err);
-
-    // Reset submitting flag so user can try again
+    
+    // Reset submitting flag
     this.submitting = false;
   }
 
@@ -578,4 +561,41 @@ export class EntityFormComponent implements OnInit {
     const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
     return fieldMeta?.ui?.['spinnerStep'] || 1;
   }
+
+  private getValidationMessage(field: string, errorKey: string): string {
+    const control = this.entityForm?.get(field);
+    if (!control?.errors) return '';
+
+    switch (errorKey) {
+      case 'required':
+        return `${this.getFieldDisplayName(field)} is required`;
+      case 'minlength':
+        return `${this.getFieldDisplayName(field)} must be at least ${control.errors[errorKey].requiredLength} characters`;
+      case 'maxlength':
+        return `${this.getFieldDisplayName(field)} cannot exceed ${control.errors[errorKey].requiredLength} characters`;
+      case 'pattern':
+        return `${this.getFieldDisplayName(field)} has an invalid format`;
+      case 'min':
+        return `${this.getFieldDisplayName(field)} must be at least ${control.errors[errorKey].min}`;
+      case 'max':
+        return `${this.getFieldDisplayName(field)} cannot exceed ${control.errors[errorKey].max}`;
+      case 'currencyFormat':
+        return control.errors[errorKey];
+      case 'server':
+        return control.errors[errorKey];
+      default:
+        return `${this.getFieldDisplayName(field)} is invalid`;
+    }
+  }
+
+  isFieldInvalid(fieldName: string): boolean {
+    const control = this.entityForm?.get(fieldName);
+    return !!(control && control.invalid && (control.dirty || control.touched));
+  }
+  
+  getFieldValidationError(fieldName: string): string | null {
+    const control = this.entityForm?.get(fieldName);
+    return control?.errors?.['server'] || null;
+  }
+
 }

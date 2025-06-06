@@ -1,7 +1,4 @@
 <div class="container-fluid mt-4">
-  <!-- Notification Component -->
-  <app-notification></app-notification>
-  
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>{{ mode }} {{ entityType | titlecase }}</h2>
     <button class="btn btn-secondary" (click)="goBack()">Back</button>
@@ -204,10 +201,7 @@
               <!-- Details button not needed in details mode since we're already viewing -->
               <button *ngIf="entityService.canUpdate(entityType)" type="button" class="btn btn-entity-edit me-2" (click)="goToEdit()">Edit</button>
               <button *ngIf="metadataService.isValidOperation(entityType, 'c')" type="button" class="btn btn-entity-create me-2" (click)="entityService.navigateToCreate(entityType)">Create</button>
-              <button *ngIf="entityService.canDelete(entityType)" 
-                type="button" 
-                class="btn btn-entity-delete" 
-                (click)="restService.deleteEntity(entityType, entityId); goBack()">Delete</button>
+              <button *ngIf="entityService.canDelete(entityType)" type="button" class="btn btn-entity-delete" (click)="restService.deleteEntity(entityType, entityId)">Delete</button>
             </ng-container>
           </div>
 
