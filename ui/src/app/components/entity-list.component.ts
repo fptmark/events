@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MetadataService } from '../services/metadata.service';
 import { EntityService } from '../services/entity.service';
@@ -12,6 +12,8 @@ import { map, switchMap } from 'rxjs/operators';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { NotificationService } from '../services/notification.service';
 import { ValidationService } from '../services/validation.service';
+import { RefreshService } from '../services/refresh.service';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-entity-list',
@@ -130,7 +132,7 @@ import { ValidationService } from '../services/validation.service';
     }
   `]
 })
-export class EntityListComponent implements OnInit {
+export class EntityListComponent implements OnInit, OnDestroy {
   entityType: string = '';
   data: any[] = []
   displayFields: string[] = [];
@@ -141,6 +143,9 @@ export class EntityListComponent implements OnInit {
   canRead: boolean = false;
   canUpdate: boolean = false;
   canDelete: boolean = false;
+  
+  // Refresh subscription
+  private refreshSubscription: Subscription | null = null;
 
   constructor(
     public metadataService: MetadataService,
@@ -150,12 +155,24 @@ export class EntityListComponent implements OnInit {
     private modeService: ModeService,
     private sanitizer: DomSanitizer,
     private notificationService: NotificationService,
-    private validationService: ValidationService
+    private validationService: ValidationService,
+    private refreshService: RefreshService
   ) {}
 
   ngOnInit(): void {
     this.route.params.subscribe(params => {
       this.entityType = params['entityType'];
+      
+      // Clean up previous refresh subscription
+      if (this.refreshSubscription) {
+        this.refreshSubscription.unsubscribe();
+      }
+      
+      // Subscribe to refresh events for this entity type
+      this.refreshSubscription = this.refreshService.getRefreshObservable(this.entityType).subscribe(() => {
+        console.log(`EntityListComponent: Refresh triggered for ${this.entityType}`);
+        this.loadEntities();
+      });
       
       // Load entities
       this.loadEntities();
@@ -259,5 +276,11 @@ export class EntityListComponent implements OnInit {
   //   console.log(`Custom action ${actionKey} would be executed on entity:`, entity);
   // }
 
+  ngOnDestroy(): void {
+    // Clean up refresh subscription
+    if (this.refreshSubscription) {
+      this.refreshSubscription.unsubscribe();
+    }
+  }
   
 }

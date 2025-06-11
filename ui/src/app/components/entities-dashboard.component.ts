@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { MetadataService, EntityMetadata } from '../services/metadata.service';
+import { MetadataService } from '../services/metadata.service';
 import { CommonModule } from '@angular/common';
 import { NavigationService } from '../services/navigation.service';
 
@@ -24,10 +24,10 @@ import { NavigationService } from '../services/navigation.service';
         <div *ngFor="let entity of entityTypes" class="col">
           <div class="card h-100">
             <div class="card-body">
-              <h5 class="card-title">{{ metadataService.getTitle(entity.entity) }}</h5>
-              <p class="card-text">{{ metadataService.getDescription(entity.entity) }}</p>
-              <button class="btn btn-primary" (click)="navigateToEntity(entity.entity)">
-                {{ metadataService.getButtonLabel(entity.entity) }}
+              <h5 class="card-title">{{ metadataService.getTitle(entity) }}</h5>
+              <p class="card-text">{{ metadataService.getDescription(entity) }}</p>
+              <button class="btn btn-primary" (click)="navigateToEntity(entity)">
+                {{ metadataService.getButtonLabel(entity) }}
               </button>
             </div>
           </div>
@@ -45,7 +45,7 @@ import { NavigationService } from '../services/navigation.service';
   `]
 })
 export class EntitiesDashboardComponent implements OnInit {
-  entityTypes: EntityMetadata[] = [];
+  entityTypes: string[] = [];
   loading: boolean = true;
   error: string = '';
 
@@ -61,7 +61,7 @@ export class EntitiesDashboardComponent implements OnInit {
       await this.metadataService.waitForInit();
       
       // Now we can safely get the entities
-      this.entityTypes = this.metadataService.getAvailableEntities();
+      this.entityTypes = this.metadataService.getAvailableEntityTypes();
       this.loading = false;
     } catch (err) {
       console.error('Error loading dashboard:', err);
