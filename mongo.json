@@ -1,6 +1,6 @@
 {
     "project_name"	: "Events",
-    "database"		: "mongo", 
+    "database"		: "mongodb", 
     "db_uri"		: "mongodb://localhost:27017", 
     "db_name"		: "eventMgr",
     "host"		: "0.0.0.0",
