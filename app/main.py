@@ -81,42 +81,50 @@ logger = logging.getLogger(__name__)
 # Add the project root to PYTHONPATH
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
+# Validate database configuration before creating FastAPI app
+db_type = config.get('database', None)
+db_uri = config.get('db_uri', None)
+db_name = config.get('db_name', None)
+
+if not (db_uri and db_name and db_type):
+    logger.error("Missing required database configuration")
+    sys.exit(1)
+
+try:
+    # Test database connection before creating FastAPI app
+    db = DatabaseFactory.create(db_type)
+    logger.info(f"Database type {db_type} is supported")
+except Exception as e:
+    logger.error(f"Failed to create database instance: {str(e)}")
+    sys.exit(1)
+
 # Create the FastAPI app.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    db_type = config.get('database', None)
-    db_uri = config.get('db_uri', None)
-    db_name = config.get('db_name', None)
+    logger.info('Startup event called')
+    logger.info(f"Running in {'development' if config.get('environment', 'production') == 'development' else 'production'} mode")
+    logger.info(f"Connecting to {db_type} datastore at {db_uri} with db {db_name}")
+    
+    try:
+        # Initialize database instance
+        await db.init(db_uri, db_name)
+        DatabaseFactory.set_instance(db, db_type)
+        logger.info(f"Connected to {db_type} successfully")
 
-    if db_uri and db_name and db_type:
-        logger.info('Startup event called')
-        logger.info(f"Running in {'development' if config.get('environment', 'production') == 'development' else 'production'} mode")
-        logger.info(f"Connecting to {db_type} datastore at {db_uri} with db {db_name}")
-        
-        try:
-            # Create and initialize database instance
-            db = DatabaseFactory.create(db_type)
-            await db.init(db_uri, db_name)
-            DatabaseFactory.set_instance(db, db_type)
-            logger.info(f"Connected to {db_type} successfully")
+        # Handle --initdb flag if present
+        if args.initdb:
+            logger.info("--initdb flag specified, initializing database schema")
+            logger.info("Starting database initialization...")
+            initializer = DatabaseInitializer(db)
+            await initializer.initialize_database()
+            logger.info("Database initialization completed successfully")
+            # Exit after initialization
+            sys.exit(0)
 
-            # Handle --initdb flag if present
-            if args.initdb:
-                logger.info("--initdb flag specified, initializing database schema")
-                logger.info("Starting database initialization...")
-                initializer = DatabaseInitializer(db)
-                await initializer.initialize_database()
-                logger.info("Database initialization completed successfully")
-                # Exit after initialization
-                sys.exit(0)
-
-        except Exception as e:
-            logger.error(f"Failed to initialize database: {str(e)}")
-            raise RuntimeError(f"Database initialization failed: {str(e)}")
-    else:
-        logger.error("Missing required database configuration")
-        raise RuntimeError("Missing required database configuration")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {str(e)}")
+        sys.exit(1)
 
     yield  # Server runs here
 
@@ -125,7 +133,7 @@ async def lifespan(app: FastAPI):
         logger.info("Shutdown event called")
         if DatabaseFactory.is_initialized():
             await DatabaseFactory.close()
-            logger.info("Elasticsearch connection closed")
+            logger.info("Database connection closed")
             logger.info("Database instance closed and cleaned up")
         logger.info("Database connections closed")
     except Exception as e:
