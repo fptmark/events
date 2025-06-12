@@ -38,21 +38,118 @@ class DatabaseInterface(ABC):
         """
         pass
 
-    @abstractmethod
     async def initialize_indexes(self) -> None:
         """
         Initialize database indexes based on model metadata.
         This method will:
         1. Discover required indexes from model metadata
         2. Create missing indexes
-        3. Remove unused indexes
-        4. Skip system indexes
+        3. Skip system indexes
         
         This is a non-destructive operation - it will not delete any collections or data,
         only manage indexes.
         
         Raises:
             DatabaseError: If index initialization fails
+        """
+        try:
+            # Import models module to discover all models
+            import importlib
+            import pkgutil
+            from pathlib import Path
+            from typing import TypedDict, List
+            
+            class IndexDef(TypedDict):
+                name: str
+                fields: List[str]
+                unique: bool
+            
+            models_module = importlib.import_module('app.models')
+            models_path = Path(models_module.__file__ or "").parent
+            
+            # Track collections and their required indexes
+            collections_structure: Dict[str, List[IndexDef]] = {}
+            
+            # Iterate through all Python files in models directory
+            for finder, name, ispkg in pkgutil.iter_modules([str(models_path)]):
+                if name.endswith('_model'):
+                    try:
+                        # Import the model module
+                        module = importlib.import_module(f'app.models.{name}')
+                        
+                        # Look for classes with _metadata attribute
+                        for attr_name in dir(module):
+                            attr = getattr(module, attr_name)
+                            if hasattr(attr, '_metadata') and isinstance(attr._metadata, dict):
+                                # Get collection name from Settings.name
+                                if hasattr(attr, 'Settings') and hasattr(attr.Settings, 'name'):
+                                    collection_name = attr.Settings.name
+                                    
+                                    # Extract unique constraints from metadata
+                                    unique_constraints = attr._metadata.get('uniques', [])
+                                    required_indexes: List[IndexDef] = []
+                                    
+                                    # Add unique constraint indexes
+                                    for constraint_fields in unique_constraints:
+                                        if isinstance(constraint_fields, list) and constraint_fields:
+                                            index_name = f"unique_{'_'.join(constraint_fields)}"
+                                            required_indexes.append({
+                                                'name': index_name,
+                                                'fields': list(constraint_fields),  # Ensure it's a list of strings
+                                                'unique': True
+                                            })
+                                    
+                                    if required_indexes:
+                                        collections_structure[collection_name] = required_indexes
+                                        import logging
+                                        logging.info(f"Found model {attr_name} -> collection '{collection_name}' with {len(required_indexes)} unique indexes")
+                    
+                    except Exception as e:
+                        import logging
+                        logging.warning(f"Failed to import model {name}: {str(e)}")
+                        continue
+            
+            # Create collections and indexes using database-specific methods
+            for collection, required_indexes in collections_structure.items():
+                await self._ensure_collection_exists(collection)
+                # Convert IndexDef TypedDict to regular dict for type compatibility
+                indexes_as_dicts = [dict(idx) for idx in required_indexes]
+                await self._create_required_indexes(collection, indexes_as_dicts)
+                
+        except Exception as e:
+            from ..errors import DatabaseError
+            raise DatabaseError(
+                message=f"Failed to initialize indexes: {str(e)}",
+                entity="indexes",
+                operation="initialize"
+            )
+
+    @abstractmethod
+    async def _ensure_collection_exists(self, collection: str) -> None:
+        """
+        Ensure a collection exists, creating it if necessary.
+        Database-specific implementation.
+        
+        Args:
+            collection: Collection name
+            
+        Raises:
+            DatabaseError: If collection creation fails
+        """
+        pass
+
+    @abstractmethod
+    async def _create_required_indexes(self, collection: str, required_indexes: List[Dict[str, Any]]) -> None:
+        """
+        Create required indexes for a collection, skipping existing ones.
+        Database-specific implementation.
+        
+        Args:
+            collection: Collection name
+            required_indexes: List of index definitions with 'name', 'fields', 'unique' keys
+            
+        Raises:
+            DatabaseError: If index creation fails
         """
         pass
 

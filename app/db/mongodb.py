@@ -55,13 +55,44 @@ class MongoDatabase(DatabaseInterface):
             return None
         return self.validate_document(doc, model_cls)
 
-    async def save_document(self, collection: str, doc_id: Optional[Any], data: Dict[str, Any]) -> Union[UpdateResult, InsertOneResult]:
+    async def save_document(self, collection: str, doc_id: Optional[Any], data: Dict[str, Any], 
+                          unique_constraints: Optional[List[List[str]]] = None) -> Union[UpdateResult, InsertOneResult]:
         if self._db is None:
             raise RuntimeError("MongoDatabase not initialized")
-        if doc_id is not None:
-            return await self._db[collection].replace_one({self.id_field: doc_id}, data, upsert=True)
-        else:
-            return await self._db[collection].insert_one(data)
+        
+        try:
+            # Check unique constraints if provided
+            if unique_constraints:
+                conflicting_fields = await self.check_unique_constraints(
+                    collection, unique_constraints, data, doc_id
+                )
+                if conflicting_fields:
+                    from ..errors import ValidationError, ValidationFailure
+                    raise ValidationError(
+                        message=f"Unique constraint violation for fields: {conflicting_fields}",
+                        entity=collection,
+                        invalid_fields=[
+                            ValidationFailure(
+                                field=field,
+                                message="Value already exists",
+                                value=data.get(field)
+                            ) for field in conflicting_fields
+                        ]
+                    )
+            
+            if doc_id is not None:
+                return await self._db[collection].replace_one({self.id_field: doc_id}, data, upsert=True)
+            else:
+                return await self._db[collection].insert_one(data)
+        except ValidationError:
+            # Re-raise validation errors
+            raise
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=collection,
+                operation="save"
+            )
 
     async def delete_document(self, collection: str, doc_id: Any) -> bool:
         if self._db is None:
@@ -279,3 +310,34 @@ class MongoDatabase(DatabaseInterface):
                 entity=collection,
                 operation="delete_index"
             )
+
+    async def _ensure_collection_exists(self, collection: str) -> None:
+        """Ensure a MongoDB collection exists, creating it if necessary"""
+        if not await self.collection_exists(collection):
+            logging.info(f"Creating collection '{collection}'")
+            await self.create_collection(collection)
+
+    async def _create_required_indexes(self, collection: str, required_indexes: List[Dict[str, Any]]) -> None:
+        """Create required indexes for a MongoDB collection"""
+        # Get existing indexes
+        existing_indexes = await self.list_indexes(collection)
+        existing_index_names = {idx['name'] for idx in existing_indexes}
+        
+        # Create missing indexes
+        for required_idx in required_indexes:
+            if required_idx['name'] not in existing_index_names:
+                try:
+                    created = await self.create_index(
+                        collection, 
+                        required_idx['fields'],
+                        unique=required_idx['unique']
+                    )
+                    if created:
+                        fields_str = " + ".join(required_idx['fields'])
+                        logging.info(f"Created index '{required_idx['name']}' on {fields_str}")
+                    else:
+                        logging.info(f"Index '{required_idx['name']}' already exists or couldn't be created")
+                except Exception as e:
+                    logging.error(f"Failed to create index '{required_idx['name']}': {str(e)}")
+            else:
+                logging.info(f"Index '{required_idx['name']}' already exists")

@@ -451,109 +451,33 @@ class ElasticsearchDatabase(DatabaseInterface):
         logging.warning(f"Index deletion not supported in Elasticsearch for index '{index_name}' in collection '{collection}'")
         return False
 
-    async def initialize_indexes(self) -> None:
-        """
-        Initialize database indexes based on model metadata.
-        This method will:
-        1. Discover required indexes from model metadata
-        2. Create missing indexes
-        3. Skip system indexes
+    async def _ensure_collection_exists(self, collection: str) -> None:
+        """Ensure an Elasticsearch index exists, creating it if necessary"""
+        if not await self.collection_exists(collection):
+            logging.info(f"Creating collection '{collection}'")
+            await self.create_collection(collection)
+
+    async def _create_required_indexes(self, collection: str, required_indexes: List[Dict[str, Any]]) -> None:
+        """Create required indexes for an Elasticsearch index"""
+        # Get existing indexes
+        existing_indexes = await self.list_indexes(collection)
+        existing_index_names = {idx['name'] for idx in existing_indexes}
         
-        This is a non-destructive operation - it will not delete any collections or data,
-        only manage indexes.
-        
-        Raises:
-            DatabaseError: If index initialization fails
-        """
-        es = self._get_client()
-        try:
-            # Import models module to discover all models
-            import importlib
-            import pkgutil
-            from pathlib import Path
-            from typing import TypedDict, List
-            
-            class IndexDef(TypedDict):
-                name: str
-                fields: List[str]
-                unique: bool
-            
-            models_module = importlib.import_module('app.models')
-            models_path = Path(models_module.__file__ or "").parent
-            
-            # Track collections and their required indexes
-            collections_structure: Dict[str, List[IndexDef]] = {}
-            
-            # Iterate through all Python files in models directory
-            for finder, name, ispkg in pkgutil.iter_modules([str(models_path)]):
-                if name.endswith('_model'):
-                    try:
-                        # Import the model module
-                        module = importlib.import_module(f'app.models.{name}')
-                        
-                        # Look for classes with _metadata attribute
-                        for attr_name in dir(module):
-                            attr = getattr(module, attr_name)
-                            if hasattr(attr, '_metadata') and isinstance(attr._metadata, dict):
-                                # Get collection name from Settings.name
-                                if hasattr(attr, 'Settings') and hasattr(attr.Settings, 'name'):
-                                    collection_name = attr.Settings.name
-                                    
-                                    # Extract unique constraints from metadata
-                                    unique_constraints = attr._metadata.get('uniques', [])
-                                    required_indexes: List[IndexDef] = []
-                                    
-                                    # Add unique constraint indexes
-                                    for constraint_fields in unique_constraints:
-                                        if isinstance(constraint_fields, list) and constraint_fields:
-                                            index_name = f"unique_{'_'.join(constraint_fields)}"
-                                            required_indexes.append({
-                                                'name': index_name,
-                                                'fields': list(constraint_fields),  # Ensure it's a list of strings
-                                                'unique': True
-                                            })
-                                    
-                                    if required_indexes:
-                                        collections_structure[collection_name] = required_indexes
-                                        logging.info(f"Found model {attr_name} -> collection '{collection_name}' with {len(required_indexes)} unique indexes")
-                    
-                    except Exception as e:
-                        logging.warning(f"Failed to import model {name}: {str(e)}")
-                        continue
-            
-            # Create collections and indexes
-            for collection, required_indexes in collections_structure.items():
-                # Create collection if it doesn't exist
-                if not await self.collection_exists(collection):
-                    logging.info(f"Creating collection '{collection}'")
-                    await self.create_collection(collection)
-                
-                # Get existing indexes
-                existing_indexes = await self.list_indexes(collection)
-                existing_index_names = {idx['name'] for idx in existing_indexes}
-                
-                # Create missing indexes
-                for required_idx in required_indexes:
-                    if required_idx['name'] not in existing_index_names:
-                        try:
-                            created = await self.create_index(
-                                collection, 
-                                required_idx['fields'],  # Now properly typed as List[str]
-                                unique=required_idx['unique']  # Now properly typed as bool
-                            )
-                            if created:
-                                fields_str = " + ".join(required_idx['fields'])  # Now properly typed as List[str]
-                                logging.info(f"Created index '{required_idx['name']}' on {fields_str}")
-                            else:
-                                logging.info(f"Index '{required_idx['name']}' already exists or couldn't be created")
-                        except Exception as e:
-                            logging.error(f"Failed to create index '{required_idx['name']}': {str(e)}")
+        # Create missing indexes
+        for required_idx in required_indexes:
+            if required_idx['name'] not in existing_index_names:
+                try:
+                    created = await self.create_index(
+                        collection, 
+                        required_idx['fields'],
+                        unique=required_idx['unique']
+                    )
+                    if created:
+                        fields_str = " + ".join(required_idx['fields'])
+                        logging.info(f"Created index '{required_idx['name']}' on {fields_str}")
                     else:
-                        logging.info(f"Index '{required_idx['name']}' already exists")
-                
-        except Exception as e:
-            raise DatabaseError(
-                message=f"Failed to initialize indexes: {str(e)}",
-                entity="indexes",
-                operation="initialize"
-            )
+                        logging.info(f"Index '{required_idx['name']}' already exists or couldn't be created")
+                except Exception as e:
+                    logging.error(f"Failed to create index '{required_idx['name']}': {str(e)}")
+            else:
+                logging.info(f"Index '{required_idx['name']}' already exists")
