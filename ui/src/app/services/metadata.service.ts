@@ -6,7 +6,7 @@ import { tap, catchError } from 'rxjs/operators';
 
 interface Metadata {
   projectName: string;
-  database: string;
+  database?: string
   entities: Record<string, EntityMetadata>;
 }
 
@@ -77,7 +77,7 @@ export interface UiFieldMetata {
   providedIn: 'root'
 })
 export class MetadataService {
-  private metadata: Metadata = { projectName: '', database: '', entities: {} };
+  private metadata: Metadata = { projectName: '', entities: {} };
   private recentEntities: string[] = [];
   private initialized = false;
   private initPromise: Promise<Metadata> | null = null;
@@ -104,7 +104,7 @@ export class MetadataService {
       }),
       catchError(error => {
         console.error('Metadata: Failed to fetch entities:', error);
-        this.metadata = { projectName: '', database: '', entities: {} };
+        this.metadata = { projectName: '', entities: {} };
         this.initialized = true;
         return of(this.metadata);
       })
@@ -153,13 +153,9 @@ export class MetadataService {
     return Object.keys(this.metadata.entities);
   }
 
-  // getAvailableEntities(): EntityMetadata[] {
-  //   // Return entities as array, adding entity name inside each object
-  //   return Object.entries(this.metadata.entities).map(([entity, def]) => ({
-  //     entity,
-  //     ...def
-  //   }));
-  // }
+  getDatabaseType(): string {
+    return this.metadata.database || '';
+  }
 
   getEntityFields(entityType: string): string[] {
     const metadata = this.getEntityMetadata(entityType);
@@ -197,10 +193,6 @@ export class MetadataService {
 
   getProjectName(): string {
     return this.metadata.projectName;
-  }
-
-  getDatabaseType(): string {
-    return this.metadata.database || 'Unknown';
   }
 
   isValidOperation(entityName: string, operation: string): boolean {
