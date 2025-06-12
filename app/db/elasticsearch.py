@@ -67,12 +67,12 @@ class ElasticsearchDatabase(DatabaseInterface):
             raise RuntimeError("ElasticsearchDatabase.init() has not been awaited")
         return self._client
 
-    async def find_all(self, collection: str, model_cls: Type[T]) -> List[T]:
+    async def find_all(self, collection: str, model_cls: Type[T]) -> tuple[List[T], List[ValidationError]]:
         """Find all documents in an Elasticsearch index"""
         es = self._get_client()
 
         if not await es.indices.exists(index=collection):
-            return []
+            return [], []
 
         try:
             res = await es.search(index=collection, query={"match_all": {}})
@@ -85,17 +85,18 @@ class ElasticsearchDatabase(DatabaseInterface):
 
         hits = res.get("hits", {}).get("hits", [])
         validated_docs = []
+        validation_errors = []
         
         for hit in hits:
             try:
                 doc_data = {**hit["_source"], self.id_field: hit[self.id_field]}
                 validated_docs.append(self.validate_document(doc_data, model_cls))
             except ValidationError as e:
-                logging.error(f"Validation failed for document {hit[self.id_field]}: {e.message}")
-                # Skip invalid documents but continue processing
+                logging.warning(f"Validation failed for document {hit[self.id_field]}: {e.message}")
+                validation_errors.append(e)
                 continue
                 
-        return validated_docs
+        return validated_docs, validation_errors
 
     async def get_by_id(self, collection: str, doc_id: str, model_cls: Type[T]) -> Optional[T]:
         """Get a document by ID from Elasticsearch"""

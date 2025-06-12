@@ -16,9 +16,10 @@ async def list_accounts() -> dict:
         accounts, validation_errors = await Account.find_all()
         records = len(accounts)
         logger.info(f"Retrieved {records} accounts")
-        
+        return list(accounts)
+
         response = {
-            "data": list(accounts),
+            "data": list(account),
             "validation_errors": [
                 {
                     "message": ve.message,

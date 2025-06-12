@@ -17,7 +17,7 @@ from app.errors import (
     DuplicateError, 
     normalize_error_response
 )
-from app.services.redis_provider import CookiesAuth as Auth
+#from app.services.redis_provider import CookiesAuth as Auth
 
 from app.routes.account_router import router as account_router
 from app.models.account_model import Account
@@ -238,6 +238,7 @@ def read_root():
 def get_entities_metadata():
     return  {
         "projectName": project,
+        "database": db_type,
         "entities": {
             "Account": Account.get_metadata(),
             "User": User.get_metadata(),
@@ -297,12 +298,12 @@ def main():
                 logger.info("Database connections closed")
 
             except Exception as e:
-                logger.error(f"Database error: {str(e)}")
-                raise
+                logger.error(f"Failed to initialize database: {str(e)}")
+                sys.exit(1)
 
         # Run database initialization
         asyncio.run(init_db())
-        return
+        sys.exit(0)
 
     # Start the server normally if --initdb is not present
     import uvicorn

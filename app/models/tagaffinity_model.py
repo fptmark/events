@@ -72,7 +72,7 @@ class TagAffinity(BaseModel):
         return helpers.get_metadata(cls._metadata)
 
     @classmethod
-    async def find_all(cls) -> Sequence[Self]:
+    async def find_all(cls) -> tuple[Sequence[Self], List[ValidationError]]:
         try:
             return await DatabaseFactory.find_all("tagaffinity", cls)
         except Exception as e:

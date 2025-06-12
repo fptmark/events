@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from beanie import Document
 import logging
 from datetime import datetime, timezone
+import re
 
 
 # Path to the configuration file
@@ -52,6 +53,25 @@ def deep_merge_dicts(dest, override):
             deep_merge_dicts(dest[key], value)
         else:
             dest[key] = value
+
+def parse_currency(value):
+    if value is None:
+        return None
+    
+    if isinstance(value, (int, float)):
+        return value
+    
+    # Remove $, commas, parentheses, whitespace
+    cleaned = re.sub(r'[$,\s()]', '', str(value))
+    
+    # Handle negative in parentheses
+    if cleaned.startswith('(') and cleaned.endswith(')'):
+        cleaned = f'-{cleaned[1:-1]}'
+    
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
 
 def get_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     """Get metadata for a model with proper type hints"""

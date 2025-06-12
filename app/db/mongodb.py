@@ -1,8 +1,9 @@
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from pymongo.results import InsertOneResult, UpdateResult
+from pymongo.results import InsertOneResult, UpdateResult, DeleteResult
 from pydantic import BaseModel, ValidationError as PydanticValidationError
+from bson.objectid import ObjectId
 
 from .base import DatabaseInterface, T  # assuming T is your generic Pydantic model type
 from ..errors import DatabaseError, ValidationError, ValidationFailure
@@ -34,26 +35,54 @@ class MongoDatabase(DatabaseInterface):
                 operation="init"
             )
 
-    async def find_all(self, collection: str, model_cls: Type[T]) -> List[T]:
+    async def find_all(self, collection: str, model_cls: Type[T]) -> tuple[List[T], List[ValidationError]]:
         if self._db is None:
             raise RuntimeError("MongoDatabase not initialized")
         cursor = self._db[collection].find()
         results = []
+        validation_errors = []
         async for doc in cursor:
             try:
+                # Convert ObjectId to string
+                if '_id' in doc and not isinstance(doc['_id'], str):
+                    doc['_id'] = str(doc['_id'])
                 results.append(self.validate_document(doc, model_cls))
             except ValidationError as ve:
-                logging.warning(f"Validation failed for document {doc.get('_id')}: {ve}")
+                # Log the error and collect it
+                logging.warning(
+                    f"Validation failed for document {doc.get('_id')}: {ve.message}"
+                )
+                validation_errors.append(ve)
                 continue
-        return results
+        return results, validation_errors
 
     async def get_by_id(self, collection: str, doc_id: Any, model_cls: Type[T]) -> Optional[T]:
         if self._db is None:
             raise RuntimeError("MongoDatabase not initialized")
-        doc = await self._db[collection].find_one({self.id_field: doc_id})
+            
+        # Convert string ID to ObjectId if it's a valid ObjectId string
+        query_id = doc_id
+        if isinstance(doc_id, str) and ObjectId.is_valid(doc_id):
+            query_id = ObjectId(doc_id)
+            
+        doc = await self._db[collection].find_one({self.id_field: query_id})
         if not doc:
             return None
-        return self.validate_document(doc, model_cls)
+        try:
+            # Convert ObjectId to string
+            if '_id' in doc and not isinstance(doc['_id'], str):
+                doc['_id'] = str(doc['_id'])
+            return self.validate_document(doc, model_cls)
+        except ValidationError as ve:
+            # Log the error but raise it to be handled by our error handler
+            logging.warning(
+                f"Validation failed for document {doc_id}: {ve.message}"
+            )
+            raise ValidationError(
+                message=f"Validation failed for document {doc_id}",
+                entity=model_cls.__name__,
+                invalid_fields=ve.invalid_fields
+            )
 
     async def save_document(self, collection: str, doc_id: Optional[Any], data: Dict[str, Any], 
                           unique_constraints: Optional[List[List[str]]] = None) -> Union[UpdateResult, InsertOneResult]:
@@ -93,42 +122,6 @@ class MongoDatabase(DatabaseInterface):
                 entity=collection,
                 operation="save"
             )
-
-    async def delete_document(self, collection: str, doc_id: Any) -> bool:
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
-        result = await self._db[collection].delete_one({self.id_field: doc_id})
-        return result.deleted_count > 0
-
-    async def check_unique_constraints(
-        self,
-        collection: str,
-        constraints: List[List[str]],
-        data: Dict[str, Any],
-        exclude_id: Optional[Any] = None,
-    ) -> List[str]:
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
-        conflicting_fields = []
-        for constraint in constraints:
-            query = {field: data.get(field) for field in constraint}
-            if exclude_id is not None:
-                query[self.id_field] = {"$ne": exclude_id}
-            exists = await self._db[collection].find_one(query)
-            if exists:
-                conflicting_fields.extend(constraint)
-        return conflicting_fields
-
-    async def exists(self, collection: str, doc_id: Any) -> bool:
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
-        doc = await self._db[collection].find_one({self.id_field: doc_id})
-        return doc is not None
-
-    async def list_collections(self) -> List[str]:
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
-        return await self._db.list_collection_names()
 
     def validate_document(self, doc_data: Dict[str, Any], model_cls: Type[T]) -> T:
         try:
@@ -177,17 +170,68 @@ class MongoDatabase(DatabaseInterface):
                 operation="collection_exists"
             )
 
-    async def create_collection(self, collection: str, **kwargs) -> bool:
-        """Create a collection in MongoDB"""
+    async def _create_required_indexes(self, collection: str, required_indexes: List[Dict[str, Any]]) -> None:
+        """Create required indexes for a collection based on metadata"""
         if self._db is None:
             raise RuntimeError("MongoDatabase not initialized")
         try:
-            if await self.collection_exists(collection):
-                return False  # Already exists
-            
-            # Create collection with optional settings
-            await self._db.create_collection(collection, **kwargs)
-            logging.info(f"Created collection: {collection}")
+            # Create unique indexes
+            for index in required_indexes:
+                fields = index.get('fields', [])
+                unique = index.get('unique', False)
+                await self.create_index(collection, fields, unique)
+        except Exception as e:
+            raise DatabaseError(
+                message=f"Failed to create indexes for collection '{collection}': {str(e)}",
+                entity=collection,
+                operation="create_indexes"
+            )
+
+    async def _ensure_collection_exists(self, collection: str) -> None:
+        """Ensure a collection exists, create it if it doesn't"""
+        if self._db is None:
+            raise RuntimeError("MongoDatabase not initialized")
+        try:
+            if not await self.collection_exists(collection):
+                await self.create_collection(collection)
+        except Exception as e:
+            raise DatabaseError(
+                message=f"Failed to ensure collection '{collection}' exists: {str(e)}",
+                entity=collection,
+                operation="ensure_collection"
+            )
+
+    async def check_unique_constraints(self, collection: str, constraints: List[List[str]], 
+                                     data: Dict[str, Any], exclude_id: Optional[str] = None) -> List[str]:
+        """Check if any unique constraints would be violated"""
+        if self._db is None:
+            raise RuntimeError("MongoDatabase not initialized")
+        try:
+            conflicting_fields = []
+            for fields in constraints:
+                query = {field: data.get(field) for field in fields if field in data}
+                if not query:
+                    continue
+                
+                if exclude_id:
+                    query[self.id_field] = {"$ne": exclude_id}
+                
+                if await self._db[collection].find_one(query):
+                    conflicting_fields.extend(fields)
+            return conflicting_fields
+        except Exception as e:
+            raise DatabaseError(
+                message=f"Failed to check unique constraints: {str(e)}",
+                entity=collection,
+                operation="check_unique_constraints"
+            )
+
+    async def create_collection(self, collection: str, **kwargs) -> bool:
+        """Create a new collection"""
+        if self._db is None:
+            raise RuntimeError("MongoDatabase not initialized")
+        try:
+            await self._db.create_collection(collection)
             return True
         except Exception as e:
             raise DatabaseError(
@@ -196,16 +240,27 @@ class MongoDatabase(DatabaseInterface):
                 operation="create_collection"
             )
 
-    async def delete_collection(self, collection: str) -> bool:
-        """Delete a collection from MongoDB"""
+    async def create_index(self, collection: str, fields: List[str], unique: bool = False, **kwargs) -> bool:
+        """Create an index on a collection"""
         if self._db is None:
             raise RuntimeError("MongoDatabase not initialized")
         try:
-            if not await self.collection_exists(collection):
-                return False  # Doesn't exist
-            
+            index_spec = [(field, 1) for field in fields]
+            await self._db[collection].create_index(index_spec, unique=unique)
+            return True
+        except Exception as e:
+            raise DatabaseError(
+                message=f"Failed to create index on {collection}: {str(e)}",
+                entity=collection,
+                operation="create_index"
+            )
+
+    async def delete_collection(self, collection: str) -> bool:
+        """Delete a collection"""
+        if self._db is None:
+            raise RuntimeError("MongoDatabase not initialized")
+        try:
             await self._db.drop_collection(collection)
-            logging.info(f"Deleted collection: {collection}")
             return True
         except Exception as e:
             raise DatabaseError(
@@ -214,130 +269,72 @@ class MongoDatabase(DatabaseInterface):
                 operation="delete_collection"
             )
 
-    async def list_indexes(self, collection: str) -> List[Dict[str, Any]]:
-        """List all indexes for a specific MongoDB collection"""
+    async def delete_document(self, collection: str, doc_id: str) -> bool:
+        """Delete a document by ID"""
         if self._db is None:
             raise RuntimeError("MongoDatabase not initialized")
         try:
-            indexes = []
-            async for index_info in self._db[collection].list_indexes():
-                # Extract index information
-                index_name = index_info.get('name', '')
-                key_spec = index_info.get('key', {})
-                
-                # Convert MongoDB key spec to field list
-                fields = list(key_spec.keys())
-                
-                # Check if it's unique
-                unique = index_info.get('unique', False)
-                
-                # Check if it's a system index (like _id_)
-                system = index_name == '_id_'
-                
-                indexes.append({
-                    'name': index_name,
-                    'fields': fields,
-                    'unique': unique,
-                    'system': system
-                })
-            
-            return indexes
+            result = await self._db[collection].delete_one({self.id_field: doc_id})
+            return result.deleted_count > 0
         except Exception as e:
             raise DatabaseError(
-                message=f"Failed to list indexes for collection '{collection}': {str(e)}",
+                message=f"Failed to delete document: {str(e)}",
                 entity=collection,
-                operation="list_indexes"
-            )
-
-    async def create_index(self, collection: str, fields: List[str], unique: bool = False, **kwargs) -> bool:
-        """Create an index on specific fields in MongoDB"""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
-        try:
-            # Check if collection exists
-            if not await self.collection_exists(collection):
-                return False  # Collection doesn't exist
-            
-            # Build index specification
-            index_spec = [(field, 1) for field in fields]  # 1 for ascending
-            
-            # Create index with optional uniqueness
-            index_name = f"{'unique_' if unique else ''}{'_'.join(fields)}"
-            await self._db[collection].create_index(
-                index_spec, 
-                unique=unique, 
-                name=index_name,
-                **kwargs
-            )
-            
-            logging.info(f"Created index '{index_name}' on {fields} in collection {collection}")
-            return True
-            
-        except Exception as e:
-            # Check if it's a duplicate key error (index already exists)
-            if "already exists" in str(e).lower():
-                return False  # Index already exists
-            raise DatabaseError(
-                message=f"Failed to create index on {fields} for collection '{collection}': {str(e)}",
-                entity=collection,
-                operation="create_index"
+                operation="delete_document"
             )
 
     async def delete_index(self, collection: str, index_name: str) -> bool:
-        """Delete a specific index from MongoDB collection"""
+        """Delete an index from a collection"""
         if self._db is None:
             raise RuntimeError("MongoDatabase not initialized")
         try:
-            # Check if collection exists
-            if not await self.collection_exists(collection):
-                return False  # Collection doesn't exist
-            
-            # Cannot delete the _id_ index
-            if index_name == '_id_':
-                logging.warning(f"Cannot delete system index '_id_' in collection '{collection}'")
-                return False
-            
             await self._db[collection].drop_index(index_name)
-            logging.info(f"Deleted index '{index_name}' from collection {collection}")
             return True
-            
         except Exception as e:
-            # Check if it's a "index not found" error
-            if "index not found" in str(e).lower():
-                return False  # Index doesn't exist
             raise DatabaseError(
-                message=f"Failed to delete index '{index_name}' from collection '{collection}': {str(e)}",
+                message=f"Failed to delete index from {collection}: {str(e)}",
                 entity=collection,
                 operation="delete_index"
             )
 
-    async def _ensure_collection_exists(self, collection: str) -> None:
-        """Ensure a MongoDB collection exists, creating it if necessary"""
-        if not await self.collection_exists(collection):
-            logging.info(f"Creating collection '{collection}'")
-            await self.create_collection(collection)
+    async def exists(self, collection: str, doc_id: str) -> bool:
+        """Check if a document exists"""
+        if self._db is None:
+            raise RuntimeError("MongoDatabase not initialized")
+        try:
+            return await self._db[collection].count_documents({self.id_field: doc_id}) > 0
+        except Exception as e:
+            raise DatabaseError(
+                message=f"Failed to check document existence: {str(e)}",
+                entity=collection,
+                operation="exists"
+            )
 
-    async def _create_required_indexes(self, collection: str, required_indexes: List[Dict[str, Any]]) -> None:
-        """Create required indexes for a MongoDB collection"""
-        # Get existing indexes
-        existing_indexes = await self.list_indexes(collection)
-        existing_index_names = {idx['name'] for idx in existing_indexes}
-        
-        # Create missing indexes
-        for required_idx in required_indexes:
-            if required_idx['name'] not in existing_index_names:
-                try:
-                    created = await self.create_index(
-                        collection, 
-                        required_idx['fields'],
-                        unique=required_idx['unique']
-                    )
-                    if created:
-                        fields_str = " + ".join(required_idx['fields'])
-                        logging.info(f"Created index '{required_idx['name']}' on {fields_str}")
-                    else:
-                        logging.info(f"Index '{required_idx['name']}' already exists or couldn't be created")
-                except Exception as e:
-                    logging.error(f"Failed to create index '{required_idx['name']}': {str(e)}")
-            else:
-                logging.info(f"Index '{required_idx['name']}' already exists")
+    async def list_collections(self) -> List[str]:
+        """List all collections in the database"""
+        if self._db is None:
+            raise RuntimeError("MongoDatabase not initialized")
+        try:
+            return await self._db.list_collection_names()
+        except Exception as e:
+            raise DatabaseError(
+                message=f"Failed to list collections: {str(e)}",
+                entity="database",
+                operation="list_collections"
+            )
+
+    async def list_indexes(self, collection: str) -> List[Dict[str, Any]]:
+        """List all indexes on a collection"""
+        if self._db is None:
+            raise RuntimeError("MongoDatabase not initialized")
+        try:
+            indexes = []
+            async for index in self._db[collection].list_indexes():
+                indexes.append(index)
+            return indexes
+        except Exception as e:
+            raise DatabaseError(
+                message=f"Failed to list indexes: {str(e)}",
+                entity=collection,
+                operation="list_indexes"
+            ) 

@@ -1,6 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, List, Optional, Type, TypeVar, Sequence
 from pydantic import BaseModel
+import pkgutil
+import importlib
+from pathlib import Path
+from ..errors import ValidationError
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -154,7 +158,7 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
-    async def find_all(self, collection: str, model_cls: Type[T]) -> List[T]:
+    async def find_all(self, collection: str, model_cls: Type[T]) -> tuple[List[T], List[ValidationError]]:
         """
         Find all documents in a collection.
         
@@ -163,11 +167,10 @@ class DatabaseInterface(ABC):
             model_cls: Pydantic model class for validation
             
         Returns:
-            List of validated model instances
+            Tuple of (List of validated model instances, List of validation errors)
             
         Raises:
             DatabaseError: If query fails
-            ValidationError: If document validation fails
         """
         pass
 
@@ -408,7 +411,7 @@ class DatabaseInterface(ABC):
             ValidationError: If validation fails
         """
         from pydantic import ValidationError as PydanticValidationError
-        from ..errors import ValidationError, ValidationFailure
+        from ..errors import ValidationFailure
         
         try:
             return model_cls.model_validate(doc_data)

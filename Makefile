@@ -1,52 +1,50 @@
 S2R_DIR = ~/Projects/schema2rest
+GENERICS = $(S2R_DIR)/src/server_generic_files
 GENERATOR_DIR = $(S2R_DIR)/generators
 CONVERTER_DIR = $(S2R_DIR)/convert
 PYPATH = PYTHONPATH=~/Projects/schema2rest
+BACKEND ?= es
+PROJECT_NAME ?= "Project Name Here"
 
-BACKEND ?= mongo
+.PHONY: clean code cli
 
-.PHONY: clean code run cli
+install: setup clean rebuild
 
-install: setup firsttime rebuild
+clean:	clear schema rebuild
 
-firsttime: 
+clear: 
 	rm -rf app
-	echo "Using existing config.json"
-	mkdir -p app
-	cp $(S2R_DIR)/src/utilities/utils.py app
-	mkdir -p app/services/auth
-	cp $(S2R_DIR)/src/services/auth/cookies/*.py app/services
+	cp -r $(GENERICS) app
+	mv app/config/*.json .
 
 rebuild:
-	$(PYPATH) python $(S2R_DIR)/src/generate_code.py schema.mmd . Events $(BACKEND) 
+	$(PYPATH) python $(S2R_DIR)/src/generate_code.py schema.mmd $(GENERICS) . 
+
+main:
+	$(PYPATH) python -m generators.gen_main schema.yaml . 
 
 models:
-	$(PYPATH) python -m generators.models.gen_model_main schema.yaml . $(BACKEND)
+	$(PYPATH) python -m generators.models.gen_model_main schema.yaml . 
+
+routes:
+	$(PYPATH) python -m generators.gen_routes schema.yaml . 
 
 redis:
 	brew services start redis
 
-services: $(S2R_DIR)/services/* schema.yaml
-	rm -rf app/services
-	mkdir -p app/services
-	cp -r $(S2R_DIR)/services app
-	$(PYPATH) python $(GENERATOR_DIR)/gen_service_routes.py schema.yaml .
+services: 
+	$(PYPATH) python -m generators.gen_service_routes schema.yaml $(GENERICS) .
 
-all: schema code run 
+all: schema code 
 
 schema: schema.yaml 
 
-clean: 
-	rm -rf app schema.yaml app.log schema.png
-
 code:	schema.yaml 
 	mkdir -p app/utilities
-	cp -r $(S2R_DIR)/src/utilities/utils.py app/utilities
-	$(PYPATH) python -m generators.gen_main schema.yaml . $(BACKEND)
-	$(PYPATH) python -m generators.gen_db schema.yaml . $(BACKEND)
-	$(PYPATH) python -m generators.gen_models schema.yaml . $(BACKEND)
-	$(PYPATH) python -m generators.gen_routes schema.yaml . $(BACKEND)
-	$(PYPATH) python -m generators.gen_service_routes schema.yaml . $(BACKEND)
+	$(PYPATH) python -m generators.gen_main schema.yaml . 
+	$(PYPATH) python -m generators.gen_models schema.yaml . 
+	$(PYPATH) python -m generators.gen_routes schema.yaml . 
+	$(PYPATH) python -m generators.gen_service_routes schema.yaml $(GENERICS) . 
 
 setup:	$(S2R_DIR)/requirements.txt
 	pip install -r r$(S2R_DIR)/requirements.txt
@@ -58,10 +56,13 @@ schema.yaml : schema.mmd
 	cat schema.mmd | sed '/[[:alnum:]].*%%/ s/%%.*//' | mmdc -i - -o schema.png
 
 indexes:
-	python $(GENERATOR_DIR)/update_indices.py schema.yaml
+	PYTHONPATH=. python app/main.py $(BACKEND).json --initdb
 
 run:	
-	PYTHONPATH=. python app/main.py $(BACKEND).json --db-type elasticsearch
+	PYTHONPATH=. python app/main.py $(BACKEND).json 
+
+runmongo:	
+	PYTHONPATH=. python app/main.py mongo.json 
 
 test: test.py
 	pytest -s test.py

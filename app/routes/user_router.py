@@ -16,9 +16,10 @@ async def list_users() -> dict:
         users, validation_errors = await User.find_all()
         records = len(users)
         logger.info(f"Retrieved {records} users")
-        
+        return list(users)
+
         response = {
-            "data": list(users),
+            "data": list(user),
             "validation_errors": [
                 {
                     "message": ve.message,
