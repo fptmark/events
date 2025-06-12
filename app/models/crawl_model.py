@@ -7,83 +7,17 @@ from app.db import DatabaseFactory
 import app.utils as helpers
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
+
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
         self.fields = fields
         self.query = query
+
     def __str__(self):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
 
-class CrawlBase(BaseModel):
-    """Base Crawl model with common fields and validation"""
-    url: str = Field(..., pattern=r"^https?://[^s]+$")
-    frequency: str = Field(..., pattern=r'^(hourly|daily|weekly|monthly)$')
-    lastCrawlTime: Optional[datetime] = None
-    nextCrawlTime: Optional[datetime] = None
-    status: str = Field(..., pattern=r'^(active|paused|error)$')
-    errorMessage: Optional[str] = Field(None, max_length=1000)
-    tags: List[str] = Field(default_factory=list)
-
-    @field_validator('url')
-    def validate_url(cls, v: str) -> str:
-        if not v.startswith(('http://', 'https://')):
-            raise ValueError('url must start with http:// or https://')
-        return v
-
-    @field_validator('frequency')
-    def validate_frequency(cls, v: str) -> str:
-        allowed = ['hourly', 'daily', 'weekly', 'monthly']
-        if v not in allowed:
-            raise ValueError(f'frequency must be one of: {", ".join(allowed)}')
-        return v
-
-    @field_validator('lastCrawlTime')
-    def parse_last_crawl_time(cls, v: Any) -> Optional[datetime]:
-        if v in (None, '', 'null'):
-            return None
-        if isinstance(v, str):
-            try:
-                return datetime.fromisoformat(v)
-            except ValueError:
-                raise ValueError('lastCrawlTime must be in ISO format')
-        return v
-
-    @field_validator('nextCrawlTime')
-    def parse_next_crawl_time(cls, v: Any) -> Optional[datetime]:
-        if v in (None, '', 'null'):
-            return None
-        if isinstance(v, str):
-            try:
-                return datetime.fromisoformat(v)
-            except ValueError:
-                raise ValueError('nextCrawlTime must be in ISO format')
-        return v
-
-    @field_validator('status')
-    def validate_status(cls, v: str) -> str:
-        allowed = ['active', 'paused', 'error']
-        if v not in allowed:
-            raise ValueError(f'status must be one of: {", ".join(allowed)}')
-        return v
-
-    @field_validator('errorMessage')
-    def validate_error_message(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and len(v) > 1000:
-            raise ValueError('errorMessage must be at most 1000 characters')
-        return v
-
-    @field_validator('tags')
-    def validate_tags(cls, v: List[str]) -> List[str]:
-        if len(v) > 20:
-            raise ValueError('maximum 20 tags allowed')
-        for tag in v:
-            if len(tag) > 50:
-                raise ValueError('tag must be at most 50 characters')
-        return v
-
-class Crawl(CrawlBase):
-    """Crawl model for database operations"""
+class Crawl(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id")
     lastParsedDate: Optional[datetime] = Field(None)
     parseStatus: Optional[Dict[str, Any]] = Field(None)
@@ -92,106 +26,26 @@ class Crawl(CrawlBase):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    _metadata: ClassVar[Dict[str, Any]] = {
-        'entity': 'Crawl',
-        'fields': {
-            'url': {
-                'type': 'String',
-                'required': True,
-                'pattern': {
-                    'regex': '^https?://[^s]+$',
-                    'message': 'Bad URL format'
-                }
-            },
-            'frequency': {
-                'type': 'String',
-                'required': True,
-                'enum': {
-                    'values': ['hourly', 'daily', 'weekly', 'monthly'],
-                    'message': 'must be hourly, daily, weekly, or monthly'
-                }
-            },
-            'lastCrawlTime': {
-                'type': 'ISODate',
-                'required': False,
-                'ui': {'displayName': 'Last Crawl'}
-            },
-            'nextCrawlTime': {
-                'type': 'ISODate',
-                'required': False,
-                'ui': {'displayName': 'Next Crawl'}
-            },
-            'status': {
-                'type': 'String',
-                'required': True,
-                'enum': {
-                    'values': ['active', 'paused', 'error'],
-                    'message': 'must be active, paused, or error'
-                }
-            },
-            'errorMessage': {
-                'type': 'String',
-                'required': False,
-                'max_length': 1000,
-                'ui': {
-                    'multiline': True,
-                    'rows': 3,
-                    'displayName': 'Error Message'
-                }
-            },
-            'tags': {
-                'type': 'Array',
-                'items': {
-                    'type': 'String',
-                    'max_length': 50
-                },
-                'max_items': 20
-            },
-            'lastParsedDate': {
-                'type': 'ISODate',
-                'required': False,
-                'ui': {'displayName': 'Last Parsed Date'}
-            },
-            'parseStatus': {
-                'type': 'JSON',
-                'required': False,
-                'ui': {'displayName': 'Parse Status'}
-            },
-            'errorsEncountered': {
-                'type': 'Array[String]',
-                'required': False,
-                'ui': {'displayName': 'Errors Encountered'}
-            },
-            'createdAt': {
-                'type': 'ISODate',
-                'autoGenerate': True,
-                'ui': {
-                    'readOnly': True,
-                    'displayAfterField': '-1'
-                }
-            },
-            'updatedAt': {
-                'type': 'ISODate',
-                'autoUpdate': True,
-                'ui': {
-                    'readOnly': True,
-                    'clientEdit': True,
-                    'displayAfterField': '-1'
-                }
-            },
-            'urlId': {
-                'type': 'ObjectId',
-                'required': True,
-                'ui': {'displayName': 'URL ID'}
-            }
-        },
-        'operations': 'crud',
-        'ui': {
-            'title': 'Crawls',
-            'buttonLabel': 'Manage Crawls',
-            'description': 'Manage Web Crawlers'
-        }
-    }
+    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'lastParsedDate': {'type': 'ISODate', 'required': False},
+                  'parseStatus': {'type': 'JSON', 'required': False},
+                  'errorsEncountered': {   'type': 'Array[String]',
+                                           'required': False},
+                  'createdAt': {   'type': 'ISODate',
+                                   'autoGenerate': True,
+                                   'ui': {   'readOnly': True,
+                                             'displayAfterField': '-1'}},
+                  'updatedAt': {   'type': 'ISODate',
+                                   'autoUpdate': True,
+                                   'ui': {   'readOnly': True,
+                                             'clientEdit': True,
+                                             'displayAfterField': '-1'}},
+                  'urlId': {'type': 'ObjectId', 'required': True}},
+    'operations': 'rd',
+    'ui': {   'title': 'Crawls',
+              'buttonLabel': 'Manage Crawls',
+              'description': 'Manage Crawls of Event sites'},
+    'services': [],
+    'uniques': []}
 
     class Settings:
         name = "crawl"
@@ -200,19 +54,27 @@ class Crawl(CrawlBase):
         populate_by_name=True,
     )
 
+    @field_validator('lastParsedDate', mode='before')
+    def parse_lastParsedDate(cls, v):
+        if v in (None, '', 'null'):
+            return None
+        if isinstance(v, str):
+            return datetime.fromisoformat(v)
+        return v
+
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
         return helpers.get_metadata(cls._metadata)
- 
+
     @classmethod
     async def find_all(cls) -> Sequence[Self]:
-        return await DatabaseFactory.find_all("crawl", cls)
+        try:
+            return await DatabaseFactory.find_all("crawl", cls)
+        except Exception as e:
+            raise DatabaseError(str(e), "Crawl", "find_all")
 
-    # Method to imitate Beanie's find() method
     @classmethod
     def find(cls):
-        # This is a simple adapter to keep the API compatible
-        # It provides a to_list() method that calls find_all()
         class FindAdapter:
             @staticmethod
             async def to_list():
@@ -220,54 +82,98 @@ class Crawl(CrawlBase):
 
         return FindAdapter()
 
-    # Replaces Beanie's get - uses common Database function
     @classmethod
-    async def get(cls, id) -> Optional[Self]:
-        return await DatabaseFactory.get_by_id("crawl", str(id), cls)
+    async def get(cls, id: str) -> Self:
+        try:
+            crawl = await DatabaseFactory.get_by_id("crawl", str(id), cls)
+            if not crawl:
+                raise NotFoundError("Crawl", id)
+            return crawl
+        except NotFoundError:
+            raise
+        except Exception as e:
+            raise DatabaseError(str(e), "Crawl", "get")
 
-    # Replaces Beanie's save - uses common Database function
-    async def save(self, *args, **kwargs):
-        # Update timestamp
-        self.updatedAt = datetime.now(timezone.utc)
+    async def save(self, doc_id: Optional[str] = None) -> Self:
+        try:
+            self.updatedAt = datetime.now(timezone.utc)
+            if doc_id:
+                self.id = doc_id
 
-        # Convert model to dict
-        data = self.model_dump(exclude={"id"})
+            data = self.model_dump(exclude={"id"})
+            
+            # Get unique constraints from metadata
+            unique_constraints = self._metadata.get('uniques', [])
+            
+            # Save document with unique constraints
+            result = await DatabaseFactory.save_document("crawl", self.id, data, unique_constraints)
+            
+            # Update ID from result
+            if not self.id and result and isinstance(result, dict) and result.get(DatabaseFactory.get_id_field()):
+                self.id = result[DatabaseFactory.get_id_field()]
 
-        # Save document using common function
-        result = await DatabaseFactory.save_document("crawl", self.id, data)
-
-        # Update ID if this was a new document
-        if not self.id and result and isinstance(result, dict) and result.get(DatabaseFactory.get_id_field()):
-            self.id = result[DatabaseFactory.get_id_field()]
-
-        return self
-
-    # Replaces Beanie's delete - uses common Database function
-    async def delete(self):
-        if self.id:
-            return await DatabaseFactory.delete_document("crawl", self.id)
-        return False
-
-class CrawlCreate(CrawlBase):
-    """Model for creating a new crawl"""
-    pass
-
-class CrawlUpdate(CrawlBase):
-    """Model for updating an existing crawl"""
-    pass
+            return self
+        except ValidationError:
+            # Re-raise validation errors directly
+            raise
+        except Exception as e:
+            raise DatabaseError(str(e), "Crawl", "save")
+            
+    async def delete(self) -> bool:
+        if not self.id:
+            raise ValidationError(
+                message="Cannot delete crawl without ID",
+                entity="Crawl",
+                invalid_fields=[ValidationFailure("id", "ID is required for deletion", None)]
+            )
+        try:
+            result = await DatabaseFactory.delete_document("crawl", self.id)
+            if not result:
+                raise NotFoundError("Crawl", self.id)
+            return True
+        except NotFoundError:
+            raise
+        except Exception as e:
+            raise DatabaseError(str(e), "Crawl", "delete")
 
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-class CrawlRead(BaseModel):
-    id: str = Field(alias="_id")
-    lastParsedDate: Optional[datetime] = Field(None)
-    parseStatus: Optional[Dict[str, Any]] = Field(None)
-    errorsEncountered: Optional[List[str]] = Field(None)
-    urlId: str = Field(...)
+class CrawlCreate(BaseModel):
+  lastParsedDate: Optional[datetime] = Field(None)
+  parseStatus: Optional[Dict[str, Any]] = Field(None)
+  errorsEncountered: Optional[List[str]] = Field(None)
+  urlId: str = Field(...)
 
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+  @field_validator('lastParsedDate', mode='before')
+  def parse_lastParsedDate(cls, v):
+      if v in (None, '', 'null'):
+          return None
+      if isinstance(v, str):
+          return datetime.fromisoformat(v)
+      return v
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
+
+
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+class CrawlUpdate(BaseModel):
+  lastParsedDate: Optional[datetime] = Field(None)
+  parseStatus: Optional[Dict[str, Any]] = Field(None)
+  errorsEncountered: Optional[List[str]] = Field(None)
+  urlId: str = Field(...)
+
+  @field_validator('lastParsedDate', mode='before')
+  def parse_lastParsedDate(cls, v):
+      if v in (None, '', 'null'):
+          return None
+      if isinstance(v, str):
+          return datetime.fromisoformat(v)
+      return v
+
+  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
+

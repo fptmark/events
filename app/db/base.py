@@ -39,6 +39,24 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
+    async def initialize_indexes(self) -> None:
+        """
+        Initialize database indexes based on model metadata.
+        This method will:
+        1. Discover required indexes from model metadata
+        2. Create missing indexes
+        3. Remove unused indexes
+        4. Skip system indexes
+        
+        This is a non-destructive operation - it will not delete any collections or data,
+        only manage indexes.
+        
+        Raises:
+            DatabaseError: If index initialization fails
+        """
+        pass
+
+    @abstractmethod
     async def find_all(self, collection: str, model_cls: Type[T]) -> List[T]:
         """
         Find all documents in a collection.
@@ -76,22 +94,24 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
-    async def save_document(self, collection: str, doc_id: Optional[str], 
-                           data: Dict[str, Any]) -> Any:
+    async def save_document(self, collection: str, doc_id: Optional[Any], data: Dict[str, Any], 
+                          unique_constraints: Optional[List[List[str]]] = None) -> Any:
         """
         Save a document to the database.
         
         Args:
             collection: Collection/index name
-            doc_id: Document ID (None for auto-generation)
+            doc_id: Document ID (optional)
             data: Document data to save
+            unique_constraints: List of field combinations that must be unique
+                              e.g., [['email'], ['username'], ['firstName', 'lastName']]
             
         Returns:
-            Database-specific response object
+            Result of save operation (implementation specific)
             
         Raises:
-            DatabaseError: If save operation fails
-            ValidationError: If required collection/index doesn't exist
+            DatabaseError: If save fails
+            ValidationError: If unique constraints are violated
         """
         pass
 
@@ -156,6 +176,120 @@ class DatabaseInterface(ABC):
         Close database connections and cleanup resources.
         
         Should be called during application shutdown.
+        """
+        pass
+
+    @abstractmethod
+    async def list_collections(self) -> List[str]:
+        """
+        List all collections/indexes in the database.
+        
+        Returns:
+            List of collection/index names
+            
+        Raises:
+            DatabaseError: If listing fails
+        """
+        pass
+
+    @abstractmethod
+    async def create_collection(self, collection: str, **kwargs) -> bool:
+        """
+        Create a collection/index with optional settings.
+        
+        Args:
+            collection: Collection/index name to create
+            **kwargs: Database-specific settings (mappings, shards, etc.)
+            
+        Returns:
+            True if created successfully, False if already exists
+            
+        Raises:
+            DatabaseError: If creation fails
+        """
+        pass
+
+    @abstractmethod
+    async def delete_collection(self, collection: str) -> bool:
+        """
+        Delete a collection/index.
+        
+        Args:
+            collection: Collection/index name to delete
+            
+        Returns:
+            True if deleted successfully, False if didn't exist
+            
+        Raises:
+            DatabaseError: If deletion fails
+        """
+        pass
+
+    @abstractmethod
+    async def collection_exists(self, collection: str) -> bool:
+        """
+        Check if a collection/index exists.
+        
+        Args:
+            collection: Collection/index name to check
+            
+        Returns:
+            True if collection exists, False otherwise
+            
+        Raises:
+            DatabaseError: If check fails
+        """
+        pass
+
+    @abstractmethod
+    async def list_indexes(self, collection: str) -> List[Dict[str, Any]]:
+        """
+        List all indexes for a specific collection.
+        
+        Args:
+            collection: Collection name to get indexes for
+            
+        Returns:
+            List of index definitions with names and fields
+            
+        Raises:
+            DatabaseError: If listing fails
+        """
+        pass
+
+    @abstractmethod
+    async def create_index(self, collection: str, fields: List[str], unique: bool = False, **kwargs) -> bool:
+        """
+        Create an index on specific fields.
+        
+        Args:
+            collection: Collection name
+            fields: List of field names to index
+            unique: Whether this should be a unique index
+            **kwargs: Database-specific index options
+            
+        Returns:
+            True if created successfully, False if already exists
+            
+        Raises:
+            DatabaseError: If creation fails
+        """
+        pass
+
+    @abstractmethod
+    async def delete_index(self, collection: str, index_name: str) -> bool:
+        """
+        Delete a specific index.
+        
+        Args:
+            collection: Collection name
+            index_name: Name of index to delete
+            
+        Returns:
+            True if deleted successfully, False if didn't exist
+            
+        Raises:
+            DatabaseError: If deletion fails
         """
         pass
 

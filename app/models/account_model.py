@@ -7,95 +7,57 @@ from app.db import DatabaseFactory
 import app.utils as helpers
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
+
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
         self.fields = fields
         self.query = query
+
     def __str__(self):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
+
 class Account(BaseModel):
-    """Account model for database operations"""
     id: Optional[str] = Field(default=None, alias="_id")
-    name: str = Field(default="Default Account", min_length=3, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    status: str = Field(default="active", pattern=r'^(active|inactive|suspended)$')
-    expiresAt: Optional[datetime] = None
-    expiredAt: Optional[datetime] = None
-    maxUsers: int = Field(default=10, ge=1, le=100)
+    expiredAt: Optional[datetime] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    model_config = ConfigDict(populate_by_name=True)
+    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'expiredAt': {'type': 'ISODate', 'required': False},
+                  'createdAt': {   'type': 'ISODate',
+                                   'autoGenerate': True,
+                                   'ui': {   'readOnly': True,
+                                             'displayAfterField': '-1'}},
+                  'updatedAt': {   'type': 'ISODate',
+                                   'autoUpdate': True,
+                                   'ui': {   'readOnly': True,
+                                             'clientEdit': True,
+                                             'displayAfterField': 'createdAt',
+                                             'displayPages': 'details'}}},
+    'operations': '',
+    'ui': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'},
+    'services': [],
+    'uniques': []}
 
-    _metadata: ClassVar[Dict[str, Any]] = {
-        'entity': 'Account',
-        'fields': {
-            'name': {
-                'type': 'String',
-                'required': True,
-                'min_length': 3,
-                'max_length': 100
-            },
-            'description': {
-                'type': 'String',
-                'required': False,
-                'max_length': 500
-            },
-            'status': {
-                'type': 'String',
-                'required': True,
-                'enum': {
-                    'values': ['active', 'inactive', 'suspended'],
-                    'message': 'must be active, inactive, or suspended'
-                }
-            },
-            'expiresAt': {
-                'type': 'ISODate',
-                'required': False
-            },
-            'maxUsers': {
-                'type': 'Integer',
-                'required': True,
-                'ge': 1,
-                'le': 100,
-                'ui': {'displayName': 'Maximum Users'}
-            },
-            'expiredAt': {
-                'type': 'ISODate',
-                'required': False
-            },
-            'createdAt': {
-                'type': 'ISODate',
-                'autoGenerate': True,
-                'ui': {
-                    'readOnly': True,
-                    'displayAfterField': '-1'
-                }
-            },
-            'updatedAt': {
-                'type': 'ISODate',
-                'autoUpdate': True,
-                'ui': {
-                    'readOnly': True,
-                    'clientEdit': True,
-                    'displayAfterField': 'createdAt',
-                    'displayPages': 'details'
-                }
-            }
-        },
-        'operations': 'crud',
-        'ui': {
-            'title': 'Accounts',
-            'buttonLabel': 'Manage Accounts',
-            'description': 'Manage Account Settings'
-        }
-    }
+    class Settings:
+        name = "account"
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+
+    @field_validator('expiredAt', mode='before')
+    def parse_expiredAt(cls, v):
+        if v in (None, '', 'null'):
+            return None
+        if isinstance(v, str):
+            return datetime.fromisoformat(v)
+        return v
 
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
         return helpers.get_metadata(cls._metadata)
- 
+
     @classmethod
     async def find_all(cls) -> Sequence[Self]:
         try:
@@ -109,6 +71,7 @@ class Account(BaseModel):
             @staticmethod
             async def to_list():
                 return await cls.find_all()
+
         return FindAdapter()
 
     @classmethod
@@ -123,17 +86,31 @@ class Account(BaseModel):
         except Exception as e:
             raise DatabaseError(str(e), "Account", "get")
 
-    async def save(self) -> Self:
+    async def save(self, doc_id: Optional[str] = None) -> Self:
         try:
             self.updatedAt = datetime.now(timezone.utc)
+            if doc_id:
+                self.id = doc_id
+
             data = self.model_dump(exclude={"id"})
-            result = await DatabaseFactory.save_document("account", self.id, data)
+            
+            # Get unique constraints from metadata
+            unique_constraints = self._metadata.get('uniques', [])
+            
+            # Save document with unique constraints
+            result = await DatabaseFactory.save_document("account", self.id, data, unique_constraints)
+            
+            # Update ID from result
             if not self.id and result and isinstance(result, dict) and result.get(DatabaseFactory.get_id_field()):
                 self.id = result[DatabaseFactory.get_id_field()]
+
             return self
+        except ValidationError:
+            # Re-raise validation errors directly
+            raise
         except Exception as e:
             raise DatabaseError(str(e), "Account", "save")
-
+            
     async def delete(self) -> bool:
         if not self.id:
             raise ValidationError(
@@ -151,37 +128,38 @@ class Account(BaseModel):
         except Exception as e:
             raise DatabaseError(str(e), "Account", "delete")
 
-class AccountCreate(BaseModel):
-    """Model for creating a new account"""
-    name: str = Field(default="Default Account", min_length=3, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    status: str = Field(default="active", pattern=r'^(active|inactive|suspended)$')
-    maxUsers: int = Field(default=10, ge=1, le=100)
-    expiresAt: Optional[datetime] = None
-    expiredAt: Optional[datetime] = None
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict, Any
+from datetime import datetime
 
-    model_config = ConfigDict(populate_by_name=True)
+class AccountCreate(BaseModel):
+  expiredAt: Optional[datetime] = Field(None)
+
+  @field_validator('expiredAt', mode='before')
+  def parse_expiredAt(cls, v):
+      if v in (None, '', 'null'):
+          return None
+      if isinstance(v, str):
+          return datetime.fromisoformat(v)
+      return v
+
+  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
+
+
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict, Any
+from datetime import datetime
 
 class AccountUpdate(BaseModel):
-    """Model for updating an existing account"""
-    name: Optional[str] = Field(None, min_length=3, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    status: Optional[str] = Field(None, pattern=r'^(active|inactive|suspended)$')
-    expiresAt: Optional[datetime] = None
-    maxUsers: Optional[int] = Field(None, ge=1, le=100)
+  expiredAt: Optional[datetime] = Field(None)
 
-    model_config = ConfigDict(populate_by_name=True)
+  @field_validator('expiredAt', mode='before')
+  def parse_expiredAt(cls, v):
+      if v in (None, '', 'null'):
+          return None
+      if isinstance(v, str):
+          return datetime.fromisoformat(v)
+      return v
 
-class AccountRead(BaseModel):
-    """Model for reading account data"""
-    id: str = Field(alias="_id")
-    name: str = Field(min_length=3, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    status: str = Field(pattern=r'^(active|inactive|suspended)$')
-    expiresAt: Optional[datetime] = None
-    expiredAt: Optional[datetime] = None
-    maxUsers: int = Field(ge=1, le=100)
-    createdAt: datetime
-    updatedAt: datetime
+  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)

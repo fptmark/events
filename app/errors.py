@@ -120,7 +120,10 @@ def normalize_error_response(
     
     # Handle our custom error classes that already have to_dict()
     if hasattr(error, 'to_dict') and callable(getattr(error, 'to_dict')):
-        return error.to_dict()
+        # Use getattr to safely call to_dict() method
+        to_dict_method = getattr(error, 'to_dict')
+        result = to_dict_method()
+        return result if isinstance(result, dict) else {"detail": {"message": str(error), "error_type": "UnknownError"}}
     
     # Handle FastAPI RequestValidationError
     if isinstance(error, RequestValidationError):

@@ -1,50 +1,90 @@
 from fastapi import APIRouter
 from typing import List
-from app.models.userevent_model import UserEvent
+import logging
+from app.models.userevent_model import UserEvent, UserEventCreate, UserEventUpdate
 from app.errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
-@router.get("/", response_model=List[UserEvent])
+
+@router.get("", response_model=List[UserEvent])
 async def list_userevents() -> List[UserEvent]:
-    """List all user events"""
-    userevents = await UserEvent.find_all()
-    return list(userevents)  # Convert Sequence to List
+    """List all userevents"""
+    try:
+        logger.info("Fetching all userevents")
+        userevents = await UserEvent.find_all()
+        records = len(userevents)
+        logger.info(f"Retrieved {records} userevents")
+        return list(userevents)
+    except Exception as e:
+        logger.error(f"Error listing userevents: {e}")
+        raise
+
 
 @router.get("/{userevent_id}", response_model=UserEvent)
 async def get_userevent(userevent_id: str) -> UserEvent:
-    """Get a specific user event by ID"""
-    return await UserEvent.get(userevent_id)
+    """Get a specific userevent by ID"""
+    try:
+        logger.info(f"Fetching userevent with ID: {userevent_id }")
+        userevent = await UserEvent.get(userevent_id)
+        logger.info(f"Retrieved userevent: {userevent.id }")
+        return userevent
+    except NotFoundError:
+        logger.warning(f"UserEvent not found: {userevent_id }")
+        raise
+    except Exception as e:
+        logger.error(f"Error getting userevent {userevent_id }: {e}")
+        raise
 
-@router.post("/", response_model=UserEvent)
-async def create_userevent(userevent: UserEvent) -> UserEvent:
-    """Create a new user event"""
-    # Validation is handled by Pydantic model
-    return await userevent.save()
+
+@router.post("", response_model=UserEvent)
+async def create_userevent(userevent_data: UserEventCreate) -> UserEvent:
+    """Create a new userevent"""
+    try:
+        logger.info(f"Creating userevent with data: {userevent_data }")
+        userevent = UserEvent(**userevent_data.model_dump())
+        result = await userevent.save()
+        logger.info(f"UserEvent created successfully with ID: {result.id}")
+        return result
+    except (ValidationError, DuplicateError) as e:
+        logger.warning(f"Validation error creating userevent: {type(e).__name__}: {str(e)}")
+        raise
+    except Exception as e:
+        logger.error(f"Error creating userevent: {e}")
+        raise
+
 
 @router.put("/{userevent_id}", response_model=UserEvent)
-async def update_userevent(userevent_id: str, userevent: UserEvent) -> UserEvent:
-    """Update an existing user event"""
-    # Check if user event exists
-    existing = await UserEvent.get(userevent_id)
-    
-    # Update fields
-    userevent.id = userevent_id
-    userevent.createdAt = existing.createdAt
-    
-    # Save changes
-    return await userevent.save()
+async def update_userevent(userevent_id: str, userevent_data: UserEventUpdate) -> UserEvent:
+    """Update an existing userevent"""
+    try:
+        logger.info(f"Updating userevent {userevent_id } with data: {userevent_data }")
+
+        existing = await UserEvent.get(userevent_id)
+        logger.info(f"Found existing userevent: {existing.id}")
+
+        userevent = UserEvent(**userevent_data.model_dump())
+        result = await userevent.save(userevent_id)
+        logger.info(f"UserEvent updated successfully: {result.id}")
+        return result
+    except (NotFoundError, ValidationError, DuplicateError) as e:
+        logger.warning(f"Error updating userevent {userevent_id}: {type(e).__name__}: {str(e)}")
+        raise
+    except Exception as e:
+        logger.error(f"Error updating userevent {userevent_id}: {e}")
+        raise
+
 
 @router.delete("/{userevent_id}")
 async def delete_userevent(userevent_id: str):
-    """Delete a user event"""
-    userevent = await UserEvent.get(userevent_id)
-    if not userevent:
-        raise NotFoundError("UserEvent", userevent_id)
-    await userevent.delete()
-    return {"message": "User event deleted successfully"}
-
-@router.get('/metadata')
-async def get_userevent_metadata():
-    """Get metadata for UserEvent entity."""
-    return UserEvent.get_metadata() 
+    """Delete a userevent"""
+    try:
+        logger.info(f"Deleting userevent: {userevent_id}")
+        userevent = await UserEvent.get(userevent_id)
+        await userevent.delete()
+        logger.info(f"UserEvent deleted successfully: {userevent_id}")
+        return {"message": "UserEvent deleted successfully"}
+    except NotFoundError:
+        logger.warning(f"UserEvent not found for deletion: {userevent_id}")
+        raise

@@ -1,50 +1,90 @@
 from fastapi import APIRouter
 from typing import List
-from app.models.url_model import Url
+import logging
+from app.models.url_model import Url, UrlCreate, UrlUpdate
 from app.errors import ValidationError, NotFoundError, DuplicateError, DatabaseError
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
-@router.get("/", response_model=List[Url])
+
+@router.get("", response_model=List[Url])
 async def list_urls() -> List[Url]:
-    """List all URLs"""
-    urls = await Url.find_all()
-    return list(urls)  # Convert Sequence to List
+    """List all urls"""
+    try:
+        logger.info("Fetching all urls")
+        urls = await Url.find_all()
+        records = len(urls)
+        logger.info(f"Retrieved {records} urls")
+        return list(urls)
+    except Exception as e:
+        logger.error(f"Error listing urls: {e}")
+        raise
+
 
 @router.get("/{url_id}", response_model=Url)
 async def get_url(url_id: str) -> Url:
-    """Get a specific URL by ID"""
-    return await Url.get(url_id)
+    """Get a specific url by ID"""
+    try:
+        logger.info(f"Fetching url with ID: {url_id }")
+        url = await Url.get(url_id)
+        logger.info(f"Retrieved url: {url.id }")
+        return url
+    except NotFoundError:
+        logger.warning(f"Url not found: {url_id }")
+        raise
+    except Exception as e:
+        logger.error(f"Error getting url {url_id }: {e}")
+        raise
 
-@router.post("/", response_model=Url)
-async def create_url(url: Url) -> Url:
-    """Create a new URL"""
-    # Validation is handled by Pydantic model
-    return await url.save()
+
+@router.post("", response_model=Url)
+async def create_url(url_data: UrlCreate) -> Url:
+    """Create a new url"""
+    try:
+        logger.info(f"Creating url with data: {url_data }")
+        url = Url(**url_data.model_dump())
+        result = await url.save()
+        logger.info(f"Url created successfully with ID: {result.id}")
+        return result
+    except (ValidationError, DuplicateError) as e:
+        logger.warning(f"Validation error creating url: {type(e).__name__}: {str(e)}")
+        raise
+    except Exception as e:
+        logger.error(f"Error creating url: {e}")
+        raise
+
 
 @router.put("/{url_id}", response_model=Url)
-async def update_url(url_id: str, url: Url) -> Url:
-    """Update an existing URL"""
-    # Check if URL exists
-    existing = await Url.get(url_id)
-    
-    # Update fields
-    url.id = url_id
-    url.createdAt = existing.createdAt
-    
-    # Save changes
-    return await url.save()
+async def update_url(url_id: str, url_data: UrlUpdate) -> Url:
+    """Update an existing url"""
+    try:
+        logger.info(f"Updating url {url_id } with data: {url_data }")
+
+        existing = await Url.get(url_id)
+        logger.info(f"Found existing url: {existing.id}")
+
+        url = Url(**url_data.model_dump())
+        result = await url.save(url_id)
+        logger.info(f"Url updated successfully: {result.id}")
+        return result
+    except (NotFoundError, ValidationError, DuplicateError) as e:
+        logger.warning(f"Error updating url {url_id}: {type(e).__name__}: {str(e)}")
+        raise
+    except Exception as e:
+        logger.error(f"Error updating url {url_id}: {e}")
+        raise
+
 
 @router.delete("/{url_id}")
 async def delete_url(url_id: str):
-    """Delete a URL"""
-    url = await Url.get(url_id)
-    if not url:
-        raise NotFoundError("Url", url_id)
-    await url.delete()
-    return {"message": "URL deleted successfully"}
-
-@router.get('/metadata')
-async def get_url_metadata():
-    """Get metadata for URL entity."""
-    return Url.get_metadata()
+    """Delete a url"""
+    try:
+        logger.info(f"Deleting url: {url_id}")
+        url = await Url.get(url_id)
+        await url.delete()
+        logger.info(f"Url deleted successfully: {url_id}")
+        return {"message": "Url deleted successfully"}
+    except NotFoundError:
+        logger.warning(f"Url not found for deletion: {url_id}")
+        raise

@@ -7,10 +7,12 @@ from app.db import DatabaseFactory
 import app.utils as helpers
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
+
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
         self.fields = fields
         self.query = query
+
     def __str__(self):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
@@ -24,9 +26,8 @@ class UserEvent(BaseModel):
     eventId: str = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
- 
-    _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'UserEvent',
-    'fields': {   'attended': {'type': 'Boolean', 'required': False},
+
+    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'attended': {'type': 'Boolean', 'required': False},
                   'rating': {   'type': 'Integer',
                                 'required': False,
                                 'ge': 1,
@@ -47,7 +48,9 @@ class UserEvent(BaseModel):
                   'userId': {'type': 'ObjectId', 'required': True},
                   'eventId': {'type': 'ObjectId', 'required': True}},
     'operations': '',
-    'ui': {'title': 'User Events', 'buttonLabel': 'Manage Event Attendance'}}
+    'ui': {'title': 'User Events', 'buttonLabel': 'Manage Event Attendance'},
+    'services': [],
+    'uniques': []}
 
     class Settings:
         name = "userevent"
@@ -56,37 +59,25 @@ class UserEvent(BaseModel):
         populate_by_name=True,
     )
 
-    @field_validator('rating')
-    def validate_rating(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None:
-            if v < 1:
-                raise ValidationError(
-                    message="Invalid rating value",
-                    entity="UserEvent",
-                    invalid_fields=[ValidationFailure("rating", "Rating must be at least 1", v)]
-                )
-            if v > 5:
-                raise ValidationError(
-                    message="Invalid rating value",
-                    entity="UserEvent",
-                    invalid_fields=[ValidationFailure("rating", "Rating must be at most 5", v)]
-                )
+    @field_validator('rating', mode='before')
+    def validate_rating(cls, v):
+        if v is not None and int(v) < 1:
+            raise ValueError('rating must be at least 1')
+        if v is not None and int(v) > 5:
+            raise ValueError('rating must be at most 5')
         return v
-
-    @field_validator('note')
-    def validate_note(cls, v: Optional[str]) -> Optional[str]:
+     
+    @field_validator('note', mode='before')
+    def validate_note(cls, v):
         if v is not None and len(v) > 500:
-            raise ValidationError(
-                message="Note too long",
-                entity="UserEvent",
-                invalid_fields=[ValidationFailure("note", "Note must be at most 500 characters", v)]
-            )
+            raise ValueError('note must be at most 500 characters')
         return v
+     
 
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
         return helpers.get_metadata(cls._metadata)
- 
+
     @classmethod
     async def find_all(cls) -> Sequence[Self]:
         try:
@@ -94,11 +85,8 @@ class UserEvent(BaseModel):
         except Exception as e:
             raise DatabaseError(str(e), "UserEvent", "find_all")
 
-    # Method to imitate Beanie's find() method
     @classmethod
     def find(cls):
-        # This is a simple adapter to keep the API compatible
-        # It provides a to_list() method that calls find_all()
         class FindAdapter:
             @staticmethod
             async def to_list():
@@ -118,29 +106,35 @@ class UserEvent(BaseModel):
         except Exception as e:
             raise DatabaseError(str(e), "UserEvent", "get")
 
-    async def save(self) -> Self:
+    async def save(self, doc_id: Optional[str] = None) -> Self:
         try:
-            # Update timestamp
             self.updatedAt = datetime.now(timezone.utc)
+            if doc_id:
+                self.id = doc_id
 
-            # Convert model to dict
             data = self.model_dump(exclude={"id"})
-
-            # Save document
-            result = await DatabaseFactory.save_document("userevent", self.id, data)
-
-            # Update ID if this was a new document
+            
+            # Get unique constraints from metadata
+            unique_constraints = self._metadata.get('uniques', [])
+            
+            # Save document with unique constraints
+            result = await DatabaseFactory.save_document("userevent", self.id, data, unique_constraints)
+            
+            # Update ID from result
             if not self.id and result and isinstance(result, dict) and result.get(DatabaseFactory.get_id_field()):
                 self.id = result[DatabaseFactory.get_id_field()]
 
             return self
+        except ValidationError:
+            # Re-raise validation errors directly
+            raise
         except Exception as e:
             raise DatabaseError(str(e), "UserEvent", "save")
-
+            
     async def delete(self) -> bool:
         if not self.id:
             raise ValidationError(
-                message="Cannot delete user event without ID",
+                message="Cannot delete userevent without ID",
                 entity="UserEvent",
                 invalid_fields=[ValidationFailure("id", "ID is required for deletion", None)]
             )
@@ -159,70 +153,55 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class UserEventCreate(BaseModel):
-    attended: Optional[bool] = Field(None)
-    rating: Optional[int] = Field(None, ge=1, le=5)
-    note: Optional[str] = Field(None, max_length=500)
-    userId: str = Field(...)
-    eventId: str = Field(...)
+  attended: Optional[bool] = Field(None)
+  rating: Optional[int] = Field(None, ge=1, le=5)
+  note: Optional[str] = Field(None, max_length=500)
+  userId: str = Field(...)
+  eventId: str = Field(...)
 
-    @field_validator('rating', mode='before')
-    def validate_rating(cls, v):
-        if v is not None and int(v) < 1:
-            raise ValueError('rating must be at least 1')
-        if v is not None and int(v) > 5:
-            raise ValueError('rating must be at most 5')
-        return v
-     
-    @field_validator('note', mode='before')
-    def validate_note(cls, v):
-        if v is not None and len(v) > 500:
-            raise ValueError('note must be at most 500 characters')
-        return v
-     
+  @field_validator('rating', mode='before')
+  def validate_rating(cls, v):
+      if v is not None and int(v) < 1:
+          raise ValueError('rating must be at least 1')
+      if v is not None and int(v) > 5:
+          raise ValueError('rating must be at most 5')
+      return v
+   
+  @field_validator('note', mode='before')
+  def validate_note(cls, v):
+      if v is not None and len(v) > 500:
+          raise ValueError('note must be at most 500 characters')
+      return v
+   
 
-    model_config = ConfigDict(from_attributes=True, validate_by_name=True)
+  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
+
 
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class UserEventUpdate(BaseModel):
-    attended: Optional[bool] = Field(None)
-    rating: Optional[int] = Field(None, ge=1, le=5)
-    note: Optional[str] = Field(None, max_length=500)
-    userId: str = Field(...)
-    eventId: str = Field(...)
+  attended: Optional[bool] = Field(None)
+  rating: Optional[int] = Field(None, ge=1, le=5)
+  note: Optional[str] = Field(None, max_length=500)
+  userId: str = Field(...)
+  eventId: str = Field(...)
 
-    @field_validator('rating', mode='before')
-    def validate_rating(cls, v):
-        if v is not None and int(v) < 1:
-            raise ValueError('rating must be at least 1')
-        if v is not None and int(v) > 5:
-            raise ValueError('rating must be at most 5')
-        return v
-     
-    @field_validator('note', mode='before')
-    def validate_note(cls, v):
-        if v is not None and len(v) > 500:
-            raise ValueError('note must be at most 500 characters')
-        return v
-     
+  @field_validator('rating', mode='before')
+  def validate_rating(cls, v):
+      if v is not None and int(v) < 1:
+          raise ValueError('rating must be at least 1')
+      if v is not None and int(v) > 5:
+          raise ValueError('rating must be at most 5')
+      return v
+   
+  @field_validator('note', mode='before')
+  def validate_note(cls, v):
+      if v is not None and len(v) > 500:
+          raise ValueError('note must be at most 500 characters')
+      return v
+   
 
-    model_config = ConfigDict(from_attributes=True, validate_by_name=True)
+  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List, Dict, Any
-from datetime import datetime
-
-class UserEventRead(BaseModel):
-    id: str = Field(alias="_id")
-    attended: Optional[bool] = Field(None)
-    rating: Optional[int] = Field(None, ge=1, le=5)
-    note: Optional[str] = Field(None, max_length=500)
-    userId: str = Field(...)
-    eventId: str = Field(...)
-
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)

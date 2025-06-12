@@ -130,9 +130,9 @@ class DatabaseFactory:
         return await cls.get_instance().get_by_id(collection, doc_id, model_cls)
 
     @classmethod
-    async def save_document(cls, collection: str, doc_id, data):
+    async def save_document(cls, collection: str, doc_id, data, unique_constraints=None):
         """Save document to collection"""
-        return await cls.get_instance().save_document(collection, doc_id, data)
+        return await cls.get_instance().save_document(collection, doc_id, data, unique_constraints)
 
     @classmethod
     async def delete_document(cls, collection: str, doc_id: str) -> bool:

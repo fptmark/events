@@ -7,10 +7,12 @@ from app.db import DatabaseFactory
 import app.utils as helpers
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
+
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
         self.fields = fields
         self.query = query
+
     def __str__(self):
         return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
@@ -23,9 +25,8 @@ class Profile(BaseModel):
     userId: str = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
- 
-    _metadata: ClassVar[Dict[str, Any]] = {   'entity': 'Profile',
-    'fields': {   'name': {   'type': 'String',
+
+    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'name': {   'type': 'String',
                               'required': True,
                               'max_length': 100},
                   'preferences': {   'type': 'String',
@@ -53,7 +54,9 @@ class Profile(BaseModel):
     'operations': '',
     'ui': {   'title': 'Profile',
               'buttonLabel': 'Manage User Profiles',
-              'description': 'Manage User Preferences'}}
+              'description': 'Manage User Preferences'},
+    'services': [],
+    'uniques': [['name', 'userId']]}
 
     class Settings:
         name = "profile"
@@ -62,30 +65,23 @@ class Profile(BaseModel):
         populate_by_name=True,
     )
 
-    @field_validator('name')
-    def validate_name(cls, v: str) -> str:
-        if len(v) > 100:
-            raise ValidationError(
-                message="Name too long",
-                entity="Profile",
-                invalid_fields=[ValidationFailure("name", "Name must be at most 100 characters", v)]
-            )
+    @field_validator('name', mode='before')
+    def validate_name(cls, v):
+        if v is not None and len(v) > 100:
+            raise ValueError('name must be at most 100 characters')
         return v
-
-    @field_validator('radiusMiles')
-    def validate_radiusMiles(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and v < 0:
-            raise ValidationError(
-                message="Invalid radius",
-                entity="Profile",
-                invalid_fields=[ValidationFailure("radiusMiles", "Radius must be at least 0 miles", v)]
-            )
+     
+    @field_validator('radiusMiles', mode='before')
+    def validate_radiusMiles(cls, v):
+        if v is not None and int(v) < 0:
+            raise ValueError('radiusMiles must be at least 0')
         return v
+     
 
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
         return helpers.get_metadata(cls._metadata)
- 
+
     @classmethod
     async def find_all(cls) -> Sequence[Self]:
         try:
@@ -93,11 +89,8 @@ class Profile(BaseModel):
         except Exception as e:
             raise DatabaseError(str(e), "Profile", "find_all")
 
-    # Method to imitate Beanie's find() method
     @classmethod
     def find(cls):
-        # This is a simple adapter to keep the API compatible
-        # It provides a to_list() method that calls find_all()
         class FindAdapter:
             @staticmethod
             async def to_list():
@@ -117,25 +110,31 @@ class Profile(BaseModel):
         except Exception as e:
             raise DatabaseError(str(e), "Profile", "get")
 
-    async def save(self) -> Self:
+    async def save(self, doc_id: Optional[str] = None) -> Self:
         try:
-            # Update timestamp
             self.updatedAt = datetime.now(timezone.utc)
+            if doc_id:
+                self.id = doc_id
 
-            # Convert model to dict
             data = self.model_dump(exclude={"id"})
-
-            # Save document
-            result = await DatabaseFactory.save_document("profile", self.id, data)
-
-            # Update ID if this was a new document
+            
+            # Get unique constraints from metadata
+            unique_constraints = self._metadata.get('uniques', [])
+            
+            # Save document with unique constraints
+            result = await DatabaseFactory.save_document("profile", self.id, data, unique_constraints)
+            
+            # Update ID from result
             if not self.id and result and isinstance(result, dict) and result.get(DatabaseFactory.get_id_field()):
                 self.id = result[DatabaseFactory.get_id_field()]
 
             return self
+        except ValidationError:
+            # Re-raise validation errors directly
+            raise
         except Exception as e:
             raise DatabaseError(str(e), "Profile", "save")
-
+            
     async def delete(self) -> bool:
         if not self.id:
             raise ValidationError(
@@ -158,63 +157,49 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class ProfileCreate(BaseModel):
-    name: str = Field(..., max_length=100)
-    preferences: Optional[str] = Field(None)
-    radiusMiles: Optional[int] = Field(None, ge=0)
-    userId: str = Field(...)
+  name: str = Field(..., max_length=100)
+  preferences: Optional[str] = Field(None)
+  radiusMiles: Optional[int] = Field(None, ge=0)
+  userId: str = Field(...)
 
-    @field_validator('name', mode='before')
-    def validate_name(cls, v):
-        if v is not None and len(v) > 100:
-            raise ValueError('name must be at most 100 characters')
-        return v
-     
-    @field_validator('radiusMiles', mode='before')
-    def validate_radiusMiles(cls, v):
-        if v is not None and int(v) < 0:
-            raise ValueError('radiusMiles must be at least 0')
-        return v
-     
+  @field_validator('name', mode='before')
+  def validate_name(cls, v):
+      if v is not None and len(v) > 100:
+          raise ValueError('name must be at most 100 characters')
+      return v
+   
+  @field_validator('radiusMiles', mode='before')
+  def validate_radiusMiles(cls, v):
+      if v is not None and int(v) < 0:
+          raise ValueError('radiusMiles must be at least 0')
+      return v
+   
 
-    model_config = ConfigDict(from_attributes=True, validate_by_name=True)
+  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
+
 
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class ProfileUpdate(BaseModel):
-    name: str = Field(..., max_length=100)
-    preferences: Optional[str] = Field(None)
-    radiusMiles: Optional[int] = Field(None, ge=0)
-    userId: str = Field(...)
+  name: str = Field(..., max_length=100)
+  preferences: Optional[str] = Field(None)
+  radiusMiles: Optional[int] = Field(None, ge=0)
+  userId: str = Field(...)
 
-    @field_validator('name', mode='before')
-    def validate_name(cls, v):
-        if v is not None and len(v) > 100:
-            raise ValueError('name must be at most 100 characters')
-        return v
-     
-    @field_validator('radiusMiles', mode='before')
-    def validate_radiusMiles(cls, v):
-        if v is not None and int(v) < 0:
-            raise ValueError('radiusMiles must be at least 0')
-        return v
-     
+  @field_validator('name', mode='before')
+  def validate_name(cls, v):
+      if v is not None and len(v) > 100:
+          raise ValueError('name must be at most 100 characters')
+      return v
+   
+  @field_validator('radiusMiles', mode='before')
+  def validate_radiusMiles(cls, v):
+      if v is not None and int(v) < 0:
+          raise ValueError('radiusMiles must be at least 0')
+      return v
+   
 
-    model_config = ConfigDict(from_attributes=True, validate_by_name=True)
+  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List, Dict, Any
-from datetime import datetime
-
-class ProfileRead(BaseModel):
-    id: str = Field(alias="_id")
-    name: str = Field(..., max_length=100)
-    preferences: Optional[str] = Field(None)
-    radiusMiles: Optional[int] = Field(None, ge=0)
-    userId: str = Field(...)
-
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
