@@ -32,7 +32,7 @@ import { NotificationComponent } from './components/notification.component';
             <span class="navbar-toggler-icon"></span>
           </button>
           <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav">
+            <ul class="navbar-nav me-auto">
               <li class="nav-item">
                 <a class="nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">{{ metadataService.getProjectName() }} Management</a>
               </li>
@@ -43,6 +43,9 @@ import { NotificationComponent } from './components/notification.component';
                 <a class="nav-link" (click)="redirectToServerRoute('api/metadata')" href="javascript:void(0)">Metadata</a>
               </li>
             </ul>
+            <span class="navbar-text text-light">
+              Database: {{ metadataService.getDatabaseType() }}
+            </span>
           </div>
         </div>
       </nav>
@@ -76,6 +79,10 @@ import { NotificationComponent } from './components/notification.component';
     .loading-content h2 {
       margin-bottom: 1rem;
       color: #212529;
+    }
+    .navbar-text {
+      font-size: 0.9rem;
+      opacity: 0.9;
     }
   `]
 })

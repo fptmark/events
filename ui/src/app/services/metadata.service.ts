@@ -6,6 +6,7 @@ import { tap, catchError } from 'rxjs/operators';
 
 interface Metadata {
   projectName: string;
+  database: string;
   entities: Record<string, EntityMetadata>;
 }
 
@@ -76,7 +77,7 @@ export interface UiFieldMetata {
   providedIn: 'root'
 })
 export class MetadataService {
-  private metadata: Metadata = { projectName: '', entities: {} };
+  private metadata: Metadata = { projectName: '', database: '', entities: {} };
   private recentEntities: string[] = [];
   private initialized = false;
   private initPromise: Promise<Metadata> | null = null;
@@ -103,7 +104,7 @@ export class MetadataService {
       }),
       catchError(error => {
         console.error('Metadata: Failed to fetch entities:', error);
-        this.metadata = { projectName: '', entities: {} };
+        this.metadata = { projectName: '', database: '', entities: {} };
         this.initialized = true;
         return of(this.metadata);
       })
@@ -196,6 +197,10 @@ export class MetadataService {
 
   getProjectName(): string {
     return this.metadata.projectName;
+  }
+
+  getDatabaseType(): string {
+    return this.metadata.database || 'Unknown';
   }
 
   isValidOperation(entityName: string, operation: string): boolean {
