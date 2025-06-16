@@ -9,7 +9,7 @@ router = APIRouter()
 
 
 @router.get("", response_model=List[Account])
-async def list_accounts() -> dict:
+async def list_accounts() -> List[Account]:
     """List all accounts"""
     try:
         logger.info("Fetching all accounts")
@@ -17,19 +17,6 @@ async def list_accounts() -> dict:
         records = len(accounts)
         logger.info(f"Retrieved {records} accounts")
         return list(accounts)
-
-        response = {
-            "data": list(account),
-            "validation_errors": [
-                {
-                    "message": ve.message,
-                    "entity": ve.entity,
-                    "invalid_fields": [f.to_dict() for f in ve.invalid_fields]
-                }
-                for ve in validation_errors
-            ] if validation_errors else []
-        }
-        return response
     except Exception as e:
         logger.error(f"Error listing accounts: {e}")
         raise

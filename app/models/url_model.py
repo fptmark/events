@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 import re
 from app.db import DatabaseFactory
 import app.utils as helpers
+from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
 
@@ -23,6 +24,12 @@ class Url(BaseModel):
     params: Optional[Dict[str, Any]] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    _validate: ClassVar[bool] = True
+
+    @classmethod
+    def set_validation(cls, validate: bool) -> None:
+        cls._validate = validate
 
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'url': {   'type': 'String',
                              'required': True,
@@ -48,14 +55,13 @@ class Url(BaseModel):
     class Settings:
         name = "url"
 
-    model_config = ConfigDict(
-        populate_by_name=True,
-    )
+    model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
     @field_validator('url', mode='before')
     def validate_url(cls, v):
-        if v is not None and not re.match(r'main.url', v):
-            raise ValueError('Bad URL format')
+        if cls._validate:
+            if v is not None and not re.match(r'main.url', v):
+                raise ValueError('Bad URL format')
         return v
      
 
@@ -66,22 +72,15 @@ class Url(BaseModel):
     @classmethod
     async def find_all(cls) -> tuple[Sequence[Self], List[ValidationError]]:
         try:
+            cls.set_validation(Config.is_get_validation(True))
             return await DatabaseFactory.find_all("url", cls)
         except Exception as e:
             raise DatabaseError(str(e), "Url", "find_all")
 
     @classmethod
-    def find(cls):
-        class FindAdapter:
-            @staticmethod
-            async def to_list():
-                return await cls.find_all()
-
-        return FindAdapter()
-
-    @classmethod
     async def get(cls, id: str) -> Self:
         try:
+            cls.set_validation(Config.is_get_validation(False))
             url = await DatabaseFactory.get_by_id("url", str(id), cls)
             if not url:
                 raise NotFoundError("Url", id)
@@ -93,6 +92,7 @@ class Url(BaseModel):
 
     async def save(self, doc_id: Optional[str] = None) -> Self:
         try:
+            self.set_validation(True)  # Always validate on save
             self.updatedAt = datetime.now(timezone.utc)
             if doc_id:
                 self.id = doc_id
@@ -141,13 +141,6 @@ class UrlCreate(BaseModel):
   url: str = Field(..., pattern=r"main.url")
   params: Optional[Dict[str, Any]] = Field(None)
 
-  @field_validator('url', mode='before')
-  def validate_url(cls, v):
-      if v is not None and not re.match(r'main.url', v):
-          raise ValueError('Bad URL format')
-      return v
-   
-
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
 
@@ -158,13 +151,6 @@ from datetime import datetime
 class UrlUpdate(BaseModel):
   url: str = Field(..., pattern=r"main.url")
   params: Optional[Dict[str, Any]] = Field(None)
-
-  @field_validator('url', mode='before')
-  def validate_url(cls, v):
-      if v is not None and not re.match(r'main.url', v):
-          raise ValueError('Bad URL format')
-      return v
-   
 
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 

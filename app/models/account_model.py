@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 import re
 from app.db import DatabaseFactory
 import app.utils as helpers
+from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
 
@@ -22,6 +23,12 @@ class Account(BaseModel):
     expiredAt: Optional[datetime] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    _validate: ClassVar[bool] = True
+
+    @classmethod
+    def set_validation(cls, validate: bool) -> None:
+        cls._validate = validate
 
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'expiredAt': {'type': 'ISODate', 'required': False},
                   'createdAt': {   'type': 'ISODate',
@@ -42,16 +49,15 @@ class Account(BaseModel):
     class Settings:
         name = "account"
 
-    model_config = ConfigDict(
-        populate_by_name=True,
-    )
+    model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
     @field_validator('expiredAt', mode='before')
     def parse_expiredAt(cls, v):
-        if v in (None, '', 'null'):
-            return None
-        if isinstance(v, str):
-            return datetime.fromisoformat(v)
+        if cls._validate:
+            if v in (None, '', 'null'):
+                return None
+            if isinstance(v, str):
+                return datetime.fromisoformat(v)
         return v
 
     @classmethod
@@ -61,22 +67,15 @@ class Account(BaseModel):
     @classmethod
     async def find_all(cls) -> tuple[Sequence[Self], List[ValidationError]]:
         try:
+            cls.set_validation(Config.is_get_validation(True))
             return await DatabaseFactory.find_all("account", cls)
         except Exception as e:
             raise DatabaseError(str(e), "Account", "find_all")
 
     @classmethod
-    def find(cls):
-        class FindAdapter:
-            @staticmethod
-            async def to_list():
-                return await cls.find_all()
-
-        return FindAdapter()
-
-    @classmethod
     async def get(cls, id: str) -> Self:
         try:
+            cls.set_validation(Config.is_get_validation(False))
             account = await DatabaseFactory.get_by_id("account", str(id), cls)
             if not account:
                 raise NotFoundError("Account", id)
@@ -88,6 +87,7 @@ class Account(BaseModel):
 
     async def save(self, doc_id: Optional[str] = None) -> Self:
         try:
+            self.set_validation(True)  # Always validate on save
             self.updatedAt = datetime.now(timezone.utc)
             if doc_id:
                 self.id = doc_id
@@ -135,14 +135,6 @@ from datetime import datetime
 class AccountCreate(BaseModel):
   expiredAt: Optional[datetime] = Field(None)
 
-  @field_validator('expiredAt', mode='before')
-  def parse_expiredAt(cls, v):
-      if v in (None, '', 'null'):
-          return None
-      if isinstance(v, str):
-          return datetime.fromisoformat(v)
-      return v
-
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
 
@@ -152,14 +144,6 @@ from datetime import datetime
 
 class AccountUpdate(BaseModel):
   expiredAt: Optional[datetime] = Field(None)
-
-  @field_validator('expiredAt', mode='before')
-  def parse_expiredAt(cls, v):
-      if v in (None, '', 'null'):
-          return None
-      if isinstance(v, str):
-          return datetime.fromisoformat(v)
-      return v
 
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 

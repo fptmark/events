@@ -9,7 +9,7 @@ router = APIRouter()
 
 
 @router.get("", response_model=List[UserEvent])
-async def list_userevents() -> dict:
+async def list_userevents() -> List[UserEvent]:
     """List all userevents"""
     try:
         logger.info("Fetching all userevents")
@@ -17,19 +17,6 @@ async def list_userevents() -> dict:
         records = len(userevents)
         logger.info(f"Retrieved {records} userevents")
         return list(userevents)
-
-        response = {
-            "data": list(userevent),
-            "validation_errors": [
-                {
-                    "message": ve.message,
-                    "entity": ve.entity,
-                    "invalid_fields": [f.to_dict() for f in ve.invalid_fields]
-                }
-                for ve in validation_errors
-            ] if validation_errors else []
-        }
-        return response
     except Exception as e:
         logger.error(f"Error listing userevents: {e}")
         raise

@@ -9,7 +9,7 @@ router = APIRouter()
 
 
 @router.get("", response_model=List[TagAffinity])
-async def list_tagaffinitys() -> dict:
+async def list_tagaffinitys() -> List[TagAffinity]:
     """List all tagaffinitys"""
     try:
         logger.info("Fetching all tagaffinitys")
@@ -17,19 +17,6 @@ async def list_tagaffinitys() -> dict:
         records = len(tagaffinitys)
         logger.info(f"Retrieved {records} tagaffinitys")
         return list(tagaffinitys)
-
-        response = {
-            "data": list(tagaffinity),
-            "validation_errors": [
-                {
-                    "message": ve.message,
-                    "entity": ve.entity,
-                    "invalid_fields": [f.to_dict() for f in ve.invalid_fields]
-                }
-                for ve in validation_errors
-            ] if validation_errors else []
-        }
-        return response
     except Exception as e:
         logger.error(f"Error listing tagaffinitys: {e}")
         raise

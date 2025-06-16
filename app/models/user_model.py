@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 import re
 from app.db import DatabaseFactory
 import app.utils as helpers
+from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
 
@@ -31,6 +32,12 @@ class User(BaseModel):
     accountId: str = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    _validate: ClassVar[bool] = True
+
+    @classmethod
+    def set_validation(cls, validate: bool) -> None:
+        cls._validate = validate
 
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'username': {   'type': 'String',
                                   'required': True,
@@ -99,74 +106,81 @@ class User(BaseModel):
     class Settings:
         name = "user"
 
-    model_config = ConfigDict(
-        populate_by_name=True,
-    )
+    model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
     @field_validator('username', mode='before')
     def validate_username(cls, v):
-        if v is not None and len(v) < 3:
-            raise ValueError('username must be at least 3 characters')
-        if v is not None and len(v) > 50:
-            raise ValueError('username must be at most 50 characters')
+        if cls._validate:
+            if v is not None and len(v) < 3:
+                raise ValueError('username must be at least 3 characters')
+            if v is not None and len(v) > 50:
+                raise ValueError('username must be at most 50 characters')
         return v
      
     @field_validator('email', mode='before')
     def validate_email(cls, v):
-        if v is not None and len(v) < 8:
-            raise ValueError('email must be at least 8 characters')
-        if v is not None and len(v) > 50:
-            raise ValueError('email must be at most 50 characters')
-        if v is not None and not re.match(r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$', v):
-            raise ValueError('Bad email address format')
+        if cls._validate:
+            if v is not None and len(v) < 8:
+                raise ValueError('email must be at least 8 characters')
+            if v is not None and len(v) > 50:
+                raise ValueError('email must be at most 50 characters')
+            if v is not None and not re.match(r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$', v):
+                raise ValueError('Bad email address format')
         return v
      
     @field_validator('password', mode='before')
     def validate_password(cls, v):
-        if v is not None and len(v) < 8:
-            raise ValueError('password must be at least 8 characters')
+        if cls._validate:
+            if v is not None and len(v) < 8:
+                raise ValueError('password must be at least 8 characters')
         return v
      
     @field_validator('firstName', mode='before')
     def validate_firstName(cls, v):
-        if v is not None and len(v) < 3:
-            raise ValueError('firstName must be at least 3 characters')
-        if v is not None and len(v) > 100:
-            raise ValueError('firstName must be at most 100 characters')
+        if cls._validate:
+            if v is not None and len(v) < 3:
+                raise ValueError('firstName must be at least 3 characters')
+            if v is not None and len(v) > 100:
+                raise ValueError('firstName must be at most 100 characters')
         return v
      
     @field_validator('lastName', mode='before')
     def validate_lastName(cls, v):
-        if v is not None and len(v) < 3:
-            raise ValueError('lastName must be at least 3 characters')
-        if v is not None and len(v) > 100:
-            raise ValueError('lastName must be at most 100 characters')
+        if cls._validate:
+            if v is not None and len(v) < 3:
+                raise ValueError('lastName must be at least 3 characters')
+            if v is not None and len(v) > 100:
+                raise ValueError('lastName must be at most 100 characters')
         return v
      
     @field_validator('gender', mode='before')
     def validate_gender(cls, v):
-        allowed = ['male', 'female', 'other']
-        if v is not None and v not in allowed:
-            raise ValueError('must be male or female')
+        if cls._validate:
+            allowed = ['male', 'female', 'other']
+            if v is not None and v not in allowed:
+                raise ValueError('must be male or female')
         return v
      
     @field_validator('dob', mode='before')
     def parse_dob(cls, v):
-        if v in (None, '', 'null'):
-            return None
-        if isinstance(v, str):
-            return datetime.fromisoformat(v)
+        if cls._validate:
+            if v in (None, '', 'null'):
+                return None
+            if isinstance(v, str):
+                return datetime.fromisoformat(v)
         return v
     @field_validator('netWorth', mode='before')
     def validate_netWorth(cls, v):
-        if v is None: return None
-        parsed = helpers.parse_currency(v)
-        if parsed is None:
-            raise ValueError('netWorth must be a valid currency')
-        if parsed < 0:
-            raise ValueError('netWorth must be at least 0')
-        if parsed > 10000000:
-            raise ValueError('netWorth must be at most 10000000')
+        parsed = v
+        if cls._validate:
+            if v is None: return None
+            parsed = helpers.parse_currency(v)
+            if parsed is None:
+                raise ValueError('netWorth must be a valid currency')
+            if parsed < 0:
+                raise ValueError('netWorth must be at least 0')
+            if parsed > 10000000:
+                raise ValueError('netWorth must be at most 10000000')
         return parsed
 
     @classmethod
@@ -176,22 +190,15 @@ class User(BaseModel):
     @classmethod
     async def find_all(cls) -> tuple[Sequence[Self], List[ValidationError]]:
         try:
+            cls.set_validation(Config.is_get_validation(True))
             return await DatabaseFactory.find_all("user", cls)
         except Exception as e:
             raise DatabaseError(str(e), "User", "find_all")
 
     @classmethod
-    def find(cls):
-        class FindAdapter:
-            @staticmethod
-            async def to_list():
-                return await cls.find_all()
-
-        return FindAdapter()
-
-    @classmethod
     async def get(cls, id: str) -> Self:
         try:
+            cls.set_validation(Config.is_get_validation(False))
             user = await DatabaseFactory.get_by_id("user", str(id), cls)
             if not user:
                 raise NotFoundError("User", id)
@@ -203,6 +210,7 @@ class User(BaseModel):
 
     async def save(self, doc_id: Optional[str] = None) -> Self:
         try:
+            self.set_validation(True)  # Always validate on save
             self.updatedAt = datetime.now(timezone.utc)
             if doc_id:
                 self.id = doc_id
@@ -259,72 +267,6 @@ class UserCreate(BaseModel):
   netWorth: Optional[float] = Field(None, ge=0, le=10000000)
   accountId: str = Field(...)
 
-  @field_validator('username', mode='before')
-  def validate_username(cls, v):
-      if v is not None and len(v) < 3:
-          raise ValueError('username must be at least 3 characters')
-      if v is not None and len(v) > 50:
-          raise ValueError('username must be at most 50 characters')
-      return v
-   
-  @field_validator('email', mode='before')
-  def validate_email(cls, v):
-      if v is not None and len(v) < 8:
-          raise ValueError('email must be at least 8 characters')
-      if v is not None and len(v) > 50:
-          raise ValueError('email must be at most 50 characters')
-      if v is not None and not re.match(r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$', v):
-          raise ValueError('Bad email address format')
-      return v
-   
-  @field_validator('password', mode='before')
-  def validate_password(cls, v):
-      if v is not None and len(v) < 8:
-          raise ValueError('password must be at least 8 characters')
-      return v
-   
-  @field_validator('firstName', mode='before')
-  def validate_firstName(cls, v):
-      if v is not None and len(v) < 3:
-          raise ValueError('firstName must be at least 3 characters')
-      if v is not None and len(v) > 100:
-          raise ValueError('firstName must be at most 100 characters')
-      return v
-   
-  @field_validator('lastName', mode='before')
-  def validate_lastName(cls, v):
-      if v is not None and len(v) < 3:
-          raise ValueError('lastName must be at least 3 characters')
-      if v is not None and len(v) > 100:
-          raise ValueError('lastName must be at most 100 characters')
-      return v
-   
-  @field_validator('gender', mode='before')
-  def validate_gender(cls, v):
-      allowed = ['male', 'female', 'other']
-      if v is not None and v not in allowed:
-          raise ValueError('must be male or female')
-      return v
-   
-  @field_validator('dob', mode='before')
-  def parse_dob(cls, v):
-      if v in (None, '', 'null'):
-          return None
-      if isinstance(v, str):
-          return datetime.fromisoformat(v)
-      return v
-  @field_validator('netWorth', mode='before')
-  def validate_netWorth(cls, v):
-      if v is None: return None
-      parsed = helpers.parse_currency(v)
-      if parsed is None:
-          raise ValueError('netWorth must be a valid currency')
-      if parsed < 0:
-          raise ValueError('netWorth must be at least 0')
-      if parsed > 10000000:
-          raise ValueError('netWorth must be at most 10000000')
-      return parsed
-
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
 
@@ -343,72 +285,6 @@ class UserUpdate(BaseModel):
   isAccountOwner: bool = Field(...)
   netWorth: Optional[float] = Field(None, ge=0, le=10000000)
   accountId: str = Field(...)
-
-  @field_validator('username', mode='before')
-  def validate_username(cls, v):
-      if v is not None and len(v) < 3:
-          raise ValueError('username must be at least 3 characters')
-      if v is not None and len(v) > 50:
-          raise ValueError('username must be at most 50 characters')
-      return v
-   
-  @field_validator('email', mode='before')
-  def validate_email(cls, v):
-      if v is not None and len(v) < 8:
-          raise ValueError('email must be at least 8 characters')
-      if v is not None and len(v) > 50:
-          raise ValueError('email must be at most 50 characters')
-      if v is not None and not re.match(r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$', v):
-          raise ValueError('Bad email address format')
-      return v
-   
-  @field_validator('password', mode='before')
-  def validate_password(cls, v):
-      if v is not None and len(v) < 8:
-          raise ValueError('password must be at least 8 characters')
-      return v
-   
-  @field_validator('firstName', mode='before')
-  def validate_firstName(cls, v):
-      if v is not None and len(v) < 3:
-          raise ValueError('firstName must be at least 3 characters')
-      if v is not None and len(v) > 100:
-          raise ValueError('firstName must be at most 100 characters')
-      return v
-   
-  @field_validator('lastName', mode='before')
-  def validate_lastName(cls, v):
-      if v is not None and len(v) < 3:
-          raise ValueError('lastName must be at least 3 characters')
-      if v is not None and len(v) > 100:
-          raise ValueError('lastName must be at most 100 characters')
-      return v
-   
-  @field_validator('gender', mode='before')
-  def validate_gender(cls, v):
-      allowed = ['male', 'female', 'other']
-      if v is not None and v not in allowed:
-          raise ValueError('must be male or female')
-      return v
-   
-  @field_validator('dob', mode='before')
-  def parse_dob(cls, v):
-      if v in (None, '', 'null'):
-          return None
-      if isinstance(v, str):
-          return datetime.fromisoformat(v)
-      return v
-  @field_validator('netWorth', mode='before')
-  def validate_netWorth(cls, v):
-      if v is None: return None
-      parsed = helpers.parse_currency(v)
-      if parsed is None:
-          raise ValueError('netWorth must be a valid currency')
-      if parsed < 0:
-          raise ValueError('netWorth must be at least 0')
-      if parsed > 10000000:
-          raise ValueError('netWorth must be at most 10000000')
-      return parsed
 
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 

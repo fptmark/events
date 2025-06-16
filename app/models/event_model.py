@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 import re
 from app.db import DatabaseFactory
 import app.utils as helpers
+from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
 
@@ -29,6 +30,12 @@ class Event(BaseModel):
     tags: Optional[List[str]] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    _validate: ClassVar[bool] = True
+
+    @classmethod
+    def set_validation(cls, validate: bool) -> None:
+        cls._validate = validate
 
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'url': {   'type': 'String',
                              'required': True,
@@ -76,52 +83,57 @@ class Event(BaseModel):
     class Settings:
         name = "event"
 
-    model_config = ConfigDict(
-        populate_by_name=True,
-    )
+    model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
     @field_validator('url', mode='before')
     def validate_url(cls, v):
-        if v is not None and not re.match(r'^https?://[^s]+$', v):
-            raise ValueError('Bad URL format')
+        if cls._validate:
+            if v is not None and not re.match(r'^https?://[^s]+$', v):
+                raise ValueError('Bad URL format')
         return v
      
     @field_validator('title', mode='before')
     def validate_title(cls, v):
-        if v is not None and len(v) > 200:
-            raise ValueError('title must be at most 200 characters')
+        if cls._validate:
+            if v is not None and len(v) > 200:
+                raise ValueError('title must be at most 200 characters')
         return v
      
     @field_validator('dateTime', mode='before')
     def parse_dateTime(cls, v):
-        if v in (None, '', 'null'):
-            return None
-        if isinstance(v, str):
-            return datetime.fromisoformat(v)
+        if cls._validate:
+            if v in (None, '', 'null'):
+                return None
+            if isinstance(v, str):
+                return datetime.fromisoformat(v)
         return v
     @field_validator('location', mode='before')
     def validate_location(cls, v):
-        if v is not None and len(v) > 200:
-            raise ValueError('location must be at most 200 characters')
+        if cls._validate:
+            if v is not None and len(v) > 200:
+                raise ValueError('location must be at most 200 characters')
         return v
      
     @field_validator('cost', mode='before')
     def validate_cost(cls, v):
-        if v is not None and float(v) < 0:
-            raise ValueError('cost must be at least 0')
+        if cls._validate:
+            if v is not None and float(v) < 0:
+                raise ValueError('cost must be at least 0')
         return v
      
     @field_validator('numOfExpectedAttendees', mode='before')
     def validate_numOfExpectedAttendees(cls, v):
-        if v is not None and int(v) < 0:
-            raise ValueError('numOfExpectedAttendees must be at least 0')
+        if cls._validate:
+            if v is not None and int(v) < 0:
+                raise ValueError('numOfExpectedAttendees must be at least 0')
         return v
      
     @field_validator('recurrence', mode='before')
     def validate_recurrence(cls, v):
-        allowed = ['daily', 'weekly', 'monthly', 'yearly']
-        if v is not None and v not in allowed:
-            raise ValueError('recurrence must be one of ' + ','.join(allowed))
+        if cls._validate:
+            allowed = ['daily', 'weekly', 'monthly', 'yearly']
+            if v is not None and v not in allowed:
+                raise ValueError('recurrence must be one of ' + ','.join(allowed))
         return v
      
 
@@ -132,22 +144,15 @@ class Event(BaseModel):
     @classmethod
     async def find_all(cls) -> tuple[Sequence[Self], List[ValidationError]]:
         try:
+            cls.set_validation(Config.is_get_validation(True))
             return await DatabaseFactory.find_all("event", cls)
         except Exception as e:
             raise DatabaseError(str(e), "Event", "find_all")
 
     @classmethod
-    def find(cls):
-        class FindAdapter:
-            @staticmethod
-            async def to_list():
-                return await cls.find_all()
-
-        return FindAdapter()
-
-    @classmethod
     async def get(cls, id: str) -> Self:
         try:
+            cls.set_validation(Config.is_get_validation(False))
             event = await DatabaseFactory.get_by_id("event", str(id), cls)
             if not event:
                 raise NotFoundError("Event", id)
@@ -159,6 +164,7 @@ class Event(BaseModel):
 
     async def save(self, doc_id: Optional[str] = None) -> Self:
         try:
+            self.set_validation(True)  # Always validate on save
             self.updatedAt = datetime.now(timezone.utc)
             if doc_id:
                 self.id = doc_id
@@ -213,51 +219,6 @@ class EventCreate(BaseModel):
   recurrence: Optional[str] = Field(None, description =": ['daily', 'weekly', 'monthly', 'yearly']")
   tags: Optional[List[str]] = Field(None)
 
-  @field_validator('url', mode='before')
-  def validate_url(cls, v):
-      if v is not None and not re.match(r'^https?://[^s]+$', v):
-          raise ValueError('Bad URL format')
-      return v
-   
-  @field_validator('title', mode='before')
-  def validate_title(cls, v):
-      if v is not None and len(v) > 200:
-          raise ValueError('title must be at most 200 characters')
-      return v
-   
-  @field_validator('dateTime', mode='before')
-  def parse_dateTime(cls, v):
-      if v in (None, '', 'null'):
-          return None
-      if isinstance(v, str):
-          return datetime.fromisoformat(v)
-      return v
-  @field_validator('location', mode='before')
-  def validate_location(cls, v):
-      if v is not None and len(v) > 200:
-          raise ValueError('location must be at most 200 characters')
-      return v
-   
-  @field_validator('cost', mode='before')
-  def validate_cost(cls, v):
-      if v is not None and float(v) < 0:
-          raise ValueError('cost must be at least 0')
-      return v
-   
-  @field_validator('numOfExpectedAttendees', mode='before')
-  def validate_numOfExpectedAttendees(cls, v):
-      if v is not None and int(v) < 0:
-          raise ValueError('numOfExpectedAttendees must be at least 0')
-      return v
-   
-  @field_validator('recurrence', mode='before')
-  def validate_recurrence(cls, v):
-      allowed = ['daily', 'weekly', 'monthly', 'yearly']
-      if v is not None and v not in allowed:
-          raise ValueError('recurrence must be one of ' + ','.join(allowed))
-      return v
-   
-
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
 
@@ -274,51 +235,6 @@ class EventUpdate(BaseModel):
   numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
   recurrence: Optional[str] = Field(None, description =": ['daily', 'weekly', 'monthly', 'yearly']")
   tags: Optional[List[str]] = Field(None)
-
-  @field_validator('url', mode='before')
-  def validate_url(cls, v):
-      if v is not None and not re.match(r'^https?://[^s]+$', v):
-          raise ValueError('Bad URL format')
-      return v
-   
-  @field_validator('title', mode='before')
-  def validate_title(cls, v):
-      if v is not None and len(v) > 200:
-          raise ValueError('title must be at most 200 characters')
-      return v
-   
-  @field_validator('dateTime', mode='before')
-  def parse_dateTime(cls, v):
-      if v in (None, '', 'null'):
-          return None
-      if isinstance(v, str):
-          return datetime.fromisoformat(v)
-      return v
-  @field_validator('location', mode='before')
-  def validate_location(cls, v):
-      if v is not None and len(v) > 200:
-          raise ValueError('location must be at most 200 characters')
-      return v
-   
-  @field_validator('cost', mode='before')
-  def validate_cost(cls, v):
-      if v is not None and float(v) < 0:
-          raise ValueError('cost must be at least 0')
-      return v
-   
-  @field_validator('numOfExpectedAttendees', mode='before')
-  def validate_numOfExpectedAttendees(cls, v):
-      if v is not None and int(v) < 0:
-          raise ValueError('numOfExpectedAttendees must be at least 0')
-      return v
-   
-  @field_validator('recurrence', mode='before')
-  def validate_recurrence(cls, v):
-      allowed = ['daily', 'weekly', 'monthly', 'yearly']
-      if v is not None and v not in allowed:
-          raise ValueError('recurrence must be one of ' + ','.join(allowed))
-      return v
-   
 
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 

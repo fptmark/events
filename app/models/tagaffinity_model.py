@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 import re
 from app.db import DatabaseFactory
 import app.utils as helpers
+from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 
 
@@ -24,6 +25,12 @@ class TagAffinity(BaseModel):
     profileId: str = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    _validate: ClassVar[bool] = True
+
+    @classmethod
+    def set_validation(cls, validate: bool) -> None:
+        cls._validate = validate
 
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'tag': {'type': 'String', 'required': True, 'max_length': 50},
                   'affinity': {   'type': 'Integer',
@@ -48,22 +55,22 @@ class TagAffinity(BaseModel):
     class Settings:
         name = "tagaffinity"
 
-    model_config = ConfigDict(
-        populate_by_name=True,
-    )
+    model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
     @field_validator('tag', mode='before')
     def validate_tag(cls, v):
-        if v is not None and len(v) > 50:
-            raise ValueError('tag must be at most 50 characters')
+        if cls._validate:
+            if v is not None and len(v) > 50:
+                raise ValueError('tag must be at most 50 characters')
         return v
      
     @field_validator('affinity', mode='before')
     def validate_affinity(cls, v):
-        if v is not None and int(v) < -100:
-            raise ValueError('affinity must be at least -100')
-        if v is not None and int(v) > 100:
-            raise ValueError('affinity must be at most 100')
+        if cls._validate:
+            if v is not None and int(v) < -100:
+                raise ValueError('affinity must be at least -100')
+            if v is not None and int(v) > 100:
+                raise ValueError('affinity must be at most 100')
         return v
      
 
@@ -74,22 +81,15 @@ class TagAffinity(BaseModel):
     @classmethod
     async def find_all(cls) -> tuple[Sequence[Self], List[ValidationError]]:
         try:
+            cls.set_validation(Config.is_get_validation(True))
             return await DatabaseFactory.find_all("tagaffinity", cls)
         except Exception as e:
             raise DatabaseError(str(e), "TagAffinity", "find_all")
 
     @classmethod
-    def find(cls):
-        class FindAdapter:
-            @staticmethod
-            async def to_list():
-                return await cls.find_all()
-
-        return FindAdapter()
-
-    @classmethod
     async def get(cls, id: str) -> Self:
         try:
+            cls.set_validation(Config.is_get_validation(False))
             tagaffinity = await DatabaseFactory.get_by_id("tagaffinity", str(id), cls)
             if not tagaffinity:
                 raise NotFoundError("TagAffinity", id)
@@ -101,6 +101,7 @@ class TagAffinity(BaseModel):
 
     async def save(self, doc_id: Optional[str] = None) -> Self:
         try:
+            self.set_validation(True)  # Always validate on save
             self.updatedAt = datetime.now(timezone.utc)
             if doc_id:
                 self.id = doc_id
@@ -150,21 +151,6 @@ class TagAffinityCreate(BaseModel):
   affinity: int = Field(..., ge=-100, le=100)
   profileId: str = Field(...)
 
-  @field_validator('tag', mode='before')
-  def validate_tag(cls, v):
-      if v is not None and len(v) > 50:
-          raise ValueError('tag must be at most 50 characters')
-      return v
-   
-  @field_validator('affinity', mode='before')
-  def validate_affinity(cls, v):
-      if v is not None and int(v) < -100:
-          raise ValueError('affinity must be at least -100')
-      if v is not None and int(v) > 100:
-          raise ValueError('affinity must be at most 100')
-      return v
-   
-
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
 
@@ -176,21 +162,6 @@ class TagAffinityUpdate(BaseModel):
   tag: str = Field(..., max_length=50)
   affinity: int = Field(..., ge=-100, le=100)
   profileId: str = Field(...)
-
-  @field_validator('tag', mode='before')
-  def validate_tag(cls, v):
-      if v is not None and len(v) > 50:
-          raise ValueError('tag must be at most 50 characters')
-      return v
-   
-  @field_validator('affinity', mode='before')
-  def validate_affinity(cls, v):
-      if v is not None and int(v) < -100:
-          raise ValueError('affinity must be at least -100')
-      if v is not None and int(v) > 100:
-          raise ValueError('affinity must be at most 100')
-      return v
-   
 
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
