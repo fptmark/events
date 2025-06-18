@@ -10,27 +10,8 @@ import re
 
 
 # Path to the configuration file
-CONFIG_FILE = 'config.json'
 
 T = TypeVar('T')
-
-def load_system_config(config_file: str = CONFIG_FILE) -> Dict[str, Any]:
-    """
-    Load and return the configuration from config.json.
-    If the file is not found, return default configuration values.
-    """
-    config_path = Path(config_file)
-    if not config_path.exists():
-        print(f'Warning: Configuration file {config_file} not found. Using defaults.')
-        return {
-            'mongo_uri': 'mongodb://localhost:27017',
-            'db_name': 'default_db',
-            'server_port': 8000,
-            'environment': 'production',
-            'log_level': 'info',
-        }
-    return load_settings(config_path)
-
 
 def load_settings(config_file: Path | None) -> Dict[str, Any]:
     try:

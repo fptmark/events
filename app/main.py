@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 import app.utils as utils
+from app.config import Config
 from app.db import DatabaseFactory
 from app.db.initializer import DatabaseInitializer
 from fastapi import FastAPI, Request
@@ -56,13 +57,15 @@ def parse_args():
                        help='Override log level from config')
     parser.add_argument('--initdb', action='store_true',
                        help='Initialize database: manage required indexes based on model metadata, then exit')
+    parser.add_argument('--resetdb', action='store_true',
+                       help='Reset database: delete all indexes but preserve data, then exit')
     return parser.parse_args()
 
 # Parse command line arguments
 args = parse_args()
 
 LOG_FILE = "app.log"
-config = utils.load_system_config(args.config_file)
+config = Config.load_system_config(args.config_file)
 is_dev = config.get('environment', 'production') == 'development'
 project = config.get('project_name', 'Project Name Here')
 my_log_level = (args.log_level or 
@@ -82,21 +85,57 @@ logger = logging.getLogger(__name__)
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 # Validate database configuration before creating FastAPI app
-db_type = config.get('database', None)
-db_uri = config.get('db_uri', None)
-db_name = config.get('db_name', None)
+db_type: str = config.get('database', '')
+db_uri: str = config.get('db_uri', '')
+db_name: str = config.get('db_name', '')
+validations = Config.validations(False)
+print(f"Database get validation : get/get-all {validations[0]}.  Unique validation: {validations[1]}")
 
-if not (db_uri and db_name and db_type):
+if (db_uri is '' or db_name is '' or db_type is ''):
     logger.error("Missing required database configuration")
     sys.exit(1)
 
-try:
-    # Test database connection before creating FastAPI app
-    db = DatabaseFactory.create(db_type)
-    logger.info(f"Database type {db_type} is supported")
-except Exception as e:
-    logger.error(f"Failed to create database instance: {str(e)}")
+# Validate database type is supported
+supported_types = ["mongodb", "elasticsearch"]
+if db_type.lower() not in supported_types:
+    logger.error(f"Unsupported database type: {db_type}. Supported types: {supported_types}")
     sys.exit(1)
+
+logger.info(f"Database type {db_type} is supported")
+
+# Handle database management commands before creating FastAPI app
+if args.initdb or args.resetdb:
+    import asyncio
+    
+    async def handle_db_command():
+        try:
+            # Initialize database connection
+            db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name)
+            initializer = DatabaseInitializer(db_instance)
+            
+            if args.initdb:
+                logger.info("--initdb flag specified, initializing database schema")
+                logger.info("Starting database initialization...")
+                await initializer.initialize_database()
+                logger.info("Database initialization completed successfully")
+            
+            elif args.resetdb:
+                logger.info("--resetdb flag specified, resetting database indexes")
+                logger.info("Starting database reset (indexes only)...")
+                await initializer.reset_database_indexes()
+                logger.info("Database reset completed successfully")
+            
+            # Cleanup
+            await DatabaseFactory.close()
+            logger.info("Database connection closed")
+            
+        except Exception as e:
+            logger.error(f"Failed to execute database command: {str(e)}")
+            sys.exit(1)
+    
+    # Run database command and exit
+    asyncio.run(handle_db_command())
+    sys.exit(0)
 
 # Create the FastAPI app.
 @asynccontextmanager
@@ -107,20 +146,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"Connecting to {db_type} datastore at {db_uri} with db {db_name}")
     
     try:
-        # Initialize database instance
-        await db.init(db_uri, db_name)
-        DatabaseFactory.set_instance(db, db_type)
+        # Initialize database connection for normal server operation
+        db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name)
         logger.info(f"Connected to {db_type} successfully")
-
-        # Handle --initdb flag if present
-        if args.initdb:
-            logger.info("--initdb flag specified, initializing database schema")
-            logger.info("Starting database initialization...")
-            initializer = DatabaseInitializer(db)
-            await initializer.initialize_database()
-            logger.info("Database initialization completed successfully")
-            # Exit after initialization
-            sys.exit(0)
 
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
@@ -253,7 +281,7 @@ def get_entities_metadata():
 
 def main():
     args = parse_args()
-    config = utils.load_system_config(args.config_file)
+    #config = utils.load_system_config(args.config_file)
 
     # Configure logging
     logging.basicConfig(
@@ -265,47 +293,8 @@ def main():
     logger.info("Welcome to the  Management System")
     logger.info(" Access Swagger docs at http://127.0.0.1:5500/docs")
 
-    # If --initdb flag is present, just initialize the database and exit
-    if args.initdb:
-        import asyncio
-        async def init_db():
-            db_type = config.get('database', None)
-            db_uri = config.get('db_uri', None)
-            db_name = config.get('db_name', None)
 
-            if not all([db_type, db_uri, db_name]):
-                logger.error("Missing required database configuration")
-                return
-
-            try:
-                # Create and initialize database instance
-                db = DatabaseFactory.create(db_type)
-                await db.init(db_uri, db_name)
-                DatabaseFactory.set_instance(db, db_type)
-                logger.info(f"Connected to {db_type} successfully")
-
-                # Initialize database schema
-                logger.info("--initdb flag specified, initializing database schema")
-                logger.info("Starting database initialization...")
-                initializer = DatabaseInitializer(db)
-                await initializer.initialize_database()
-                logger.info("Database initialization completed successfully")
-
-                # Cleanup
-                await DatabaseFactory.close()
-                logger.info(f"{db_type} connection closed")
-                logger.info("Database instance closed and cleaned up")
-                logger.info("Database connections closed")
-
-            except Exception as e:
-                logger.error(f"Failed to initialize database: {str(e)}")
-                sys.exit(1)
-
-        # Run database initialization
-        asyncio.run(init_db())
-        sys.exit(0)
-
-    # Start the server normally if --initdb is not present
+    # Start the server normally
     import uvicorn
     uvicorn.run(
         "app.main:app",

@@ -1,9 +1,12 @@
-from typing import Optional
+from typing import Any, Dict, List, Optional, Type, TypeVar, cast, Tuple
 import logging
+from pydantic import BaseModel
 
-from .base import DatabaseInterface
+from .base import DatabaseInterface, T
 from .elasticsearch import ElasticsearchDatabase
-
+from .mongodb import MongoDatabase
+from ..errors import DatabaseError
+from ..notification import notify_database_warning, NotificationType
 
 class DatabaseFactory:
     """
@@ -15,54 +18,43 @@ class DatabaseFactory:
     
     _instance: Optional[DatabaseInterface] = None
     _db_type: Optional[str] = None
+    _id_field: str = "_id"  # Default to MongoDB's ID field
 
     @classmethod
-    def create(cls, db_type: str) -> DatabaseInterface:
-        """
-        Create a database instance for the specified type.
-        
-        Args:
-            db_type: Database type ('elasticsearch', 'mongodb', etc.)
+    async def initialize(cls, db_type: str, connection_str: str, database_name: str) -> DatabaseInterface:
+        db: DatabaseInterface
+        """Initialize database connection."""
+        if cls._instance is not None:
+            logging.info("DatabaseFactory: Already initialized")
+            return cls._instance
             
-        Returns:
-            DatabaseInterface implementation
+        try:
+            if db_type.lower() == "mongodb":
+                db = MongoDatabase()
+            elif db_type.lower() == "elasticsearch":
+                db = ElasticsearchDatabase()
+            else:
+                raise ValueError(f"Unsupported database type: {db_type}")
+                
+            await db.init(connection_str, database_name)
+            cls._instance = db
+            cls._db_type = db_type
+            return db
             
-        Raises:
-            ValueError: If database type is not supported
-        """
-        if db_type == "elasticsearch":
-            return ElasticsearchDatabase()
-        elif db_type == "mongodb":
-            # Import here to avoid circular dependencies and optional dependency
-            try:
-                from .mongodb import MongoDatabase
-                return MongoDatabase()
-            except ImportError:
-                raise ValueError(
-                    f"MongoDB support not available. Install required dependencies for MongoDB."
-                )
-        else:
-            supported_types = ["elasticsearch", "mongodb"]
-            raise ValueError(
-                f"Unknown database type: {db_type}. "
-                f"Supported types: {', '.join(supported_types)}"
+        except Exception as e:
+            if isinstance(e, DatabaseError):
+                raise
+            raise DatabaseError(
+                message=f"Failed to initialize database: {str(e)}",
+                entity="connection",
+                operation="initialize"
             )
 
     @classmethod
     def get_instance(cls) -> DatabaseInterface:
-        """
-        Get the current database instance.
-        
-        Returns:
-            DatabaseInterface: Current database instance
-            
-        Raises:
-            RuntimeError: If no database instance has been set
-        """
+        """Get the database instance."""
         if cls._instance is None:
-            raise RuntimeError(
-                "Database not initialized. Call DatabaseFactory.set_instance() first."
-            )
+            raise RuntimeError("Database not initialized. Call initialize() first.")
         return cls._instance
 
     @classmethod
@@ -90,11 +82,7 @@ class DatabaseFactory:
 
     @classmethod
     async def close(cls) -> None:
-        """
-        Close the current database instance and cleanup.
-        
-        Should be called during application shutdown.
-        """
+        """Close the database connection."""
         if cls._instance is not None:
             await cls._instance.close()
             cls._instance = None
@@ -120,39 +108,40 @@ class DatabaseFactory:
         return cls.get_instance().id_field
 
     @classmethod
-    async def find_all(cls, collection: str, model_cls):
-        """Find all documents in collection"""
-        return await cls.get_instance().find_all(collection, model_cls)
+    async def get_all(cls, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """Get all documents from a collection"""
+        data, warnings = await cls.get_instance().get_all(collection, unique_constraints)
+        
+        # Convert database warnings to notifications
+        for warning in warnings:
+            notify_database_warning(warning, entity=collection, operation="get_all")
+            
+        return data, warnings
 
     @classmethod
-    async def get_by_id(cls, collection: str, doc_id: str, model_cls):
+    async def get_by_id(cls, collection: str, doc_id: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Get document by ID"""
-        return await cls.get_instance().get_by_id(collection, doc_id, model_cls)
+        data, warnings = await cls.get_instance().get_by_id(collection, doc_id, unique_constraints)
+        
+        # Convert database warnings to notifications
+        for warning in warnings:
+            notify_database_warning(warning, entity=collection, operation="get_by_id")
+            
+        return data, warnings
 
     @classmethod
-    async def save_document(cls, collection: str, doc_id, data, unique_constraints=None):
+    async def save_document(cls, collection: str, doc_id: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save document to collection"""
-        return await cls.get_instance().save_document(collection, doc_id, data, unique_constraints)
+        data_result, warnings = await cls.get_instance().save_document(collection, doc_id, data, unique_constraints)
+        
+        # Convert database warnings to notifications
+        for warning in warnings:
+            notify_database_warning(warning, entity=collection, operation="save_document")
+            
+        return data_result, warnings
 
     @classmethod
     async def delete_document(cls, collection: str, doc_id: str) -> bool:
         """Delete document from collection"""
         return await cls.get_instance().delete_document(collection, doc_id)
 
-    @classmethod
-    async def check_unique_constraints(cls, collection: str, constraints, 
-                                     data, exclude_id=None):
-        """Check uniqueness constraints"""
-        return await cls.get_instance().check_unique_constraints(
-            collection, constraints, data, exclude_id
-        )
-
-    @classmethod
-    async def exists(cls, collection: str, doc_id: str) -> bool:
-        """Check if document exists"""
-        return await cls.get_instance().exists(collection, doc_id)
-
-    @classmethod
-    def validate_document(cls, doc_data, model_cls):
-        """Validate document data against model"""
-        return cls.get_instance().validate_document(doc_data, model_cls)

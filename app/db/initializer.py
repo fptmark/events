@@ -133,11 +133,6 @@ class DatabaseInitializer:
             self.logger.info(f"    - {idx.get('name', 'unnamed')}: {fields_str}{unique_str}")
         
         try:
-            # Create collection if it doesn't exist
-            if not await self.db.collection_exists(collection):
-                self.logger.info(f"  Creating collection '{collection}'")
-                await self.db.create_collection(collection)
-            
             # Get existing indexes
             try:
                 existing_indexes = await self.db.list_indexes(collection)
@@ -157,27 +152,93 @@ class DatabaseInitializer:
             
             # Create missing indexes
             existing_index_names = {idx['name'] for idx in existing_indexes}
-            for required_idx in required_indexes:
-                if required_idx['name'] not in existing_index_names:
-                    try:
-                        created = await self.db.create_index(
-                            collection, 
-                            required_idx['fields'], 
-                            unique=required_idx['unique']
-                        )
-                        if created:
-                            fields_str = " + ".join(required_idx['fields'])
-                            self.logger.info(f"  ✓ Created index '{required_idx['name']}' on {fields_str}")
-                        else:
-                            self.logger.info(f"  ⚠ Index '{required_idx['name']}' already exists or couldn't be created")
-                    except Exception as e:
-                        self.logger.error(f"  ✗ Failed to create index '{required_idx['name']}': {str(e)}")
-                else:
-                    self.logger.info(f"  ✓ Index '{required_idx['name']}' already exists")
+            missing_indexes = [idx for idx in required_indexes if idx['name'] not in existing_index_names]
+            
+            if missing_indexes:
+                self.logger.info(f"  Creating missing indexes for '{collection}'")
+                await self.db.create_collection(collection, missing_indexes)
             
             # Note: We don't delete unused indexes automatically as they might be manually created
             # and serve other purposes beyond what's defined in model metadata
             
         except Exception as e:
             self.logger.error(f"Failed to manage indexes for collection '{collection}': {str(e)}")
+            raise
+    
+    async def reset_database_indexes(self) -> None:
+        """
+        Reset database indexes by:
+        1. Discovering existing collections and their indexes
+        2. Deleting all non-system indexes (preserving data)
+        
+        Note: This only removes indexes, never collections or data.
+        """
+        self.logger.info("Starting database index reset...")
+        
+        try:
+            # Get list of all collections
+            collections = await self.db.list_collections()
+            self.logger.info(f"Found {len(collections)} collections to reset indexes for")
+            
+            # Reset indexes for each collection
+            for collection in collections:
+                await self._reset_collection_indexes(collection)
+            
+            self.logger.info("Database index reset completed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Database index reset failed: {str(e)}")
+            raise DatabaseError(
+                message=f"Failed to reset database indexes: {str(e)}",
+                entity="database",
+                operation="reset_indexes"
+            )
+    
+    async def _reset_collection_indexes(self, collection: str) -> None:
+        """
+        Reset indexes for a specific collection by removing all non-system indexes.
+        
+        Args:
+            collection: Collection name
+        """
+        self.logger.info(f"\n--- Resetting indexes for collection '{collection}' ---")
+        
+        try:
+            # Get existing indexes
+            existing_indexes = await self.db.list_indexes(collection)
+            self.logger.info(f"  Found {len(existing_indexes)} existing indexes") 
+            
+            if not existing_indexes:
+                self.logger.info(f"  No indexes to reset for '{collection}'")
+                return
+            
+            # Filter out system indexes (typically _id index)
+            user_indexes = [
+                idx for idx in existing_indexes 
+                if not idx.get('name', '').startswith('_') and 
+                   idx.get('name', '') != '_id_' and
+                   not idx.get('system', False)
+            ]
+            
+            if not user_indexes:
+                self.logger.info(f"  No user-defined indexes to remove for '{collection}'")
+                return
+            
+            self.logger.info(f"  Removing {len(user_indexes)} user-defined indexes:")
+            for idx in user_indexes:
+                fields = idx.get('fields', [])
+                fields_str = " + ".join(fields) if len(fields) > 1 else (fields[0] if fields else 'unknown')
+                unique_str = " (UNIQUE)" if idx.get('unique') else ""
+                self.logger.info(f"    - {idx.get('name', 'unnamed')}: {fields_str}{unique_str}")
+                
+                try:
+                    if fields:  # Only attempt deletion if we have valid field names
+                        await self.db.delete_index(collection, fields)
+                    else:
+                        self.logger.warning(f"    Could not extract field names for index {idx.get('name', 'unnamed')}")
+                except Exception as e:
+                    self.logger.warning(f"    Failed to delete index {idx.get('name', 'unnamed')}: {str(e)}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to reset indexes for collection '{collection}': {str(e)}")
             raise
