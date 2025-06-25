@@ -4,7 +4,6 @@ import { ConfigService } from './config.service';
 import { Observable, of, firstValueFrom } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 import { ModeService } from './mode.service';
-import { EntityService } from './entity.service';
 interface Metadata {
   projectName: string;
   database?: string
@@ -28,11 +27,6 @@ interface DisplayInfo {
   displayPages: string;
   fields: string[];
 }
-
-// interface RawShowConfig {
-//   endpoint: string;
-//   displayInfo: DisplayInfo[];
-// }
 
 export interface ShowConfig {
   endpoint: string;
@@ -243,19 +237,5 @@ export class MetadataService {
     return '';
   }
 
-  /**
-   * Get the fields that should be displayed for an entity in a specific mode
-   * @param entityName The name of the entity
-   * @param currentMode The current mode (summary, details, edit, create)
-   * @returns An array of field names to display, ordered according to metadata
-   */
-  getViewFields(entityName: string, currentMode: string): string[] {
-    const metadata = this.getEntityMetadata(entityName);
-    const visibleFields = this.modeService.getViewFields(metadata, currentMode);
-    
-    // Apply field ordering if needed
-    // For now, return the fields as-is. Field ordering can be added later if needed.
-    return visibleFields;
-  }
   
 }
