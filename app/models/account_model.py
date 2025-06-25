@@ -21,13 +21,13 @@ class UniqueValidationError(Exception):
 
 
 class Account(BaseModel):
-    id: Optional[str] = Field(default=None, alias="_id")
+    id: Optional[str] = Field(default=None, alias='_id')
     expiredAt: Optional[datetime] = Field(None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-
-    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'expiredAt': {'type': 'ISODate', 'required': False},
+    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'id': {'type': 'ObjectId', 'autoGenerate': True},
+                  'expiredAt': {'type': 'ISODate', 'required': False},
                   'createdAt': {   'type': 'ISODate',
                                    'autoGenerate': True,
                                    'ui': {   'readOnly': True,
@@ -48,9 +48,16 @@ class Account(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
+    def model_dump(self, **kwargs) -> Dict[str, Any]:
+        """Override model_dump to normalize ID field to 'id' for API responses"""
+        data = super().model_dump(**kwargs)
+        # Normalize database-specific _id to generic id
+        if "_id" in data:
+            data["id"] = data.pop("_id")
+        return data
+
     @field_validator('expiredAt', mode='before')
     def parse_expiredAt(cls, v):
-        # Always validate - this will only be called when using model_validate()
         if v in (None, '', 'null'):
             return None
         if isinstance(v, str):
@@ -108,7 +115,7 @@ class Account(BaseModel):
 
 
     @classmethod
-    async def get(cls, id: str) -> Self:
+    async def get(cls, id: str) -> tuple[Self, List[str]]:
         try:
             get_validations, unique_validations = Config.validations(False)
             unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
@@ -122,7 +129,7 @@ class Account(BaseModel):
             # Conditional validation - validate AFTER read if requested
             if get_validations:
                 try:
-                    return cls.model_validate(raw_doc)  # WITH validation
+                    return cls.model_validate(raw_doc), warnings  # WITH validation
                 except PydanticValidationError as e:
                     # Convert validation errors to notifications
                     for error in e.errors():
@@ -133,29 +140,27 @@ class Account(BaseModel):
                             value=error.get('input'),
                             operation="get"
                         )
-                    return cls(**raw_doc)  # Fallback to no validation
+                    return cls(**raw_doc), warnings  # Fallback to no validation
             else:
-                return cls(**raw_doc)  # NO validation
+                return cls(**raw_doc), warnings  # NO validation
         except NotFoundError:
             raise
         except Exception as e:
             raise DatabaseError(str(e), "Account", "get")
 
-    async def save(self, doc_id: Optional[str] = None) -> Self:
+    async def save(self) -> tuple[Self, List[str]]:
         try:
-            get_validations, unique_validations = Config.validations(True)
+            _, unique_validations = Config.validations(True)
             unique_constraints = self._metadata.get('uniques', []) if unique_validations else []
             
             self.updatedAt = datetime.now(timezone.utc)
-            if doc_id:
-                self.id = doc_id
-
+            
             # VALIDATE the instance BEFORE saving to prevent bad data in DB
             try:
                 # This validates all fields and raises PydanticValidationError if invalid
                 validated_instance = self.__class__.model_validate(self.model_dump())
                 # Use the validated data for save
-                data = validated_instance.model_dump(exclude={"id"})
+                data = validated_instance.model_dump()
             except PydanticValidationError as e:
                 # Convert to notifications and ValidationError format
                 for err in e.errors():
@@ -169,46 +174,55 @@ class Account(BaseModel):
                 failures = [ValidationFailure(field=str(err["loc"][-1]), message=err["msg"], value=err.get("input")) for err in e.errors()]
                 raise ValidationError(message="Validation failed before save", entity="Account", invalid_fields=failures)
             
-            # Save document with unique constraints
-            doc_id_to_save = self.id or ""  # Use empty string if None, database will generate ID
-            result, warnings = await DatabaseFactory.save_document("account", doc_id_to_save, data, unique_constraints)
-            
-            # Database warnings are now handled by DatabaseFactory
-            
+            # Save document with unique constraints - pass complete data
+            result, warnings = await DatabaseFactory.save_document("account", data, unique_constraints)
+
             # Update ID from result
             if not self.id and result and isinstance(result, dict) and result.get(DatabaseFactory.get_id_field()):
                 self.id = result[DatabaseFactory.get_id_field()]
 
-            return self
+            return self, warnings
         except ValidationError:
             # Re-raise validation errors directly
             raise
         except Exception as e:
             raise DatabaseError(str(e), "Account", "save")
-            
-    async def delete(self) -> bool:
-        if not self.id:
+ 
+    @classmethod
+    async def delete(cls, account_id: str) -> tuple[bool, List[str]]:
+        if not account_id:
             raise ValidationError(
                 message="Cannot delete account without ID",
                 entity="Account",
                 invalid_fields=[ValidationFailure("id", "ID is required for deletion", None)]
             )
         try:
-            result = await DatabaseFactory.delete_document("account", self.id)
+            result = await DatabaseFactory.delete_document("account", account_id)
             if not result:
-                raise NotFoundError("Account", self.id)
-            return True
+                raise NotFoundError("Account", account_id)
+            return True, []
         except NotFoundError:
             raise
         except Exception as e:
             raise DatabaseError(str(e), "Account", "delete")
 
+#from pydantic import BaseModel, Field, ConfigDict
+#from typing import Optional, List, Dict, Any
+#from datetime import datetime
+
 class AccountCreate(BaseModel):
+  id: Optional[str] = Field(default=None, alias='_id')
   expiredAt: Optional[datetime] = Field(None)
 
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
 
+
+#from pydantic import BaseModel, Field, ConfigDict
+#from typing import Optional, List, Dict, Any
+#from datetime import datetime
+
 class AccountUpdate(BaseModel):
+  id: Optional[str] = Field(default=None, alias='_id')
   expiredAt: Optional[datetime] = Field(None)
 
   model_config = ConfigDict(from_attributes=True, validate_by_name=True)
