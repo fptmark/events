@@ -39,6 +39,7 @@ class ElasticsearchDatabase(DatabaseInterface):
     def _get_client(self) -> AsyncElasticsearch:
         """Get the AsyncElasticsearch client instance."""
         self._ensure_initialized()
+        assert self._client is not None, "Client should be initialized after _ensure_initialized()"
         return self._client
 
     async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:

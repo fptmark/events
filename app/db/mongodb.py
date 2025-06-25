@@ -1,9 +1,8 @@
 import logging
 from typing import Any, Dict, List, Optional, Type, Union, cast, Tuple
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from pymongo.results import InsertOneResult, UpdateResult, DeleteResult
 from bson import ObjectId
-from pydantic import BaseModel, ValidationError as PydanticValidationError
+from pydantic import ValidationError as PydanticValidationError
 
 from .base import DatabaseInterface, T
 from ..errors import DatabaseError, ValidationError, ValidationFailure
@@ -40,6 +39,17 @@ class MongoDatabase(DatabaseInterface):
                 self._db = None
             self._handle_connection_error(e, database_name)
 
+    def _get_db(self) -> AsyncIOMotorDatabase:
+        """Get the database instance with proper type checking."""
+        self._ensure_initialized()
+        if self._db is None:
+            raise DatabaseError(
+                message="Database not initialized",
+                entity="database",
+                operation="get_db"
+            )
+        return self._db
+
     async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Get all documents from a collection."""
         self._ensure_initialized()
@@ -52,7 +62,7 @@ class MongoDatabase(DatabaseInterface):
                 if missing_indexes:
                     warnings.extend(missing_indexes)
             
-            cursor = self._db[collection].find()
+            cursor = self._get_db()[collection].find()
             results = []
             async for doc in cursor:
                 # Convert ObjectId to string for consistency
@@ -85,7 +95,7 @@ class MongoDatabase(DatabaseInterface):
                 query_id = ObjectId(doc_id)
                 
             # Get document
-            doc = await self._db[collection].find_one({self.id_field: query_id})
+            doc = await self._get_db()[collection].find_one({self.id_field: query_id})
             if doc is None:
                 raise DatabaseError(
                     message=f"Document not found: {doc_id}",
@@ -132,7 +142,7 @@ class MongoDatabase(DatabaseInterface):
                 # New document: let MongoDB auto-generate _id
                 # Remove any empty ID fields from save data
                 save_data.pop('id', None)
-                result = await self._db[collection].insert_one(save_data)
+                result = await self._get_db()[collection].insert_one(save_data)
                 doc_id_str = str(result.inserted_id)
             else:
                 # Existing document: update with specific ID
@@ -144,7 +154,7 @@ class MongoDatabase(DatabaseInterface):
                 save_data.pop('id', None) 
                     
                 # Update existing document
-                result = await self._db[collection].replace_one({self.id_field: query_id}, save_data, upsert=True)
+                result = await self._get_db()[collection].replace_one({self.id_field: query_id}, save_data, upsert=True)
                 doc_id_str = str(query_id) if isinstance(query_id, ObjectId) else query_id
                 
             # Get the saved document (this will return tuple, so unpack)
@@ -172,7 +182,7 @@ class MongoDatabase(DatabaseInterface):
         self._ensure_initialized()
             
         try:
-            collections = await self._db.list_collection_names()
+            collections = await self._get_db().list_collection_names()
             return collection in collections
         except Exception as e:
             raise DatabaseError(
@@ -187,7 +197,7 @@ class MongoDatabase(DatabaseInterface):
             
         try:
             # Create collection
-            await self._db.create_collection(collection)
+            await self._get_db().create_collection(collection)
             
             # Create indexes
             await self._create_required_indexes(collection, indexes)
@@ -206,7 +216,7 @@ class MongoDatabase(DatabaseInterface):
             
         for index in indexes:
             try:
-                await self._db[collection].create_index(
+                await self._get_db()[collection].create_index(
                     index['fields'],
                     unique=index.get('unique', False),
                     name=index.get('name')
@@ -223,7 +233,7 @@ class MongoDatabase(DatabaseInterface):
         self._ensure_initialized()
             
         try:
-            await self._db.drop_collection(collection)
+            await self._get_db().drop_collection(collection)
             return True
         except Exception as e:
             raise DatabaseError(
@@ -242,7 +252,7 @@ class MongoDatabase(DatabaseInterface):
             if isinstance(doc_id, str) and ObjectId.is_valid(doc_id):
                 query_id = ObjectId(doc_id)
                 
-            result = await self._db[collection].delete_one({self.id_field: query_id})
+            result = await self._get_db()[collection].delete_one({self.id_field: query_id})
             return result.deleted_count > 0
         except Exception as e:
             raise DatabaseError(
@@ -256,7 +266,7 @@ class MongoDatabase(DatabaseInterface):
         self._ensure_initialized()
             
         try:
-            return await self._db.list_collection_names()
+            return await self._get_db().list_collection_names()
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
@@ -269,7 +279,7 @@ class MongoDatabase(DatabaseInterface):
         self._ensure_initialized()
             
         try:
-            raw_indexes = await self._db[collection].list_indexes().to_list(None)
+            raw_indexes = await self._get_db()[collection].list_indexes().to_list(None)
             standardized_indexes = []
             
             for raw_idx in raw_indexes:
@@ -305,7 +315,7 @@ class MongoDatabase(DatabaseInterface):
         self._ensure_initialized()
             
         try:
-            cursor = self._db[collection].find()
+            cursor = self._get_db()[collection].find()
             results = []
             async for doc in cursor:
                 try:
@@ -380,7 +390,7 @@ class MongoDatabase(DatabaseInterface):
                     query[self.id_field] = {"$ne": exclude_id}
                     
                 # Check if any document matches
-                if await self._db[collection].find_one(query):
+                if await self._get_db()[collection].find_one(query):
                     violations.append(f"Unique constraint violation on fields: {', '.join(fields)}")
                     
             return violations
@@ -396,7 +406,7 @@ class MongoDatabase(DatabaseInterface):
         self._ensure_initialized()
             
         try:
-            await self._db[collection].create_index(
+            await self._get_db()[collection].create_index(
                 [(field, 1) for field in fields],
                 unique=unique
             )
@@ -412,7 +422,7 @@ class MongoDatabase(DatabaseInterface):
         self._ensure_initialized()
             
         try:
-            await self._db[collection].drop_index([(field, 1) for field in fields])
+            await self._get_db()[collection].drop_index([(field, 1) for field in fields])
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
@@ -430,7 +440,7 @@ class MongoDatabase(DatabaseInterface):
             if isinstance(doc_id, str) and ObjectId.is_valid(doc_id):
                 query_id = ObjectId(doc_id)
                 
-            result = await self._db[collection].count_documents({self.id_field: query_id})
+            result = await self._get_db()[collection].count_documents({self.id_field: query_id})
             return result > 0
         except Exception as e:
             raise DatabaseError(
