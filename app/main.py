@@ -18,54 +18,48 @@ from app.errors import (
     DuplicateError, 
     normalize_error_response
 )
-#from app.services.redis_provider import CookiesAuth as Auth
 
-from app.routes.account_router import router as account_router
+from app.routers.router import get_all_dynamic_routers
+
+from app.services.auth.cookies.redis_provider import CookiesAuth as Auth
+
 from app.models.account_model import Account
-
-from app.routes.user_router import router as user_router
 from app.models.user_model import User
-
-from app.routes.profile_router import router as profile_router
 from app.models.profile_model import Profile
-
-from app.routes.tagaffinity_router import router as tagaffinity_router
 from app.models.tagaffinity_model import TagAffinity
-
-from app.routes.event_router import router as event_router
 from app.models.event_model import Event
-
-from app.routes.userevent_router import router as userevent_router
 from app.models.userevent_model import UserEvent
-
-from app.routes.url_router import router as url_router
 from app.models.url_model import Url
-
-from app.routes.crawl_router import router as crawl_router
 from app.models.crawl_model import Crawl
 
-
 import logging
+
+def setup_routers(yaml_file: str):
+    # --- Dynamic Registration of Routers for Entities --- #
+    for router in get_all_dynamic_routers(Path(yaml_file)):
+        app.include_router(router, prefix="/api")
 
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Events API Server')
     parser.add_argument('config_file', nargs='?', default='config.json',
                        help='Configuration file path (default: config.json)')
+    parser.add_argument('--yaml', nargs='?', default='schema.yaml',
+                       help='YAML schema file path (default: schema.yaml)')
     parser.add_argument('--log-level', 
                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                        help='Override log level from config')
     parser.add_argument('--initdb', action='store_true',
                        help='Initialize database: manage required indexes based on model metadata, then exit')
     parser.add_argument('--resetdb', action='store_true',
-                       help='Reset database: delete all indexes but preserve data, then exit')
+                       help='Clear all indexes on database, then exit')
     return parser.parse_args()
 
 # Parse command line arguments
 args = parse_args()
 
 LOG_FILE = "app.log"
-config = Config.load_system_config(args.config_file)
+config = Config.initialize(args.config_file)
 is_dev = config.get('environment', 'production') == 'development'
 project = config.get('project_name', 'Project Name Here')
 my_log_level = (args.log_level or 
@@ -89,9 +83,9 @@ db_type: str = config.get('database', '')
 db_uri: str = config.get('db_uri', '')
 db_name: str = config.get('db_name', '')
 validations = Config.validations(False)
-print(f"Database get validation : get/get-all {validations[0]}.  Unique validation: {validations[1]}")
+print(f"Database validations : get/get-all {validations[0]}.  Unique validation: {validations[1]}")
 
-if (db_uri is '' or db_name is '' or db_type is ''):
+if (db_uri == '' or db_name == '' or db_type == ''):
     logger.error("Missing required database configuration")
     sys.exit(1)
 
@@ -145,6 +139,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"Running in {'development' if config.get('environment', 'production') == 'development' else 'production'} mode")
     logger.info(f"Connecting to {db_type} datastore at {db_uri} with db {db_name}")
     
+    logger.info(f"Registing routers")
+    setup_routers(args.yaml)
+
     try:
         # Initialize database connection for normal server operation
         db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name)
@@ -199,15 +196,6 @@ app.add_middleware(
     allow_headers=["*"],
     max_age=3600,             # cache preflight for 1 hour
 )
-
-app.include_router(account_router, prefix='/api/account', tags=['Account'])
-app.include_router(user_router, prefix='/api/user', tags=['User'])
-app.include_router(profile_router, prefix='/api/profile', tags=['Profile'])
-app.include_router(tagaffinity_router, prefix='/api/tagaffinity', tags=['Tagaffinity'])
-app.include_router(event_router, prefix='/api/event', tags=['Event'])
-app.include_router(userevent_router, prefix='/api/userevent', tags=['Userevent'])
-app.include_router(url_router, prefix='/api/url', tags=['Url'])
-app.include_router(crawl_router, prefix='/api/crawl', tags=['Crawl'])
 
 @app.exception_handler(DatabaseError)
 async def database_error_handler(request: Request, exc: DatabaseError):
@@ -281,7 +269,6 @@ def get_entities_metadata():
 
 def main():
     args = parse_args()
-    #config = utils.load_system_config(args.config_file)
 
     # Configure logging
     logging.basicConfig(
@@ -293,13 +280,12 @@ def main():
     logger.info("Welcome to the  Management System")
     logger.info(" Access Swagger docs at http://127.0.0.1:5500/docs")
 
-
-    # Start the server normally
+    # Start the server normally if --initdb is not present
     import uvicorn
     uvicorn.run(
         "app.main:app",
         host="127.0.0.1",
-        port=5500,
+        port=server_port,
         reload=True,
         reload_dirs=[str(Path(__file__).resolve().parent)]
     )

@@ -12,12 +12,13 @@ class Config:
         return cls._instance
 
     @classmethod
-    def initialize(cls, config_file: str) -> None:
+    def initialize(cls, config_file: str) -> Dict[str, Any]:
         """Initialize the config singleton with values from config file"""
-        cls._config = cls.load_system_config(config_file)
+        cls._config = cls._load_system_config(config_file)
+        return cls._config
 
     @staticmethod
-    def load_system_config(config_file: str) -> Dict[str, Any]:
+    def _load_system_config(config_file: str) -> Dict[str, Any]:
         """
         Load and return the configuration from config.json.
         If the file is not found, return default configuration values.

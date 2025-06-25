@@ -18,7 +18,8 @@ def load_settings(config_file: Path | None) -> Dict[str, Any]:
         if config_file:
             with open(config_file, 'r') as config_handle:
                 return json.load(config_handle)
-    except:
+    except Exception as e:
+        logging.error(f"Error loading config file {config_file}: {e}")
         return {}
 
     return {}
