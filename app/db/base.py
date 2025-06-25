@@ -1,11 +1,48 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, TypeVar, Type, Optional, Tuple
+from typing import Any, Dict, List, TypeVar, Type, Optional, Tuple, Callable
 from pydantic import BaseModel
+from functools import wraps
+from ..errors import DatabaseError
 
 T = TypeVar('T', bound=BaseModel)
 
 class DatabaseInterface(ABC):
     """Base interface for database implementations"""
+    
+    def __init__(self):
+        self._initialized = False
+    
+    def _ensure_initialized(self) -> None:
+        """Ensure database is initialized, raise RuntimeError if not"""
+        if not self._initialized:
+            raise RuntimeError(f"{self.__class__.__name__} not initialized")
+    
+    def _handle_connection_error(self, error: Exception, database_name: str) -> None:
+        """Handle connection errors with standardized DatabaseError"""
+        raise DatabaseError(
+            message=f"Failed to connect to {self.__class__.__name__}: {str(error)}",
+            entity="connection", 
+            operation="init"
+        )
+    
+    def _wrap_database_operation(self, operation: str, entity: str):
+        """Decorator to wrap database operations with error handling"""
+        def decorator(func):
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                try:
+                    return await func(*args, **kwargs)
+                except DatabaseError:
+                    # Re-raise existing DatabaseError with context preserved
+                    raise
+                except Exception as e:
+                    raise DatabaseError(
+                        message=str(e),
+                        entity=entity,
+                        operation=operation
+                    )
+            return wrapper
+        return decorator
     
     @property
     @abstractmethod
@@ -29,7 +66,7 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
-    async def save_document(self, collection: str, doc_id: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save a document to the database"""
         pass
 

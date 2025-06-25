@@ -7,10 +7,10 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 
 from .base import DatabaseInterface, T
 from ..errors import DatabaseError, ValidationError, ValidationFailure
-from ..notification import notify_database_warning, NotificationType
 
 class MongoDatabase(DatabaseInterface):
     def __init__(self):
+        super().__init__()
         self._client: Optional[AsyncIOMotorClient] = None
         self._db: Optional[AsyncIOMotorDatabase] = None
 
@@ -30,6 +30,7 @@ class MongoDatabase(DatabaseInterface):
             
             # Test connection
             await self._client.admin.command('ping')
+            self._initialized = True
             logging.info(f"MongoDatabase: Connected to {database_name}")
         except Exception as e:
             # Cleanup on failure
@@ -37,16 +38,11 @@ class MongoDatabase(DatabaseInterface):
                 self._client.close()
                 self._client = None
                 self._db = None
-            raise DatabaseError(
-                message=f"MongoDB connection failed: {str(e)}",
-                entity="connection",
-                operation="init"
-            )
+            self._handle_connection_error(e, database_name)
 
     async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Get all documents from a collection."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             warnings = []
@@ -73,8 +69,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def get_by_id(self, collection: str, doc_id: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Get a document by ID."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             warnings = []
@@ -83,7 +78,6 @@ class MongoDatabase(DatabaseInterface):
                 missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
                 if missing_indexes:
                     warnings.extend(missing_indexes)
-                    logging.warning(f"Missing unique indexes for {collection}: {missing_indexes}")
             
             # Convert string ID to ObjectId if it's a valid ObjectId string
             query_id: Union[str, ObjectId] = doc_id
@@ -115,10 +109,9 @@ class MongoDatabase(DatabaseInterface):
                 operation="get_by_id"
             )
 
-    async def save_document(self, collection: str, doc_id: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save a document to the database."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             warnings = []
@@ -127,24 +120,32 @@ class MongoDatabase(DatabaseInterface):
                 missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
                 if missing_indexes:
                     warnings.extend(missing_indexes)
-                    logging.warning(f"Missing unique indexes for {collection}: {missing_indexes}")
             
-            # Convert string ID to ObjectId if it's a valid ObjectId string
-            query_id: Union[str, ObjectId] = doc_id
-            if isinstance(doc_id, str) and ObjectId.is_valid(doc_id):
-                query_id = ObjectId(doc_id)
+            # Extract ID from data 
+            doc_id = data.get('id')
+            
+            # Create a copy of data for the actual save operation
+            save_data = data.copy()
+            
+            # Handle new documents (no ID) vs updates (existing ID)
+            if not doc_id or (isinstance(doc_id, str) and doc_id.strip() == ""):
+                # New document: let MongoDB auto-generate _id
+                # Remove any empty ID fields from save data
+                save_data.pop('id', None)
+                result = await self._db[collection].insert_one(save_data)
+                doc_id_str = str(result.inserted_id)
+            else:
+                # Existing document: update with specific ID
+                query_id: Union[str, ObjectId] = doc_id
+                if isinstance(doc_id, str) and ObjectId.is_valid(doc_id):
+                    query_id = ObjectId(doc_id)
                 
-            # Save document
-            await self._db[collection].replace_one({self.id_field: query_id}, data, upsert=True)
-                
-            # Get saved document - convert ObjectId to string if needed
-            doc_id_str = str(query_id) if isinstance(query_id, ObjectId) else query_id
-            if doc_id_str is None:
-                raise DatabaseError(
-                    message="Failed to get document ID",
-                    entity=collection,
-                    operation="save_document"
-                )
+                # Remove ID from save data since it's used in query
+                save_data.pop('id', None) 
+                    
+                # Update existing document
+                result = await self._db[collection].replace_one({self.id_field: query_id}, save_data, upsert=True)
+                doc_id_str = str(query_id) if isinstance(query_id, ObjectId) else query_id
                 
             # Get the saved document (this will return tuple, so unpack)
             saved_doc, get_warnings = await self.get_by_id(collection, doc_id_str)
@@ -168,8 +169,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def collection_exists(self, collection: str) -> bool:
         """Check if a collection exists."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             collections = await self._db.list_collection_names()
@@ -183,8 +183,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def create_collection(self, collection: str, indexes: List[Dict[str, Any]]) -> bool:
         """Create a collection with indexes."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             # Create collection
@@ -203,8 +202,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def _create_required_indexes(self, collection: str, indexes: List[Dict[str, Any]]) -> None:
         """Create required indexes for a collection."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         for index in indexes:
             try:
@@ -222,8 +220,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def delete_collection(self, collection: str) -> bool:
         """Delete a collection."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             await self._db.drop_collection(collection)
@@ -237,8 +234,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def delete_document(self, collection: str, doc_id: str) -> bool:
         """Delete a document."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             # Convert string ID to ObjectId if it's a valid ObjectId string
@@ -257,8 +253,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def list_collections(self) -> List[str]:
         """List all collections."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             return await self._db.list_collection_names()
@@ -271,8 +266,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def list_indexes(self, collection: str) -> List[Dict[str, Any]]:
         """List all indexes for a collection."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             raw_indexes = await self._db[collection].list_indexes().to_list(None)
@@ -308,8 +302,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def find_all(self, collection: str, model_cls: Type[T]) -> List[T]:
         """Get all documents from a collection and validate them against a model class."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             cursor = self._db[collection].find()
@@ -372,8 +365,7 @@ class MongoDatabase(DatabaseInterface):
     async def check_unique_constraints(self, collection: str, constraints: List[List[str]], 
                                      data: Dict[str, Any], exclude_id: Optional[str] = None) -> List[str]:
         """Check unique constraints on a document."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             violations = []
@@ -401,8 +393,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def create_index(self, collection: str, fields: List[str], unique: bool = False) -> None:
         """Create an index on a collection."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             await self._db[collection].create_index(
@@ -418,8 +409,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def delete_index(self, collection: str, fields: List[str]) -> None:
         """Delete an index from a collection."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             await self._db[collection].drop_index([(field, 1) for field in fields])
@@ -432,8 +422,7 @@ class MongoDatabase(DatabaseInterface):
 
     async def exists(self, collection: str, doc_id: str) -> bool:
         """Check if a document exists."""
-        if self._db is None:
-            raise RuntimeError("MongoDatabase not initialized")
+        self._ensure_initialized()
             
         try:
             # Convert string ID to ObjectId if it's a valid ObjectId string
@@ -478,5 +467,5 @@ class MongoDatabase(DatabaseInterface):
             return missing_constraints
             
         except Exception as e:
-            logging.warning(f"Failed to check unique indexes for {collection}: {str(e)}")
+            # Return empty list on error - Factory layer will handle notification
             return [] 

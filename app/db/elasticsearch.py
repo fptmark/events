@@ -9,6 +9,7 @@ class ElasticsearchDatabase(DatabaseInterface):
     """Elasticsearch implementation of DatabaseInterface."""
 
     def __init__(self):
+        super().__init__()
         self._client: Optional[AsyncElasticsearch] = None
         self._url: str = ""
         self._dbname: str = ""
@@ -29,20 +30,15 @@ class ElasticsearchDatabase(DatabaseInterface):
 
         try:
             info = await client.info()
+            self._initialized = True
+            self._client = client
             logging.info("Connected to Elasticsearch %s", info["version"]["number"])
         except Exception as e:
-            raise DatabaseError(
-                message=f"Failed to connect to Elasticsearch: {str(e)}",
-                entity="connection",
-                operation="init"
-            )
-
-        self._client = client
+            self._handle_connection_error(e, database_name)
 
     def _get_client(self) -> AsyncElasticsearch:
         """Get the AsyncElasticsearch client instance."""
-        if self._client is None:
-            raise RuntimeError("ElasticsearchDatabase.init() has not been awaited")
+        self._ensure_initialized()
         return self._client
 
     async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
@@ -62,7 +58,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             
             res = await es.search(index=collection, query={"match_all": {}})
             hits = res.get("hits", {}).get("hits", [])
-            results = [{**hit["_source"], self.id_field: hit[self.id_field]} for hit in hits]
+            results = [{**hit["_source"], "id": hit["_id"]} for hit in hits]
             return results, warnings
         except Exception as e:
             raise DatabaseError(
@@ -81,10 +77,9 @@ class ElasticsearchDatabase(DatabaseInterface):
                 missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
                 if missing_indexes:
                     warnings.extend(missing_indexes)
-                    logging.warning(f"Missing unique indexes for {collection}: {missing_indexes}")
             
             res = await es.get(index=collection, id=doc_id)
-            result = {**res["_source"], self.id_field: res["_id"]}
+            result = {**res["_source"], "id": res["_id"]}
             return result, warnings
         except NotFoundError:
             raise DatabaseError(
@@ -99,7 +94,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                 operation="get_by_id"
             )
 
-    async def save_document(self, collection: str, doc_id: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save a document to the database."""
         es = self._get_client()
         try:
@@ -109,11 +104,29 @@ class ElasticsearchDatabase(DatabaseInterface):
                 missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
                 if missing_indexes:
                     warnings.extend(missing_indexes)
-                    logging.warning(f"Missing unique indexes for {collection}: {missing_indexes}")
             
-            await es.index(index=collection, id=doc_id, document=data)
+            # Extract ID from data
+            doc_id = data.get('id')
+            
+            # Create a copy of data for the actual save operation
+            save_data = data.copy()
+            
+            # Handle new documents (no ID) vs updates (existing ID)
+            if not doc_id or (isinstance(doc_id, str) and doc_id.strip() == ""):
+                # New document: let Elasticsearch auto-generate ID
+                # Remove any empty ID fields from save data
+                save_data.pop('id', None)
+                result = await es.index(index=collection, document=save_data)
+                doc_id_str = result['_id']
+            else:
+                # Existing document: update with specific ID
+                # Remove ID from save data since it's used as document ID
+                save_data.pop('id', None)
+                await es.index(index=collection, id=doc_id, document=save_data)
+                doc_id_str = doc_id
+                
             # Get the saved document (this returns tuple, so unpack)
-            saved_doc, get_warnings = await self.get_by_id(collection, doc_id)
+            saved_doc, get_warnings = await self.get_by_id(collection, doc_id_str)
             warnings.extend(get_warnings)
             return saved_doc, warnings
         except Exception as e:
@@ -253,7 +266,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                 
             res = await es.search(index=collection, query={"match_all": {}})
             hits = res.get("hits", {}).get("hits", [])
-            return [{**hit["_source"], self.id_field: hit[self.id_field]} for hit in hits]
+            return [{**hit["_source"], "id": hit["_id"]} for hit in hits]
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
@@ -348,5 +361,5 @@ class ElasticsearchDatabase(DatabaseInterface):
             return missing_constraints
             
         except Exception as e:
-            logging.warning(f"Failed to check unique constraints for {collection}: {str(e)}")
+            # Return empty list on error - Factory layer will handle notification
             return []

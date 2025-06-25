@@ -1,12 +1,13 @@
 from typing import Any, Dict, List, Optional, Type, TypeVar, cast, Tuple
 import logging
 from pydantic import BaseModel
+from bson import ObjectId
 
 from .base import DatabaseInterface, T
 from .elasticsearch import ElasticsearchDatabase
 from .mongodb import MongoDatabase
 from ..errors import DatabaseError
-from ..notification import notify_database_warning, NotificationType
+from ..notification import notify_warning, notify_database_error, NotificationType
 
 class DatabaseFactory:
     """
@@ -108,35 +109,55 @@ class DatabaseFactory:
         return cls.get_instance().id_field
 
     @classmethod
+    def _normalize_document(cls, doc: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert database-specific types to application types"""
+        if not doc:
+            return doc
+            
+        normalized = {}
+        for key, value in doc.items():
+            if isinstance(value, ObjectId):
+                normalized[key] = str(value)
+            else:
+                normalized[key] = value
+        return normalized
+
+    @classmethod
     async def get_all(cls, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Get all documents from a collection"""
         data, warnings = await cls.get_instance().get_all(collection, unique_constraints)
         
+        # Normalize database-specific types
+        normalized_data = [cls._normalize_document(doc) for doc in data]
+        
         # Convert database warnings to notifications
         for warning in warnings:
-            notify_database_warning(warning, entity=collection, operation="get_all")
+            notify_warning(warning, NotificationType.DATABASE, entity=collection, operation="get_all")
             
-        return data, warnings
+        return normalized_data, warnings
 
     @classmethod
     async def get_by_id(cls, collection: str, doc_id: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Get document by ID"""
         data, warnings = await cls.get_instance().get_by_id(collection, doc_id, unique_constraints)
         
-        # Convert database warnings to notifications
-        for warning in warnings:
-            notify_database_warning(warning, entity=collection, operation="get_by_id")
-            
-        return data, warnings
-
-    @classmethod
-    async def save_document(cls, collection: str, doc_id: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
-        """Save document to collection"""
-        data_result, warnings = await cls.get_instance().save_document(collection, doc_id, data, unique_constraints)
+        # Normalize database-specific types
+        normalized_data = cls._normalize_document(data) if data else data
         
         # Convert database warnings to notifications
         for warning in warnings:
-            notify_database_warning(warning, entity=collection, operation="save_document")
+            notify_warning(warning, NotificationType.DATABASE, entity=collection, operation="get_by_id")
+            
+        return normalized_data, warnings
+
+    @classmethod
+    async def save_document(cls, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
+        """Save document to collection"""
+        data_result, warnings = await cls.get_instance().save_document(collection, data, unique_constraints)
+        
+        # Convert database warnings to notifications
+        for warning in warnings:
+            notify_warning(warning, NotificationType.DATABASE, entity=collection, operation="save_document")
             
         return data_result, warnings
 
