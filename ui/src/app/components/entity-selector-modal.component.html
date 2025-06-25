@@ -33,7 +33,7 @@
       <!-- Default display fallback -->
       <ng-template #defaultDisplay>
         <div *ngFor="let entity of entities" class="entity-item" (click)="selectEntity(entity)">
-          <strong>{{ entity._id }}</strong>
+          <strong>{{ entity.id }}</strong>
           <div *ngIf="entity.name">{{ entity.name }}</div>
           <div *ngIf="entity.title">{{ entity.title }}</div>
         </div>

@@ -96,7 +96,7 @@ export class EntityFormComponent implements OnInit {
   ngOnInit(): void {
     // Simplified initialization
     this.route.params.subscribe(params => {
-      this.entityType = params['entityType'];
+      this.entityType = params['entityType'].toLowerCase();
       this.entityId = params['id'];
       
       const url = this.router.url;
@@ -128,7 +128,7 @@ export class EntityFormComponent implements OnInit {
     }
     
     // For edit/view mode, fetch the data first, then populate
-    this.restService.getEntity(this.entityType, this.entityId).subscribe({
+    this.restService.getEntity(this.entityType, this.entityId, this.mode).subscribe({
       next: (response) => {
         this.entity = response;
         
@@ -187,9 +187,8 @@ export class EntityFormComponent implements OnInit {
    */
   populateFormValues(entityData?: any): void {
     if (!this.entityForm || !this.sortedFields.length) return;
-    
-    // Process each field
-    for (const fieldName of this.sortedFields) {
+
+    for( const fieldName of this.sortedFields) {
       const control = this.entityForm.get(fieldName);
       if (!control) continue;
       
@@ -199,31 +198,30 @@ export class EntityFormComponent implements OnInit {
 
       // Check if it's an ObjectId field with a show configuration for the current mode
       const showConfig = metadata?.ui?.show ? this.metadataService.getShowConfig(this.entityType, fieldName, this.mode) : null;
+
+      // force the type to text for id fields
+      let type = (fieldName === 'id') ? 'text' : metadata?.type || 'text'
+      console.log(`Processing field ${fieldName} of type ${type} with raw value:`, rawValue);
       
-      if (metadata?.type === 'ObjectId' && showConfig) {
-        // For ObjectId fields with show config, use the async formatter
-        // Pass the already-fetched showConfig to avoid re-fetching
-        this.entityService.formatObjectIdValue(this.entityType, fieldName, this.mode, rawValue, showConfig).subscribe({
-          next: formattedValue => {
-            // If it's in details mode, sanitize the HTML output
-            if (this.isDetailsMode()) {
-              control.setValue(this.sanitizer.bypassSecurityTrustHtml(formattedValue));
-            } else {
-              control.setValue(formattedValue);
-            }
-          },
-          error: err => {
-            console.error(`Error formatting ObjectId field ${fieldName}:`, err);
-            // On error, fallback to displaying the raw ObjectId
-            control.setValue(rawValue);
-          }
-        });
+      if (type === 'ObjectId' && showConfig) {
+        // For ObjectId fields with show config, use embedded FK data
+        const formattedValue = this.entityService.formatObjectIdValueWithEmbeddedData(
+          this.entityType, fieldName, this.mode, rawValue, entityData, showConfig
+        );
+        
+        // If it's in details mode, sanitize the HTML output
+        if (this.isDetailsMode()) {
+          control.setValue(this.sanitizer.bypassSecurityTrustHtml(formattedValue));
+        } else {
+          control.setValue(formattedValue);
+        }
       } else {
         // For other field types or ObjectId without show config, use the synchronous formatter
+        console.log(`Formatting field ${fieldName} with raw value:`, rawValue);
         const formattedValue = this.entityService.formatFieldValue(this.entityType, fieldName, this.mode, rawValue);
         
         // If it's an ObjectId field in details mode (without show config), sanitize the HTML
-        if (metadata?.type === 'ObjectId' && this.isDetailsMode()) {
+        if (type === 'ObjectId' && this.isDetailsMode()) {
            control.setValue(this.sanitizer.bypassSecurityTrustHtml(formattedValue));
         } else {
           control.setValue(formattedValue);
@@ -506,7 +504,7 @@ export class EntityFormComponent implements OnInit {
     
     // Add columns from show config if available
     if (showConfig) {
-      showConfig.displayInfo.fields.forEach(field => {
+      showConfig.displayInfo[0].fields.forEach(field => {
         this.entitySelectorColumns.push({ 
           field,
           displayName: this.entityService.getFieldDisplayName(entityType, field)
@@ -515,7 +513,7 @@ export class EntityFormComponent implements OnInit {
     }
     
     // Fetch entities for the selector
-    this.restService.getEntityList(entityType).subscribe({
+    this.restService.getEntityList(entityType, this.mode).subscribe({
       next: (entities: any[]) => {
         // Show the entity selector modal
         this.currentFieldName = fieldName;

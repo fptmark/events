@@ -55,10 +55,10 @@ export class FieldOrderService {
     // --- 2. Seed ordered list ----------------------------------------------
     const ordered: string[] = [];
 
-    // 2a. _id first (if not part of a DFA chain)
-    if (unused.has('_id')) {
-      ordered.push('_id');
-      unused.delete('_id');
+    // 2a. id first (if not part of a DFA chain)
+    if (unused.has('id')) {
+      ordered.push('id');
+      unused.delete('id');
     }
 
     // 2b. Other “Id” fields without DFA 

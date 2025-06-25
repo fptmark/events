@@ -42,6 +42,9 @@ export interface Notification {
   messages: string[];
   error?: ErrorDetail;
   autoClose?: boolean;
+  expandable?: boolean;
+  expanded?: boolean;
+  notifications?: any[];
 }
 
 @Injectable({
@@ -53,6 +56,116 @@ export class NotificationService {
   private autoCloseTimer: any = null;
   
   constructor() {}
+
+  /**
+   * Handle backend API response with enhanced notification support
+   * @param response The backend API response
+   */
+  handleApiResponse(response: any): void {
+    this.clear();
+    
+    // Handle simple error messages from current backend
+    if (typeof response === 'string') {
+      this.showError(response);
+      return;
+    }
+    
+    // Handle legacy format where message/level are direct properties
+    if (response.message && response.level && !response.notifications) {
+      switch (response.level) {
+        case 'success':
+          this.showSuccess(response.message);
+          break;
+        case 'warning':
+          this.showWarning(response.message);
+          break;
+        case 'error':
+          this.showError(response.message);
+          break;
+        default:
+          this.showInfo(response.message);
+      }
+      return;
+    }
+    
+    // Don't show notification for simple success cases
+    if (response.level === 'success' && !response.notifications?.length) {
+      return;
+    }
+    
+    if (response.message && response.level) {
+      const messages: string[] = [response.message];
+      
+      // Add summary if there are multiple notifications
+      if (response.summary && response.notifications?.length > 1) {
+        const summaryParts: string[] = [];
+        if (response.summary.error > 0) summaryParts.push(`${response.summary.error} error${response.summary.error !== 1 ? 's' : ''}`);
+        if (response.summary.warning > 0) summaryParts.push(`${response.summary.warning} warning${response.summary.warning !== 1 ? 's' : ''}`);
+        
+        if (summaryParts.length > 0) {
+          messages.push(`(${summaryParts.join(', ')})`);
+        }
+      }
+      
+      // Convert backend notifications to error context format
+      let error: ErrorDetail | undefined;
+      if (response.notifications?.length) {
+        const invalid_fields: ValidationFailure[] = [];
+        const allMessages: string[] = [];
+        
+        response.notifications.forEach((notif: any) => {
+          if (notif.field && notif.level === 'error') {
+            invalid_fields.push({
+              field: notif.field,
+              constraint: notif.message,
+              value: notif.value
+            });
+          }
+          
+          allMessages.push(notif.message);
+          
+          // Add nested details
+          if (notif.details?.length) {
+            notif.details.forEach((detail: any) => {
+              allMessages.push(`• ${detail.message}`);
+            });
+          }
+        });
+        
+        // Add detailed messages
+        messages.push(...allMessages);
+        
+        if (invalid_fields.length > 0) {
+          error = {
+            message: response.message || 'Validation errors occurred',
+            error_type: 'ValidationError',
+            context: {
+              entity: response.notifications[0]?.entity,
+              invalid_fields
+            }
+          };
+        }
+      }
+      
+      const notificationType = this.mapLevelToType(response.level);
+      const hasDetailedNotifications = response.notifications?.length > 0;
+      
+      this.notificationSubject.next({
+        type: notificationType,
+        title: this.getNotificationTitle(notificationType),
+        messages,
+        error,
+        autoClose: notificationType === NOTIFICATION_SUCCESS,
+        expandable: hasDetailedNotifications,
+        expanded: false,
+        notifications: response.notifications || []
+      });
+      
+      if (notificationType === NOTIFICATION_SUCCESS) {
+        this.setAutoCloseTimer();
+      }
+    }
+  }
 
   /**
    * Show a success notification
@@ -76,15 +189,15 @@ export class NotificationService {
   
   /**
    * Show an error notification with rich context
-   * @param error The error details or simple message
+   * @param error The error details, HTTP error, or simple message
    */
-  showError(error: ErrorDetail | string): void {
+  showError(error: ErrorDetail | any | string): void {
     this.clear();
     
     let notification: Notification;
     
     if (typeof error === 'string') {
-      // Simple error message - convert to ErrorDetail format
+      // Simple error message
       notification = {
         type: NOTIFICATION_ERROR,
         title: 'Error',
@@ -94,15 +207,94 @@ export class NotificationService {
           error_type: 'error'
         }
       };
-    } else {
-      // Error detail object
-      const messages = error.context?.error ? [error.context.error] : [error.message];
+    } else if (error?.error?.detail) {
+      // Server error with structured detail
+      const detail = error.error.detail;
+      const messages: string[] = [];
+      
+      // Add main message
+      if (detail.message) {
+        messages.push(detail.message);
+      }
+      
+      // Add detailed validation errors
+      if (detail.invalid_fields?.length) {
+        detail.invalid_fields.forEach((field: any) => {
+          messages.push(`${field.field}: ${field.message}`);
+        });
+      }
       
       notification = {
         type: NOTIFICATION_ERROR,
         title: 'Error',
         messages: messages,
-        error
+        error: {
+          message: detail.message || 'An error occurred',
+          error_type: detail.error_type || 'ServerError',
+          context: {
+            entity: detail.entity,
+            invalid_fields: detail.invalid_fields?.map((f: any) => ({
+              field: f.field,
+              constraint: f.message,
+              value: f.value
+            })) || []
+          }
+        }
+      };
+    } else if (error?.status >= 400) {
+      // HTTP error without structured detail
+      let message = 'An error occurred';
+      
+      if (error.status === 500) {
+        message = 'Server error occurred. Please try again later.';
+      } else if (error.status === 404) {
+        message = 'The requested resource was not found.';
+      } else if (error.status === 422) {
+        message = 'Invalid data provided.';
+      } else if (error.error?.message) {
+        message = error.error.message;
+      } else if (typeof error.error === 'string') {
+        message = error.error;
+      }
+      
+      notification = {
+        type: NOTIFICATION_ERROR,
+        title: 'Error',
+        messages: [message],
+        error: {
+          message: message,
+          error_type: 'HttpError',
+          context: {
+            status: error.status,
+            error: error.error
+          }
+        }
+      };
+    } else if (error?.message) {
+      // Error object with message
+      notification = {
+        type: NOTIFICATION_ERROR,
+        title: 'Error',
+        messages: [error.message],
+        error: {
+          message: error.message,
+          error_type: error.constructor?.name || 'Error'
+        }
+      };
+    } else {
+      // Fallback for unknown error format
+      const errorStr = typeof error === 'object' ? JSON.stringify(error) : String(error);
+      notification = {
+        type: NOTIFICATION_ERROR,
+        title: 'Error',
+        messages: ['An unexpected error occurred'],
+        error: {
+          message: 'An unexpected error occurred',
+          error_type: 'UnknownError',
+          context: {
+            error: errorStr
+          }
+        }
       };
     }
 
@@ -159,6 +351,19 @@ export class NotificationService {
     }
     this.notificationSubject.next(null);
   }
+
+  /**
+   * Toggle expanded state of current notification
+   */
+  toggleExpanded(): void {
+    const current = this.notificationSubject.value;
+    if (current?.expandable) {
+      this.notificationSubject.next({
+        ...current,
+        expanded: !current.expanded
+      });
+    }
+  }
   
   /**
    * Set a timer to automatically clear the notification
@@ -168,6 +373,32 @@ export class NotificationService {
     this.autoCloseTimer = setTimeout(() => {
       this.clear();
     }, delay);
+  }
+
+  /**
+   * Map backend level to notification type
+   */
+  private mapLevelToType(level: string | null): NotificationType {
+    switch (level) {
+      case 'success': return NOTIFICATION_SUCCESS;
+      case 'warning': return NOTIFICATION_WARNING;
+      case 'error': return NOTIFICATION_ERROR;
+      case 'info': return NOTIFICATION_INFO;
+      default: return NOTIFICATION_INFO;
+    }
+  }
+
+  /**
+   * Get notification title based on type
+   */
+  private getNotificationTitle(type: NotificationType): string {
+    switch (type) {
+      case NOTIFICATION_SUCCESS: return 'Success';
+      case NOTIFICATION_WARNING: return 'Warning';
+      case NOTIFICATION_ERROR: return 'Error';
+      case NOTIFICATION_INFO: return 'Info';
+      default: return 'Notification';
+    }
   }
 
   /**

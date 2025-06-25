@@ -88,7 +88,6 @@ export class ValidationService {
   }
 
   private getFieldDisplayName(entityType: string, fieldName: string): string {
-    if (fieldName === '_id') return 'ID';
     const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
     return fieldMeta?.ui?.displayName || fieldName;
   }

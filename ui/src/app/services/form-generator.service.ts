@@ -4,7 +4,6 @@ import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors }
 import { FieldMetadata, MetadataService } from './metadata.service';
 import { EntityService } from './entity.service';
 import { ModeService, ViewMode, DETAILS, EDIT, CREATE } from './mode.service';
-import { Constants } from '../constants'; // Assuming idField is defined in constants.ts
 
 // No need for constants or FormMode type anymore
 @Injectable({
@@ -32,15 +31,9 @@ export class FormGeneratorService {
   generateEntityForm(entityType: string, mode: ViewMode): { form: FormGroup, displayFields: string[] } {
     const formGroup: { [key: string]: AbstractControl } = {};
     
-    // Get fields to display from entity service
-    let viewFields: string[] = this.entityService.getViewFields(entityType, mode)
-    let displayFields: string[] // may add or delete the id field later
+    // Get fields to display from entity service - server metadata controls all field display
+    const displayFields: string[] = this.entityService.getViewFields(entityType, mode)
 
-    // Manage ID field - it should be first in edit and details modes and removed in create mode
-    displayFields = viewFields.filter(fieldName => fieldName !== Constants.idField);
-    if (this.modeService.inDetailsMode(mode) || this.modeService.inEditMode(mode)) { // Make sure the id field is first
-      displayFields.unshift(Constants.idField);
-    }
 
     // Process all fields to create form controls
     displayFields.forEach(fieldName => {
@@ -156,15 +149,18 @@ export class FormGeneratorService {
    * @returns The input control type to use
    */
   getFieldAttributes(entityType: string, fieldName: string, mode: ViewMode): { fieldType: string, enabled: boolean } {
-    // _id field is always a text field
-    if (fieldName === Constants.idField) return {fieldType: 'text', enabled: false};
-    
     const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
     if (!fieldMeta) return {fieldType: 'text', enabled: true};
     
-    // Always return ObjectId for both view and edit modes
+    // ObjectId fields are clickable except for the primary key 'id' field
     if (fieldMeta.type === "ObjectId") {
-      return {fieldType: 'ObjectId', enabled: true}; // clickable in all modes
+      if (fieldName === 'id') {
+        // Primary key should not be clickable (it would link to itself)
+        return {fieldType: 'text', enabled: false};
+      } else {
+        // Foreign key ObjectId fields should be clickable
+        return {fieldType: 'ObjectId', enabled: true};
+      }
     }
 
     // For details mode, use appropriate read-only controls

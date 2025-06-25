@@ -32,32 +32,15 @@ export class EntityService {
    /**
     * Get the fields that should be displayed for an entity in a specific view mode
     * @param entityName The name of the entity
-    * @param currentView The current view mode (VIEW, EDIT, CREATE, SUMMARY)
+    * @param currentView The current view mode (summary, details, edit, create)
     * @returns An array of field names to display, ordered according to metadata
     * 
     * Important: Required fields are always included in EDIT and CREATE modes
     * regardless of their displayPages setting
     */
    getViewFields(entityName: string, currentView: string): string[] {
-    const metadata = this.metadataService.getEntityMetadata(entityName)
-    const allFields = ['_id', ...Object.keys(metadata.fields)];
-
-    const visibleFields = allFields.filter(field => {
-      const fieldMetadata = metadata.fields[field]
-      // Skip hidden fields
-      if (fieldMetadata?.ui?.display === 'hidden') {
-        return false
-      }
-      
-      // For edit and create modes, always include required fields regardless of displayPages
-      if ((currentView === EDIT || currentView === CREATE) && fieldMetadata?.required) {
-        return true;
-      }
-      
-      // Use ModeService to determine if field is visible in current view/mode
-      const displayPages = fieldMetadata?.ui?.displayPages ?? ''
-      return this.modeService.existsInMode(displayPages, currentView);
-    })
+    const metadata = this.metadataService.getEntityMetadata(entityName);
+    const visibleFields = this.modeService.getViewFields(metadata, currentView);
     return this.fieldOrderService.orderFields(visibleFields, metadata);
   }
 
@@ -75,17 +58,15 @@ export class EntityService {
     if (!value || value === undefined || value === null) {
       return '';
     }
-
     let metadata = this.metadataService.getFieldMetadata(entityType, fieldName)
-    let type = metadata?.type || 'text'
-    let format = metadata?.ui?.format 
+    let type = (fieldName === 'id') ? 'text' : metadata?.type || 'text'
 
     // format Foreign keys and date for non-create modes
-    if (metadata?.type === 'ObjectId') {
+    if (type === 'ObjectId') {
       // Check if there's a show config for this field
       const showConfig = metadata?.ui?.show ? this.metadataService.getShowConfig(entityType, fieldName, mode) : null;
-      const entity = showConfig?.endpoint || fieldName.substring(0, fieldName.length - 2); // Use endpoint from show config or strip 'Id'
-      return this.formatObjectIdHTML(entity, value, value, mode);
+      const entity = this._getEndpoint(showConfig?.endpoint, fieldName)
+      return this._formatObjectIdHTML(entity, value, value, mode);
     }
 
     // Date field handling
@@ -279,80 +260,94 @@ export class EntityService {
   }
 
   /**
-   * Formats an ObjectId field value based on show configuration and mode.
-   * Fetches the referenced entity data if a show config is present for the mode.
+   * Formats an ObjectId field value using embedded FK data from server response.
    * @param entityType The type of the entity containing the ObjectId field.
    * @param fieldName The name of the ObjectId field (e.g., 'accountId').
    * @param mode The current view mode (summary, details, edit, create).
    * @param objectId The ObjectId value.
+   * @param entity The complete entity object with embedded FK data.
    * @param showConfig Optional: The pre-fetched show configuration for this field and mode.
-   * @returns An Observable of the formatted string display value.
+   * @returns The formatted string display value.
    */
-  formatObjectIdValue(entityType: string, fieldName: string, mode: ViewMode, objectId: string | null | undefined, showConfig?: ShowConfig | null): Observable<string> {
-    // If no ObjectId value, return empty string Observable immediately
+  formatObjectIdValueWithEmbeddedData(entityType: string, fieldName: string, mode: ViewMode, objectId: string | null | undefined, entity: any, showConfig?: ShowConfig | null): string {
+    // If no ObjectId value, return empty string
     if (!objectId) {
-      return of('');
+      return '';
     }
 
     // If no show config or no fields specified for this mode, return the ObjectId directly
-    // This uses the default formatting for ObjectIds without show configs (which formatFieldValue handles)
-    if (!showConfig || !showConfig.displayInfo.fields || showConfig.displayInfo.fields.length === 0) {
-       // Call formatFieldValue for the default ObjectId formatting
-      const defaultFormatted = this.formatFieldValue(entityType, fieldName, mode, objectId);
-      return of(defaultFormatted);
+    if (!showConfig || !showConfig.displayInfo[0].fields || showConfig.displayInfo[0].fields.length === 0) {
+      return this.formatFieldValue(entityType, fieldName, mode, objectId);
     }
 
-    // Get the referenced entity type from the endpoint
-    const referencedEntityType = showConfig.endpoint;
-    if (!referencedEntityType) {
-      // If no endpoint is specified, use default formatting
-      const defaultFormatted = this.formatFieldValue(entityType, fieldName, mode, objectId);
-      return of(defaultFormatted);
+    // Get the FK field name (remove 'Id' suffix)
+    const fkFieldName = this._getEndpoint(showConfig.endpoint, fieldName);
+    const embeddedData = entity[fkFieldName];
+
+    // If no embedded data available, return default formatting
+    if (!embeddedData) {
+      return this.formatFieldValue(entityType, fieldName, mode, objectId);
     }
 
-    const fieldsToDisplay = showConfig.displayInfo.fields;
+    // If the FK entity doesn't exist, show as plain text (no link)
+    if (embeddedData.exists === false) {
+      return objectId; // Just show the ID as plain text
+    }
 
-    return this.restService.getEntity(referencedEntityType, objectId).pipe(
-      map(referencedEntity => {
-        if (!referencedEntity) {
-          // If referenced entity not found, fallback to showing ObjectId using default formatter
-          const defaultFormatted = this.formatFieldValue(entityType, fieldName, mode, objectId);
-          return defaultFormatted;
+    const fieldsToDisplay = showConfig.displayInfo[0].fields;
+    const formattedValues: string[] = [];
+
+    // Extract and format the specified fields from embedded data
+    for (const field of fieldsToDisplay) {
+      const value = embeddedData[field];
+      if (value !== null && value !== undefined && String(value).trim() !== '') {
+        const formatted = this.formatFieldValue(fkFieldName, field, mode, value);
+        formattedValues.push(formatted);
+      }
+    }
+
+    // If no specified fields have data, but we have other data available, use it
+    if (formattedValues.length === 0) {
+      // Check if there are any non-empty fields in the embedded data (excluding 'exists')
+      for (const [key, value] of Object.entries(embeddedData)) {
+        if (key !== 'exists' && value !== null && value !== undefined && String(value).trim() !== '') {
+          const formatted = this.formatFieldValue(fkFieldName, key, mode, value);
+          formattedValues.push(formatted);
         }
+      }
+    }
 
-        // Extract and format the specified fields
-        const formattedValues: string[] = [];
+    // Determine what to show: use formatted data if available, otherwise use ID or 'View'
+    let displayValue: string;
+    if (formattedValues.length > 0) {
+      // We have actual data to show
+      displayValue = formattedValues.join('; ');
+    } else {
+      // No data fields available - use ID for details mode, 'View' for summary mode
+      if (this.modeService.inDetailsMode(mode)) {
+        displayValue = objectId;
+      } else {
+        displayValue = 'View';
+      }
+    }
 
-        for (const field of fieldsToDisplay) {
-          const value = referencedEntity[field];
-          if (value !== null && value !== undefined && String(value).trim() !== '') {
-            const formatted = this.formatFieldValue(referencedEntityType, field, mode, value);
-            formattedValues.push(formatted);
-          }
-        }
-
-        // Join the formatted values (using semicolon as per example, though this might need to be configurable)
-        const value = formattedValues.join('; ');
-        return this.formatObjectIdHTML(referencedEntityType, objectId, value, mode);
-      }),
-      catchError(error => {
-        console.error(`Error fetching referenced entity ${referencedEntityType}/${objectId}:`, error);
-        // On error, fallback to showing ObjectId using default formatter
-        const defaultFormatted = this.formatFieldValue(entityType, fieldName, mode, objectId);
-        return of(defaultFormatted);
-      })
-    );
+    return this._formatObjectIdHTML(fkFieldName, objectId, displayValue, mode);
+  }
+  _getEndpoint(endPoint: string | undefined, fieldName: string): string {
+    return endPoint || fieldName.toLowerCase().replace("id", ""); // Strip 'Id' from field name if no endpoint
   }
 
-  formatObjectIdHTML(entity: string, id: string, showValue: string, mode: ViewMode): string {
+  _formatObjectIdHTML(entity: string, id: string, showValue: string, mode: ViewMode): string {
     // Format the ObjectId value as a link
     let link = `entity/${entity}/${id}`
     if (this.modeService.inSummaryMode(mode)) {
-      showValue = showValue || 'View'
-      return `<a href=${link}>${showValue}</a>`
+      // Use provided showValue, fallback to 'View' only if empty
+      const displayText = showValue || 'View';
+      return `<a href=${link}>${displayText}</a>`
     } else if (this.modeService.inDetailsMode(mode)) {
-      showValue = showValue || id; // Use id if no showValue provided
-      return `<a href=${link}>${showValue}</a>`
+      // Use provided showValue, fallback to id only if empty
+      const displayText = showValue || id;
+      return `<a href=${link}>${displayText}</a>`
     } else if (this.modeService.inEditMode(mode)) {
       return id
     }

@@ -62,14 +62,14 @@ import { Subscription } from 'rxjs';
                     <!-- Consistent button order: View, Edit, Create, Delete -->
                     <button *ngIf="entityService.canRead(entityType)"
                       class="btn btn-entity-details me-1"
-                      (click)="this.entityService.viewEntity(entityType, row['_id'])">Details</button>
+                      (click)="this.entityService.viewEntity(entityType, row['id'])">Details</button>
                     <button *ngIf="entityService.canUpdate(entityType)"
                       class="btn btn-entity-edit me-1"
-                      (click)="this.entityService.editEntity(entityType, row['_id'])">Edit</button>
+                      (click)="this.entityService.editEntity(entityType, row['id'])">Edit</button>
                     <!-- Create not shown for individual rows since it applies to the entity type, not a specific row -->
                     <button *ngIf="entityService.canDelete(entityType)"
                       class="btn btn-entity-delete"
-                      (click)="this.restService.deleteEntity(entityType, row._id)">Delete</button>
+                      (click)="this.restService.deleteEntity(entityType, row['id'])">Delete</button>
                   </div>
                 </td>
               </tr>
@@ -187,9 +187,9 @@ export class EntityListComponent implements OnInit, OnDestroy {
     this.displayFields = this.entityService.getViewFields(this.entityType, SUMMARY);
         
     // Use RestService instead of HttpClient directly
-    this.restService.getEntityList(this.entityType).subscribe({
+    this.restService.getEntityList(this.entityType, 'summary').subscribe({
       next: (entities) => {
-        // Process each entity to handle async formatting for ObjectId fields with show configs
+        // Process each entity using embedded FK data from server response
         this.data = entities.map(entity => {
           const processedEntity: any = { ...entity, _formattedValues: {} };
 
@@ -201,16 +201,15 @@ export class EntityListComponent implements OnInit, OnDestroy {
             const showConfig = metadata?.ui?.show ? this.metadataService.getShowConfig(this.entityType, field, SUMMARY) : null;
 
             if (metadata?.type === 'ObjectId' && showConfig) {
-              // Use the async formatter for ObjectId fields with show config
-              // Pass the already-fetched showConfig to avoid re-fetching
-              processedEntity._formattedValues[field] = this.entityService.formatObjectIdValue(this.entityType, field, SUMMARY, rawValue, showConfig).pipe(
-                 map(value => this.sanitizer.bypassSecurityTrustHtml(value)) // Sanitize HTML output
+              // Use embedded FK data instead of making individual REST calls
+              const formattedValue = this.entityService.formatObjectIdValueWithEmbeddedData(
+                this.entityType, field, SUMMARY, rawValue, entity, showConfig
               );
+              processedEntity._formattedValues[field] = of(this.sanitizer.bypassSecurityTrustHtml(formattedValue));
             } else {
               // For other field types or ObjectId without show config, use the synchronous formatter
-              // This also handles the case where an ObjectId field value is blank/null/undefined
               const formattedValue = this.entityService.formatFieldValue(this.entityType, field, SUMMARY, rawValue);
-              processedEntity._formattedValues[field] = of(this.sanitizer.bypassSecurityTrustHtml(formattedValue)); // Wrap in Observable<SafeHtml>
+              processedEntity._formattedValues[field] = of(this.sanitizer.bypassSecurityTrustHtml(formattedValue));
             }
           });
 
@@ -221,45 +220,7 @@ export class EntityListComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Error loading entities:', err);
-        
-        let errorMessage = 'Failed to load entities. Please try again later.';
-        let validationErrors = undefined;
-        
-        // Try to extract validation errors using the validation service
-        validationErrors = this.validationService.convertApiErrorToValidationFailures(err);
-        
-        if (validationErrors.length > 0) {
-          const errors = validationErrors.map((e: any) => `${e.field}: ${e.constraint}`);
-          errorMessage = `Validation errors: ${errors.join(', ')}`;
-        } else if (err.error?.detail) {
-          if (typeof err.error.detail === 'string') {
-            errorMessage = err.error.detail;
-          }
-        } else if (err.status === 500 && err.error) {
-          // For other server errors, try to extract the message
-          const serverError = err.error.toString();
-          if (serverError.includes('ValidationError')) {
-            // Extract field name and record ID for validation errors
-            const fieldMatch = serverError.match(/Field required \[type=missing, input_value={'_id': ObjectId\('([^']+)'\)/);
-            const missingFieldMatch = serverError.match(/ValidationError: ([a-zA-Z0-9_]+)\n/);
-            
-            if (fieldMatch && missingFieldMatch) {
-              const recordId = fieldMatch[1];
-              const missingField = missingFieldMatch[1];
-              errorMessage = `Error: Missing ${missingField} field in record ${this.entityType}.id = ${recordId}`;
-            }
-          }
-        }
-        
-        // Show error using notification service
-        this.notificationService.showError({
-          message: errorMessage,
-          error_type: 'validation_error',
-          context: {
-              entity: this.entityType,
-              invalid_fields: validationErrors
-          }
-        });
+        this.error = 'Failed to load entities';
         this.loading = false;
       }
     });

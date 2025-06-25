@@ -3,7 +3,8 @@ import { HttpClient } from '@angular/common/http';
 import { ConfigService } from './config.service';
 import { Observable, of, firstValueFrom } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
-
+import { ModeService } from './mode.service';
+import { EntityService } from './entity.service';
 interface Metadata {
   projectName: string;
   database?: string
@@ -28,14 +29,14 @@ interface DisplayInfo {
   fields: string[];
 }
 
-interface RawShowConfig {
-  endpoint: string;
-  displayInfo: DisplayInfo[];
-}
+// interface RawShowConfig {
+//   endpoint: string;
+//   displayInfo: DisplayInfo[];
+// }
 
 export interface ShowConfig {
   endpoint: string;
-  displayInfo: DisplayInfo;
+  displayInfo: DisplayInfo[];
 }
 
 export interface FieldMetadata {
@@ -69,7 +70,7 @@ export interface UiFieldMetata {
   readOnly?: boolean;
   format?: string;
   display?: string;    // 'hidden', 'secret'
-  show?: RawShowConfig;
+  show?: ShowConfig;
   [key: string]: any;
 }
 
@@ -85,6 +86,7 @@ export class MetadataService {
   constructor(
     private http: HttpClient,
     private configService: ConfigService,
+    private modeService: ModeService
   ) { }
 
   initialize(): Observable<Metadata> {
@@ -163,9 +165,6 @@ export class MetadataService {
   }
 
   getFieldMetadata(entityType: string, fieldName: string): FieldMetadata | undefined {
-    if (fieldName === "_id") {
-      return { ui: { displayName: "Id" } };
-    }
     const metadata = this.getEntityMetadata(entityType);
     if (!metadata.fields[fieldName]) {
       console.warn(`No metadata found for field: ${fieldName} in entity: ${entityType}`);
@@ -205,8 +204,8 @@ export class MetadataService {
     const fieldMetadata = this.getFieldMetadata(entityType, fieldName);
     if (!fieldMetadata?.ui?.show) return null;
 
-    const raw = fieldMetadata.ui.show;
-    const matchingDisplayInfo = raw.displayInfo.find(info => {
+    const showConfig = fieldMetadata.ui.show;
+    const matchingDisplayInfo = showConfig.displayInfo.find(info => {
       if (!info.displayPages || info.displayPages === '' || info.displayPages === 'all') {
         return true;
       }
@@ -215,10 +214,48 @@ export class MetadataService {
 
     if (!matchingDisplayInfo) return null;
 
-    const endpoint = raw.endpoint || fieldName.substring(0, fieldName.length - 2);
+    const endpoint = showConfig.endpoint || fieldName.substring(0, fieldName.length - 2);
     return {
       endpoint,
-      displayInfo: matchingDisplayInfo
+      displayInfo: [matchingDisplayInfo]
     };
   }
+
+  getShowViewParams(entityType: string, mode: string): string {
+    // Build JSON view parameter for FK fields
+    const viewSpec: { [key: string]: string[] } = {};
+    const entityMetadata = this.getEntityMetadata(entityType);
+    const displayFields = this.modeService.getViewFields(entityMetadata, mode);
+    
+    for (const fieldName of displayFields) {
+      // For each field that is an ObjectId with a show config
+      const showConfig = this.getShowConfig(entityType, fieldName, mode);
+      if (showConfig) {
+        viewSpec[showConfig.endpoint] = showConfig.displayInfo[0].fields;
+      }
+    }
+    
+    // Return URL-encoded JSON parameter
+    if (Object.keys(viewSpec).length > 0) {
+      return `?view=${encodeURIComponent(JSON.stringify(viewSpec))}`;
+    }
+    
+    return '';
+  }
+
+  /**
+   * Get the fields that should be displayed for an entity in a specific mode
+   * @param entityName The name of the entity
+   * @param currentMode The current mode (summary, details, edit, create)
+   * @returns An array of field names to display, ordered according to metadata
+   */
+  getViewFields(entityName: string, currentMode: string): string[] {
+    const metadata = this.getEntityMetadata(entityName);
+    const visibleFields = this.modeService.getViewFields(metadata, currentMode);
+    
+    // Apply field ordering if needed
+    // For now, return the fields as-is. Field ordering can be added later if needed.
+    return visibleFields;
+  }
+  
 }
