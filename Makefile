@@ -10,9 +10,9 @@ PROJECT_NAME ?= "Project Name Here"
 
 install: setup clean rebuild
 
-clean:	clear schema rebuild
+clean:	new schema rebuild
 
-clear: 
+new: 
 	rm -rf app
 	cp -r $(GENERICS) app
 	mv app/config/*.json .
@@ -25,9 +25,6 @@ main:
 
 models:
 	$(PYPATH) python -m generators.models.gen_model_main schema.yaml . 
-
-routes:
-	$(PYPATH) python -m generators.gen_routes schema.yaml . 
 
 redis:
 	brew services start redis
@@ -43,7 +40,6 @@ code:	schema.yaml
 	mkdir -p app/utilities
 	$(PYPATH) python -m generators.gen_main schema.yaml . 
 	$(PYPATH) python -m generators.gen_models schema.yaml . 
-	$(PYPATH) python -m generators.gen_routes schema.yaml . 
 	$(PYPATH) python -m generators.gen_service_routes schema.yaml $(GENERICS) . 
 
 setup:	$(S2R_DIR)/requirements.txt
@@ -75,4 +71,5 @@ runes:
 	  -p 9200:9200 -p 9300:9300 \
 	  -e discovery.type=single-node \
 	  -e xpack.security.enabled=false \
+          -v /Users/markmalamut/esdata:/usr/share/elasticsearch/data \
 	  elasticsearch:8.12.2
