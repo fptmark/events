@@ -85,7 +85,7 @@ async def list_entities_handler(entity_cls: Type, entity_name: str, request: Req
     view_spec = json.loads(unquote(view_param)) if view_param else None
     
     try:
-        entities, validation_errors = await entity_cls.get_all()
+        entities, validation_errors, total_count = await entity_cls.get_all()
         
         # Add any validation errors as warnings
         for error in validation_errors:
@@ -98,7 +98,9 @@ async def list_entities_handler(entity_cls: Type, entity_name: str, request: Req
             await add_view_data(entity_dict, view_spec, entity_name)
             entity_data.append(entity_dict)
 
-        return notifications.to_response(entity_data)
+        # Create response with metadata
+        metadata = {"total": total_count}
+        return notifications.to_response(entity_data, metadata=metadata)
     except Exception as e:
         notify_error(f"Failed to retrieve {entity_lower}s: {str(e)}", NotificationType.SYSTEM)
         return notifications.to_response(None)

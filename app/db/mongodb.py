@@ -50,8 +50,8 @@ class MongoDatabase(DatabaseInterface):
             )
         return self._db
 
-    async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
-        """Get all documents from a collection."""
+    async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+        """Get all documents from a collection with count."""
         self._ensure_initialized()
             
         try:
@@ -62,6 +62,9 @@ class MongoDatabase(DatabaseInterface):
                 if missing_indexes:
                     warnings.extend(missing_indexes)
             
+            # Get total count
+            total_count = await self._get_db()[collection].count_documents({})
+            
             cursor = self._get_db()[collection].find()
             results = []
             async for doc in cursor:
@@ -69,7 +72,8 @@ class MongoDatabase(DatabaseInterface):
                 if self.id_field in doc and isinstance(doc[self.id_field], ObjectId):
                     doc[self.id_field] = str(doc[self.id_field])
                 results.append(cast(Dict[str, Any], doc))
-            return results, warnings
+            
+            return results, warnings, total_count
         except Exception as e:
             raise DatabaseError(
                 message=str(e),

@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 from elasticsearch import AsyncElasticsearch, NotFoundError
+from bson import ObjectId
 
 from .base import DatabaseInterface
 from ..errors import DatabaseError
@@ -42,12 +43,12 @@ class ElasticsearchDatabase(DatabaseInterface):
         assert self._client is not None, "Client should be initialized after _ensure_initialized()"
         return self._client
 
-    async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
-        """Get all documents from a collection."""
+    async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+        """Get all documents from a collection with count."""
         es = self._get_client()
 
         if not await es.indices.exists(index=collection):
-            return [], []
+            return [], [], 0
 
         try:
             warnings = []
@@ -57,10 +58,14 @@ class ElasticsearchDatabase(DatabaseInterface):
                 if missing_indexes:
                     warnings.extend(missing_indexes)
             
-            res = await es.search(index=collection, query={"match_all": {}})
+            res = await es.search(index=collection, query={"match_all": {}}, size=1000)
             hits = res.get("hits", {}).get("hits", [])
             results = [{**hit["_source"], "id": hit["_id"]} for hit in hits]
-            return results, warnings
+            
+            # Extract total count from search response
+            total_count = res.get("hits", {}).get("total", {}).get("value", 0)
+            
+            return results, warnings, total_count
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
@@ -114,20 +119,24 @@ class ElasticsearchDatabase(DatabaseInterface):
             
             # Handle new documents (no ID) vs updates (existing ID)
             if not doc_id or (isinstance(doc_id, str) and doc_id.strip() == ""):
-                # New document: let Elasticsearch auto-generate ID
-                # Remove any empty ID fields from save data
                 save_data.pop('id', None)
-                result = await es.index(index=collection, document=save_data)
-                doc_id_str = result['_id']
+                doc_id = str(ObjectId())
+                operation = "create"
+            # Use the existing id for updates
             else:
-                # Existing document: update with specific ID
-                # Remove ID from save data since it's used as document ID
-                save_data.pop('id', None)
-                await es.index(index=collection, id=doc_id, document=save_data)
-                doc_id_str = doc_id
+                operation = "update"
+
+            # Perform the save and Check if indexing was successful
+            result = await es.index(index=collection, id=doc_id, document=save_data, refresh='wait_for')
+            if result['result'] not in ['created', 'updated']:
+                raise DatabaseError(
+                    message=f"Failed to {operation} document: {result.get('result', 'unknown error')}",
+                    entity=collection,
+                    operation="save_document"
+                )
                 
             # Get the saved document (this returns tuple, so unpack)
-            saved_doc, get_warnings = await self.get_by_id(collection, doc_id_str)
+            saved_doc, get_warnings = await self.get_by_id(collection, doc_id)
             warnings.extend(get_warnings)
             return saved_doc, warnings
         except Exception as e:

@@ -157,7 +157,7 @@ class SimpleNotificationCollection:
         
         return None, None
 
-    def to_response(self, data: Any = None) -> Dict[str, Any]:
+    def to_response(self, data: Any = None, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Convert to standard API response format"""
         message, level = self.get_primary_message()
         
@@ -166,6 +166,10 @@ class SimpleNotificationCollection:
             "message": message,
             "level": level
         }
+        
+        # Add metadata if provided
+        if metadata:
+            response["metadata"] = metadata
         
         # Include notifications if there are multiple or if there are details
         if len(self.notifications) > 1 or any(n.details for n in self.notifications):

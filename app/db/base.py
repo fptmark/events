@@ -56,8 +56,8 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
-        """Get all documents from a collection"""
+    async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+        """Get all documents from a collection with count"""
         pass
 
     @abstractmethod

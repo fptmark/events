@@ -123,9 +123,9 @@ class DatabaseFactory:
         return normalized
 
     @classmethod
-    async def get_all(cls, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
-        """Get all documents from a collection"""
-        data, warnings = await cls.get_instance().get_all(collection, unique_constraints)
+    async def get_all(cls, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+        """Get all documents from a collection with count"""
+        data, warnings, total_count = await cls.get_instance().get_all(collection, unique_constraints)
         
         # Normalize database-specific types
         normalized_data = [cls._normalize_document(doc) for doc in data]
@@ -134,7 +134,7 @@ class DatabaseFactory:
         for warning in warnings:
             notify_warning(warning, NotificationType.DATABASE, entity=collection, operation="get_all")
             
-        return normalized_data, warnings
+        return normalized_data, warnings, total_count
 
     @classmethod
     async def get_by_id(cls, collection: str, doc_id: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
