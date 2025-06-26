@@ -44,7 +44,7 @@ import { ValidationService } from '../services/validation.service';
 })
 
 export class EntityFormComponent implements OnInit {
-  readonly ID_FIELD = '_id';
+  readonly ID_FIELD = 'id';
 
   entityType: string = '';
   entityId: string = '';
@@ -500,7 +500,7 @@ export class EntityFormComponent implements OnInit {
     const showConfig = this.metadataService.getShowConfig(this.entityType, fieldName, this.mode);
     
     // Set up columns for the selector
-    this.entitySelectorColumns = [{ field: '_id', bold: true, displayName: "Id" }];
+    this.entitySelectorColumns = [{ field: 'id', bold: true, displayName: "Id" }];
     
     // Add columns from show config if available
     if (showConfig) {
@@ -539,7 +539,7 @@ export class EntityFormComponent implements OnInit {
     if (!control) return;
     
     // Always set the ID value
-    control.setValue(entity._id);
+    control.setValue(entity.id);
     
     // Close the selector
     this.showEntitySelector = false;
