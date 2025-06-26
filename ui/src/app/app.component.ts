@@ -5,6 +5,7 @@ import { MetadataService } from './services/metadata.service'
 import { NavigationService } from './services/navigation.service';
 import { ConfigService } from './services/config.service';
 import { RestService } from './services/rest.service';
+import { EntityService } from './services/entity.service';
 import { NotificationComponent } from './components/notification.component';
 
 @Component({
@@ -44,6 +45,9 @@ import { NotificationComponent } from './components/notification.component';
               </li>
             </ul>
             <span class="navbar-text text-light">
+              <span *ngIf="entityService.getCurrentRecordCount() !== null">
+                Records: {{ entityService.getCurrentRecordCount() }} | 
+              </span>
               Database: {{ metadataService.getDatabaseType() }}
             </span>
           </div>
@@ -94,7 +98,8 @@ export class AppComponent implements OnInit {
     public metadataService: MetadataService,
     public navigationService: NavigationService,
     private configService: ConfigService,
-    private restService: RestService
+    private restService: RestService,
+    public entityService: EntityService
   ) { }
 
   redirectToServerRoute(route: string) {

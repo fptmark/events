@@ -138,6 +138,7 @@ export class EntityListComponent implements OnInit, OnDestroy {
   displayFields: string[] = [];
   loading: boolean = true;
   error: string = '';
+  totalCount: number = 0;
   
   // Store operation permissions for row-level actions
   canRead: boolean = false;
@@ -186,11 +187,18 @@ export class EntityListComponent implements OnInit, OnDestroy {
     // Wait for entities to be loaded
     this.displayFields = this.entityService.getViewFields(this.entityType, SUMMARY);
         
-    // Use RestService instead of HttpClient directly
+    // Use RestService instead of HttpClient directly  
     this.restService.getEntityList(this.entityType, 'summary').subscribe({
-      next: (entities) => {
+      next: (response: any) => {
+        // Handle new response format with metadata
+        const entities = response.data || response; // Fallback for old format
+        this.totalCount = response.metadata?.total || entities.length; // Extract count
+        
+        // Update the entity service with the current record count
+        this.entityService.setRecordCount(this.totalCount);
+        
         // Process each entity using embedded FK data from server response
-        this.data = entities.map(entity => {
+        this.data = entities.map((entity: any) => {
           const processedEntity: any = { ...entity, _formattedValues: {} };
 
           this.displayFields.forEach(field => {

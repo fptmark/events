@@ -19,6 +19,8 @@ export interface EntityResponse<> {
   providedIn: 'root'
 })
 export class EntityService {
+  private currentRecordCount: number | null = null;
+
   constructor(
     private fieldOrderService: FieldOrderService,
     private metadataService: MetadataService,
@@ -28,6 +30,14 @@ export class EntityService {
     private sanitizer: DomSanitizer,
     private restService: RestService
   ) {}
+
+  setRecordCount(count: number): void {
+    this.currentRecordCount = count;
+  }
+
+  getCurrentRecordCount(): number | null {
+    return this.currentRecordCount;
+  }
 
    /**
     * Get the fields that should be displayed for an entity in a specific view mode
