@@ -77,7 +77,6 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Dict[str, Any] |
 async def list_entities_handler(entity_cls: Type, entity_name: str, request: Request) -> Dict[str, Any]:
     """Reusable handler for LIST endpoint."""
     entity_lower = entity_name.lower()
-    notifications = start_notifications(entity=entity_name, operation=f"list_{entity_lower}s")
     
     # Extract query parameters for FK processing
     query_params = dict(request.query_params)
@@ -85,33 +84,30 @@ async def list_entities_handler(entity_cls: Type, entity_name: str, request: Req
     view_spec = json.loads(unquote(view_param)) if view_param else None
     
     try:
-        entities, validation_errors, total_count = await entity_cls.get_all()
+        # Get entity-grouped response from model
+        response = await entity_cls.get_all()
         
-        # Add any validation errors as warnings
-        for error in validation_errors:
-            notify_warning(str(error), NotificationType.VALIDATION)
+        # Process FK includes if view parameter is provided and we have data
+        if response.get('data') and view_spec:
+            entity_data = []
+            for entity in response['data']:
+                entity_dict = entity.model_dump() if hasattr(entity, 'model_dump') else entity
+                await add_view_data(entity_dict, view_spec, entity_name)
+                entity_data.append(entity_dict)
+            response['data'] = entity_data
         
-        # Process FK includes if view parameter is provided
-        entity_data = []
-        for entity in entities:
-            entity_dict = entity.model_dump()
-            # entity_dict['exists'] = True  # If retrieved from DB, it exists
-            await add_view_data(entity_dict, view_spec, entity_name)
-            entity_data.append(entity_dict)
-
-        # Create response with metadata
-        metadata = {"total": total_count}
-        return notifications.to_response(entity_data, metadata=metadata)
+        return response
     except Exception as e:
-        notify_error(f"Failed to retrieve {entity_lower}s: {str(e)}", NotificationType.SYSTEM)
-        # Return empty list with consistent metadata format for failed get_all
-        empty_response = {
-            "data": [],
-            "metadata": {"total": 0}
-        }
-        return notifications.to_response(empty_response)
-    finally:
-        end_notifications()
+        # For system failures, return failed response with no data
+        from app.notification import start_notifications, end_notifications, NotificationLevel, NotificationType
+        notifications = start_notifications(entity_name, f"list_{entity_lower}s")
+        notifications.add(
+            message=f"Failed to retrieve {entity_lower}s: {str(e)}",
+            level=NotificationLevel.ERROR,
+            type=NotificationType.SYSTEM
+        )
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(data=[], is_bulk=True)
 
 
 async def get_entity_handler(entity_cls: Type, entity_name: str, entity_id: str, request: Request) -> Dict[str, Any]:
@@ -136,15 +132,18 @@ async def get_entity_handler(entity_cls: Type, entity_name: str, entity_id: str,
         # entity_dict['exists'] = True  # If no exception thrown, entity exists
         await add_view_data(entity_dict, view_spec, entity_name)
         
-        return notifications.to_response(entity_dict)
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(entity_dict, is_bulk=False)
     except NotFoundError:
         notify_error(f"{entity_name} not found", NotificationType.BUSINESS)
         # Return object with exists=False for consistent UI handling
         not_found_entity = {"id": entity_id} #, "exists": False}
-        return notifications.to_response(not_found_entity)
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(not_found_entity, is_bulk=False)
     except Exception as e:
         notify_error(f"Failed to retrieve {entity_lower}: {str(e)}", NotificationType.SYSTEM)
-        return notifications.to_response(None)
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(None, is_bulk=False)
     finally:
         end_notifications()
 
@@ -162,13 +161,16 @@ async def create_entity_handler(entity_cls: Type, entity_name: str, entity_data:
         for warning in warnings:
             notify_warning(warning, NotificationType.DATABASE)
         notify_success(f"{entity_name} created successfully", NotificationType.BUSINESS)
-        return notifications.to_response(result.model_dump())
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(result.model_dump(), is_bulk=False)
     except (ValidationError, DuplicateError) as e:
         notify_validation_error(f"Failed to create {entity_lower}: {str(e)}")
-        return notifications.to_response(None)
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(None, is_bulk=False)
     except Exception as e:
         notify_error(f"Failed to create {entity_lower}: {str(e)}", NotificationType.SYSTEM)
-        return notifications.to_response(None)
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(None, is_bulk=False)
     finally:
         end_notifications()
 
@@ -184,23 +186,31 @@ async def update_entity_handler(entity_cls: Type, entity_name: str, entity_id: s
         for warning in warnings:
             notify_warning(warning, NotificationType.DATABASE)
             
-        # Merge payload data into existing entity - model handles all logic
-        updated = existing.model_copy(update=entity_data.model_dump())
-        result, save_warnings = await updated.save()
+        # Merge payload data into existing entity and force validation
+        update_dict = entity_data.model_dump(exclude_unset=True)
+        updated = existing.model_copy(update=update_dict)
+        
+        # Force validation by recreating the model (triggers field validators)
+        validated_updated = entity_cls.model_validate(updated.model_dump())
+        result, save_warnings = await validated_updated.save()
         # Add any warnings from save operation
         for warning in save_warnings:
             notify_warning(warning, NotificationType.DATABASE)
         notify_success(f"{entity_name} updated successfully", NotificationType.BUSINESS)
-        return notifications.to_response(result.model_dump())
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(result.model_dump(), is_bulk=False)
     except NotFoundError as e:
         notify_error(f"{entity_name} not found", NotificationType.BUSINESS)
-        return notifications.to_response(None)
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(None, is_bulk=False)
     except (ValidationError, DuplicateError) as e:
         notify_validation_error(f"Failed to update {entity_lower}: {str(e)}")
-        return notifications.to_response(None)
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(None, is_bulk=False)
     except Exception as e:
         notify_error(f"Failed to update {entity_lower}: {str(e)}", NotificationType.SYSTEM)
-        return notifications.to_response(None)
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(None, is_bulk=False)
     finally:
         end_notifications()
 
@@ -216,12 +226,15 @@ async def delete_entity_handler(entity_cls: Type, entity_name: str, entity_id: s
             notify_success(f"{entity_name} deleted successfully", NotificationType.BUSINESS)
         for warning in warnings:
             notify_warning(warning, NotificationType.DATABASE)
-        return notifications.to_response(None)
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(None, is_bulk=False)
     except NotFoundError:
         notify_error(f"{entity_name} not found", NotificationType.BUSINESS)
-        return notifications.to_response(None)
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(None, is_bulk=False)
     except Exception as e:
         notify_error(f"Failed to delete {entity_lower}: {str(e)}", NotificationType.SYSTEM)
-        return notifications.to_response(None)
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(None, is_bulk=False)
     finally:
         end_notifications()

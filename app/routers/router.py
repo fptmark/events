@@ -7,7 +7,8 @@ eliminating the need for metadata services, reflection, or async complexity.
 
 from pathlib import Path
 from fastapi import APIRouter, Request
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Type, Union
+from pydantic import BaseModel, Field, create_model
 import logging
 
 from app.routers.router_factory import get_entity_names, ModelImportCache
@@ -17,6 +18,48 @@ from app.routers.endpoint_handlers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Generic response models for OpenAPI
+def create_response_models(entity_cls: Type[BaseModel]):
+    """Create response models dynamically for any entity"""
+    entity_name = entity_cls.__name__
+    
+    # Create response models with explicit model creation for better OpenAPI support
+    response_fields = {
+        'data': (Optional[List[Dict[str, Any]]], Field(default_factory=list)),
+        'message': (Optional[str], None),
+        'level': (Optional[str], None),
+        'metadata': (Optional[Dict[str, Any]], None),
+        'notifications': (Optional[Dict[str, Dict[str, Any]]], None),
+        'status': (Optional[str], None),
+        'summary': (Optional[Dict[str, Any]], None),
+    }
+    
+    list_response_fields = {
+        'data': (Optional[List[Dict[str, Any]]], Field(default_factory=list)),
+        'message': (Optional[str], None),
+        'level': (Optional[str], None),
+        'metadata': (Optional[Dict[str, Any]], None),
+        'notifications': (Optional[Dict[str, Dict[str, Any]]], None),
+        'status': (Optional[str], None),
+        'summary': (Optional[Dict[str, Any]], None),
+    }
+    
+    # Create models with proper type annotations for OpenAPI
+    EntityResponse = create_model(
+        f"{entity_name}Response",
+        **response_fields,
+        __config__=type('Config', (), {'arbitrary_types_allowed': True})
+    )
+    
+    EntityListResponse = create_model(
+        f"{entity_name}ListResponse", 
+        **list_response_fields,
+        __config__=type('Config', (), {'arbitrary_types_allowed': True})
+    )
+    
+    return EntityResponse, EntityListResponse
 
 
 class SimpleDynamicRouterFactory:
@@ -50,69 +93,82 @@ class SimpleDynamicRouterFactory:
         
         entity_lower = entity_name.lower()
         
-        # Create endpoint handlers using the reusable functions
+        # Create response models for OpenAPI documentation
+        EntityResponse, EntityListResponse = create_response_models(entity_cls)
+        
+        # Use proper FastAPI decorators for better OpenAPI schema generation
+        
+        @router.get(
+            "",
+            summary=f"List all {entity_lower}s",
+            response_description=f"List of {entity_lower}s with metadata",
+            response_model=EntityListResponse,
+            responses={
+                200: {"description": f"Successfully retrieved {entity_lower} list"},
+                500: {"description": "Server error"}
+            }
+        )
         async def list_entities(request: Request) -> Dict[str, Any]:
             return await list_entities_handler(entity_cls, entity_name, request)
         
+        @router.get(
+            "/{entity_id}",
+            summary=f"Get a specific {entity_lower} by ID",
+            response_description=f"The requested {entity_lower}",
+            response_model=EntityResponse,
+            responses={
+                200: {"description": f"Successfully retrieved {entity_lower}"},
+                404: {"description": f"{entity_name} not found"},
+                500: {"description": "Server error"}
+            }
+        )
         async def get_entity(entity_id: str, request: Request) -> Dict[str, Any]:
             return await get_entity_handler(entity_cls, entity_name, entity_id, request)
 
-        async def create_entity(entity_data) -> Dict[str, Any]:
+        @router.post(
+            "",
+            summary=f"Create a new {entity_lower}",
+            response_description=f"The created {entity_lower}",
+            response_model=EntityResponse,
+            responses={
+                200: {"description": f"Successfully created {entity_lower}"},
+                422: {"description": "Validation error"},
+                409: {"description": "Duplicate entry"},
+                500: {"description": "Server error"}
+            }
+        )
+        async def create_entity(entity_data: create_cls) -> Dict[str, Any]:
             return await create_entity_handler(entity_cls, entity_name, entity_data)
         
-        async def update_entity(entity_id: str, entity_data) -> Dict[str, Any]:
+        @router.put(
+            "/{entity_id}",
+            summary=f"Update an existing {entity_lower}",
+            response_description=f"The updated {entity_lower}",
+            response_model=EntityResponse,
+            responses={
+                200: {"description": f"Successfully updated {entity_lower}"},
+                404: {"description": f"{entity_name} not found"},
+                422: {"description": "Validation error"},
+                409: {"description": "Duplicate entry"},
+                500: {"description": "Server error"}
+            }
+        )
+        async def update_entity(entity_id: str, entity_data: update_cls) -> Dict[str, Any]:
             return await update_entity_handler(entity_cls, entity_name, entity_id, entity_data)
         
+        @router.delete(
+            "/{entity_id}",
+            summary=f"Delete a {entity_lower}",
+            response_description="Deletion confirmation",
+            response_model=EntityResponse,
+            responses={
+                200: {"description": f"Successfully deleted {entity_lower}"},
+                404: {"description": f"{entity_name} not found"},
+                500: {"description": "Server error"}
+            }
+        )
         async def delete_entity(entity_id: str) -> Dict[str, Any]:
             return await delete_entity_handler(entity_cls, entity_name, entity_id)
-        
-        # Register routes with proper typing for OpenAPI
-        router.add_api_route(
-            "",
-            list_entities,
-            methods=["GET"],
-            summary=f"List all {entity_lower}s",
-            response_description=f"List of {entity_lower}s"
-        )
-        
-        router.add_api_route(
-            "/{entity_id}",
-            get_entity,
-            methods=["GET"],
-            summary=f"Get a specific {entity_lower} by ID",
-            response_description=f"The requested {entity_lower}"
-        )
-        
-        # Set proper type annotations for OpenAPI
-        create_entity.__annotations__['entity_data'] = create_cls
-        create_entity.__annotations__['return'] = Dict[str, Any]
-        
-        update_entity.__annotations__['entity_data'] = update_cls
-        update_entity.__annotations__['return'] = Dict[str, Any]
-        
-        router.add_api_route(
-            "",
-            create_entity,
-            methods=["POST"],
-            summary=f"Create a new {entity_lower}",
-            response_description=f"The created {entity_lower}"
-        )
-        
-        router.add_api_route(
-            "/{entity_id}",
-            update_entity,
-            methods=["PUT"],
-            summary=f"Update an existing {entity_lower}",
-            response_description=f"The updated {entity_lower}"
-        )
-        
-        router.add_api_route(
-            "/{entity_id}",
-            delete_entity,
-            methods=["DELETE"],
-            summary=f"Delete a {entity_lower}",
-            response_description="Deletion confirmation"
-        )
         
         logger.info(f"Created dynamic router for entity: {entity_name}")
         return router

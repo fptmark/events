@@ -22,15 +22,17 @@ class ValidationError(HTTPException):
         self, 
         message: str,
         entity: str,
-        invalid_fields: List[ValidationFailure]
+        invalid_fields: List[ValidationFailure],
+        entity_id: Optional[str] = None
     ):
         self.message = message
         self.entity = entity
         self.invalid_fields = invalid_fields
+        self.entity_id = entity_id
         super().__init__(status_code=422, detail=message)
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "detail": {
                 "message": self.message,
                 "error_type": self.__class__.__name__,
@@ -40,6 +42,9 @@ class ValidationError(HTTPException):
                 ]
             }
         }
+        if self.entity_id:
+            result["detail"]["entity_id"] = self.entity_id
+        return result
 
 class NotFoundError(HTTPException):
     """Error raised when an entity is not found"""
@@ -101,102 +106,3 @@ class DatabaseError(HTTPException):
                 "operation": self.operation
             }
         }
-
-
-def normalize_error_response(
-    error: Union[Exception, RequestValidationError, str], 
-    request_path: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Normalizes any error into a consistent FastAPI-compatible response format.
-    
-    Args:
-        error: The error to normalize (custom exception, FastAPI validation error, or string)
-        request_path: Optional request path to extract entity name
-        
-    Returns:
-        Standardized error response dict with format: {"detail": {...}}
-    """
-    
-    # Handle our custom error classes that already have to_dict()
-    if hasattr(error, 'to_dict') and callable(getattr(error, 'to_dict')):
-        # Use getattr to safely call to_dict() method
-        to_dict_method = getattr(error, 'to_dict')
-        result = to_dict_method()
-        return result if isinstance(result, dict) else {"detail": {"message": str(error), "error_type": "UnknownError"}}
-    
-    # Handle FastAPI RequestValidationError
-    if isinstance(error, RequestValidationError):
-        failures = []
-        for err in error.errors():
-            field = err["loc"][-1] if err["loc"] else "unknown"
-            failures.append(ValidationFailure(
-                field=field,
-                message=err["msg"],
-                value=err.get("input")
-            ))
-        
-        entity = None
-        if request_path:
-            entity = request_path.split("/")[-1]
-            
-        return {
-            "detail": {
-                "message": "Invalid request data",
-                "error_type": "RequestValidationError",
-                "entity": entity,
-                "invalid_fields": [f.to_dict() for f in failures]
-            }
-        }
-    
-    # Handle string errors
-    if isinstance(error, str):
-        return {
-            "detail": {
-                "message": error,
-                "error_type": "StringError"
-            }
-        }
-    
-    # Handle generic exceptions
-    if isinstance(error, Exception):
-        error_str = str(error).lower()
-        
-        # Check for specific error patterns and categorize
-        if "index_not_found_exception" in error_str:
-            entity = None
-            if request_path:
-                entity = request_path.split("/")[-1]
-                
-            return {
-                "detail": {
-                    "message": "Required index is missing: operation aborted",
-                    "error_type": "IndexNotFoundError", 
-                    "context": {
-                        "error": str(error),
-                        "entity": entity
-                    }
-                }
-            }
-        
-        # Generic exception fallback
-        return {
-            "detail": {
-                "message": "An unexpected error occurred",
-                "error_type": error.__class__.__name__,
-                "context": {
-                    "error": str(error)
-                }
-            }
-        }
-    
-    # Fallback for unknown error types
-    return {
-        "detail": {
-            "message": "An unknown error occurred",
-            "error_type": "UnknownError",
-            "context": {
-                "error": str(error)
-            }
-        }
-    }
