@@ -25,6 +25,7 @@ interface NotificationViewModel extends Notification {
   selector: 'app-notification',
   standalone: true,
   imports: [CommonModule],
+  styleUrls: ['./notification.component.css'],
   template: `
     <ng-container *ngIf="notification$ | async as vm">
       <div class="notification-container" [ngClass]="vm.type">
@@ -62,6 +63,7 @@ interface NotificationViewModel extends Notification {
               <div class="group-items">
                 <div *ngFor="let notification of group.notifications" class="notification-item">
                   <div class="item-message">
+                    <span *ngIf="notification.entity_id" class="entity-label">{{ notification.entity_type }} {{ notification.entity_id }}:</span>
                     <span *ngIf="notification.field" class="field-label">{{ getFieldDisplayName(notification.field) }}:</span>
                     {{ notification.message }}
                     <span *ngIf="notification.value !== undefined && notification.value !== null" class="field-value">
@@ -94,185 +96,7 @@ interface NotificationViewModel extends Notification {
         </div>
       </div>
     </ng-container>
-  `,
-  styles: [`
-    .notification-container {
-      margin: 10px;
-      padding: 15px;
-      border-radius: 4px;
-      position: relative;
-      border: 1px solid;
-    }
-    
-    .notification-header {
-      display: flex;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-    
-    .expand-button {
-      margin-left: 10px;
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 14px;
-      opacity: 0.7;
-      padding: 2px 6px;
-      border-radius: 3px;
-    }
-    .expand-button:hover {
-      opacity: 1;
-      background: rgba(0,0,0,0.1);
-    }
-    
-    .close-button {
-      position: absolute;
-      right: 10px;
-      top: 10px;
-      background: none;
-      border: none;
-      font-size: 20px;
-      cursor: pointer;
-      opacity: 0.5;
-    }
-    .close-button:hover {
-      opacity: 1;
-    }
-    
-    .primary-messages {
-      margin-bottom: 10px;
-    }
-    
-    .primary-message {
-      margin-bottom: 5px;
-    }
-    
-    .detailed-notifications {
-      margin-top: 15px;
-      padding-top: 15px;
-      border-top: 1px solid rgba(0,0,0,0.1);
-    }
-    
-    .notifications-header {
-      font-weight: bold;
-      margin-bottom: 10px;
-      color: #333;
-    }
-    
-    .notification-group {
-      margin-bottom: 15px;
-    }
-    
-    .group-header {
-      display: flex;
-      align-items: center;
-      padding: 8px 12px;
-      border-radius: 4px;
-      margin-bottom: 8px;
-      font-weight: bold;
-    }
-    
-    .group-icon {
-      margin-right: 8px;
-      font-size: 16px;
-    }
-    
-    .group-title {
-      flex: 1;
-    }
-    
-    .group-error {
-      background: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
-    }
-    
-    .group-warning {
-      background: #fff3cd;
-      color: #856404;
-      border: 1px solid #ffeeba;
-    }
-    
-    .group-info {
-      background: #d1ecf1;
-      color: #0c5460;
-      border: 1px solid #bee5eb;
-    }
-    
-    .group-success {
-      background: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
-    }
-    
-    .group-items {
-      padding-left: 20px;
-    }
-    
-    .notification-item {
-      margin-bottom: 10px;
-      padding: 8px;
-      background: rgba(0,0,0,0.02);
-      border-radius: 3px;
-    }
-    
-    .item-message {
-      margin-bottom: 5px;
-    }
-    
-    .field-label {
-      font-weight: bold;
-      color: #333;
-    }
-    
-    .field-value {
-      color: #666;
-      font-style: italic;
-      font-size: 0.9em;
-    }
-    
-    .nested-details {
-      margin-top: 8px;
-      padding-left: 15px;
-    }
-    
-    .detail-item {
-      margin-bottom: 3px;
-      color: #666;
-      font-size: 0.9em;
-    }
-    
-    /* Legacy error details */
-    .error-details {
-      margin-top: 10px;
-      padding: 10px;
-      background: rgba(0,0,0,0.05);
-      border-radius: 4px;
-    }
-    
-    .error-section {
-      margin-bottom: 10px;
-    }
-    
-    .error-subtitle {
-      font-weight: bold;
-      margin-bottom: 5px;
-    }
-    
-    ul {
-      margin: 0;
-      padding-left: 20px;
-    }
-    
-    li {
-      margin-bottom: 3px;
-    }
-
-    .success { background-color: #d4edda; border-color: #c3e6cb; color: #155724; }
-    .error { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; }
-    .warning { background-color: #fff3cd; border-color: #ffeeba; color: #856404; }
-    .info { background-color: #d1ecf1; border-color: #bee5eb; color: #0c5460; }
-  `]
+  `
 })
 export class NotificationComponent implements OnInit, OnDestroy {
   private subscription: Subscription | null = null

@@ -16,10 +16,10 @@
             "outputPath": "dist/ui/browser",
             "index": "src/index.html",
             "main": "src/main.ts",
+            "sourceMap": true,
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
             "assets": [
-              { "glob": "config.json", "input": "../", "output": "/" },
               { "glob": "**/*", "input": "public", "output": "public", 
                 "ignore": [ "**/.DS_Store", "**/*.swp", "**/*.tmp",   "**/.vscode/**", "**/.idea/**", "**/*~" ]
               }

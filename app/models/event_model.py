@@ -1,15 +1,23 @@
 from collections.abc import Sequence
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Self, ClassVar
-from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError
-import re
+from typing import Optional, List, Dict, Any, Self, ClassVar, Union, Annotated, Literal
+from enum import Enum
+from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
+from pydantic_core import core_schema
+from typing_extensions import Annotated
 import logging
 from app.db import DatabaseFactory
 import app.utils as helpers
 from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
-from app.notification import notify_validation_error, NotificationType
+from app.notification import notify_validation_error, NotificationType, start_notifications, end_notifications, NotificationLevel, NotificationType
 
+class RecurrenceEnum(str, Enum):
+    DAILY = 'daily'
+    WEEKLY = 'weekly'
+    MONTHLY = 'monthly'
+    YEARLY = 'yearly'
+ 
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
@@ -21,15 +29,15 @@ class UniqueValidationError(Exception):
 
 
 class Event(BaseModel):
-    id: Optional[str] = Field(default=None, alias='_id')
+    id: str
     url: str = Field(..., pattern=r"^https?://[^s]+$")
     title: str = Field(..., max_length=200)
     dateTime: datetime = Field(...)
-    location: Optional[str] = Field(None, max_length=200)
-    cost: Optional[float] = Field(None, ge=0)
-    numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
-    recurrence: Optional[str] = Field(None, description =": ['daily', 'weekly', 'monthly', 'yearly']")
-    tags: Optional[List[str]] = Field(None)
+    location: str | None = Field(default=None, max_length=200)
+    cost: float | None = Field(default=None, ge=0)
+    numOfExpectedAttendees: int | None = Field(default=None, ge=0)
+    recurrence: RecurrenceEnum | None = Field(default=None)
+    tags: List[str] | None = Field(default=None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -80,75 +88,24 @@ class Event(BaseModel):
     class Settings:
         name = "event"
 
-    model_config = ConfigDict(from_attributes=True, validate_by_name=True)
-
-    def model_dump(self, **kwargs) -> Dict[str, Any]:
-        """Override model_dump to normalize ID field to 'id' for API responses"""
-        data = super().model_dump(**kwargs)
-        # Normalize database-specific _id to generic id
-        if "_id" in data:
-            data["id"] = data.pop("_id")
-        return data
-
-    @field_validator('url', mode='before')
-    def validate_url(cls, v):
-        if v is not None and not re.match(r'^https?://[^s]+$', v):
-            raise ValueError('Bad URL format')
-        return v
-     
-    @field_validator('title', mode='before')
-    def validate_title(cls, v):
-        if v is not None and len(v) > 200:
-            raise ValueError('title must be at most 200 characters')
-        return v
-     
-    @field_validator('dateTime', mode='before')
-    def parse_dateTime(cls, v):
-        if v in (None, '', 'null'):
-            return None
-        if isinstance(v, str):
-            return datetime.fromisoformat(v)
-        return v
-    @field_validator('location', mode='before')
-    def validate_location(cls, v):
-        if v is not None and len(v) > 200:
-            raise ValueError('location must be at most 200 characters')
-        return v
-     
-    @field_validator('cost', mode='before')
-    def validate_cost(cls, v):
-        if v is not None and float(v) < 0:
-            raise ValueError('cost must be at least 0')
-        return v
-     
-    @field_validator('numOfExpectedAttendees', mode='before')
-    def validate_numOfExpectedAttendees(cls, v):
-        if v is not None and int(v) < 0:
-            raise ValueError('numOfExpectedAttendees must be at least 0')
-        return v
-     
-    @field_validator('recurrence', mode='before')
-    def validate_recurrence(cls, v):
-        allowed = ['daily', 'weekly', 'monthly', 'yearly']
-        if v is not None and v not in allowed:
-            raise ValueError('recurrence must be one of ' + ','.join(allowed))
-        return v
-     
+    model_config = ConfigDict(from_attributes=True, validate_by_name=True, use_enum_values=True)
 
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
         return helpers.get_metadata(cls._metadata)
 
     @classmethod
-    async def get_all(cls) -> tuple[Sequence[Self], List[ValidationError]]:
+    async def get_all(cls) -> Dict[str, Any]:
         try:
+            # Start notification collection
+            notifications = start_notifications("Event", "get_all")
+
             get_validations, unique_validations = Config.validations(True)
             unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
             
-            raw_docs, warnings = await DatabaseFactory.get_all("event", unique_constraints)
+            raw_docs, warnings, total_count = await DatabaseFactory.get_all("event", unique_constraints)
             
             events = []
-            validation_errors = []
             
             # Conditional validation - validate AFTER read if requested
             if get_validations:
@@ -158,29 +115,37 @@ class Event(BaseModel):
                     except PydanticValidationError as e:
                         # Convert Pydantic errors to notifications
                         for error in e.errors():
-                            notify_validation_error(
-                                message=f"Validation failed for field '{error['loc'][-1]}': {error['msg']}",
+                           notifications.add(
+                                message=error['msg'],
+                                level=NotificationLevel.WARNING,
+                                type=NotificationType.VALIDATION,
                                 entity="Event",
-                                field=str(error['loc'][-1]),
-                                value=error.get('input')
+                                field_name=str(error['loc'][-1]),
+                                value=error.get('input'),
+                                entity_id=doc.get('id')
                             )
-                            validation_errors.append(ValidationError(
-                                message=f"Validation failed for field '{error['loc'][-1]}': {error['msg']}",
-                                entity="Event",
-                                invalid_fields=[ValidationFailure(
-                                    field=str(error['loc'][-1]),
-                                    message=error['msg'],
-                                    value=error.get('input')
-                                )]
-                            ))
+
                         # Create instance without validation for failed docs
-                        events.append(cls(**doc))
+                        events.append(cls.model_construct(**doc))
             else:
-                events = [cls(**doc) for doc in raw_docs]  # NO validation
+                events = [cls.model_construct(**doc) for doc in raw_docs]  # NO validation  
             
-            # Add database warnings to validation errors
-            validation_errors.extend([ValidationError(message=w, entity="Event", invalid_fields=[]) for w in warnings])
-            return events, validation_errors
+            # Add database warnings
+            for warning in warnings:
+                notifications.add(
+                    message=warning,
+                    level=NotificationLevel.WARNING,
+                    type=NotificationType.DATABASE,
+                    entity="Event"
+                )
+            
+            # Convert models to dictionaries for FastAPI response validation
+            event_data = [event.model_dump() for event in events]
+            
+            # End notification collection and return entity-grouped response
+            collection = end_notifications()
+            return collection.to_entity_grouped_response(data=event_data, is_bulk=True)
+
         except Exception as e:
             raise DatabaseError(str(e), "Event", "get_all")
 
@@ -249,8 +214,10 @@ class Event(BaseModel):
             result, warnings = await DatabaseFactory.save_document("event", data, unique_constraints)
 
             # Update ID from result
-            if not self.id and result and isinstance(result, dict) and result.get(DatabaseFactory.get_id_field()):
-                self.id = result[DatabaseFactory.get_id_field()]
+            if not self.id and result and isinstance(result, dict):
+                extracted_id = result.get('id')
+                if extracted_id:
+                    self.id = extracted_id
 
             return self, warnings
         except ValidationError:
@@ -277,38 +244,35 @@ class Event(BaseModel):
         except Exception as e:
             raise DatabaseError(str(e), "Event", "delete")
 
-#from pydantic import BaseModel, Field, ConfigDict
-#from typing import Optional, List, Dict, Any
-#from datetime import datetime
-
 class EventCreate(BaseModel):
-  id: Optional[str] = Field(default=None, alias='_id')
-  url: str = Field(..., pattern=r"^https?://[^s]+$")
-  title: str = Field(..., max_length=200)
-  dateTime: datetime = Field(...)
-  location: Optional[str] = Field(None, max_length=200)
-  cost: Optional[float] = Field(None, ge=0)
-  numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
-  recurrence: Optional[str] = Field(None, description =": ['daily', 'weekly', 'monthly', 'yearly']")
-  tags: Optional[List[str]] = Field(None)
+    url: str = Field(..., pattern=r"^https?://[^s]+$")
+    title: str = Field(..., max_length=200)
+    dateTime: datetime = Field(...)
+    location: str | None = Field(default=None, max_length=200)
+    cost: float | None = Field(default=None, ge=0)
+    numOfExpectedAttendees: int | None = Field(default=None, ge=0)
+    recurrence: RecurrenceEnum | None = Field(default=None)
+    tags: List[str] | None = Field(default=None)
 
-  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
 
-
-#from pydantic import BaseModel, Field, ConfigDict
-#from typing import Optional, List, Dict, Any
-#from datetime import datetime
 
 class EventUpdate(BaseModel):
-  id: Optional[str] = Field(default=None, alias='_id')
-  url: str = Field(..., pattern=r"^https?://[^s]+$")
-  title: str = Field(..., max_length=200)
-  dateTime: datetime = Field(...)
-  location: Optional[str] = Field(None, max_length=200)
-  cost: Optional[float] = Field(None, ge=0)
-  numOfExpectedAttendees: Optional[int] = Field(None, ge=0)
-  recurrence: Optional[str] = Field(None, description =": ['daily', 'weekly', 'monthly', 'yearly']")
-  tags: Optional[List[str]] = Field(None)
+    url: str | None = Field(default=None, pattern=r"^https?://[^s]+$")
+    title: str | None = Field(default=None, max_length=200)
+    dateTime: datetime | None = Field(default=None)
+    location: str | None = Field(default=None, max_length=200)
+    cost: float | None = Field(default=None, ge=0)
+    numOfExpectedAttendees: int | None = Field(default=None, ge=0)
+    recurrence: RecurrenceEnum | None = Field(default=None)
+    tags: List[str] | None = Field(default=None)
 
-  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
-
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )

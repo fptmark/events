@@ -69,6 +69,12 @@ export class NotificationService {
       this.showError(response);
       return;
     }
+
+    // Handle new entity-grouped format (status: perfect/completed/failed)
+    if (response.status) {
+      this.handleEntityGroupedResponse(response);
+      return;
+    }
     
     // Handle direct message/level format (still used for some simple cases)
     if (response.message && response.level && !response.notifications) {
@@ -165,6 +171,78 @@ export class NotificationService {
         this.setAutoCloseTimer();
       }
     }
+  }
+
+  /**
+   * Handle new entity-grouped response format
+   * @param response Response with status: perfect/completed/failed and entity-grouped notifications
+   */
+  private handleEntityGroupedResponse(response: any): void {
+    // Don't show notification for perfect responses
+    if (response.status === 'perfect') {
+      return;
+    }
+
+    const messages: string[] = [];
+    const flatNotifications: any[] = [];
+
+    // Create summary message
+    if (response.summary) {
+      const summary = response.summary;
+      const summaryParts: string[] = [];
+      
+      if (summary.errors > 0) summaryParts.push(`${summary.errors} error${summary.errors !== 1 ? 's' : ''}`);
+      if (summary.warnings > 0) summaryParts.push(`${summary.warnings} warning${summary.warnings !== 1 ? 's' : ''}`);
+      
+      if (summaryParts.length > 0) {
+        const statusText = response.status === 'failed' ? 'Failed' : 'Completed with issues';
+        messages.push(`${statusText}: ${summaryParts.join(', ')}`);
+        
+        if (summary.total_entities > 1) {
+          messages.push(`${summary.perfect} of ${summary.total_entities} entities processed successfully`);
+        }
+      }
+    }
+
+    // Flatten entity notifications for display
+    if (response.notifications) {
+      Object.entries(response.notifications).forEach(([entityId, entityNotif]: [string, any]) => {
+        // Add entity context to each notification
+        [...entityNotif.errors, ...entityNotif.warnings].forEach((notif: any) => {
+          flatNotifications.push({
+            ...notif,
+            level: notif.severity, // Map severity to level for existing UI
+            entity_id: entityId === 'null' ? null : entityId,
+            entity_type: entityNotif.entity_type
+          });
+        });
+      });
+    }
+
+    // Determine notification type based on status
+    let notificationType: NotificationType;
+    switch (response.status) {
+      case 'failed':
+        notificationType = NOTIFICATION_ERROR;
+        break;
+      case 'completed':
+        notificationType = NOTIFICATION_WARNING;
+        break;
+      default:
+        notificationType = NOTIFICATION_INFO;
+    }
+
+    const hasDetailedNotifications = flatNotifications.length > 0;
+
+    this.notificationSubject.next({
+      type: notificationType,
+      title: this.getNotificationTitle(notificationType),
+      messages,
+      autoClose: false, // Don't auto-close when there are issues
+      expandable: hasDetailedNotifications,
+      expanded: false,
+      notifications: flatNotifications
+    });
   }
 
   /**
