@@ -51,6 +51,11 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
+    def get_id(self, document: Dict[str, Any]) -> Optional[str]:
+        """Extract and normalize the ID from a document"""
+        pass
+
+    @abstractmethod
     async def init(self, connection_str: str, database_name: str) -> None:
         """Initialize the database connection"""
         pass

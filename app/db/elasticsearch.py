@@ -17,8 +17,21 @@ class ElasticsearchDatabase(DatabaseInterface):
 
     @property
     def id_field(self) -> str:
-        """Elasticsearch uses '_id' as the document ID field"""
+        """Elasticsearch uses '_id' as the internal document ID field"""
         return "_id"
+
+    def get_id(self, document: Dict[str, Any]) -> Optional[str]:
+        """Extract and normalize the ID from an Elasticsearch document"""
+        if not document:
+            return None
+        
+        # Elasticsearch uses '_id' as the internal document identifier
+        # This is always present and unique within the index
+        id_value = document.get('_id')
+        if id_value is None:
+            return None
+            
+        return str(id_value) if id_value else None
 
     async def init(self, connection_str: str, database_name: str) -> None:
         """Initialize Elasticsearch connection."""

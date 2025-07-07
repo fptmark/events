@@ -107,19 +107,37 @@ class DatabaseFactory:
     def get_id_field(cls) -> str:
         """Get the database-specific ID field name"""
         return cls.get_instance().id_field
+    
+    @classmethod
+    def get_id(cls, document: Dict[str, Any]) -> Optional[str]:
+        """Extract and normalize the ID from a document using database-specific logic"""
+        return cls.get_instance().get_id(document)
 
     @classmethod
     def _normalize_document(cls, doc: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert database-specific types to application types"""
+        """Convert database-specific types to application types and normalize ID field"""
         if not doc:
             return doc
             
         normalized = {}
+        
+        # Use database-specific ID extraction and normalize to 'id' field
+        extracted_id = cls.get_id(doc)
+        if extracted_id:
+            normalized['id'] = extracted_id
+        
+        # Copy all other fields, converting ObjectId to string
         for key, value in doc.items():
+            # Skip database-specific ID fields since we normalized to 'id'
+            if key in ('_id', 'id') and extracted_id:
+                continue
+                
+            # Convert ObjectId to string
             if isinstance(value, ObjectId):
-                normalized[key] = str(value)
-            else:
-                normalized[key] = value
+                value = str(value)
+            
+            normalized[key] = value
+                
         return normalized
 
     @classmethod
@@ -155,11 +173,14 @@ class DatabaseFactory:
         """Save document to collection"""
         data_result, warnings = await cls.get_instance().save_document(collection, data, unique_constraints)
         
+        # Normalize database-specific types (like get_by_id does)
+        normalized_data = cls._normalize_document(data_result) if data_result else data_result
+        
         # Convert database warnings to notifications
         for warning in warnings:
             notify_warning(warning, NotificationType.DATABASE, entity=collection, operation="save_document")
             
-        return data_result, warnings
+        return normalized_data, warnings
 
     @classmethod
     async def delete_document(cls, collection: str, doc_id: str) -> bool:

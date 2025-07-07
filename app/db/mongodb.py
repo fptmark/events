@@ -17,6 +17,22 @@ class MongoDatabase(DatabaseInterface):
     def id_field(self) -> str:
         return "_id"
 
+    def get_id(self, document: Dict[str, Any]) -> Optional[str]:
+        """Extract and normalize the ID from a MongoDB document"""
+        if not document:
+            return None
+        
+        # MongoDB uses _id field
+        id_value = document.get(self.id_field)
+        if id_value is None:
+            return None
+            
+        # Convert ObjectId to string if needed
+        if isinstance(id_value, ObjectId):
+            return str(id_value)
+        
+        return str(id_value) if id_value else None
+
     async def init(self, connection_str: str, database_name: str) -> None:
         """Initialize MongoDB connection."""
         if self._client is not None:

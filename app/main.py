@@ -15,7 +15,7 @@ from app.errors import (
     DatabaseError, 
     ValidationError, 
     NotFoundError, 
-    DuplicateError
+    DuplicateError, 
 )
 
 from app.routers.router import get_all_dynamic_routers
@@ -200,8 +200,8 @@ async def handle_exception_with_notifications(
     request: Request, 
     exc: Exception, 
     status_code: int,
-    entity: str = None,
-    operation: str = None,
+    entity: str = '',
+    operation: str = '',
     notification_handler = None
 ) -> JSONResponse:
     """Generic exception handler using notification system"""
@@ -309,9 +309,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     """Handle any unhandled exceptions"""
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
     return await handle_exception_with_notifications(
-        request, exc, 500, operation="system", notification_handler=handle_generic_error_notifications
-    )
-
+        request, exc, 500, operation="system", notification_handler=handle_generic_error_notifications)
+ 
 @app.get('')
 def read_root():
     return {'message': f'Welcome to the {project} Management System'}
