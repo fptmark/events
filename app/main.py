@@ -15,8 +15,7 @@ from app.errors import (
     DatabaseError, 
     ValidationError, 
     NotFoundError, 
-    DuplicateError, 
-    normalize_error_response
+    DuplicateError
 )
 
 from app.routers.router import get_all_dynamic_routers
@@ -197,53 +196,120 @@ app.add_middleware(
     max_age=3600,             # cache preflight for 1 hour
 )
 
+async def handle_exception_with_notifications(
+    request: Request, 
+    exc: Exception, 
+    status_code: int,
+    entity: str = None,
+    operation: str = None,
+    notification_handler = None
+) -> JSONResponse:
+    """Generic exception handler using notification system"""
+    from app.notification import start_notifications, end_notifications
+    
+    # Extract entity from URL if not provided
+    if entity is None:
+        path_parts = str(request.url.path).strip('/').split('/')
+        entity = path_parts[-1] if len(path_parts) > 1 else "unknown"
+    
+    # Default operation if not provided
+    if operation is None:
+        operation = "system"
+    
+    logger.error(f"Exception in {entity}.{operation}: {exc}")
+    notifications = start_notifications(entity=entity, operation=operation)
+    
+    try:
+        # Call the specific notification handler
+        if notification_handler:
+            notification_handler(exc, entity, operation)
+        
+        return JSONResponse(
+            status_code=status_code,
+            content=notifications.to_response(None)
+        )
+    finally:
+        end_notifications()
+
+def handle_database_error_notifications(exc: DatabaseError, entity: str, operation: str):
+    """Handle database error notifications"""
+    from app.notification import notify_error, NotificationType
+    notify_error(exc.message, NotificationType.SYSTEM, entity=entity, operation=operation)
+
+def handle_validation_error_notifications(exc: ValidationError, entity: str, operation: str):
+    """Handle validation error notifications"""
+    from app.notification import notify_error, NotificationType
+    for field_error in exc.invalid_fields:
+        notify_error(field_error.message, NotificationType.VALIDATION, 
+                    entity=entity, field=field_error.field, value=field_error.value)
+
+def handle_request_validation_error_notifications(exc: RequestValidationError, entity: str, operation: str):
+    """Handle FastAPI request validation error notifications"""
+    from app.notification import notify_validation_error
+    for error in exc.errors():
+        field = str(error['loc'][-1]) if error['loc'] else 'unknown'
+        message = error['msg']
+        value = error.get('input')
+        notify_validation_error(f"Invalid {field}: {message}", 
+                              field=field, value=value, entity=entity)
+
+def handle_not_found_error_notifications(exc: NotFoundError, entity: str, operation: str):
+    """Handle not found error notifications"""
+    from app.notification import notify_error, NotificationType
+    notify_error(exc.message, NotificationType.BUSINESS, entity=entity)
+
+def handle_duplicate_error_notifications(exc: DuplicateError, entity: str, operation: str):
+    """Handle duplicate error notifications"""
+    from app.notification import notify_validation_error
+    notify_validation_error(exc.message, field=exc.field, value=exc.value, entity=entity)
+
+def handle_generic_error_notifications(exc: Exception, entity: str, operation: str):
+    """Handle generic error notifications"""
+    from app.notification import notify_error, NotificationType
+    notify_error(f"An unexpected error occurred: {str(exc)}", NotificationType.SYSTEM, entity=entity)
+
 @app.exception_handler(DatabaseError)
 async def database_error_handler(request: Request, exc: DatabaseError):
     """Handle database errors"""
-    logger.error(f"Database error: {exc}")
-    return JSONResponse(
-        status_code=500,
-        content=normalize_error_response(exc, str(request.url.path))
+    return await handle_exception_with_notifications(
+        request, exc, 500, exc.entity, exc.operation, handle_database_error_notifications
     )
 
 @app.exception_handler(ValidationError)
 async def validation_error_handler(request: Request, exc: ValidationError):
     """Handle validation errors"""
-    logger.error(f"Validation error: {exc}")
-    return JSONResponse(
-        status_code=422,
-        content=normalize_error_response(exc, str(request.url.path))
+    return await handle_exception_with_notifications(
+        request, exc, 422, exc.entity, "validation", handle_validation_error_notifications
     )
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle FastAPI request validation errors"""
-    return JSONResponse(
-        status_code=422,
-        content=normalize_error_response(exc, str(request.url.path))
+    return await handle_exception_with_notifications(
+        request, exc, 422, operation="request_validation", 
+        notification_handler=handle_request_validation_error_notifications
     )
 
 @app.exception_handler(NotFoundError)
 async def not_found_error_handler(request: Request, exc: NotFoundError):
-    return JSONResponse(
-        status_code=404,
-        content=normalize_error_response(exc, str(request.url.path))
+    """Handle not found errors"""
+    return await handle_exception_with_notifications(
+        request, exc, 404, exc.entity, "lookup", handle_not_found_error_notifications
     )
 
 @app.exception_handler(DuplicateError)
 async def duplicate_error_handler(request: Request, exc: DuplicateError):
-    return JSONResponse(
-        status_code=409,
-        content=normalize_error_response(exc, str(request.url.path))
+    """Handle duplicate errors"""
+    return await handle_exception_with_notifications(
+        request, exc, 409, exc.entity, "validation", handle_duplicate_error_notifications
     )
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     """Handle any unhandled exceptions"""
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content=normalize_error_response(exc, str(request.url.path))
+    return await handle_exception_with_notifications(
+        request, exc, 500, operation="system", notification_handler=handle_generic_error_notifications
     )
 
 @app.get('')

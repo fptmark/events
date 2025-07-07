@@ -69,12 +69,12 @@ class Account(BaseModel):
         return helpers.get_metadata(cls._metadata)
 
     @classmethod
-    async def get_all(cls) -> tuple[Sequence[Self], List[ValidationError]]:
+    async def get_all(cls) -> tuple[Sequence[Self], List[ValidationError], int]:
         try:
             get_validations, unique_validations = Config.validations(True)
             unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
             
-            raw_docs, warnings = await DatabaseFactory.get_all("account", unique_constraints)
+            raw_docs, warnings, total_count = await DatabaseFactory.get_all("account", unique_constraints)
             
             accounts = []
             validation_errors = []
@@ -109,7 +109,7 @@ class Account(BaseModel):
             
             # Add database warnings to validation errors
             validation_errors.extend([ValidationError(message=w, entity="Account", invalid_fields=[]) for w in warnings])
-            return accounts, validation_errors
+            return accounts, validation_errors, total_count
         except Exception as e:
             raise DatabaseError(str(e), "Account", "get_all")
 

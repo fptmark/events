@@ -386,11 +386,11 @@ export class EntityFormComponent implements OnInit {
     // Clear any existing notifications
     this.notificationService.clear();
     
-    // Extract error message from server response
-    const errorMessage = err.error?.detail || 'An error occurred while processing your request.';
+    // Extract error message from server response using unified notification format
+    const errorMessage = err.error?.message || 'An error occurred while processing your request.';
     
     // Try to extract field-specific validation errors regardless of status code
-    const validationFailures = this.validationService.convertApiErrorToValidationFailures(err);
+    const validationFailures = this.validationService.convertApiErrorToValidationFailures(err.error);
     
     if (validationFailures.length > 0) {
       // Handle structured validation errors

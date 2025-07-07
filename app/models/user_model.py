@@ -1,8 +1,10 @@
 from collections.abc import Sequence
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Self, ClassVar
-from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError
-import re
+from typing import Optional, List, Dict, Any, Self, ClassVar, Union, Annotated, Literal
+from enum import Enum
+from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
+from pydantic_core import core_schema
+from typing_extensions import Annotated
 import logging
 from app.db import DatabaseFactory
 import app.utils as helpers
@@ -10,6 +12,11 @@ from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 from app.notification import notify_validation_error, NotificationType
 
+class GenderEnum(str, Enum):
+    MALE = 'male'
+    FEMALE = 'female'
+    OTHER = 'other'
+ 
 
 class UniqueValidationError(Exception):
     def __init__(self, fields, query):
@@ -21,16 +28,16 @@ class UniqueValidationError(Exception):
 
 
 class User(BaseModel):
-    id: Optional[str] = Field(default=None, alias='_id')
+    id: str | None = Field(default=None)
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$")
     password: str = Field(..., min_length=8)
     firstName: str = Field(..., min_length=3, max_length=100)
     lastName: str = Field(..., min_length=3, max_length=100)
-    gender: Optional[str] = Field(None, description ="must be male or female")
-    dob: Optional[datetime] = Field(None)
+    gender: GenderEnum | None = Field(default=None)
+    dob: datetime | None = Field(default=None)
     isAccountOwner: bool = Field(...)
-    netWorth: Optional[float] = Field(None, ge=0, le=10000000)
+    netWorth: float | None = Field(default=None, ge=0, le=10000000)
     accountId: str = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -103,94 +110,19 @@ class User(BaseModel):
     class Settings:
         name = "user"
 
-    model_config = ConfigDict(from_attributes=True, validate_by_name=True)
-
-    def model_dump(self, **kwargs) -> Dict[str, Any]:
-        """Override model_dump to normalize ID field to 'id' for API responses"""
-        data = super().model_dump(**kwargs)
-        # Normalize database-specific _id to generic id
-        if "_id" in data:
-            data["id"] = data.pop("_id")
-        return data
-
-    @field_validator('username', mode='before')
-    def validate_username(cls, v):
-        if v is not None and len(v) < 3:
-            raise ValueError('username must be at least 3 characters')
-        if v is not None and len(v) > 50:
-            raise ValueError('username must be at most 50 characters')
-        return v
-     
-    @field_validator('email', mode='before')
-    def validate_email(cls, v):
-        if v is not None and len(v) < 8:
-            raise ValueError('email must be at least 8 characters')
-        if v is not None and len(v) > 50:
-            raise ValueError('email must be at most 50 characters')
-        if v is not None and not re.match(r'^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$', v):
-            raise ValueError('Bad email address format')
-        return v
-     
-    @field_validator('password', mode='before')
-    def validate_password(cls, v):
-        if v is not None and len(v) < 8:
-            raise ValueError('password must be at least 8 characters')
-        return v
-     
-    @field_validator('firstName', mode='before')
-    def validate_firstName(cls, v):
-        if v is not None and len(v) < 3:
-            raise ValueError('firstName must be at least 3 characters')
-        if v is not None and len(v) > 100:
-            raise ValueError('firstName must be at most 100 characters')
-        return v
-     
-    @field_validator('lastName', mode='before')
-    def validate_lastName(cls, v):
-        if v is not None and len(v) < 3:
-            raise ValueError('lastName must be at least 3 characters')
-        if v is not None and len(v) > 100:
-            raise ValueError('lastName must be at most 100 characters')
-        return v
-     
-    @field_validator('gender', mode='before')
-    def validate_gender(cls, v):
-        allowed = ['male', 'female', 'other']
-        if v is not None and v not in allowed:
-            raise ValueError('must be male or female')
-        return v
-     
-    @field_validator('dob', mode='before')
-    def parse_dob(cls, v):
-        if v in (None, '', 'null'):
-            return None
-        if isinstance(v, str):
-            return datetime.fromisoformat(v)
-        return v
-    @field_validator('netWorth', mode='before')
-    def validate_netWorth(cls, v):
-        parsed = v
-        if v is None: return None
-        parsed = helpers.parse_currency(v)
-        if parsed is None:
-            raise ValueError('netWorth must be a valid currency')
-        if parsed < 0:
-            raise ValueError('netWorth must be at least 0')
-        if parsed > 10000000:
-            raise ValueError('netWorth must be at most 10000000')
-        return parsed
+    model_config = ConfigDict(from_attributes=True, validate_by_name=True, use_enum_values=True)
 
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
         return helpers.get_metadata(cls._metadata)
 
     @classmethod
-    async def get_all(cls) -> tuple[Sequence[Self], List[ValidationError]]:
+    async def get_all(cls) -> tuple[Sequence[Self], List[ValidationError], int]:
         try:
             get_validations, unique_validations = Config.validations(True)
             unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
             
-            raw_docs, warnings = await DatabaseFactory.get_all("user", unique_constraints)
+            raw_docs, warnings, total_count = await DatabaseFactory.get_all("user", unique_constraints)
             
             users = []
             validation_errors = []
@@ -207,7 +139,8 @@ class User(BaseModel):
                                 message=f"Validation failed for field '{error['loc'][-1]}': {error['msg']}",
                                 entity="User",
                                 field=str(error['loc'][-1]),
-                                value=error.get('input')
+                                value=error.get('input'),
+                                entity_id = doc.get('id')
                             )
                             validation_errors.append(ValidationError(
                                 message=f"Validation failed for field '{error['loc'][-1]}': {error['msg']}",
@@ -219,13 +152,13 @@ class User(BaseModel):
                                 )]
                             ))
                         # Create instance without validation for failed docs
-                        users.append(cls(**doc))
+                        users.append(cls.model_construct(**doc))
             else:
-                users = [cls(**doc) for doc in raw_docs]  # NO validation
+                users = [cls.model_construct(**doc) for doc in raw_docs]  # NO validation  
             
             # Add database warnings to validation errors
             validation_errors.extend([ValidationError(message=w, entity="User", invalid_fields=[]) for w in warnings])
-            return users, validation_errors
+            return users, validation_errors, total_count
         except Exception as e:
             raise DatabaseError(str(e), "User", "get_all")
 
@@ -294,8 +227,10 @@ class User(BaseModel):
             result, warnings = await DatabaseFactory.save_document("user", data, unique_constraints)
 
             # Update ID from result
-            if not self.id and result and isinstance(result, dict) and result.get(DatabaseFactory.get_id_field()):
-                self.id = result[DatabaseFactory.get_id_field()]
+            if not self.id and result and isinstance(result, dict):
+                extracted_id = result.get('id')
+                if extracted_id:
+                    self.id = extracted_id
 
             return self, warnings
         except ValidationError:
@@ -322,42 +257,41 @@ class User(BaseModel):
         except Exception as e:
             raise DatabaseError(str(e), "User", "delete")
 
-#from pydantic import BaseModel, Field, ConfigDict
-#from typing import Optional, List, Dict, Any
-#from datetime import datetime
-
 class UserCreate(BaseModel):
-  id: Optional[str] = Field(default=None, alias='_id')
-  username: str = Field(..., min_length=3, max_length=50)
-  email: str = Field(..., min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$")
-  password: str = Field(..., min_length=8)
-  firstName: str = Field(..., min_length=3, max_length=100)
-  lastName: str = Field(..., min_length=3, max_length=100)
-  gender: Optional[str] = Field(None, description ="must be male or female")
-  dob: Optional[datetime] = Field(None)
-  isAccountOwner: bool = Field(...)
-  netWorth: Optional[float] = Field(None, ge=0, le=10000000)
-  accountId: str = Field(...)
+    username: str = Field(..., min_length=3, max_length=50)
+    email: str = Field(..., min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$")
+    password: str = Field(..., min_length=8)
+    firstName: str = Field(..., min_length=3, max_length=100)
+    lastName: str = Field(..., min_length=3, max_length=100)
+    gender: GenderEnum | None = Field(default=None)
+    dob: datetime | None = Field(default=None)
+    isAccountOwner: bool = Field(...)
+    netWorth: float | None = Field(default=None, ge=0, le=10000000)
+    accountId: str = Field(...)
 
-  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True,
+        json_schema_mode='serialization'
+    )
 
-
-#from pydantic import BaseModel, Field, ConfigDict
-#from typing import Optional, List, Dict, Any
-#from datetime import datetime
 
 class UserUpdate(BaseModel):
-  id: Optional[str] = Field(default=None, alias='_id')
-  username: str = Field(..., min_length=3, max_length=50)
-  email: str = Field(..., min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$")
-  password: str = Field(..., min_length=8)
-  firstName: str = Field(..., min_length=3, max_length=100)
-  lastName: str = Field(..., min_length=3, max_length=100)
-  gender: Optional[str] = Field(None, description ="must be male or female")
-  dob: Optional[datetime] = Field(None)
-  isAccountOwner: bool = Field(...)
-  netWorth: Optional[float] = Field(None, ge=0, le=10000000)
-  accountId: str = Field(...)
+    username: str | None = Field(default=None, min_length=3, max_length=50)
+    email: str | None = Field(default=None, min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$")
+    password: str | None = Field(default=None, min_length=8)
+    firstName: str | None = Field(default=None, min_length=3, max_length=100)
+    lastName: str | None = Field(default=None, min_length=3, max_length=100)
+    gender: GenderEnum | None = Field(default=None)
+    dob: datetime | None = Field(default=None)
+    isAccountOwner: bool | None = Field(default=None)
+    netWorth: float | None = Field(default=None, ge=0, le=10000000)
+    accountId: str | None = Field(default=None)
 
-  model_config = ConfigDict(from_attributes=True, validate_by_name=True)
-
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True,
+        json_schema_mode='serialization'
+    )

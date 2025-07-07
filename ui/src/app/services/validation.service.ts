@@ -49,21 +49,18 @@ export class ValidationService {
 
   /**
    * Convert API error response to ValidationFailures
-   * Detects validation errors regardless of status code by looking for the structure
+   * ONLY handles the unified notification system format
    */
   convertApiErrorToValidationFailures(error: any): ValidationFailure[] {
-    // Check for our standardized error format with invalid_fields
-    if (error.error?.detail?.context?.invalid_fields) {
-      return error.error.detail.context.invalid_fields;
-    }
-    
-    // Check for FastAPI validation error array format
-    if (Array.isArray(error.error?.detail)) {
-      return error.error.detail.map((e: any) => ({
-        field: e.loc[e.loc.length - 1],
-        constraint: e.msg,
-        value: e.input
-      }));
+    // Check for notification system format with field-specific errors
+    if (error.notifications?.length) {
+      return error.notifications
+        .filter((notif: any) => notif.field && notif.level === 'error')
+        .map((notif: any) => ({
+          field: notif.field,
+          constraint: notif.message,
+          value: notif.value
+        }));
     }
     
     return [];

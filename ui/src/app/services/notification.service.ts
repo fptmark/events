@@ -70,7 +70,7 @@ export class NotificationService {
       return;
     }
     
-    // Handle legacy format where message/level are direct properties
+    // Handle direct message/level format (still used for some simple cases)
     if (response.message && response.level && !response.notifications) {
       switch (response.level) {
         case 'success':
@@ -188,10 +188,10 @@ export class NotificationService {
   }
   
   /**
-   * Show an error notification with rich context
-   * @param error The error details, HTTP error, or simple message
+   * Show an error notification - ONLY handles unified notification system format
+   * @param error The error response from the server
    */
-  showError(error: ErrorDetail | any | string): void {
+  showError(error: any): void {
     this.clear();
     
     let notification: Notification;
@@ -201,101 +201,14 @@ export class NotificationService {
       notification = {
         type: NOTIFICATION_ERROR,
         title: 'Error',
-        messages: [error],
-        error: {
-          message: error,
-          error_type: 'error'
-        }
-      };
-    } else if (error?.error?.detail) {
-      // Server error with structured detail
-      const detail = error.error.detail;
-      const messages: string[] = [];
-      
-      // Add main message
-      if (detail.message) {
-        messages.push(detail.message);
-      }
-      
-      // Add detailed validation errors
-      if (detail.invalid_fields?.length) {
-        detail.invalid_fields.forEach((field: any) => {
-          messages.push(`${field.field}: ${field.message}`);
-        });
-      }
-      
-      notification = {
-        type: NOTIFICATION_ERROR,
-        title: 'Error',
-        messages: messages,
-        error: {
-          message: detail.message || 'An error occurred',
-          error_type: detail.error_type || 'ServerError',
-          context: {
-            entity: detail.entity,
-            invalid_fields: detail.invalid_fields?.map((f: any) => ({
-              field: f.field,
-              constraint: f.message,
-              value: f.value
-            })) || []
-          }
-        }
-      };
-    } else if (error?.status >= 400) {
-      // HTTP error without structured detail
-      let message = 'An error occurred';
-      
-      if (error.status === 500) {
-        message = 'Server error occurred. Please try again later.';
-      } else if (error.status === 404) {
-        message = 'The requested resource was not found.';
-      } else if (error.status === 422) {
-        message = 'Invalid data provided.';
-      } else if (error.error?.message) {
-        message = error.error.message;
-      } else if (typeof error.error === 'string') {
-        message = error.error;
-      }
-      
-      notification = {
-        type: NOTIFICATION_ERROR,
-        title: 'Error',
-        messages: [message],
-        error: {
-          message: message,
-          error_type: 'HttpError',
-          context: {
-            status: error.status,
-            error: error.error
-          }
-        }
-      };
-    } else if (error?.message) {
-      // Error object with message
-      notification = {
-        type: NOTIFICATION_ERROR,
-        title: 'Error',
-        messages: [error.message],
-        error: {
-          message: error.message,
-          error_type: error.constructor?.name || 'Error'
-        }
+        messages: [error]
       };
     } else {
-      // Fallback for unknown error format
-      const errorStr = typeof error === 'object' ? JSON.stringify(error) : String(error);
-      notification = {
-        type: NOTIFICATION_ERROR,
-        title: 'Error',
-        messages: ['An unexpected error occurred'],
-        error: {
-          message: 'An unexpected error occurred',
-          error_type: 'UnknownError',
-          context: {
-            error: errorStr
-          }
-        }
-      };
+      // Handle notification system format ONLY
+      // All server responses should now use this format:
+      // { data: null, metadata: null, message: "...", level: "error", notifications: [...] }
+      this.handleApiResponse(error);
+      return;
     }
 
     this.notificationSubject.next(notification);

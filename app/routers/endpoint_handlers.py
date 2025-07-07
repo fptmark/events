@@ -95,6 +95,7 @@ async def list_entities_handler(entity_cls: Type, entity_name: str, request: Req
         entity_data = []
         for entity in entities:
             entity_dict = entity.model_dump()
+            # entity_dict['exists'] = True  # If retrieved from DB, it exists
             await add_view_data(entity_dict, view_spec, entity_name)
             entity_data.append(entity_dict)
 
@@ -103,7 +104,12 @@ async def list_entities_handler(entity_cls: Type, entity_name: str, request: Req
         return notifications.to_response(entity_data, metadata=metadata)
     except Exception as e:
         notify_error(f"Failed to retrieve {entity_lower}s: {str(e)}", NotificationType.SYSTEM)
-        return notifications.to_response(None)
+        # Return empty list with consistent metadata format for failed get_all
+        empty_response = {
+            "data": [],
+            "metadata": {"total": 0}
+        }
+        return notifications.to_response(empty_response)
     finally:
         end_notifications()
 
@@ -127,12 +133,15 @@ async def get_entity_handler(entity_cls: Type, entity_name: str, entity_id: str,
         
         # Process FK includes if view parameter is provided
         entity_dict = entity.model_dump()
+        # entity_dict['exists'] = True  # If no exception thrown, entity exists
         await add_view_data(entity_dict, view_spec, entity_name)
         
         return notifications.to_response(entity_dict)
     except NotFoundError:
         notify_error(f"{entity_name} not found", NotificationType.BUSINESS)
-        return notifications.to_response(None)
+        # Return object with exists=False for consistent UI handling
+        not_found_entity = {"id": entity_id} #, "exists": False}
+        return notifications.to_response(not_found_entity)
     except Exception as e:
         notify_error(f"Failed to retrieve {entity_lower}: {str(e)}", NotificationType.SYSTEM)
         return notifications.to_response(None)
