@@ -8,6 +8,7 @@ notification handling.
 
 import json
 import logging
+import warnings as python_warnings
 from typing import Dict, Any, Type
 from urllib.parse import unquote
 from fastapi import Request
@@ -77,6 +78,7 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Dict[str, Any] |
 async def list_entities_handler(entity_cls: Type, entity_name: str, request: Request) -> Dict[str, Any]:
     """Reusable handler for LIST endpoint."""
     entity_lower = entity_name.lower()
+    notifications = start_notifications(entity=entity_name, operation=f"list_{entity_lower}s")
     
     # Extract query parameters for FK processing
     query_params = dict(request.query_params)
@@ -84,7 +86,7 @@ async def list_entities_handler(entity_cls: Type, entity_name: str, request: Req
     view_spec = json.loads(unquote(view_param)) if view_param else None
     
     try:
-        # Get entity-grouped response from model
+        # Get data from model (model will add notifications to current context)
         response = await entity_cls.get_all()
         
         # Process FK includes if view parameter is provided and we have data
@@ -96,18 +98,14 @@ async def list_entities_handler(entity_cls: Type, entity_name: str, request: Req
                 entity_data.append(entity_dict)
             response['data'] = entity_data
         
-        return response
+        collection = end_notifications()
+        return collection.to_entity_grouped_response(data=response['data'], is_bulk=True)
     except Exception as e:
-        # For system failures, return failed response with no data
-        from app.notification import start_notifications, end_notifications, NotificationLevel, NotificationType
-        notifications = start_notifications(entity_name, f"list_{entity_lower}s")
-        notifications.add(
-            message=f"Failed to retrieve {entity_lower}s: {str(e)}",
-            level=NotificationLevel.ERROR,
-            type=NotificationType.SYSTEM
-        )
+        notify_error(f"Failed to retrieve {entity_lower}s: {str(e)}", NotificationType.SYSTEM)
         collection = end_notifications()
         return collection.to_entity_grouped_response(data=[], is_bulk=True)
+    finally:
+        end_notifications()
 
 
 async def get_entity_handler(entity_cls: Type, entity_name: str, entity_id: str, request: Request) -> Dict[str, Any]:
@@ -128,7 +126,19 @@ async def get_entity_handler(entity_cls: Type, entity_name: str, entity_id: str,
             notify_warning(warning, NotificationType.DATABASE)
         
         # Process FK includes if view parameter is provided
-        entity_dict = entity.model_dump()
+        # Capture any serialization warnings during model_dump
+        with python_warnings.catch_warnings(record=True) as caught_warnings:
+            python_warnings.simplefilter("always")
+            entity_dict = entity.model_dump()
+            
+            # Add any serialization warnings as notifications
+            for warning in caught_warnings:
+                if "datetime" in str(warning.message).lower():
+                    notify_warning(
+                        f"Datetime serialization warning for {entity_name} {entity_dict.get('id', 'unknown')}: {warning.message}",
+                        NotificationType.VALIDATION
+                    )
+        
         # entity_dict['exists'] = True  # If no exception thrown, entity exists
         await add_view_data(entity_dict, view_spec, entity_name)
         

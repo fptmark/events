@@ -6,11 +6,12 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationEr
 from pydantic_core import core_schema
 from typing_extensions import Annotated
 import logging
+import warnings as python_warnings
 from app.db import DatabaseFactory
 import app.utils as helpers
 from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
-from app.notification import notify_validation_error, NotificationType, start_notifications, end_notifications, NotificationLevel, NotificationType
+from app.notification import notify_validation_error, notify_warning, NotificationType
 
 class GenderEnum(str, Enum):
     MALE = 'male'
@@ -28,7 +29,7 @@ class UniqueValidationError(Exception):
 
 
 class User(BaseModel):
-    id: str
+    id: str | None = Field(default=None)
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$")
     password: str = Field(..., min_length=8)
@@ -119,9 +120,6 @@ class User(BaseModel):
     @classmethod
     async def get_all(cls) -> Dict[str, Any]:
         try:
-            # Start notification collection
-            notifications = start_notifications("User", "get_all")
-
             get_validations, unique_validations = Config.validations(True)
             unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
             
@@ -137,14 +135,12 @@ class User(BaseModel):
                     except PydanticValidationError as e:
                         # Convert Pydantic errors to notifications
                         for error in e.errors():
-                           notifications.add(
-                                message=error['msg'],
-                                level=NotificationLevel.WARNING,
-                                type=NotificationType.VALIDATION,
+                            notify_validation_error(
+                                message=f"User {doc.get('id', 'unknown')}:{error['loc'][-1]}: {error['msg']} (value: {error.get('input')})",
                                 entity="User",
-                                field_name=str(error['loc'][-1]),
+                                field=str(error['loc'][-1]),
                                 value=error.get('input'),
-                                entity_id=doc.get('id')
+                                operation="get_all"
                             )
 
                         # Create instance without validation for failed docs
@@ -154,20 +150,25 @@ class User(BaseModel):
             
             # Add database warnings
             for warning in warnings:
-                notifications.add(
-                    message=warning,
-                    level=NotificationLevel.WARNING,
-                    type=NotificationType.DATABASE,
-                    entity="User"
-                )
+                notify_warning(warning, NotificationType.DATABASE)
             
             # Convert models to dictionaries for FastAPI response validation
-            user_data = [user.model_dump() for user in users]
+            user_data = []
+            for user in users:
+                with python_warnings.catch_warnings(record=True) as caught_warnings:
+                    python_warnings.simplefilter("always")
+                    user_dict = user.model_dump()
+                    user_data.append(user_dict)
+                    
+                    # Add any serialization warnings as notifications
+                    for warning in caught_warnings:
+                        notify_warning(
+                            f"Serialization warning for user {user_dict.get('id', 'unknown')}: {warning.message}",
+                            NotificationType.VALIDATION
+                        )
             
-            # End notification collection and return entity-grouped response
-            collection = end_notifications()
-            return collection.to_entity_grouped_response(data=user_data, is_bulk=True)
-
+            return {"data": user_data}
+            
         except Exception as e:
             raise DatabaseError(str(e), "User", "get_all")
 
@@ -232,10 +233,10 @@ class User(BaseModel):
                 failures = [ValidationFailure(field=str(err["loc"][-1]), message=err["msg"], value=err.get("input")) for err in e.errors()]
                 raise ValidationError(message="Validation failed before save", entity="User", invalid_fields=failures)
             
-            # Save document with unique constraints - pass complete data
+            # Save document with unique constraints
             result, warnings = await DatabaseFactory.save_document("user", data, unique_constraints)
 
-            # Update ID from result
+            # Update ID from result for create operations
             if not self.id and result and isinstance(result, dict):
                 extracted_id = result.get('id')
                 if extracted_id:

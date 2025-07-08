@@ -199,7 +199,8 @@ export class NotificationService {
         messages.push(`${statusText}: ${summaryParts.join(', ')}`);
         
         if (summary.total_entities > 1) {
-          messages.push(`${summary.perfect} of ${summary.total_entities} entities processed successfully`);
+          const successfulCount = summary.successful || summary.perfect;
+          messages.push(`${successfulCount} of ${summary.total_entities} entities processed successfully`);
         }
       }
     }
