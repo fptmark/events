@@ -13,6 +13,8 @@ from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 from app.notification import notify_validation_error, notify_warning, NotificationType
 
+logger = logging.getLogger(__name__)
+
 class GenderEnum(str, Enum):
     MALE = 'male'
     FEMALE = 'female'
@@ -43,8 +45,7 @@ class User(BaseModel):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'id': {'type': 'ObjectId', 'autoGenerate': True},
-                  'username': {   'type': 'String',
+    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'username': {   'type': 'String',
                                   'required': True,
                                   'min_length': 3,
                                   'max_length': 50},
@@ -134,11 +135,18 @@ class User(BaseModel):
                         users.append(cls.model_validate(doc))
                     except PydanticValidationError as e:
                         # Convert Pydantic errors to notifications
+                        entity_id = doc.get('id')
+                        if not entity_id:
+                            logger.error(f"User document missing ID field: {doc}")
+                            notify_warning("Document missing ID field", NotificationType.DATABASE)
+                            entity_id = "missing"
+  
                         for error in e.errors():
+                            field_name = str(error['loc'][-1])
                             notify_validation_error(
-                                message=f"User {doc.get('id', 'unknown')}:{error['loc'][-1]}: {error['msg']} (value: {error.get('input')})",
+                                message=f"User {entity_id}.{field_name}:  validation failed - {error['msg']}",
                                 entity="User",
-                                field=str(error['loc'][-1]),
+                                field=field_name,
                                 value=error.get('input'),
                                 operation="get_all"
                             )
@@ -157,16 +165,33 @@ class User(BaseModel):
             for user in users:
                 with python_warnings.catch_warnings(record=True) as caught_warnings:
                     python_warnings.simplefilter("always")
-                    user_dict = user.model_dump()
-                    user_data.append(user_dict)
+                    data_dict = user.model_dump()
+                    user_data.append(data_dict)
                     
                     # Add any serialization warnings as notifications
-                    for warning in caught_warnings:
-                        notify_warning(
-                            f"Serialization warning for user {user_dict.get('id', 'unknown')}: {warning.message}",
-                            NotificationType.VALIDATION
-                        )
-            
+                    if caught_warnings:
+                        entity_id = data_dict.get('id')
+                        if not entity_id:
+                            logger.error(f"User document missing ID field: {data_dict}")
+                            notify_warning("Document missing ID field", NotificationType.DATABASE)
+                            entity_id = "missing"
+
+                        datetime_field_names = []
+                        
+                        # Use the model's metadata to find datetime fields
+                        for field_name, field_meta in cls._metadata.get('fields', {}).items():
+                            if field_meta.get('type') == 'ISODate':
+                                if field_name in data_dict and isinstance(data_dict[field_name], str):
+                                    datetime_field_names.append(field_name)
+                        
+                        if datetime_field_names:
+                            field_list = ', '.join(datetime_field_names)
+                            notify_warning(f"User {entity_id}: {field_list} datetime serialization warnings", NotificationType.VALIDATION)
+                        else:
+                            # Fallback for non-datetime warnings
+                            warning_count = len(caught_warnings)
+                            notify_warning(f"User {entity_id}: {warning_count} serialization warnings", NotificationType.VALIDATION)
+ 
             return {"data": user_data}
             
         except Exception as e:
@@ -191,11 +216,17 @@ class User(BaseModel):
                     return cls.model_validate(raw_doc), warnings  # WITH validation
                 except PydanticValidationError as e:
                     # Convert validation errors to notifications
+                    entity_id = raw_doc.get('id')
+                    if not entity_id:
+                        logger.error(f"User document missing ID field: {raw_doc}")
+                        notify_warning("Document missing ID field", NotificationType.DATABASE)
+                        entity_id = "missing"
                     for error in e.errors():
+                        field_name = str(error['loc'][-1])
                         notify_validation_error(
-                            message=f"Validation failed for field '{error['loc'][-1]}': {error['msg']}",
+                            message=f"User {entity_id}: {field_name} validation failed - {error['msg']}",
                             entity="User",
-                            field=str(error['loc'][-1]),
+                            field=field_name,
                             value=error.get('input'),
                             operation="get"
                         )
@@ -222,21 +253,28 @@ class User(BaseModel):
                 data = validated_instance.model_dump()
             except PydanticValidationError as e:
                 # Convert to notifications and ValidationError format
+                entity_id = self.id
+                if not entity_id:
+                    logger.error(f"User instance missing ID during save: {self.model_dump()}")
+                    notify_warning("User instance missing ID during save", NotificationType.DATABASE)
+                    entity_id = "missing"
+
                 for err in e.errors():
+                    field_name = str(err["loc"][-1])
                     notify_validation_error(
-                        message=f"Validation failed for field '{err['loc'][-1]}': {err['msg']}",
+                        message=f"User {entity_id}: {field_name} validation failed - {err['msg']}",
                         entity="User",
-                        field=str(err["loc"][-1]),
+                        field=field_name,
                         value=err.get("input"),
                         operation="save"
                     )
                 failures = [ValidationFailure(field=str(err["loc"][-1]), message=err["msg"], value=err.get("input")) for err in e.errors()]
                 raise ValidationError(message="Validation failed before save", entity="User", invalid_fields=failures)
             
-            # Save document with unique constraints
+            # Save document with unique constraints - pass complete data
             result, warnings = await DatabaseFactory.save_document("user", data, unique_constraints)
 
-            # Update ID from result for create operations
+            # Update ID from result
             if not self.id and result and isinstance(result, dict):
                 extracted_id = result.get('id')
                 if extracted_id:

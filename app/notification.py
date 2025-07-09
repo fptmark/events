@@ -306,9 +306,13 @@ class SimpleNotificationCollection:
         if not entity_notifications:
             perfect_entities = total_entities
         
+        # Calculate successfully processed entities (perfect + warning)
+        successful_entities = perfect_entities + warning_entities
+        
         return {
             "total_entities": total_entities,
             "perfect": perfect_entities,
+            "successful": successful_entities,
             "warnings": total_warnings,
             "errors": total_errors
         }

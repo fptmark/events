@@ -6,11 +6,14 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationEr
 from pydantic_core import core_schema
 from typing_extensions import Annotated
 import logging
+import warnings as python_warnings
 from app.db import DatabaseFactory
 import app.utils as helpers
 from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
-from app.notification import notify_validation_error, NotificationType, start_notifications, end_notifications, NotificationLevel, NotificationType
+from app.notification import notify_validation_error, notify_warning, NotificationType
+
+logger = logging.getLogger(__name__)
 
 
 class UniqueValidationError(Exception):
@@ -23,13 +26,12 @@ class UniqueValidationError(Exception):
 
 
 class Account(BaseModel):
-    id: str
+    id: str | None = Field(default=None)
     expiredAt: datetime | None = Field(default=None)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'id': {'type': 'ObjectId', 'autoGenerate': True},
-                  'expiredAt': {'type': 'ISODate', 'required': False},
+    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'expiredAt': {'type': 'ISODate', 'required': False},
                   'createdAt': {   'type': 'ISODate',
                                    'autoGenerate': True,
                                    'ui': {   'readOnly': True,
@@ -57,9 +59,6 @@ class Account(BaseModel):
     @classmethod
     async def get_all(cls) -> Dict[str, Any]:
         try:
-            # Start notification collection
-            notifications = start_notifications("Account", "get_all")
-
             get_validations, unique_validations = Config.validations(True)
             unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
             
@@ -74,15 +73,20 @@ class Account(BaseModel):
                         accounts.append(cls.model_validate(doc))
                     except PydanticValidationError as e:
                         # Convert Pydantic errors to notifications
+                        entity_id = doc.get('id')
+                        if not entity_id:
+                            logger.error(f"Account document missing ID field: {doc}")
+                            notify_warning("Document missing ID field", NotificationType.DATABASE)
+                            entity_id = "missing"
+  
                         for error in e.errors():
-                           notifications.add(
-                                message=error['msg'],
-                                level=NotificationLevel.WARNING,
-                                type=NotificationType.VALIDATION,
+                            field_name = str(error['loc'][-1])
+                            notify_validation_error(
+                                message=f"Account {entity_id}.{field_name}:  validation failed - {error['msg']}",
                                 entity="Account",
-                                field_name=str(error['loc'][-1]),
+                                field=field_name,
                                 value=error.get('input'),
-                                entity_id=doc.get('id')
+                                operation="get_all"
                             )
 
                         # Create instance without validation for failed docs
@@ -92,20 +96,42 @@ class Account(BaseModel):
             
             # Add database warnings
             for warning in warnings:
-                notifications.add(
-                    message=warning,
-                    level=NotificationLevel.WARNING,
-                    type=NotificationType.DATABASE,
-                    entity="Account"
-                )
+                notify_warning(warning, NotificationType.DATABASE)
             
             # Convert models to dictionaries for FastAPI response validation
-            account_data = [account.model_dump() for account in accounts]
-            
-            # End notification collection and return entity-grouped response
-            collection = end_notifications()
-            return collection.to_entity_grouped_response(data=account_data, is_bulk=True)
+            account_data = []
+            for account in accounts:
+                with python_warnings.catch_warnings(record=True) as caught_warnings:
+                    python_warnings.simplefilter("always")
+                    data_dict = account.model_dump()
+                    account_data.append(data_dict)
+                    
+                    # Add any serialization warnings as notifications
+                    if caught_warnings:
+                        entity_id = data_dict.get('id')
+                        if not entity_id:
+                            logger.error(f"Account document missing ID field: {data_dict}")
+                            notify_warning("Document missing ID field", NotificationType.DATABASE)
+                            entity_id = "missing"
 
+                        datetime_field_names = []
+                        
+                        # Use the model's metadata to find datetime fields
+                        for field_name, field_meta in cls._metadata.get('fields', {}).items():
+                            if field_meta.get('type') == 'ISODate':
+                                if field_name in data_dict and isinstance(data_dict[field_name], str):
+                                    datetime_field_names.append(field_name)
+                        
+                        if datetime_field_names:
+                            field_list = ', '.join(datetime_field_names)
+                            notify_warning(f"User {entity_id}: {field_list} datetime serialization warnings", NotificationType.VALIDATION)
+                        else:
+                            # Fallback for non-datetime warnings
+                            warning_count = len(caught_warnings)
+                            notify_warning(f"User {entity_id}: {warning_count} serialization warnings", NotificationType.VALIDATION)
+ 
+            return {"data": account_data}
+            
         except Exception as e:
             raise DatabaseError(str(e), "Account", "get_all")
 
@@ -128,11 +154,17 @@ class Account(BaseModel):
                     return cls.model_validate(raw_doc), warnings  # WITH validation
                 except PydanticValidationError as e:
                     # Convert validation errors to notifications
+                    entity_id = raw_doc.get('id')
+                    if not entity_id:
+                        logger.error(f"User document missing ID field: {raw_doc}")
+                        notify_warning("Document missing ID field", NotificationType.DATABASE)
+                        entity_id = "missing"
                     for error in e.errors():
+                        field_name = str(error['loc'][-1])
                         notify_validation_error(
-                            message=f"Validation failed for field '{error['loc'][-1]}': {error['msg']}",
+                            message=f"Account {entity_id}: {field_name} validation failed - {error['msg']}",
                             entity="Account",
-                            field=str(error['loc'][-1]),
+                            field=field_name,
                             value=error.get('input'),
                             operation="get"
                         )
@@ -159,11 +191,18 @@ class Account(BaseModel):
                 data = validated_instance.model_dump()
             except PydanticValidationError as e:
                 # Convert to notifications and ValidationError format
+                entity_id = self.id
+                if not entity_id:
+                    logger.error(f"User instance missing ID during save: {self.model_dump()}")
+                    notify_warning("User instance missing ID during save", NotificationType.DATABASE)
+                    entity_id = "missing"
+
                 for err in e.errors():
+                    field_name = str(err["loc"][-1])
                     notify_validation_error(
-                        message=f"Validation failed for field '{err['loc'][-1]}': {err['msg']}",
+                        message=f"Account {entity_id}: {field_name} validation failed - {err['msg']}",
                         entity="Account",
-                        field=str(err["loc"][-1]),
+                        field=field_name,
                         value=err.get("input"),
                         operation="save"
                     )
