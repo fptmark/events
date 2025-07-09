@@ -66,7 +66,18 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Dict[str, Any] |
                     
                 except Exception as fk_error:
                     # Log FK lookup error but don't fail the whole request
-                    notify_warning(f"Failed to load {fk_name} for {entity_name}: {str(fk_error)}", NotificationType.DATABASE)
+                    entity_id = entity_dict.get('id', 'unknown')
+                    
+                    # Extract clean error message
+                    error_msg = str(fk_error)
+                    if "Document not found:" in error_msg:
+                        # Extract the missing ID from the error
+                        missing_id = error_msg.split("Document not found: ")[-1].strip()
+                        clean_msg = f"{fk_id_field} '{missing_id}' not found"
+                    else:
+                        clean_msg = f"{fk_id_field} failed to load: {error_msg}"
+                    
+                    notify_warning(f"{entity_name} {entity_id}: {clean_msg}", NotificationType.DATABASE)
                     # Return an object indicating the FK doesn't exist
                     entity_dict[fk_name] = {"exists": False}
     
