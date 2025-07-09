@@ -36,24 +36,29 @@ def deep_merge_dicts(dest, override):
         else:
             dest[key] = value
 
-def parse_currency(value):
-    if value is None:
-        return None
+# def parse_currency(value):
+#     if value is None:
+#         return None
     
-    if isinstance(value, (int, float)):
-        return value
+#     if isinstance(value, (int, float)):
+#         return value
     
-    # Remove $, commas, parentheses, whitespace
-    cleaned = re.sub(r'[$,\s()]', '', str(value))
+#     # Remove $, commas, parentheses, whitespace
+#     cleaned = re.sub(r'[$,\s()]', '', str(value))
     
-    # Handle negative in parentheses
-    if cleaned.startswith('(') and cleaned.endswith(')'):
-        cleaned = f'-{cleaned[1:-1]}'
+#     # Handle negative in parentheses
+#     positive: bool = True
+#     if cleaned.startswith('-'):
+#         positive = False
+#         cleaned = cleaned[1:]
+#     if (cleaned.startswith('(') and cleaned.endswith(')')):
+#         cleaned = f'-{cleaned[1:-1]}'
+#         positive = False
     
-    try:
-        return float(cleaned)
-    except ValueError:
-        return None
+#     try:
+#         return float(cleaned) if positive else -float(cleaned)
+#     except ValueError:
+#         return None
 
 def get_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     """Get metadata for a model with proper type hints"""
