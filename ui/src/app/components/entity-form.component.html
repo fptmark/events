@@ -4,6 +4,13 @@
     <button class="btn btn-secondary" (click)="goBack()">Back</button>
   </div>
 
+  <!-- Operation Result Banner -->
+  <operation-result-banner
+    [message]="operationMessage"
+    [type]="operationType"
+    (dismissed)="onBannerDismissed()">
+  </operation-result-banner>
+
   <div *ngIf="entityForm">
     <form [formGroup]="entityForm" (ngSubmit)="onSubmit()">
       <div class="card">

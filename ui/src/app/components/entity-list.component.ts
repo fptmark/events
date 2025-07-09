@@ -14,15 +14,24 @@ import { NotificationService } from '../services/notification.service';
 import { ValidationService } from '../services/validation.service';
 import { RefreshService } from '../services/refresh.service';
 import { Subscription } from 'rxjs';
+import { OperationResultBannerComponent, OperationResultType } from './operation-result-banner.component';
+import { OperationResultService } from '../services/operation-result.service';
 
 @Component({
   selector: 'app-entity-list',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, OperationResultBannerComponent],
   styleUrls: ['../common.css'],
   template: `
     <div class="container-fluid mt-4">
       <h2>{{ metadataService.getTitle(entityType) }}</h2>
+      
+      <!-- Operation Result Banner -->
+      <operation-result-banner
+        [message]="operationMessage"
+        [type]="operationType"
+        (dismissed)="onBannerDismissed()">
+      </operation-result-banner>
       
       <!-- Create button - permission checked once per page -->
       <div *ngIf="metadataService.isValidOperation(entityType, 'c')">
@@ -147,6 +156,10 @@ export class EntityListComponent implements OnInit, OnDestroy {
   
   // Refresh subscription
   private refreshSubscription: Subscription | null = null;
+  
+  // Operation result banner state
+  operationMessage: string | null = null;
+  operationType: OperationResultType = 'success';
 
   constructor(
     public metadataService: MetadataService,
@@ -157,7 +170,8 @@ export class EntityListComponent implements OnInit, OnDestroy {
     private sanitizer: DomSanitizer,
     private notificationService: NotificationService,
     private validationService: ValidationService,
-    private refreshService: RefreshService
+    private refreshService: RefreshService,
+    private operationResultService: OperationResultService
   ) {}
 
   ngOnInit(): void {
@@ -174,6 +188,9 @@ export class EntityListComponent implements OnInit, OnDestroy {
         console.log(`EntityListComponent: Refresh triggered for ${this.entityType}`);
         this.loadEntities();
       });
+      
+      // Check for operation results when navigating to this entity type
+      this.checkForOperationResult();
       
       // Load entities
       this.loadEntities();
@@ -250,6 +267,26 @@ export class EntityListComponent implements OnInit, OnDestroy {
     if (this.refreshSubscription) {
       this.refreshSubscription.unsubscribe();
     }
+  }
+  
+  /**
+   * Check for pending operation results for this entity type
+   */
+  private checkForOperationResult(): void {
+    const result = this.operationResultService.getOperationResultForEntity(this.entityType);
+    if (result) {
+      this.operationMessage = result.message;
+      this.operationType = result.type;
+      // Clear the result from the service since we're now displaying it
+      this.operationResultService.clearOperationResult();
+    }
+  }
+  
+  /**
+   * Handle dismissing the operation result banner
+   */
+  onBannerDismissed(): void {
+    this.operationMessage = null;
   }
   
 }

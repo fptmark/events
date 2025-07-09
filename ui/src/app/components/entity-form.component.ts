@@ -13,11 +13,13 @@ import { NotificationService, ValidationFailure, ErrorDetail } from '../services
 import currency from 'currency.js';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ValidationService } from '../services/validation.service';
+import { OperationResultBannerComponent, OperationResultType } from './operation-result-banner.component';
+import { OperationResultService } from '../services/operation-result.service';
 
 @Component({
   selector: 'app-entity-form',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, EntitySelectorModalComponent],
+  imports: [CommonModule, ReactiveFormsModule, EntitySelectorModalComponent, OperationResultBannerComponent],
   templateUrl: './entity-form.component.html',
   styleUrls: ['./entity-form.component.css'],
   styles: [`
@@ -57,6 +59,10 @@ export class EntityFormComponent implements OnInit {
   error: string = '';
   validationErrors: ValidationFailure[] = [];
 
+  // Operation result banner state
+  operationMessage: string | null = null;
+  operationType: OperationResultType = 'success';
+
   // Entity selection state
   showEntitySelector: boolean = false;
   entitySelectorEntities: any[] = [];
@@ -77,7 +83,8 @@ export class EntityFormComponent implements OnInit {
     private navigationService: NavigationService,
     private notificationService: NotificationService,
     private validationService: ValidationService,
-    private sanitizer: DomSanitizer
+    private sanitizer: DomSanitizer,
+    private operationResultService: OperationResultService
   ) {}
   
   // Helper methods for template conditions - delegate to ModeService
@@ -108,6 +115,9 @@ export class EntityFormComponent implements OnInit {
       } else {
         this.mode = DETAILS
       }
+      
+      // Check for operation results when navigating to this entity
+      this.checkForOperationResult();
       
       this.loadEntity();
     });
@@ -374,9 +384,10 @@ export class EntityFormComponent implements OnInit {
   private handleApiSuccess(): void {
     this.submitting = false;
     
-    // Show success notification
+    // Set operation result in service to persist across navigation
     const operation = this.isCreateMode() ? 'created' : 'updated';
-    this.notificationService.showSuccess(`${this.entityType} was successfully ${operation}.`, true);
+    const message = `${this.entityType} was successfully ${operation}.`;
+    this.operationResultService.setOperationResult(message, 'success', this.entityType);
     
     // Use Angular router instead of full page reload
     this.router.navigate(['/entity', this.entityType]);
@@ -574,6 +585,26 @@ export class EntityFormComponent implements OnInit {
   getFieldValidationError(fieldName: string): string | null {
     const control = this.entityForm?.get(fieldName);
     return control?.errors?.['server'] || null;
+  }
+
+  /**
+   * Check for pending operation results for this entity type
+   */
+  private checkForOperationResult(): void {
+    const result = this.operationResultService.getOperationResultForEntity(this.entityType);
+    if (result) {
+      this.operationMessage = result.message;
+      this.operationType = result.type;
+      // Clear the result from the service since we're now displaying it
+      this.operationResultService.clearOperationResult();
+    }
+  }
+  
+  /**
+   * Handle dismissing the operation result banner
+   */
+  onBannerDismissed(): void {
+    this.operationMessage = null;
   }
 
 }
