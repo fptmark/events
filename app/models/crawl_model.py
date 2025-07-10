@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any, Self, ClassVar, Union, Annotated, 
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
 from pydantic_core import core_schema
-from typing_extensions import Annotated
+#from typing_extensions import Annotated 
 import logging
 import warnings as python_warnings
 from app.db import DatabaseFactory
@@ -62,7 +62,7 @@ class Crawl(BaseModel):
 
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
-        return helpers.get_metadata(cls._metadata)
+        return helpers.get_metadata("Crawl", cls._metadata)
 
     @classmethod
     async def get_all(cls) -> Dict[str, Any]:
