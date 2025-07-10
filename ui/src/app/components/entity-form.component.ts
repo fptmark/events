@@ -337,6 +337,9 @@ export class EntityFormComponent implements OnInit {
               });
               
               processedData[fieldName] = parsed.value;
+              
+              // Skip the general field processing below since we handled currency conversion
+              continue;
             } catch (e) {
               // If parsing fails, mark the field as invalid
               console.error('Currency parsing error:', e);
