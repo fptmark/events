@@ -54,8 +54,8 @@ interface NotificationViewModel extends Notification {
             <div class="notifications-header">Details:</div>
             
             <!-- Group notifications by type -->
-            <div *ngFor="let group of getGroupedNotifications(vm.notifications)" class="notification-group">
-              <div class="group-header" [ngClass]="'group-' + group.level">
+            <div *ngFor="let group of getGroupedNotifications(vm.notifications)" class="notification-group" [ngClass]="'group-' + group.level">
+              <div class="group-header">
                 <span class="group-icon">{{ getGroupIcon(group.level) }}</span>
                 <span class="group-title">{{ getGroupTitle(group.level) }} ({{ group.notifications.length }})</span>
               </div>

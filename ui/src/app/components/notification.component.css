@@ -83,25 +83,25 @@
   flex: 1;
 }
 
-.group-error {
+.group-error .group-header {
   background: #f8d7da;
   color: #721c24;
   border: 1px solid #f5c6cb;
 }
 
-.group-warning {
+.group-warning .group-header {
   background: #fffbf0;
   color: #856404;
   border: 1px solid #fdeaa7;
 }
 
-.group-info {
+.group-info .group-header {
   background: #d1ecf1;
   color: #0c5460;
   border: 1px solid #bee5eb;
 }
 
-.group-success {
+.group-success .group-header {
   background: #d4edda;
   color: #155724;
   border: 1px solid #c3e6cb;
@@ -116,6 +116,35 @@
   padding: 4px;
   background: rgba(0,0,0,0.02);
   border-radius: 3px;
+  border-left: 3px solid transparent;
+}
+
+/* Error items should be clearly red */
+.group-error .notification-item {
+  background: rgba(248, 215, 218, 0.4);
+  border-left: 3px solid #dc3545;
+  color: #721c24;
+}
+
+/* Warning items should be clearly yellow/orange */
+.group-warning .notification-item {
+  background: rgba(255, 251, 240, 0.4);
+  border-left: 3px solid #ffc107;
+  color: #856404;
+}
+
+/* Info items */
+.group-info .notification-item {
+  background: rgba(209, 236, 241, 0.4);
+  border-left: 3px solid #17a2b8;
+  color: #0c5460;
+}
+
+/* Success items */
+.group-success .notification-item {
+  background: rgba(212, 237, 218, 0.4);
+  border-left: 3px solid #28a745;
+  color: #155724;
 }
 
 .item-message {
