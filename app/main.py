@@ -15,7 +15,7 @@ from app.errors import (
     DatabaseError, 
     ValidationError, 
     NotFoundError, 
-    DuplicateError, 
+    DuplicateError 
 )
 
 from app.routers.router import get_all_dynamic_routers
