@@ -492,7 +492,7 @@ class MongoDatabase(DatabaseInterface):
                 
                 if not constraint_exists:
                     constraint_desc = " + ".join(constraint_fields) if len(constraint_fields) > 1 else constraint_fields[0]
-                    missing_constraints.append(f"unique constraint on {constraint_desc}")
+                    missing_constraints.append(f"Missing unique index for {constraint_desc} - run with --initdb to create indexes")
             
             return missing_constraints
             

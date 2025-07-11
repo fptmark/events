@@ -379,7 +379,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             missing_constraints = []
             for constraint_fields in unique_constraints:
                 constraint_desc = " + ".join(constraint_fields) if len(constraint_fields) > 1 else constraint_fields[0]
-                missing_constraints.append(f"Elasticsearch does not support unique constraints on {constraint_desc}")
+                missing_constraints.append(f"Missing unique constraint for {constraint_desc} - Elasticsearch doesn't support unique indexes")
             
             return missing_constraints
             

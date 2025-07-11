@@ -7,7 +7,7 @@ from .base import DatabaseInterface, T
 from .elasticsearch import ElasticsearchDatabase
 from .mongodb import MongoDatabase
 from ..errors import DatabaseError
-from ..notification import notify_warning, notify_database_error, NotificationType
+from ..notification import notify_warning, notify_error, notify_database_error, NotificationType
 
 class DatabaseFactory:
     """
@@ -148,9 +148,9 @@ class DatabaseFactory:
         # Normalize database-specific types
         normalized_data = [cls._normalize_document(doc) for doc in data]
         
-        # Convert database warnings to notifications
+        # Convert database warnings to appropriate notifications
         for warning in warnings:
-            notify_warning(warning, NotificationType.DATABASE, entity=collection, operation="get_all")
+            cls._notify_database_message(warning, collection, "get_all")
             
         return normalized_data, warnings, total_count
 
@@ -162,9 +162,9 @@ class DatabaseFactory:
         # Normalize database-specific types
         normalized_data = cls._normalize_document(data) if data else data
         
-        # Convert database warnings to notifications
+        # Convert database warnings to appropriate notifications
         for warning in warnings:
-            notify_warning(warning, NotificationType.DATABASE, entity=collection, operation="get_by_id")
+            cls._notify_database_message(warning, collection, "get_by_id")
             
         return normalized_data, warnings
 
@@ -176,9 +176,9 @@ class DatabaseFactory:
         # Normalize database-specific types (like get_by_id does)
         normalized_data = cls._normalize_document(data_result) if data_result else data_result
         
-        # Convert database warnings to notifications
+        # Convert database warnings to appropriate notifications
         for warning in warnings:
-            notify_warning(warning, NotificationType.DATABASE, entity=collection, operation="save_document")
+            cls._notify_database_message(warning, collection, "save_document")
             
         return normalized_data, warnings
 
@@ -186,4 +186,14 @@ class DatabaseFactory:
     async def delete_document(cls, collection: str, doc_id: str) -> bool:
         """Delete document from collection"""
         return await cls.get_instance().delete_document(collection, doc_id)
+    
+    @classmethod
+    def _notify_database_message(cls, message: str, collection: str, operation: str) -> None:
+        """Send appropriate notification based on message content"""
+        # Missing unique constraints/indexes are errors, not warnings
+        if ("Missing unique" in message or "run with --initdb" in message or 
+            "doesn't support unique" in message):
+            notify_error(message, NotificationType.DATABASE, entity=collection, operation=operation)
+        else:
+            notify_warning(message, NotificationType.DATABASE, entity=collection, operation=operation)
 
