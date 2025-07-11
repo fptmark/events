@@ -13,13 +13,14 @@ import re
 
 T = TypeVar('T')
 
-def load_settings(config_file: Path | None) -> Dict[str, Any]:
+def load_settings(config_file: Path | None, required: bool = True) -> Dict[str, Any]:
     try:
         if config_file:
             with open(config_file, 'r') as config_handle:
                 return json.load(config_handle)
     except Exception as e:
-        logging.error(f"Error loading config file {config_file}: {e}")
+        if required:
+            logging.error(f"Error loading config file {config_file}: {e}")
         return {}
 
     return {}
@@ -39,7 +40,7 @@ def deep_merge_dicts(dest, override):
 
 def get_metadata(entity: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
     """Get metadata for a model with proper type hints"""
-    overrides = load_settings(Path('overrides.json')) or {}
+    overrides = load_settings(Path('overrides.json'), False) or {}
     # name = metadata.get('fields', '')
     entity_cfg = overrides.get(entity, {})
     if entity_cfg:

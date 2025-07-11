@@ -172,6 +172,47 @@ app = FastAPI(
     exception_handlers={}
 )
 
+# Store FastAPI's original openapi method before we override it
+_original_openapi = app.openapi
+
+# Override OpenAPI to serve generated spec if available
+def custom_openapi():
+    """Serve generated OpenAPI spec or fallback to auto-generated"""
+    import json
+    from pathlib import Path
+    
+    openapi_file = Path("openapi.json")
+    if openapi_file.exists():
+        try:
+            with open(openapi_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load generated OpenAPI spec: {e}")
+    
+    # Fallback to FastAPI's auto-generated spec
+    return _original_openapi()
+
+# Replace FastAPI's openapi method with our custom one
+app.openapi = custom_openapi
+
+# Also override the endpoint for direct access
+@app.get("/openapi.json", include_in_schema=False)
+def get_openapi():
+    """Direct endpoint for OpenAPI spec"""
+    return custom_openapi()
+
+# Override the /docs endpoint to use our custom OpenAPI spec
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    """Custom Swagger UI that uses our detailed OpenAPI spec"""
+    from fastapi.openapi.docs import get_swagger_ui_html
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title="API Documentation",
+        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
+    )
+
 # Add CORS middleware
 ui_port = config.get('ui_port', 4200)
 server_port = config.get('server_port', 5500)
