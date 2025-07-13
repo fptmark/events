@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { RouterLink, RouterLinkActive, RouterOutlet, Router } from '@angular/router';
 import { MetadataService } from './services/metadata.service'
 import { NavigationService } from './services/navigation.service';
 import { ConfigService } from './services/config.service';
@@ -45,7 +45,7 @@ import { NotificationComponent } from './components/notification.component';
               </li>
             </ul>
             <span class="navbar-text text-light">
-              <span *ngIf="entityService.getCurrentRecordCount() !== null">
+              <span *ngIf="entityService.getCurrentRecordCount() !== null && router.url.startsWith('/entity/') && router.url.split('/').length === 3">
                 Records: {{ entityService.getCurrentRecordCount() }} | 
               </span>
               Database: {{ metadataService.getDatabaseType() }}
@@ -99,7 +99,8 @@ export class AppComponent implements OnInit {
     public navigationService: NavigationService,
     private configService: ConfigService,
     private restService: RestService,
-    public entityService: EntityService
+    public entityService: EntityService,
+    public router: Router
   ) { }
 
   redirectToServerRoute(route: string) {
