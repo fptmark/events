@@ -197,8 +197,8 @@ class SimpleNotificationCollection:
         # Determine overall status
         status = self._determine_status(entity_notifications, data, is_bulk)
         
-        # Always ensure data is an array for consistency
-        if data is not None and not isinstance(data, list):
+        # Only wrap in array for bulk operations
+        if is_bulk and data is not None and not isinstance(data, list):
             data = [data]
         
         response = {
@@ -218,7 +218,7 @@ class SimpleNotificationCollection:
 
     def _group_by_entity(self) -> Dict[str, Dict[str, Any]]:
         """Group notifications by entity_id"""
-        grouped = {}
+        grouped: Dict[str, Dict[str, Any]] = {}
         
         for notification in self.notifications:
             entity_id = notification.entity_id if notification.entity_id is not None else "null"

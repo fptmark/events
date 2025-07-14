@@ -4,9 +4,10 @@
          "accountId": {
             "ui": {
                "displayPages": "all"
-            }
-         }
-     }
+	         }
+         },
+         "lastName" : { "ui" : { "displayAfterField": "firstName"}}
+      }
    },
    "Account": {
       "fields": {

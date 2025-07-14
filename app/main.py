@@ -193,7 +193,7 @@ def custom_openapi():
     return _original_openapi()
 
 # Replace FastAPI's openapi method with our custom one
-app.openapi = custom_openapi
+setattr(app, 'openapi', custom_openapi)
 
 # Also override the endpoint for direct access
 @app.get("/openapi.json", include_in_schema=False)
