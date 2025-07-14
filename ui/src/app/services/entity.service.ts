@@ -145,8 +145,11 @@ export class EntityService {
       
       // When in an edit-capable form, we need the date in YYYY-MM-DD format for HTML date input
       if (mode && (mode === EDIT || mode === CREATE)) {
-        // Format as YYYY-MM-DD for HTML date input - simpler approach using ISO string
-        return date.toISOString().slice(0, 10);
+        // Format as YYYY-MM-DD for HTML date input using local timezone to match display
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
       }
       
       // For display-only mode, use localized date format
