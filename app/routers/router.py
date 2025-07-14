@@ -36,7 +36,7 @@ def create_response_models(entity_cls: Type[BaseModel]):
         summary: Optional[Dict[str, Any]] = None
     
     class EntityListResponse(BaseModel):
-        data: Optional[List[Dict[str, Any]]] = Field(default_factory=List)
+        data: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
         message: Optional[str] = None
         level: Optional[str] = None
         metadata: Optional[Dict[str, Any]] = None

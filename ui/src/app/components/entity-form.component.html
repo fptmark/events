@@ -1,7 +1,18 @@
 <div class="container-fluid mt-4">
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>{{ mode }} {{ entityType | titlecase }}</h2>
-    <button class="btn btn-secondary" (click)="goBack()">Back</button>
+    <div>
+      <!-- Details mode: Show Back button -->
+      <button *ngIf="isDetailsMode()" class="btn btn-secondary" (click)="goBack()">Back</button>
+      
+      <!-- Edit/Create mode: Show Submit and Cancel buttons -->
+      <ng-container *ngIf="!isDetailsMode()">
+        <button type="submit" class="btn btn-entity-edit me-2" [disabled]="entityForm && entityForm.invalid || submitting" form="entityForm">
+          {{ submitting ? 'Saving...' : 'Submit' }}
+        </button>
+        <button type="button" class="btn btn-secondary" (click)="goBack()">Cancel</button>
+      </ng-container>
+    </div>
   </div>
 
   <!-- Operation Result Banner -->
@@ -12,7 +23,7 @@
   </operation-result-banner>
 
   <div *ngIf="entityForm">
-    <form [formGroup]="entityForm" (ngSubmit)="onSubmit()">
+    <form id="entityForm" [formGroup]="entityForm" (ngSubmit)="onSubmit()">
       <div class="card">
         <div class="card-body">
           <div class="row">
@@ -201,25 +212,11 @@
           </div>
         </div>
 
-        <div class="card-footer d-flex justify-content-between">
-          <!-- Left side (for details mode) -->
+        <div *ngIf="isDetailsMode()" class="card-footer">
           <div>
-            <ng-container *ngIf="isDetailsMode()">
-              <!-- Details button not needed in details mode since we're already viewing -->
-              <button *ngIf="entityService.canUpdate(entityType)" type="button" class="btn btn-entity-edit me-2" (click)="goToEdit()">Edit</button>
-              <button *ngIf="metadataService.isValidOperation(entityType, 'c')" type="button" class="btn btn-entity-create me-2" (click)="entityService.navigateToCreate(entityType)">Create</button>
-              <button *ngIf="entityService.canDelete(entityType)" type="button" class="btn btn-entity-delete" (click)="restService.deleteEntity(entityType, entityId)">Delete</button>
-            </ng-container>
-          </div>
-
-          <!-- Right side (for edit/create mode) -->
-          <div>
-            <ng-container *ngIf="!isDetailsMode()">
-              <button type="submit" class="btn btn-entity-edit" [disabled]="entityForm && entityForm.invalid || submitting">
-                {{ submitting ? 'Saving...' : 'Submit' }}
-              </button>
-              <button type="button" class="btn btn-secondary ms-2" (click)="goBack()">Cancel</button>
-            </ng-container>
+            <button *ngIf="entityService.canUpdate(entityType)" type="button" class="btn btn-entity-edit me-2" (click)="goToEdit()">Edit</button>
+            <button *ngIf="metadataService.isValidOperation(entityType, 'c')" type="button" class="btn btn-entity-create me-2" (click)="entityService.navigateToCreate(entityType)">Create</button>
+            <button *ngIf="entityService.canDelete(entityType)" type="button" class="btn btn-entity-delete" (click)="restService.deleteEntity(entityType, entityId)">Delete</button>
           </div>
         </div>
       </div>
