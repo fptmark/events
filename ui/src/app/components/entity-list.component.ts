@@ -23,7 +23,7 @@ import { OperationResultService } from '../services/operation-result.service';
   imports: [CommonModule, OperationResultBannerComponent],
   styleUrls: ['../common.css'],
   template: `
-    <div class="container-fluid mt-4">
+    <div class="mt-4">
       <h2>{{ metadataService.getTitle(entityType) }}</h2>
       
       <!-- Operation Result Banner -->
@@ -55,7 +55,7 @@ import { OperationResultService } from '../services/operation-result.service';
         </div>
         
         <!-- Table layout with one row per entity -->
-        <div *ngIf="data.length > 0" class="table-responsive">
+        <div *ngIf="data.length > 0" class="custom-table-container">
           <table class="table table-striped table-hover">
             <thead>
               <tr>
@@ -104,7 +104,6 @@ import { OperationResultService } from '../services/operation-result.service';
     
     /* Use auto table layout for more natural column sizing */
     .table {
-      width: 100%;
       table-layout: auto;
     }
     
