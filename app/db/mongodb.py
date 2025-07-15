@@ -3,9 +3,10 @@ from typing import Any, Dict, List, Optional, Type, Union, cast, Tuple
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from bson import ObjectId
 from pydantic import ValidationError as PydanticValidationError
+from pymongo.errors import DuplicateKeyError
 
 from .base import DatabaseInterface, T
-from ..errors import DatabaseError, ValidationError, ValidationFailure
+from ..errors import DatabaseError, ValidationError, ValidationFailure, DuplicateError
 
 class MongoDatabase(DatabaseInterface):
     def __init__(self):
@@ -182,12 +183,69 @@ class MongoDatabase(DatabaseInterface):
             warnings.extend(get_warnings)
             return saved_doc, warnings
             
+        except DuplicateKeyError as e:
+            # Parse MongoDB duplicate key error to get field and value
+            field_name, field_value = self._parse_duplicate_key_error(e)
+            raise DuplicateError(
+                entity=collection,
+                field=field_name,
+                value=field_value
+            )
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
                 entity=collection,
                 operation="save_document"
             )
+
+    def _parse_duplicate_key_error(self, error: DuplicateKeyError) -> Tuple[str, str]:
+        """
+        Parse MongoDB duplicate key error to extract field name and value.
+        
+        Args:
+            error: The DuplicateKeyError from MongoDB
+            
+        Returns:
+            Tuple of (field_name, field_value)
+        """
+        try:
+            # Get the details from the error
+            if hasattr(error, 'details') and error.details:
+                key_value = error.details.get('keyValue', {})
+                if key_value:
+                    # Get the first field name and value from the key
+                    field_name = next(iter(key_value.keys()))
+                    field_value = str(key_value[field_name])
+                    return field_name, field_value
+            
+            # Fallback: parse from error message
+            error_str = str(error)
+            if 'dup key:' in error_str:
+                # Extract field name from index name (e.g. "username_1" -> "username")
+                if 'index:' in error_str:
+                    index_part = error_str.split('index:')[1].split('dup key:')[0].strip()
+                    field_name = index_part.split('_')[0]  # Remove _1 suffix
+                else:
+                    field_name = 'unknown'
+                
+                # Extract value from dup key part
+                if '{ ' in error_str and ' }' in error_str:
+                    dup_key_part = error_str.split('dup key:')[1].split('}')[0] + '}'
+                    # Simple parsing to get the value
+                    if '"' in dup_key_part:
+                        field_value = dup_key_part.split('"')[1]
+                    else:
+                        field_value = 'unknown'
+                else:
+                    field_value = 'unknown'
+                
+                return field_name, field_value
+            
+            return 'unknown', 'unknown'
+            
+        except Exception:
+            # If parsing fails, return generic info
+            return 'unknown', 'unknown'
 
     async def close(self) -> None:
         """Close the database connection."""

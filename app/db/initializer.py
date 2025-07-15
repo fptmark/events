@@ -118,10 +118,10 @@ class DatabaseInitializer:
             collection: Collection name
             required_indexes: List of required index definitions
         """
-        self.logger.info(f"\n--- Managing indexes for collection '{collection}' ---")
+        self.logger.info(f"--- Managing indexes for collection '{collection}' ---")
         
         if not required_indexes:
-            self.logger.info(f"  No indexes required for '{collection}'")
+            # self.logger.info(f"  No indexes required for '{collection}'")
             return
         
         # List required indexes
@@ -150,13 +150,22 @@ class DatabaseInitializer:
                 self.logger.warning(f"  Could not list existing indexes for '{collection}': {str(e)}")
                 existing_indexes = []
             
-            # Create missing indexes
-            existing_index_names = {idx['name'] for idx in existing_indexes}
-            missing_indexes = [idx for idx in required_indexes if idx['name'] not in existing_index_names]
+            # Create missing indexes - compare by field composition, not name
+            existing_index_signatures = {tuple(sorted(idx['fields'])) for idx in existing_indexes}
+            missing_indexes = []
+            for idx in required_indexes:
+                required_signature = tuple(sorted(idx['fields']))
+                if required_signature not in existing_index_signatures:
+                    missing_indexes.append(idx)
             
             if missing_indexes:
                 self.logger.info(f"  Creating missing indexes for '{collection}'")
-                await self.db.create_collection(collection, missing_indexes)
+                # Use the database's index creation method directly
+                if hasattr(self.db, '_create_required_indexes'):
+                    await self.db._create_required_indexes(collection, missing_indexes)
+                else:
+                    # Fallback to create_collection for databases that don't have direct index creation
+                    await self.db.create_collection(collection, missing_indexes)
             
             # Note: We don't delete unused indexes automatically as they might be manually created
             # and serve other purposes beyond what's defined in model metadata

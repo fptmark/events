@@ -189,14 +189,16 @@ async def create_entity_handler(entity_cls: Type, entity_name: str, entity_data:
         notify_success(f"{entity_name} created successfully", NotificationType.BUSINESS)
         collection = end_notifications()
         return collection.to_entity_grouped_response(result.model_dump(), is_bulk=False)
-    except (ValidationError, DuplicateError) as e:
-        notify_validation_error(f"Failed to create {entity_lower}: {str(e)}")
-        collection = end_notifications()
-        return collection.to_entity_grouped_response(None, is_bulk=False)
-    except Exception as e:
-        notify_error(f"Failed to create {entity_lower}: {str(e)}", NotificationType.SYSTEM)
-        collection = end_notifications()
-        return collection.to_entity_grouped_response(None, is_bulk=False)
+    except (ValidationError, DuplicateError):
+        # Let these exceptions bubble up to FastAPI exception handlers
+        # which will return proper HTTP status codes (422, 409)
+        end_notifications()
+        raise
+    except Exception:
+        # Let generic exceptions bubble up to FastAPI exception handler
+        # which will return proper HTTP status code (500)
+        end_notifications()
+        raise
     finally:
         end_notifications()
 
@@ -225,18 +227,16 @@ async def update_entity_handler(entity_cls: Type, entity_name: str, entity_id: s
         notify_success(f"{entity_name} updated successfully", NotificationType.BUSINESS)
         collection = end_notifications()
         return collection.to_entity_grouped_response(result.model_dump(), is_bulk=False)
-    except NotFoundError as e:
-        notify_error(f"{entity_name} not found", NotificationType.BUSINESS)
-        collection = end_notifications()
-        return collection.to_entity_grouped_response(None, is_bulk=False)
-    except (ValidationError, DuplicateError) as e:
-        notify_validation_error(f"Failed to update {entity_lower}: {str(e)}")
-        collection = end_notifications()
-        return collection.to_entity_grouped_response(None, is_bulk=False)
-    except Exception as e:
-        notify_error(f"Failed to update {entity_lower}: {str(e)}", NotificationType.SYSTEM)
-        collection = end_notifications()
-        return collection.to_entity_grouped_response(None, is_bulk=False)
+    except (NotFoundError, ValidationError, DuplicateError):
+        # Let these exceptions bubble up to FastAPI exception handlers
+        # which will return proper HTTP status codes (404, 422, 409)
+        end_notifications()
+        raise
+    except Exception:
+        # Let generic exceptions bubble up to FastAPI exception handler
+        # which will return proper HTTP status code (500)
+        end_notifications()
+        raise
     finally:
         end_notifications()
 
@@ -255,12 +255,14 @@ async def delete_entity_handler(entity_cls: Type, entity_name: str, entity_id: s
         collection = end_notifications()
         return collection.to_entity_grouped_response(None, is_bulk=False)
     except NotFoundError:
-        notify_error(f"{entity_name} not found", NotificationType.BUSINESS)
-        collection = end_notifications()
-        return collection.to_entity_grouped_response(None, is_bulk=False)
-    except Exception as e:
-        notify_error(f"Failed to delete {entity_lower}: {str(e)}", NotificationType.SYSTEM)
-        collection = end_notifications()
-        return collection.to_entity_grouped_response(None, is_bulk=False)
+        # Let NotFoundError bubble up to FastAPI exception handler
+        # which will return proper HTTP status code (404)
+        end_notifications()
+        raise
+    except Exception:
+        # Let generic exceptions bubble up to FastAPI exception handler
+        # which will return proper HTTP status code (500)
+        end_notifications()
+        raise
     finally:
         end_notifications()
