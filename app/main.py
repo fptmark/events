@@ -48,10 +48,12 @@ def parse_args():
     parser.add_argument('--log-level', 
                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                        help='Override log level from config')
-    parser.add_argument('--initdb', action='store_true',
-                       help='Initialize database: manage required indexes based on model metadata, then exit')
-    parser.add_argument('--resetdb', action='store_true',
-                       help='Clear all indexes on database, then exit')
+    # parser.add_argument('--initdb', action='store_true',
+    #                    help='Initialize database: manage required indexes based on model metadata, then exit')
+    # parser.add_argument('--resetdb', action='store_true',
+    #                    help='Clear all indexes on database, then exit')
+    parser.add_argument('--noinitdb', action='store_true',
+                       help='Skip automatic database initialization on startup (for large databases)')
     return parser.parse_args()
 
 # Parse command line arguments
@@ -97,38 +99,38 @@ if db_type.lower() not in supported_types:
 logger.info(f"Database type {db_type} is supported")
 
 # Handle database management commands before creating FastAPI app
-if args.initdb or args.resetdb:
-    import asyncio
+# if args.initdb or args.resetdb:
+#     import asyncio
     
-    async def handle_db_command():
-        try:
-            # Initialize database connection
-            db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name)
-            initializer = DatabaseInitializer(db_instance)
+#     async def handle_db_command():
+#         try:
+#             # Initialize database connection
+#             db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name)
+#             initializer = DatabaseInitializer(db_instance)
             
-            if args.initdb:
-                logger.info("--initdb flag specified, initializing database schema")
-                logger.info("Starting database initialization...")
-                await initializer.initialize_database()
-                logger.info("Database initialization completed successfully")
+#             if args.initdb:
+#                 logger.info("--initdb flag specified, initializing database schema")
+#                 logger.info("Starting database initialization...")
+#                 await initializer.initialize_database()
+#                 logger.info("Database initialization completed successfully")
             
-            elif args.resetdb:
-                logger.info("--resetdb flag specified, resetting database indexes")
-                logger.info("Starting database reset (indexes only)...")
-                await initializer.reset_database_indexes()
-                logger.info("Database reset completed successfully")
+#             elif args.resetdb:
+#                 logger.info("--resetdb flag specified, resetting database indexes")
+#                 logger.info("Starting database reset (indexes only)...")
+#                 await initializer.reset_database_indexes()
+#                 logger.info("Database reset completed successfully")
             
-            # Cleanup
-            await DatabaseFactory.close()
-            logger.info("Database connection closed")
+#             # Cleanup
+#             await DatabaseFactory.close()
+#             logger.info("Database connection closed")
             
-        except Exception as e:
-            logger.error(f"Failed to execute database command: {str(e)}")
-            sys.exit(1)
+#         except Exception as e:
+#             logger.error(f"Failed to execute database command: {str(e)}")
+#             sys.exit(1)
     
-    # Run database command and exit
-    asyncio.run(handle_db_command())
-    sys.exit(0)
+#     # Run database command and exit
+#     asyncio.run(handle_db_command())
+#     sys.exit(0)
 
 # Create the FastAPI app.
 @asynccontextmanager
@@ -145,6 +147,18 @@ async def lifespan(app: FastAPI):
         # Initialize database connection for normal server operation
         db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name)
         logger.info(f"Connected to {db_type} successfully")
+        
+        # Auto-run database initialization unless --noinitdb flag is set
+        if not args.noinitdb:
+            logger.info("Running automatic database initialization...")
+            initializer = DatabaseInitializer(db_instance)
+            try:
+                await initializer.initialize_database()
+                logger.info("Automatic database initialization completed successfully")
+            except Exception as init_error:
+                logger.warning(f"Database initialization failed (continuing anyway): {str(init_error)}")
+        else:
+            logger.info("Skipping automatic database initialization (--noinitdb flag)")
 
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
