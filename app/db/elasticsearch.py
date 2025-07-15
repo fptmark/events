@@ -3,8 +3,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from bson import ObjectId
 
-from .base import DatabaseInterface
-from ..errors import DatabaseError
+from .base import DatabaseInterface, SyntheticDuplicateError
+from ..errors import DatabaseError, DuplicateError
 
 class ElasticsearchDatabase(DatabaseInterface):
     """Elasticsearch implementation of DatabaseInterface."""
@@ -364,6 +364,189 @@ class ElasticsearchDatabase(DatabaseInterface):
                 message=str(e),
                 entity=collection,
                 operation="exists"
+            )
+
+    async def supports_native_indexes(self) -> bool:
+        """Elasticsearch does not support native unique indexes"""
+        return False
+    
+    async def document_exists_with_field_value(self, collection: str, field: str, value: Any, exclude_id: Optional[str] = None) -> bool:
+        """Check if a document exists with the given field value"""
+        es = self._get_client()
+        try:
+            if not await es.indices.exists(index=collection):
+                return False
+            
+            # Check field type to determine correct query field
+            query_field = field
+            try:
+                mapping = await es.indices.get_mapping(index=collection)
+                existing_properties = mapping[collection]['mappings'].get('properties', {})
+                
+                if field in existing_properties:
+                    field_type = existing_properties[field].get('type', 'text')
+                    if field_type == 'text':
+                        # For text fields, we need to use the .keyword subfield for exact matching
+                        if 'fields' in existing_properties[field] and 'keyword' in existing_properties[field]['fields']:
+                            query_field = f"{field}.keyword"
+                        else:
+                            # Fall back to match query for text fields without keyword subfield
+                            query = {"match": {field: value}}
+                            if exclude_id:
+                                query = {
+                                    "bool": {
+                                        "must": [{"match": {field: value}}],
+                                        "must_not": [{"term": {"_id": exclude_id}}]
+                                    }
+                                }
+                            result = await es.search(
+                                index=collection,
+                                body={"query": query, "size": 1}
+                            )
+                            return result['hits']['total']['value'] > 0
+            except Exception:
+                # If we can't get mapping info, use the original field name
+                pass
+            
+            # Build query to search for field value using term query (exact match)
+            query = {"term": {query_field: value}}
+            
+            # Exclude specific document ID if provided
+            if exclude_id:
+                query = {
+                    "bool": {
+                        "must": [{"term": {query_field: value}}],
+                        "must_not": [{"term": {"_id": exclude_id}}]
+                    }
+                }
+            
+            result = await es.search(
+                index=collection,
+                body={"query": query, "size": 1}
+            )
+            
+            return result['hits']['total']['value'] > 0
+            
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=collection,
+                operation="document_exists_with_field_value"
+            )
+    
+    async def create_single_field_index(self, collection: str, field: str, index_name: str) -> None:
+        """Create a single field index for synthetic index support"""
+        es = self._get_client()
+        try:
+            if not await es.indices.exists(index=collection):
+                # Create collection with this field mapping
+                await self.create_collection(collection, [{"fields": [field], "unique": False}])
+                return
+                
+            # Check if field already exists and what type it is
+            try:
+                mapping = await es.indices.get_mapping(index=collection)
+                existing_properties = mapping[collection]['mappings'].get('properties', {})
+                
+                if field in existing_properties:
+                    # Field already exists - check if it's suitable for exact matching
+                    existing_type = existing_properties[field].get('type', 'text')
+                    if existing_type == 'text':
+                        # For text fields, we need to use the .keyword subfield if it exists
+                        # or create a multi-field mapping
+                        if 'fields' not in existing_properties[field]:
+                            # Add keyword subfield to existing text field
+                            properties = {
+                                field: {
+                                    "type": "text",
+                                    "fields": {
+                                        "keyword": {
+                                            "type": "keyword",
+                                            "ignore_above": 256
+                                        }
+                                    }
+                                }
+                            }
+                            await es.indices.put_mapping(
+                                index=collection,
+                                properties=properties
+                            )
+                        # Field is already suitable or has been made suitable
+                        return
+                    elif existing_type == 'keyword':
+                        # Already perfect for exact matching
+                        return
+                
+                # Field doesn't exist - add it as keyword
+                properties = {field: {"type": "keyword", "index": True}}
+                await es.indices.put_mapping(
+                    index=collection,
+                    properties=properties
+                )
+                
+            except Exception as mapping_error:
+                # If we can't get or update mapping, log warning but continue
+                logging.warning(f"Failed to update mapping for field '{field}': {str(mapping_error)}")
+            
+        except Exception as e:
+            # Log warning but don't fail - index creation is optional for performance
+            logging.warning(f"Failed to create synthetic index '{index_name}' on field '{field}': {str(e)}")
+    
+    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
+        """Save a document to the database with synthetic index support."""
+        self._ensure_initialized()
+        
+        try:
+            warnings = []
+            
+            # Prepare document with synthetic hash fields
+            prepared_data = await self.prepare_document_for_save(collection, data, unique_constraints)
+            
+            # Validate unique constraints before save
+            await self.validate_unique_constraints_before_save(collection, prepared_data, unique_constraints)
+            
+            # Perform the actual save
+            es = self._get_client()
+            doc_id = prepared_data.get('id')
+            
+            # Create the collection if it doesn't exist
+            if not await es.indices.exists(index=collection):
+                await self.create_collection(collection, [])
+            
+            # Handle new documents vs updates
+            if not doc_id or (isinstance(doc_id, str) and doc_id.strip() == ""):
+                # New document - let Elasticsearch auto-generate ID
+                save_data = prepared_data.copy()
+                save_data.pop('id', None)
+                
+                result = await es.index(index=collection, body=save_data)
+                doc_id_str = result['_id']
+            else:
+                # Update existing document
+                save_data = prepared_data.copy()
+                save_data.pop('id', None)
+                
+                await es.index(index=collection, id=doc_id, body=save_data)
+                doc_id_str = str(doc_id)
+            
+            # Get the saved document
+            saved_doc, get_warnings = await self.get_by_id(collection, doc_id_str)
+            warnings.extend(get_warnings)
+            
+            return saved_doc, warnings
+            
+        except SyntheticDuplicateError as e:
+            # Convert synthetic duplicate error to standard DuplicateError
+            raise DuplicateError(
+                entity=e.collection,
+                field=e.field,
+                value=e.value
+            )
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=collection,
+                operation="save_document"
             )
     
     async def _check_unique_indexes(self, collection: str, unique_constraints: List[List[str]]) -> List[str]:

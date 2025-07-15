@@ -5,7 +5,7 @@ from bson import ObjectId
 from pydantic import ValidationError as PydanticValidationError
 from pymongo.errors import DuplicateKeyError
 
-from .base import DatabaseInterface, T
+from .base import DatabaseInterface, T, SyntheticDuplicateError
 from ..errors import DatabaseError, ValidationError, ValidationFailure, DuplicateError
 
 class MongoDatabase(DatabaseInterface):
@@ -152,11 +152,17 @@ class MongoDatabase(DatabaseInterface):
                 if missing_indexes:
                     warnings.extend(missing_indexes)
             
+            # Prepare document with synthetic hash fields if needed (no-op for MongoDB)
+            prepared_data = await self.prepare_document_for_save(collection, data, unique_constraints)
+            
+            # Validate unique constraints before save (no-op for MongoDB)
+            await self.validate_unique_constraints_before_save(collection, prepared_data, unique_constraints)
+            
             # Extract ID from data 
-            doc_id = data.get('id')
+            doc_id = prepared_data.get('id')
             
             # Create a copy of data for the actual save operation
-            save_data = data.copy()
+            save_data = prepared_data.copy()
             
             # Handle new documents (no ID) vs updates (existing ID)
             if not doc_id or (isinstance(doc_id, str) and doc_id.strip() == ""):
@@ -190,6 +196,13 @@ class MongoDatabase(DatabaseInterface):
                 entity=collection,
                 field=field_name,
                 value=field_value
+            )
+        except SyntheticDuplicateError as e:
+            # Convert synthetic duplicate error to standard DuplicateError
+            raise DuplicateError(
+                entity=e.collection,
+                field=e.field,
+                value=e.value
             )
         except Exception as e:
             raise DatabaseError(
@@ -246,6 +259,14 @@ class MongoDatabase(DatabaseInterface):
         except Exception:
             # If parsing fails, return generic info
             return 'unknown', 'unknown'
+
+    async def supports_native_indexes(self) -> bool:
+        """MongoDB supports native unique indexes"""
+        return True
+    
+    async def document_exists_with_field_value(self, collection: str, field: str, value: Any, exclude_id: Optional[str] = None) -> bool:
+        """Check if document exists with field value (not needed for MongoDB - native indexes handle this)"""
+        return False
 
     async def close(self) -> None:
         """Close the database connection."""
