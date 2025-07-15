@@ -297,15 +297,16 @@ export class EntityService {
     const fkFieldName = this._getEndpoint(showConfig.endpoint, fieldName);
     const embeddedData = entity[fkFieldName];
 
-    // If no embedded data available, return default formatting
-    if (!embeddedData) {
-      return this.formatFieldValue(entityType, fieldName, mode, objectId);
+    // If no embedded data available or the FK doesn't exist, return default formatting
+    if (!embeddedData || embeddedData.exists == false) {
+      return objectId
+      // return this.formatFieldValue(entityType, fieldName, mode, objectId);
     }
 
     // If the FK entity doesn't exist, show as plain text (no link)
-    if (embeddedData.exists === false) {
-      return objectId; // Just show the ID as plain text
-    }
+    // if (embeddedData.exists === false) {
+    //   return objectId; // Just show the ID as plain text
+    // }
 
     const fieldsToDisplay = showConfig.displayInfo[0].fields;
     const formattedValues: string[] = [];
