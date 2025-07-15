@@ -328,6 +328,12 @@ export class EntityFormComponent implements OnInit {
           // Parse currency value at submission time
           if (typeof value === 'string' && value.trim() !== '') {
             try {
+              // Validate that only legal currency characters are present
+              const legalCurrencyPattern = /^[\$\-\(\)\,\.0-9\s]+$/;
+              if (!legalCurrencyPattern.test(value)) {
+                throw new Error('Invalid characters in currency value. Only [$-().,] and numbers are allowed.');
+              }
+              
               const parsed = currency(value, {
                 precision: 2, 
                 symbol: '$',
