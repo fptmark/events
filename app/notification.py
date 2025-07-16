@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime, timezone
 import logging
 from contextvars import ContextVar
@@ -39,8 +39,8 @@ class NotificationDetail:
     field_name: Optional[str] = None
     value: Optional[Any] = None
     entity_id: Optional[str] = None  # Added for bulk operations
-    timestamp: datetime = field(default_factory=_default_timestamp)
-    details: List['NotificationDetail'] = field(default_factory=list)
+    timestamp: datetime = dataclass_field(default_factory=_default_timestamp)
+    details: List['NotificationDetail'] = dataclass_field(default_factory=list)
 
     def add_detail(self, message: str, level: Optional[NotificationLevel] = None, 
                    type: Optional[NotificationType] = None, **kwargs) -> None:
@@ -124,11 +124,11 @@ class SimpleNotificationCollection:
         """Add error notification"""
         return self.add(message, NotificationLevel.ERROR, type, **kwargs)
 
-    def validation_error(self, message: str, field: Optional[str] = None, 
+    def validation_error(self, message: str, field_name: Optional[str] = None, 
                         value: Optional[Any] = None, entity_id: Optional[str] = None, **kwargs) -> NotificationDetail:
         """Add validation error with field details"""
         return self.error(message, NotificationType.VALIDATION, 
-                         field_name=field, value=value, entity_id=entity_id, **kwargs)
+                         field_name=field_name, value=value, entity_id=entity_id, **kwargs)
 
     def database_error(self, message: str, **kwargs) -> NotificationDetail:
         """Add database error"""
@@ -273,7 +273,9 @@ class SimpleNotificationCollection:
             if has_failures:
                 return "failed"
             else:
-                return "completed"
+                # Check if we have warnings
+                has_warnings = any(entity["status"] == "warning" for entity in entity_notifications.values())
+                return "warning" if has_warnings else "completed"
 
     def _get_entity_summary(self, entity_notifications: Dict[str, Dict], data: Any) -> Dict[str, Any]:
         """Get summary counts based on entity notifications"""
@@ -296,8 +298,14 @@ class SimpleNotificationCollection:
             else:
                 perfect_entities += 1
         
-        # Calculate total entities (data is always an array now)
-        total_from_data = len(data) if data is not None else 0
+        # Calculate total entities - distinguish between single entity (dict) and bulk (list)
+        if data is not None:
+            if isinstance(data, list):
+                total_from_data = len(data)  # Bulk operation - count array items
+            else:
+                total_from_data = 1  # Single entity operation - count as 1
+        else:
+            total_from_data = 0
             
         # Total is either from data + failed entities, or from notifications
         total_entities = max(total_from_data + error_entities, len(entity_notifications))
@@ -306,8 +314,8 @@ class SimpleNotificationCollection:
         if not entity_notifications:
             perfect_entities = total_entities
         
-        # Calculate successfully processed entities (perfect + warning)
-        successful_entities = perfect_entities + warning_entities
+        # Calculate successfully processed entities (only perfect, no warnings)
+        successful_entities = perfect_entities
         
         return {
             "total_entities": total_entities,
@@ -391,10 +399,10 @@ def notify_error(message: str, type: NotificationType = NotificationType.SYSTEM,
     return get_notifications().error(message, type, **kwargs)
 
 
-def notify_validation_error(message: str, field: Optional[str] = None, 
+def notify_validation_error(message: str, field_name: Optional[str] = None, 
                           value: Optional[Any] = None, entity_id: Optional[str] = None, **kwargs) -> NotificationDetail:
     """Add validation error with field details"""
-    return get_notifications().validation_error(message, field=field, value=value, entity_id=entity_id, **kwargs)
+    return get_notifications().validation_error(message, field_name=field_name, value=value, entity_id=entity_id, **kwargs)
 
 
 def notify_database_error(message: str, **kwargs) -> NotificationDetail:
