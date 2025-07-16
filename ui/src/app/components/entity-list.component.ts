@@ -119,7 +119,7 @@ import { OperationResultService } from '../services/operation-result.service';
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      direction: rtl;  /* Right-to-left to truncate start of text */
+      /* direction: rtl;  /* Right-to-left to truncate start of text */
       text-align: left; /* Keep text aligned left */
     }
     

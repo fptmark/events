@@ -378,22 +378,12 @@ export class EntityFormComponent implements OnInit {
         if (fieldMeta?.type === 'Date' || fieldMeta?.type === 'Datetime') {
           if (typeof value === 'string' && value.trim() !== '') {
             try {
-              if (fieldMeta.type === 'Date') {
-                // For Date fields, send just the date part (YYYY-MM-DD)
-                // Convert to ISO date format if needed
                 const dateValue = new Date(value);
                 if (!isNaN(dateValue.getTime())) {
-                  processedData[fieldName] = dateValue.toISOString().split('T')[0];
+                  const value = dateValue.toISOString();
+                  processedData[fieldName] = fieldMeta?.type === 'Date' ? value.split('T')[0] : value
                   continue;
                 }
-              } else if (fieldMeta.type === 'Datetime') {
-                // For Datetime fields, send full ISO datetime
-                const datetimeValue = new Date(value);
-                if (!isNaN(datetimeValue.getTime())) {
-                  processedData[fieldName] = datetimeValue.toISOString();
-                  continue;
-                }
-              }
             } catch (e) {
               console.error('Date/Datetime parsing error:', e);
               // Let it fall through to regular processing
