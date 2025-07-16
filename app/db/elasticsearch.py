@@ -1,10 +1,10 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple
-from elasticsearch import AsyncElasticsearch, NotFoundError
+from elasticsearch import AsyncElasticsearch, NotFoundError as ESNotFoundError
 from bson import ObjectId
 
 from .base import DatabaseInterface, SyntheticDuplicateError
-from ..errors import DatabaseError, DuplicateError
+from ..errors import DatabaseError, DuplicateError, NotFoundError
 
 class ElasticsearchDatabase(DatabaseInterface):
     """Elasticsearch implementation of DatabaseInterface."""
@@ -100,12 +100,8 @@ class ElasticsearchDatabase(DatabaseInterface):
             res = await es.get(index=collection, id=doc_id)
             result = {**res["_source"], "id": res["_id"]}
             return result, warnings
-        except NotFoundError:
-            raise DatabaseError(
-                message=f"Document not found: {doc_id}",
-                entity=collection,
-                operation="get_by_id"
-            )
+        except ESNotFoundError:
+            raise NotFoundError(collection, doc_id)
         except Exception as e:
             raise DatabaseError(
                 message=str(e),

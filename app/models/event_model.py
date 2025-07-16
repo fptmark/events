@@ -44,6 +44,12 @@ class Event(BaseModel):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    model_config = ConfigDict(
+        json_encoders={
+            datetime: lambda v: v.isoformat() + 'Z' if v else None  # Always UTC with Z suffix
+        }
+    )
+
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'url': {   'type': 'String',
                              'required': True,
                              'pattern': {   'regex': '^https?://[^s]+$',
@@ -51,7 +57,7 @@ class Event(BaseModel):
                   'title': {   'type': 'String',
                                'required': True,
                                'max_length': 200},
-                  'dateTime': {'type': 'ISODate', 'required': True},
+                  'dateTime': {'type': 'Date', 'required': True},
                   'location': {   'type': 'String',
                                   'required': False,
                                   'max_length': 200},
@@ -73,11 +79,11 @@ class Event(BaseModel):
                   'tags': {   'type': 'Array[String]',
                               'required': False,
                               'ui': {'displayPages': 'details'}},
-                  'createdAt': {   'type': 'ISODate',
+                  'createdAt': {   'type': 'Date',
                                    'autoGenerate': True,
                                    'ui': {   'readOnly': True,
                                              'displayAfterField': '-1'}},
-                  'updatedAt': {   'type': 'ISODate',
+                  'updatedAt': {   'type': 'Datetime',
                                    'autoUpdate': True,
                                    'ui': {   'readOnly': True,
                                              'clientEdit': True,
@@ -212,6 +218,8 @@ class Event(BaseModel):
             else:
                 return cls(**raw_doc), warnings  # NO validation
         except NotFoundError:
+            raise
+        except DatabaseError:
             raise
         except Exception as e:
             raise DatabaseError(str(e), "Event", "get")

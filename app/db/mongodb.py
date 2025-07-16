@@ -6,7 +6,7 @@ from pydantic import ValidationError as PydanticValidationError
 from pymongo.errors import DuplicateKeyError
 
 from .base import DatabaseInterface, T, SyntheticDuplicateError
-from ..errors import DatabaseError, ValidationError, ValidationFailure, DuplicateError
+from ..errors import DatabaseError, ValidationError, ValidationFailure, DuplicateError, NotFoundError
 
 class MongoDatabase(DatabaseInterface):
     def __init__(self):
@@ -118,11 +118,7 @@ class MongoDatabase(DatabaseInterface):
             # Get document
             doc = await self._get_db()[collection].find_one({self.id_field: query_id})
             if doc is None:
-                raise DatabaseError(
-                    message=f"Document not found: {doc_id}",
-                    entity=collection,
-                    operation="get_by_id"
-                )
+                raise NotFoundError(collection, doc_id)
                 
             # Convert ObjectId to string for consistency
             if self.id_field in doc and isinstance(doc[self.id_field], ObjectId):
@@ -130,6 +126,9 @@ class MongoDatabase(DatabaseInterface):
                 
             return cast(Dict[str, Any], doc), warnings
                 
+        except NotFoundError:
+            # Re-raise NotFoundError so it can be handled by FastAPI
+            raise
         except DatabaseError:
             # Re-raise database errors
             raise

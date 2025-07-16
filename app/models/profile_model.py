@@ -34,6 +34,12 @@ class Profile(BaseModel):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    model_config = ConfigDict(
+        json_encoders={
+            datetime: lambda v: v.isoformat() + 'Z' if v else None  # Always UTC with Z suffix
+        }
+    )
+
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'name': {   'type': 'String',
                               'required': True,
                               'max_length': 100},
@@ -50,11 +56,11 @@ class Profile(BaseModel):
                                                                              'fields': [   'email',
                                                                                            'username']}]}},
                                 'required': True},
-                  'createdAt': {   'type': 'ISODate',
+                  'createdAt': {   'type': 'Date',
                                    'autoGenerate': True,
                                    'ui': {   'readOnly': True,
                                              'displayAfterField': '-1'}},
-                  'updatedAt': {   'type': 'ISODate',
+                  'updatedAt': {   'type': 'Datetime',
                                    'autoUpdate': True,
                                    'ui': {   'readOnly': True,
                                              'clientEdit': True,
@@ -191,6 +197,8 @@ class Profile(BaseModel):
             else:
                 return cls(**raw_doc), warnings  # NO validation
         except NotFoundError:
+            raise
+        except DatabaseError:
             raise
         except Exception as e:
             raise DatabaseError(str(e), "Profile", "get")

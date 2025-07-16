@@ -286,21 +286,18 @@
         "properties": {
           "expiredAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
             "description": "Created On",
-            "example": "2024-01-01T12:00:00Z"
+            "example": "example"
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           }
         },
         "required": [],
@@ -311,15 +308,13 @@
         "properties": {
           "expiredAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           }
         },
         "required": [],
@@ -330,15 +325,13 @@
         "properties": {
           "expiredAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
             "description": "Created On",
-            "example": "2024-01-01T12:00:00Z"
+            "example": "example"
           }
         },
         "required": [],
@@ -461,9 +454,8 @@
           },
           "dob": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "isAccountOwner": {
             "type": "boolean",
@@ -486,15 +478,13 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           }
         },
         "required": [
@@ -558,9 +548,8 @@
           },
           "dob": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "isAccountOwner": {
             "type": "boolean",
@@ -583,9 +572,8 @@
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           }
         },
         "required": [
@@ -649,9 +637,8 @@
           },
           "dob": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "isAccountOwner": {
             "type": "boolean",
@@ -674,9 +661,8 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           }
         },
         "required": [],
@@ -777,15 +763,13 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           }
         },
         "required": [
@@ -822,9 +806,8 @@
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           }
         },
         "required": [
@@ -861,9 +844,8 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           }
         },
         "required": [],
@@ -954,15 +936,13 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           },
           "profileId": {
             "type": "string",
@@ -996,9 +976,8 @@
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           },
           "profileId": {
             "type": "string",
@@ -1032,9 +1011,8 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           },
           "profileId": {
             "type": "string",
@@ -1130,9 +1108,8 @@
           },
           "dateTime": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "location": {
             "type": "string",
@@ -1176,15 +1153,13 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           }
         },
         "required": [
@@ -1211,9 +1186,8 @@
           },
           "dateTime": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "location": {
             "type": "string",
@@ -1257,9 +1231,8 @@
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           }
         },
         "required": [
@@ -1286,9 +1259,8 @@
           },
           "dateTime": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "location": {
             "type": "string",
@@ -1332,9 +1304,8 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           }
         },
         "required": [],
@@ -1430,15 +1401,13 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           },
           "userId": {
             "type": "string",
@@ -1482,9 +1451,8 @@
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           },
           "userId": {
             "type": "string",
@@ -1528,9 +1496,8 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           },
           "userId": {
             "type": "string",
@@ -1631,15 +1598,13 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           }
         },
         "required": [
@@ -1663,9 +1628,8 @@
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           }
         },
         "required": [
@@ -1689,9 +1653,8 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           }
         },
         "required": [],
@@ -1769,9 +1732,8 @@
         "properties": {
           "lastParsedDate": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "parseStatus": {
             "type": "string",
@@ -1791,15 +1753,13 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           },
           "urlId": {
             "type": "string",
@@ -1818,9 +1778,8 @@
         "properties": {
           "lastParsedDate": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "parseStatus": {
             "type": "string",
@@ -1840,9 +1799,8 @@
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-updated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-updated datetime field",
+            "example": "example"
           },
           "urlId": {
             "type": "string",
@@ -1861,9 +1819,8 @@
         "properties": {
           "lastParsedDate": {
             "type": "string",
-            "format": "date-time",
-            "description": "Date and time in ISO format",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Date field",
+            "example": "example"
           },
           "parseStatus": {
             "type": "string",
@@ -1883,9 +1840,8 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time",
-            "description": "Auto-generated isodate field",
-            "example": "2024-01-01T12:00:00Z"
+            "description": "Auto-generated date field",
+            "example": "example"
           },
           "urlId": {
             "type": "string",

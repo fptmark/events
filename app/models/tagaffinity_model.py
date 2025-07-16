@@ -33,16 +33,22 @@ class TagAffinity(BaseModel):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    model_config = ConfigDict(
+        json_encoders={
+            datetime: lambda v: v.isoformat() + 'Z' if v else None  # Always UTC with Z suffix
+        }
+    )
+
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'tag': {'type': 'String', 'required': True, 'max_length': 50},
                   'affinity': {   'type': 'Integer',
                                   'required': True,
                                   'ge': -100,
                                   'le': 100},
-                  'createdAt': {   'type': 'ISODate',
+                  'createdAt': {   'type': 'Date',
                                    'autoGenerate': True,
                                    'ui': {   'readOnly': True,
                                              'displayAfterField': '-1'}},
-                  'updatedAt': {   'type': 'ISODate',
+                  'updatedAt': {   'type': 'Datetime',
                                    'autoUpdate': True,
                                    'ui': {   'readOnly': True,
                                              'clientEdit': True,
@@ -178,6 +184,8 @@ class TagAffinity(BaseModel):
             else:
                 return cls(**raw_doc), warnings  # NO validation
         except NotFoundError:
+            raise
+        except DatabaseError:
             raise
         except Exception as e:
             raise DatabaseError(str(e), "TagAffinity", "get")

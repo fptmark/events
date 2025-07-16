@@ -45,6 +45,12 @@ class User(BaseModel):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    model_config = ConfigDict(
+        json_encoders={
+            datetime: lambda v: v.isoformat() + 'Z' if v else None  # Always UTC with Z suffix
+        }
+    )
+
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'username': {   'type': 'String',
                                   'required': True,
                                   'min_length': 3,
@@ -78,7 +84,7 @@ class User(BaseModel):
                                                           'other'],
                                             'message': 'must be male or '
                                                        'female'}},
-                  'dob': {'type': 'ISODate', 'required': False},
+                  'dob': {'type': 'Date', 'required': False},
                   'isAccountOwner': {   'type': 'Boolean',
                                         'required': True,
                                         'ui': {'displayName': 'Owner'}},
@@ -92,12 +98,12 @@ class User(BaseModel):
                                                                                 'fields': [   'createdAt',
                                                                                               'expiredAt']}]}},
                                    'required': True},
-                  'createdAt': {   'type': 'ISODate',
+                  'createdAt': {   'type': 'Date',
                                    'autoGenerate': True,
                                    'ui': {   'readOnly': True,
                                              'displayAfterField': '-1',
                                              'displayPages': 'summary'}},
-                  'updatedAt': {   'type': 'ISODate',
+                  'updatedAt': {   'type': 'Datetime',
                                    'autoUpdate': True,
                                    'ui': {   'readOnly': True,
                                              'clientEdit': True,
@@ -234,6 +240,8 @@ class User(BaseModel):
             else:
                 return cls(**raw_doc), warnings  # NO validation
         except NotFoundError:
+            raise
+        except DatabaseError:
             raise
         except Exception as e:
             raise DatabaseError(str(e), "User", "get")

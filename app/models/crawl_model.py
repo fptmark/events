@@ -34,15 +34,21 @@ class Crawl(BaseModel):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'lastParsedDate': {'type': 'ISODate', 'required': False},
+    model_config = ConfigDict(
+        json_encoders={
+            datetime: lambda v: v.isoformat() + 'Z' if v else None  # Always UTC with Z suffix
+        }
+    )
+
+    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'lastParsedDate': {'type': 'Date', 'required': False},
                   'parseStatus': {'type': 'JSON', 'required': False},
                   'errorsEncountered': {   'type': 'Array[String]',
                                            'required': False},
-                  'createdAt': {   'type': 'ISODate',
+                  'createdAt': {   'type': 'Date',
                                    'autoGenerate': True,
                                    'ui': {   'readOnly': True,
                                              'displayAfterField': '-1'}},
-                  'updatedAt': {   'type': 'ISODate',
+                  'updatedAt': {   'type': 'Datetime',
                                    'autoUpdate': True,
                                    'ui': {   'readOnly': True,
                                              'clientEdit': True,
@@ -180,6 +186,8 @@ class Crawl(BaseModel):
             else:
                 return cls(**raw_doc), warnings  # NO validation
         except NotFoundError:
+            raise
+        except DatabaseError:
             raise
         except Exception as e:
             raise DatabaseError(str(e), "Crawl", "get")

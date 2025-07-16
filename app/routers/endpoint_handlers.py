@@ -8,7 +8,6 @@ notification handling.
 
 import json
 import logging
-import warnings as python_warnings
 from typing import Dict, Any, Type
 from urllib.parse import unquote
 from fastapi import Request
@@ -142,18 +141,8 @@ async def get_entity_handler(entity_cls: Type, entity_name: str, entity_id: str,
             notify_warning(warning, NotificationType.DATABASE)
         
         # Process FK includes if view parameter is provided
-        # Capture any serialization warnings during model_dump
-        with python_warnings.catch_warnings(record=True) as caught_warnings:
-            python_warnings.simplefilter("always")
-            entity_dict = entity.model_dump()
-            
-            # Add any serialization warnings as notifications
-            for warning in caught_warnings:
-                if "datetime" in str(warning.message).lower():
-                    notify_warning(
-                        f"Datetime serialization warning for {entity_name} {entity_dict.get('id', 'unknown')}: {warning.message}",
-                        NotificationType.VALIDATION
-                    )
+        # Serialize entity data (datetime warnings should be eliminated by json_encoders)
+        entity_dict = entity.model_dump()
         
         # entity_dict['exists'] = True  # If no exception thrown, entity exists
         await add_view_data(entity_dict, view_spec, entity_name, get_validations)
@@ -161,11 +150,10 @@ async def get_entity_handler(entity_cls: Type, entity_name: str, entity_id: str,
         collection = end_notifications()
         return collection.to_entity_grouped_response(entity_dict, is_bulk=False)
     except NotFoundError:
-        notify_error(f"{entity_name} not found", NotificationType.BUSINESS)
-        # Return object with exists=False for consistent UI handling
-        not_found_entity = {"id": entity_id} #, "exists": False}
-        collection = end_notifications()
-        return collection.to_entity_grouped_response(not_found_entity, is_bulk=False)
+        # Let the NotFoundError bubble up to FastAPI's exception handler
+        # which will return a proper 404 response
+        end_notifications()
+        raise
     except Exception as e:
         notify_error(f"Failed to retrieve {entity_lower}: {str(e)}", NotificationType.SYSTEM)
         collection = end_notifications()
