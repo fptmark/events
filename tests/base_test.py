@@ -195,7 +195,7 @@ class BaseTestFramework:
                 deleted_count = 0
                 for doc in all_docs:
                     if any(filter_criteria[key] in str(doc.get(key, "")) for key in filter_criteria):
-                        doc_id = DatabaseFactory.get_id(doc)
+                        doc_id = doc.get('id')
                         if doc_id:
                             success = await DatabaseFactory.delete_document(collection_name, doc_id)
                             if success:
