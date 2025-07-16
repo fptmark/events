@@ -11,7 +11,7 @@ from app.db import DatabaseFactory
 import app.utils as helpers
 from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
-from app.notification import notify_validation_error, notify_warning, NotificationType
+from app.notification import notify_warning, NotificationType
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ class User(BaseModel):
                                 message=f"User {entity_id}.{field_name}:  validation failed - {error['msg']}",
                                 type=NotificationType.VALIDATION,
                                 entity="User",
-                                field_name=field_name,
+                                field=field_name,
                                 value=error.get('input'),
                                 operation="get_all",
                                 entity_id=entity_id
@@ -235,7 +235,7 @@ class User(BaseModel):
                             message=f"User {entity_id}: {field_name} validation failed - {error['msg']}",
                             type=NotificationType.VALIDATION,
                             entity="User",
-                            field_name=field_name,
+                            field=field_name,
                             value=error.get('input'),
                             operation="get",
                             entity_id=entity_id
@@ -273,8 +273,9 @@ class User(BaseModel):
 
                 for err in e.errors():
                     field_name = str(err["loc"][-1])
-                    notify_validation_error(
+                    notify_warning(
                         message=f"User {entity_id}: {field_name} validation failed - {err['msg']}",
+                        type=NotificationType.VALIDATION,
                         entity="User",
                         field=field_name,
                         value=err.get("input"),
