@@ -109,51 +109,6 @@ class ElasticsearchDatabase(DatabaseInterface):
                 operation="get_by_id"
             )
 
-    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
-        """Save a document to the database."""
-        es = self._get_client()
-        try:
-            warnings = []
-            # Check unique constraints if provided
-            if unique_constraints:
-                missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
-                if missing_indexes:
-                    warnings.extend(missing_indexes)
-            
-            # Extract ID from data
-            doc_id = data.get('id')
-            
-            # Create a copy of data for the actual save operation
-            save_data = data.copy()
-            
-            # Handle new documents (no ID) vs updates (existing ID)
-            if not doc_id or (isinstance(doc_id, str) and doc_id.strip() == ""):
-                save_data.pop('id', None)
-                doc_id = str(ObjectId())
-                operation = "create"
-            # Use the existing id for updates
-            else:
-                operation = "update"
-
-            # Perform the save and Check if indexing was successful
-            result = await es.index(index=collection, id=doc_id, document=save_data, refresh='wait_for')
-            if result['result'] not in ['created', 'updated']:
-                raise DatabaseError(
-                    message=f"Failed to {operation} document: {result.get('result', 'unknown error')}",
-                    entity=collection,
-                    operation="save_document"
-                )
-                
-            # Get the saved document (this returns tuple, so unpack)
-            saved_doc, get_warnings = await self.get_by_id(collection, doc_id)
-            warnings.extend(get_warnings)
-            return saved_doc, warnings
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="save_document"
-            )
 
     async def close(self) -> None:
         """Close the database connection."""
@@ -474,7 +429,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                         return
                 
                 # Field doesn't exist - add it as keyword
-                properties = {field: {"type": "keyword", "index": True}}
+                properties = {field: {"type": "keyword"}}
                 await es.indices.put_mapping(
                     index=collection,
                     properties=properties
