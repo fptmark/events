@@ -189,8 +189,10 @@ export class FormGeneratorService {
       switch (fieldType) {
         case 'Boolean':
           fieldType = 'checkbox'; break;
-        case 'ISODate':
+        case 'Date':
           fieldType = 'date'; break;
+        case 'Datetime':
+          fieldType = 'datetime-local'; break;
         case 'String':
           fieldType =  ((fieldMeta?.max_length ?? 0) > 100) ? 'textarea': 'text'
           break

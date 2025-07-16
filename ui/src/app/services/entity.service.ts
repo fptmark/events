@@ -3,12 +3,12 @@ import { MetadataService, FieldMetadata, ShowConfig } from './metadata.service';
 import { ModeService, ViewMode, DETAILS, EDIT, CREATE } from './mode.service';
 import { FieldOrderService } from './field-order.service';
 import { Router } from '@angular/router';
-import { HttpClient } from '@angular/common/http';
-import { Observable, of, forkJoin } from 'rxjs';
-import { map, catchError } from 'rxjs/operators';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import currency from 'currency.js';
-import { RestService } from './rest.service';
+// import { HttpClient } from '@angular/common/http';
+// import { Observable, of, forkJoin } from 'rxjs';
+// import { map, catchError } from 'rxjs/operators';
+// import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+// import currency from 'currency.js';
+// import { RestService } from './rest.service';
 
 export interface EntityResponse<> {
   data: [];
@@ -26,9 +26,9 @@ export class EntityService {
     private metadataService: MetadataService,
     private router: Router,
     private modeService: ModeService,
-    private http: HttpClient,
-    private sanitizer: DomSanitizer,
-    private restService: RestService
+    // private http: HttpClient,
+    // private sanitizer: DomSanitizer,
+    // private restService: RestService
   ) {}
 
   setRecordCount(count: number): void {
@@ -80,29 +80,19 @@ export class EntityService {
     }
 
     // Date field handling
-    if (type === 'ISODate') {
-      
-      // For edit mode, use current date for auto-update fields
-      if (this.modeService.inEditMode(mode)) {
-        if (metadata?.autoUpdate) {
-          value = new Date().toISOString().slice(0, 10); // Format for date (YYYY-MM-DD)
-        }
-      }
-      
-      // For create mode, use current date for auto-generate/update fields
-      if (this.modeService.inCreateMode(mode)) {
-        if (metadata?.autoGenerate || metadata?.autoUpdate) {
-          value = new Date().toISOString().slice(0, 10); // Format for date (YYYY-MM-DD)
-        }
-      }
-      
-      if (this.modeService.inCreateMode(mode)) {
-        return this.getDefaultValue(metadata);
-      }
+    if (type === 'Date' || type === 'Datetime') {
+      value = this.getDefaultValue(metadata, mode) || value;
+        // const isEditMode = this.modeService.inEditMode(mode)
+        // const isCreateMode = this.modeService.inCreateMode(mode)
 
-      return this.formatDate(value, mode)
+        // if ((isEditMode && metadata?.autoUpdate) || (isCreateMode && (metadata?.autoGenerate || metadata?.autoUpdate))) {
+        //   let date_value = new Date().toISOString()
+        //   value = type == 'Datetime' ? date_value: date_value.slice(0, 10); 
+        // } 
+
+      return this.formatDate(value, mode, type)
     }
-
+    
     // Boolean handling
     if (typeof value === 'boolean') {
       return value ? 'Yes' : 'No';
@@ -139,21 +129,33 @@ export class EntityService {
     }).format(value);
   }
 
-  formatDate(value: string, mode?: ViewMode): string {
+  formatDate(value: string, mode?: ViewMode, fieldType?: string): string {
     try {
       const date = new Date(value);
       
-      // When in an edit-capable form, we need the date in YYYY-MM-DD format for HTML date input
+      // Forms need a specific format for date inputs
       if (mode && (mode === EDIT || mode === CREATE)) {
-        // Format as YYYY-MM-DD for HTML date input using local timezone to match display
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      }
+        if (fieldType === 'Date') {
+          // Format as YYYY-MM-DD for HTML date input (date only)
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        } else if (fieldType === 'Datetime') {
+          // Format as YYYY-MM-DDTHH:MM for HTML datetime-local input
+          // Use local timezone to match what user sees
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const hours = String(date.getHours()).padStart(2, '0');
+          const minutes = String(date.getMinutes()).padStart(2, '0');
+          return `${year}-${month}-${day}T${hours}:${minutes}`;
+        }
+      } 
       
-      // For display-only mode, use localized date format
-      return this.formatDateMDY(date);
+      // For display-only mode, format based on field type
+      value = this.formatDateMDY(new Date(value));
+      return fieldType === 'Date' ? value : value + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
     catch (e) {
       return value;
@@ -234,7 +236,7 @@ export class EntityService {
     this.router.navigate(['/entity', entityType, id, 'edit']);
   }
 
-  private getDefaultValue(fieldMeta: any): any {
+  private getDefaultValue(fieldMeta: any, mode: any): any {
     const type = fieldMeta.type;
     const enumValues = fieldMeta.enum?.values;
     const required = fieldMeta.required;
@@ -258,10 +260,17 @@ export class EntityService {
         return [];
       case 'JSON':
         return {};
-      case 'ISODate':
+      case 'Date':
         // Always set current date for autoGenerate and autoUpdate fields
-        if (fieldMeta.autoGenerate || fieldMeta.autoUpdate) {
+        if (this._autoGenerate(fieldMeta, mode) || this._autoUpdate(fieldMeta, mode) ) {
           const now = new Date().toISOString().slice(0, 10); // YYYY-MM-DD format
+          return now;
+        }
+        return null;
+      case 'Datetime':
+        // Always set current datetime for autoGenerate and autoUpdate fields
+        if (this._autoGenerate(fieldMeta, mode) || this._autoUpdate(fieldMeta, mode) ) {
+          const now = new Date().toISOString(); // Full ISO datetime
           return now;
         }
         return null;
@@ -367,6 +376,14 @@ export class EntityService {
     }
     console.error(`Invalid mode for foreign key field: ${mode}`);
     return ''
+  }
+
+  _autoGenerate(fieldMeta: FieldMetadata, mode: ViewMode): boolean {
+    return fieldMeta!.autoGenerate ?? this.modeService.inCreateMode(mode)
+  }
+
+  _autoUpdate(fieldMeta: FieldMetadata, mode: ViewMode): boolean {
+    return fieldMeta!.autoUpdate ?? (this.modeService.inEditMode(mode) || this.modeService.inCreateMode(mode))
   }
 
 }
