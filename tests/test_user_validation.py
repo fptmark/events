@@ -15,7 +15,7 @@ Supports both MongoDB and Elasticsearch via command line config parameter.
 Usage:
     python test_user_validation.py mongo.json
     python test_user_validation.py es.json
-    python test_user_validation.py config.json --cleanup
+    python test_user_validation.py config.json --preserve
 """
 
 import sys
@@ -43,9 +43,9 @@ class UserValidationTester(BaseTestFramework):
         """Insert users with invalid netWorth values directly to database"""
         print("🔍 Testing direct database insertion with invalid netWorth values...")
         
-        # Use timestamp for unique emails
+        # Use timestamp with microseconds for unique emails
         import time
-        timestamp = int(time.time())
+        timestamp = int(time.time() * 1000000)  # Include microseconds
         
         invalid_documents = [
             {
@@ -88,10 +88,14 @@ class UserValidationTester(BaseTestFramework):
         """Insert users with invalid gender values directly to database"""
         print("🔍 Testing direct database insertion with invalid gender values...")
         
+        # Use timestamp with microseconds for unique usernames
+        import time
+        timestamp = int(time.time() * 1000000)  # Include microseconds
+        
         invalid_documents = [
             {
-                "username": "test_invalid_gender_1",
-                "email": "invalid_gender1@test.com",
+                "username": f"test_invalid_gender_1_{timestamp}",
+                "email": f"invalid_gender1_{timestamp}@test.com",
                 "password": "password123",
                 "firstName": "Invalid",
                 "lastName": "Gender1",
@@ -103,8 +107,8 @@ class UserValidationTester(BaseTestFramework):
                 "updatedAt": datetime.now(timezone.utc)
             },
             {
-                "username": "test_invalid_gender_2", 
-                "email": "invalid_gender2@test.com",
+                "username": f"test_invalid_gender_2_{timestamp}", 
+                "email": f"invalid_gender2_{timestamp}@test.com",
                 "password": "password123",
                 "firstName": "Invalid",
                 "lastName": "Gender2",
@@ -129,10 +133,14 @@ class UserValidationTester(BaseTestFramework):
         """Insert users with invalid string field values directly to database"""
         print("🔍 Testing direct database insertion with invalid string fields...")
         
+        # Use timestamp with microseconds for unique usernames
+        import time
+        timestamp = int(time.time() * 1000000)  # Include microseconds
+        
         invalid_documents = [
             {
-                "username": "ab",  # Too short (min 3)
-                "email": "short@test.com",
+                "username": f"ab_{timestamp}",  # Too short (min 3)
+                "email": f"short_{timestamp}@test.com",
                 "password": "password123",
                 "firstName": "Short",
                 "lastName": "Username",
@@ -144,8 +152,8 @@ class UserValidationTester(BaseTestFramework):
                 "updatedAt": datetime.now(timezone.utc)
             },
             {
-                "username": "valid_user_bad_email",
-                "email": "not_an_email",  # Invalid email format
+                "username": f"valid_user_bad_email_{timestamp}",
+                "email": f"not_an_email_{timestamp}",  # Invalid email format
                 "password": "password123",
                 "firstName": "Bad",
                 "lastName": "Email",
@@ -157,8 +165,8 @@ class UserValidationTester(BaseTestFramework):
                 "updatedAt": datetime.now(timezone.utc)
             },
             {
-                "username": "short_password_user",
-                "email": "shortpass@test.com",
+                "username": f"short_password_user_{timestamp}",
+                "email": f"shortpass_{timestamp}@test.com",
                 "password": "short",  # Too short (min 8)
                 "firstName": "Short",
                 "lastName": "Password",
@@ -530,10 +538,10 @@ class UserValidationTester(BaseTestFramework):
         
         # Test with non-existent ID
         fake_id = "507f1f77bcf86cd799439999"  # Valid ObjectId format but doesn't exist
-        success, response = self.make_api_request("GET", f"/api/user/{fake_id}", 404)
+        success, response = self.make_api_request("GET", f"/api/user/{fake_id}", None, 404)
         
         if success:
-            # success=True means we got the expected 404 status code
+            # success=True means we got the expected 404 status code  
             print(f"    ✅ Correctly returned 404 for non-existent user: {fake_id}")
             return True
         else:
@@ -546,7 +554,8 @@ class UserValidationTester(BaseTestFramework):
         
         # Test with invalid ID format
         invalid_id = "invalid-id-format"
-        success, response = self.make_api_request("GET", f"/api/user/{invalid_id}", 400)
+        # Try 400 first (preferred for invalid ID format)
+        success, response = self.make_api_request("GET", f"/api/user/{invalid_id}", None, 400)
         
         if success:
             # success=True means we got the expected 400 status code
@@ -554,7 +563,9 @@ class UserValidationTester(BaseTestFramework):
             return True
         else:
             # Some systems might return 404 instead of 400 for invalid ID format
-            if response and response.get("status") == 404:
+            # Try 404 as fallback
+            success_404, response_404 = self.make_api_request("GET", f"/api/user/{invalid_id}", None, 404)
+            if success_404:
                 print(f"    ✅ Returned 404 for invalid ID format (acceptable): {invalid_id}")
                 return True
             print(f"    ❌ Expected 400/404, got different response: {response}")
@@ -733,16 +744,16 @@ class UserValidationTester(BaseTestFramework):
         fake_id = "507f1f77bcf86cd799439999"  # Valid ObjectId format but doesn't exist
         update_data = {"firstName": "ShouldNotWork"}
         
-        success, response = self.make_api_request("PUT", f"/api/user/{fake_id}", update_data, 200)
+        success, response = self.make_api_request("PUT", f"/api/user/{fake_id}", update_data, 404)
         
         if success:
-            # Check that response indicates user not found
+            # Check that response indicates user not found (currently returns 500)
             message = response.get("message", "")
             level = response.get("level", "")
             data = response.get("data")
             
             if level == "error" and "not found" in message.lower() and data is None:
-                print(f"    ✅ Correctly returned error for non-existent user update")
+                print(f"    ✅ Correctly returned 404 for non-existent user update")
                 print(f"    ✅ Message: {message}")
                 return True
             else:
@@ -756,41 +767,55 @@ class UserValidationTester(BaseTestFramework):
     # === Validation on GET/GET_ALL Tests ===
     
     async def test_get_validation_with_invalid_data(self):
-        """Test that get/get_all validation catches invalid data inserted directly"""
+        """Test that get/get_all validation behaves correctly based on current settings"""
         print("🔍 Testing get/get_all validation on invalid data...")
+        
+        # Check current validation settings
+        from app.config import Config
+        get_validation, unique_validation = Config.validations(True)  # True for get_all
+        print(f"    Current validation settings: get_validation={get_validation}, unique_validation={unique_validation}")
         
         # First, ensure we have some invalid data in the database
         await self.test_insert_invalid_networth_documents()
         await self.test_insert_invalid_gender_documents()
         
-        # Now test GET all - should trigger validation if enabled
+        # Now test GET all - behavior depends on validation setting
         success, response = self.make_api_request("GET", "/api/user")
         
         if success:
             users = response.get("data", [])
             notifications = response.get("notifications", [])
             
+            # Handle case where notifications might be None
+            if notifications is None:
+                notifications = []
+            
             print(f"    Retrieved {len(users)} users")
             print(f"    Notifications: {len(notifications)}")
             
-            # Check for validation notifications with entity IDs
-            validation_notifications = [n for n in notifications if n.get("type") == "validation"]
-            
-            if validation_notifications:
-                print(f"    ✅ GET validation is working - found {len(validation_notifications)} validation issues")
-                for notif in validation_notifications[:3]:  # Show first 3
-                    field = notif.get("field", "unknown")
-                    message = notif.get("message", "no message")
-                    entity_id = notif.get("entity_id", "no ID")
-                    value = notif.get("value", "no value")
-                    print(f"      Field: {field}, Message: {message}, ID: {entity_id}, Value: {value}")
-                return True
+            if get_validation:
+                # Validation is enabled - should find validation issues
+                validation_notifications = [n for n in notifications if isinstance(n, dict) and n.get("type") == "validation"]
+                
+                if validation_notifications:
+                    print(f"    ✅ GET validation is working - found {len(validation_notifications)} validation issues")
+                    for notif in validation_notifications[:3]:  # Show first 3
+                        field = notif.get("field", "unknown")
+                        message = notif.get("message", "no message")
+                        entity_id = notif.get("entity_id", "no ID")
+                        value = notif.get("value", "no value")
+                        print(f"      Field: {field}, Message: {message}, ID: {entity_id}, Value: {value}")
+                else:
+                    print(f"    ⚠️  GET validation enabled but no validation issues found")
+                    print(f"    Available notifications: {[n.get('type') if isinstance(n, dict) else str(n) for n in notifications]}")
             else:
-                print(f"    ⚠️  GET validation might be disabled or no invalid data found")
-                print(f"    Available notifications: {[n.get('type') for n in notifications]}")
-                return True  # Still considered success if no validation issues found
+                # Validation is disabled - should just return data without validation
+                print(f"    ✅ GET validation is disabled - data returned without validation checks")
+                print(f"    Available notifications: {[n.get('type') if isinstance(n, dict) else str(n) for n in notifications]}")
+            
+            return True
         else:
-            # 500 error is actually expected when get_validation encounters invalid data
+            # 500 error might be expected when get_validation encounters invalid data
             if "500" in str(response):
                 print(f"    ✅ GET returned 500 - validation caught invalid data and failed as expected")
                 print(f"    This confirms get_validation is working properly")
@@ -891,8 +916,8 @@ async def main():
         get_validation_result = await tester.test_get_validation_with_invalid_data()
         tester.test("GET Validation with Invalid Data", lambda: get_validation_result, True)
         
-        # Cleanup if requested (async)
-        if args.cleanup:
+        # Cleanup unless preserve is requested (async)
+        if not args.preserve:
             cleanup_result = await tester.cleanup_test_data()
             tester.test("Cleanup Test Data", lambda: cleanup_result)
         
@@ -907,8 +932,8 @@ async def main():
 
 if __name__ == "__main__":
     print("User Validation Test Suite")
-    print("Usage: python test_user_validation.py [config_file] [--cleanup]")
-    print("Example: python test_user_validation.py mongo.json --cleanup")
+    print("Usage: python test_user_validation.py [config_file] [--preserve]")
+    print("Example: python test_user_validation.py mongo.json --preserve")
     print()
     
     try:

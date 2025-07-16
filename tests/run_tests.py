@@ -26,15 +26,15 @@ def create_argument_parser():
                        help='Configuration file path (default: mongo.json)')
     parser.add_argument('--server-url', default='http://127.0.0.1:5500',
                        help='Server URL for API tests (default: http://127.0.0.1:5500)')
-    parser.add_argument('--cleanup', action='store_true',
-                       help='Clean up test data after running tests')
+    parser.add_argument('--preserve', action='store_true',
+                       help='Preserve test data after running tests (for troubleshooting)')
     parser.add_argument('--all', action='store_true',
                        help='Run tests with both mongo.json and es.json configs')
     parser.add_argument('--entity', choices=['user'], default='user',
                        help='Which entity to test (default: user)')
     return parser
 
-async def run_tests_with_config(config_file: str, server_url: str, cleanup: bool, entity: str):
+async def run_tests_with_config(config_file: str, server_url: str, preserve: bool, entity: str):
     """Run tests with specific configuration"""
     print(f"\\n{'='*80}")
     print(f"RUNNING TESTS WITH CONFIG: {config_file}")
@@ -44,8 +44,8 @@ async def run_tests_with_config(config_file: str, server_url: str, cleanup: bool
     original_argv = sys.argv.copy()
     try:
         sys.argv = ['test_user_validation.py', config_file, '--server-url', server_url]
-        if cleanup:
-            sys.argv.append('--cleanup')
+        if preserve:
+            sys.argv.append('--preserve')
         
         if entity == 'user':
             success = await run_user_tests()
@@ -66,7 +66,7 @@ async def main():
     print("🚀 Events Application Test Runner")
     print(f"Entity: {args.entity}")
     print(f"Server: {args.server_url}")
-    print(f"Cleanup: {args.cleanup}")
+    print(f"Preserve: {args.preserve}")
     
     if args.all:
         # Run tests with both configurations
@@ -76,7 +76,7 @@ async def main():
         for config in configs:
             if Path(config).exists():
                 print(f"\\n🔧 Testing with {config}...")
-                success = await run_tests_with_config(config, args.server_url, args.cleanup, args.entity)
+                success = await run_tests_with_config(config, args.server_url, args.preserve, args.entity)
                 results[config] = success
             else:
                 print(f"⚠️  Config file {config} not found, skipping...")
@@ -110,7 +110,7 @@ async def main():
             print(f"❌ Config file {args.config} not found")
             return False
             
-        return await run_tests_with_config(args.config, args.server_url, args.cleanup, args.entity)
+        return await run_tests_with_config(args.config, args.server_url, args.preserve, args.entity)
 
 if __name__ == "__main__":
     print("Events Test Runner")

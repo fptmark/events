@@ -212,6 +212,6 @@ class BaseTestFramework:
                            help='Configuration file path (default: mongo.json)')
         parser.add_argument('--server-url', default='http://127.0.0.1:5500',
                            help='Server URL for API tests (default: http://127.0.0.1:5500)')
-        parser.add_argument('--cleanup', action='store_true',
-                           help='Clean up test data after running tests')
+        parser.add_argument('--preserve', action='store_true',
+                           help='Preserve test data after running tests (for troubleshooting)')
         return parser
