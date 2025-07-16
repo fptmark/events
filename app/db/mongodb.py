@@ -85,9 +85,10 @@ class MongoDatabase(DatabaseInterface):
             cursor = self._get_db()[collection].find()
             results = []
             async for doc in cursor:
-                # Convert ObjectId to string for consistency
-                if self.id_field in doc and isinstance(doc[self.id_field], ObjectId):
-                    doc[self.id_field] = str(doc[self.id_field])
+                # Convert ObjectId to string and normalize to 'id' field
+                if self.id_field in doc:
+                    doc['id'] = str(doc[self.id_field])
+                    del doc[self.id_field]  # Remove _id, replace with id
                 results.append(cast(Dict[str, Any], doc))
             
             return results, warnings, total_count
@@ -120,9 +121,10 @@ class MongoDatabase(DatabaseInterface):
             if doc is None:
                 raise NotFoundError(collection, doc_id)
                 
-            # Convert ObjectId to string for consistency
-            if self.id_field in doc and isinstance(doc[self.id_field], ObjectId):
-                doc[self.id_field] = str(doc[self.id_field])
+            # Convert ObjectId to string and normalize to 'id' field
+            if self.id_field in doc:
+                doc['id'] = str(doc[self.id_field])
+                del doc[self.id_field]  # Remove _id, replace with id
                 
             return cast(Dict[str, Any], doc), warnings
                 

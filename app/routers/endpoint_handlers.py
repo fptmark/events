@@ -24,6 +24,25 @@ from app.errors import ValidationError, NotFoundError, DuplicateError
 logger = logging.getLogger(__name__)
 
 
+async def auto_validate_fk_fields(entity_dict: Dict[str, Any], entity_name: str, entity_cls: Type) -> None:
+    """Auto-validate FK fields when get_validations enabled but no view parameter"""
+    metadata = entity_cls._metadata
+    entity_id = entity_dict.get('id', 'unknown')
+    
+    for field_name, field_meta in metadata.get('fields', {}).items():
+        if field_meta.get('type') == 'ObjectId' and entity_dict.get(field_name):
+            try:
+                fk_entity_name = field_name[:-2].capitalize()  # Remove 'Id' suffix
+                fk_entity_cls = ModelImportCache.get_model_class(fk_entity_name)
+                await fk_entity_cls.get(entity_dict[field_name])
+            except NotFoundError:
+                notify_warning(f"{entity_name} {entity_id}: {field_name} '{entity_dict[field_name]}' not found", 
+                             NotificationType.DATABASE, entity_id=entity_id)
+            except ImportError:
+                # FK entity class doesn't exist - skip validation
+                pass
+
+
 async def add_view_data(entity_dict: Dict[str, Any], view_spec: Dict[str, Any] | None, entity_name: str, get_validations: bool = False) -> None:
     """Add foreign key data to entity based on view specification."""
     if not view_spec:
@@ -65,23 +84,22 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Dict[str, Any] |
                     entity_dict[fk_name] = fk_data
                     
                 except Exception as fk_error:
-                    # Only display FK errors if get_validations is True
-                    if get_validations:
-                        # Log FK lookup error but don't fail the whole request
-                        entity_id = entity_dict.get('id', 'unknown')
-                        
-                        # Extract clean error message
-                        error_msg = str(fk_error)
-                        if "Document not found:" in error_msg:
-                            # Extract the missing ID from the error
-                            missing_id = error_msg.split("Document not found: ")[-1].strip()
-                            clean_msg = f"{fk_id_field} '{missing_id}' not found"
-                        else:
-                            clean_msg = f"{fk_id_field} failed to load: {error_msg}"
-                        
-                        notify_warning(f"{entity_name} {entity_id}: {clean_msg}", NotificationType.DATABASE)
-                        # Return an object indicating the FK doesn't exist
-                        entity_dict[fk_name] = {"exists": False}
+                    # Always display FK errors when view parameter provided - we're already doing the lookup
+                    # Log FK lookup error but don't fail the whole request
+                    entity_id = entity_dict.get('id', 'unknown')
+                    
+                    # Extract clean error message
+                    error_msg = str(fk_error)
+                    if "Document not found:" in error_msg:
+                        # Extract the missing ID from the error
+                        missing_id = error_msg.split("Document not found: ")[-1].strip()
+                        clean_msg = f"{fk_id_field} '{missing_id}' not found"
+                    else:
+                        clean_msg = f"{fk_id_field} failed to load: {error_msg}"
+                    
+                    notify_warning(f"{entity_name} {entity_id}: {clean_msg}", NotificationType.DATABASE, entity_id=entity_id)
+                    # Return an object indicating the FK doesn't exist
+                    entity_dict[fk_name] = {"exists": False}
     
     except Exception as view_error:
         # Log view parsing error but continue without FK data
@@ -109,6 +127,15 @@ async def list_entities_handler(entity_cls: Type, entity_name: str, request: Req
             for entity in response['data']:
                 entity_dict = entity.model_dump() if hasattr(entity, 'model_dump') else entity
                 await add_view_data(entity_dict, view_spec, entity_name, get_validations)
+                entity_data.append(entity_dict)
+            response['data'] = entity_data
+        
+        # Auto-validate FK fields when get_validations=True and no view parameter provided
+        elif response.get('data') and get_validations and not view_spec:
+            entity_data = []
+            for entity in response['data']:
+                entity_dict = entity.model_dump() if hasattr(entity, 'model_dump') else entity
+                await auto_validate_fk_fields(entity_dict, entity_name, entity_cls)
                 entity_data.append(entity_dict)
             response['data'] = entity_data
         
@@ -146,6 +173,10 @@ async def get_entity_handler(entity_cls: Type, entity_name: str, entity_id: str,
         
         # entity_dict['exists'] = True  # If no exception thrown, entity exists
         await add_view_data(entity_dict, view_spec, entity_name, get_validations)
+        
+        # Auto-validate FK fields when get_validations=True and no view parameter provided
+        if get_validations and not view_spec:
+            await auto_validate_fk_fields(entity_dict, entity_name, entity_cls)
         
         collection = end_notifications()
         return collection.to_entity_grouped_response(entity_dict, is_bulk=False)
