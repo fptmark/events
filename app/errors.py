@@ -4,14 +4,14 @@ from starlette.exceptions import HTTPException
 
 class ValidationFailure:
     """Represents a single field validation failure"""
-    def __init__(self, field: str, message: str, value: Any):
-        self.field = field
+    def __init__(self, field_name: str, message: str, value: Any):
+        self.field_name = field_name
         self.message = message
         self.value = value
     
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "field": self.field,
+            "field_name": self.field_name,
             "message": self.message,
             "value": self.value
         }

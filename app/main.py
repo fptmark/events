@@ -218,14 +218,53 @@ def get_openapi():
 # Override the /docs endpoint to use our custom OpenAPI spec
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
-    """Custom Swagger UI that uses our detailed OpenAPI spec"""
-    from fastapi.openapi.docs import get_swagger_ui_html
-    return get_swagger_ui_html(
-        openapi_url="/openapi.json",
-        title="API Documentation",
-        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
-        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
-    )
+    """Custom Swagger UI with expanded models"""
+    from fastapi.responses import HTMLResponse
+    
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>API Documentation</title>
+        <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+        <style>
+        html {
+            box-sizing: border-box;
+            overflow: -moz-scrollbars-vertical;
+            overflow-y: scroll;
+        }
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+        body {
+            margin:0;
+            background: #fafafa;
+        }
+        </style>
+    </head>
+    <body>
+        <div id="swagger-ui"></div>
+        <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+        <script>
+        console.log('Initializing Swagger UI with expanded models...');
+        const ui = SwaggerUIBundle({
+            url: '/openapi.json',
+            dom_id: '#swagger-ui',
+            presets: [
+                SwaggerUIBundle.presets.apis,
+                SwaggerUIBundle.presets.standalone
+            ],
+            layout: "BaseLayout",
+            defaultModelExpandDepth: 5,
+            defaultModelsExpandDepth: 1,
+            docExpansion: "list"
+        });
+        console.log('Swagger UI initialized:', ui);
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html)
 
 # Add CORS middleware
 ui_port = config.get('ui_port', 4200)
@@ -296,7 +335,7 @@ def handle_validation_error_notifications(exc: ValidationError, entity: str, ope
     from app.notification import notify_error, NotificationType
     for field_error in exc.invalid_fields:
         notify_error(field_error.message, NotificationType.VALIDATION, 
-                    entity=entity, field=field_error.field, value=field_error.value)
+                    entity=entity, field_name=field_error.field_name, value=field_error.value)
 
 def handle_request_validation_error_notifications(exc: RequestValidationError, entity: str, operation: str):
     """Handle FastAPI request validation error notifications"""

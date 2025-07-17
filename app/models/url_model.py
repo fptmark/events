@@ -97,7 +97,7 @@ class Url(BaseModel):
                                 message=f"Url {entity_id}.{field_name}:  validation failed - {error['msg']}",
                                 type=NotificationType.VALIDATION,
                                 entity="Url",
-                                field=field_name,
+                                field_name=field_name,
                                 value=error.get('input'),
                                 operation="get_all",
                                 entity_id=entity_id
@@ -179,7 +179,7 @@ class Url(BaseModel):
                             message=f"Url {entity_id}: {field_name} validation failed - {error['msg']}",
                             type=NotificationType.VALIDATION,
                             entity="Url",
-                            field=field_name,
+                            field_name=field_name,
                             value=error.get('input'),
                             operation="get",
                             entity_id=entity_id
@@ -221,11 +221,11 @@ class Url(BaseModel):
                         message=f"Url {entity_id}: {field_name} validation failed - {err['msg']}",
                         type=NotificationType.VALIDATION,
                         entity="Url",
-                        field=field_name,
+                        field_name=field_name,
                         value=err.get("input"),
                         operation="save"
                     )
-                failures = [ValidationFailure(field=str(err["loc"][-1]), message=err["msg"], value=err.get("input")) for err in e.errors()]
+                failures = [ValidationFailure(field_name=str(err["loc"][-1]), message=err["msg"], value=err.get("input")) for err in e.errors()]
                 raise ValidationError(message="Validation failed before save", entity="Url", invalid_fields=failures)
             
             # Save document with unique constraints - pass complete data
@@ -246,12 +246,6 @@ class Url(BaseModel):
  
     @classmethod
     async def delete(cls, url_id: str) -> tuple[bool, List[str]]:
-        if not url_id:
-            raise ValidationError(
-                message="Cannot delete url without ID",
-                entity="Url",
-                invalid_fields=[ValidationFailure("id", "ID is required for deletion", None)]
-            )
         try:
             result = await DatabaseFactory.delete_document("url", url_id)
             if not result:
