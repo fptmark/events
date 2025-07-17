@@ -1,15 +1,15 @@
 %% @dictionary main { email: "^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", url: "^https?://[^\s]+$" }
 erDiagram
     BaseEntity { 
-        ISODate createdAt %% @validate {autoGenerate: true} @ui {readOnly: true}
-        ISODate updatedAt %% @validate {autoUpdate: true} @ui {readOnly: true, clientEdit: true}
+        Date createdAt %% @validate {autoGenerate: true} @ui {readOnly: true}
+        Datetime updatedAt %% @validate {autoUpdate: true} @ui {readOnly: true, clientEdit: true}
 
         %% @abstract
     }
 
 
     Account {
-        ISODate expiredAt %% @validate { required: false }
+        Date expiredAt %% @validate { required: false }
     
         %% @ui { title: "Accounts", buttonLabel: "Manage Accounts" }
     	%% @include BaseEntity
@@ -24,7 +24,7 @@ erDiagram
         String firstName         %% @validate { required: true, min_length: 3, max_length: 100 }, @ui { displayName: "First Name" }
         String lastName          %% @validate { required: true, min_length: 3, max_length: 100 }, @ui { displayName: "Last Name" }
         String gender            %% @validate { required: false, enum: { values: ["male", "female", "other"], message: "must be male or female" } }
-        ISODate dob              %% @validate { required: false }
+        Date dob                 %% @validate { required: false }
         Boolean isAccountOwner   %% @validate { required: true }, @ui { displayName: "Owner"}
         Currency netWorth        %% @validate { ge: 0, le:10000000 }
         ObjectId accountId       
@@ -63,7 +63,7 @@ erDiagram
     Event {
         String url                         %% @validate { required: true, pattern: { regex: "dictionary=main.url", message: "Bad URL format" } }
         String title                       %% @validate { required: true, max_length: 200 }
-        ISODate dateTime                   %% @validate { required: true }
+        Date dateTime                      %% @validate { required: true }
         String location                    %% @validate { required: false, max_length: 200 }
         Number cost                        %% @validate { required: false, ge: 0 } @ui { displayPages: "details"}
         Integer numOfExpectedAttendees     %% @validate { required: false, ge: 0 } @ui { displayPages: "details"}
@@ -94,7 +94,7 @@ erDiagram
     }
 
     Crawl {
-        ISODate lastParsedDate             %% @validate { required: false }
+        Date lastParsedDate                %% @validate { required: false }
         JSON parseStatus                   %% @validate { required: false }
         Array[String] errorsEncountered    %% @validate { required: false }
     

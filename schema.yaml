@@ -22,12 +22,12 @@ _entities:
   BaseEntity:
     fields:
       createdAt:
-        type: ISODate
+        type: Date
         autoGenerate: true
         ui:
           readOnly: true
       updatedAt:
-        type: ISODate
+        type: Datetime
         autoUpdate: true
         ui:
           readOnly: true
@@ -37,16 +37,16 @@ _entities:
   Account:
     fields:
       expiredAt:
-        type: ISODate
+        type: Date
         required: false
       createdAt:
-        type: ISODate
+        type: Date
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
-        type: ISODate
+        type: Datetime
         autoUpdate: true
         ui:
           readOnly: true
@@ -58,6 +58,8 @@ _entities:
     ui:
       title: Accounts
       buttonLabel: Manage Accounts
+    unique: []
+    service: []
   User:
     fields:
       username:
@@ -104,34 +106,46 @@ _entities:
           - other
           message: must be male or female
       dob:
-        type: ISODate
+        type: Date
         required: false
       isAccountOwner:
         type: Boolean
         required: true
         ui:
           displayName: Owner
+      netWorth:
+        type: Currency
+        ge: 0
+        le: 10000000
+      accountId:
+        type: ObjectId
+        ui:
+          displayName: Account
+          show:
+            endpoint: account
+            displayInfo:
+            - displayPages: summary
+              fields:
+              - createdAt
+            - displayPages: edit|create
+              fields:
+              - createdAt
+              - expiredAt
+        required: true
       createdAt:
-        type: ISODate
+        type: Date
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
           displayPages: summary
       updatedAt:
-        type: ISODate
+        type: Datetime
         autoUpdate: true
         ui:
           readOnly: true
           clientEdit: true
-          displayAfterField: '-2'
-      accountId:
-        selector:
-          fields:
-          - createdAt
-          - expiredAt
-        type: ObjectId
-        required: true
+          displayAfterField: '-1'
     relationships:
     - Profile
     - UserEvent
@@ -160,26 +174,32 @@ _entities:
         type: Integer
         required: false
         ge: 0
+      userId:
+        type: ObjectId
+        ui:
+          show:
+            displayInfo:
+            - displayPages: summary
+              fields:
+              - email
+            - displayPages: details|edit
+              fields:
+              - email
+              - username
+        required: true
       createdAt:
-        type: ISODate
+        type: Date
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
-        type: ISODate
+        type: Datetime
         autoUpdate: true
         ui:
           readOnly: true
           clientEdit: true
-          displayAfterField: '-2'
-      userId:
-        selector:
-          fields:
-          - email
-          - username
-        type: ObjectId
-        required: true
+          displayAfterField: '-1'
     relationships:
     - TagAffinity
     ui:
@@ -188,6 +208,8 @@ _entities:
       description: Manage User Preferences
     unique:
     - - name
+      - userId
+    service: []
   TagAffinity:
     fields:
       tag:
@@ -200,18 +222,18 @@ _entities:
         ge: -100
         le: 100
       createdAt:
-        type: ISODate
+        type: Date
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
-        type: ISODate
+        type: Datetime
         autoUpdate: true
         ui:
           readOnly: true
           clientEdit: true
-          displayAfterField: '-2'
+          displayAfterField: '-1'
       profileId:
         type: ObjectId
         required: true
@@ -221,6 +243,8 @@ _entities:
       buttonLabel: Manage Event Affinity
     unique:
     - - profileId
+      - tag
+    service: []
   Event:
     fields:
       url:
@@ -234,7 +258,7 @@ _entities:
         required: true
         max_length: 200
       dateTime:
-        type: ISODate
+        type: Date
         required: true
       location:
         type: String
@@ -269,23 +293,25 @@ _entities:
         ui:
           displayPages: details
       createdAt:
-        type: ISODate
+        type: Date
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
-        type: ISODate
+        type: Datetime
         autoUpdate: true
         ui:
           readOnly: true
           clientEdit: true
-          displayAfterField: '-2'
+          displayAfterField: '-1'
     relationships:
     - UserEvent
     ui:
       title: Events
       buttonLabel: Manage Events
+    unique: []
+    service: []
   UserEvent:
     fields:
       attended:
@@ -303,18 +329,18 @@ _entities:
         ui:
           displayPages: details
       createdAt:
-        type: ISODate
+        type: Date
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
-        type: ISODate
+        type: Datetime
         autoUpdate: true
         ui:
           readOnly: true
           clientEdit: true
-          displayAfterField: '-2'
+          displayAfterField: '-1'
       userId:
         type: ObjectId
         required: true
@@ -325,6 +351,8 @@ _entities:
     ui:
       title: User Events
       buttonLabel: Manage Event Attendance
+    unique: []
+    service: []
   Url:
     fields:
       url:
@@ -337,28 +365,30 @@ _entities:
         type: JSON
         required: false
       createdAt:
-        type: ISODate
+        type: Date
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
-        type: ISODate
+        type: Datetime
         autoUpdate: true
         ui:
           readOnly: true
           clientEdit: true
-          displayAfterField: '-2'
+          displayAfterField: '-1'
     relationships:
     - Crawl
     ui:
       title: Url
       buttonLabel: Manage Urls
       description: Manage Event Urls
+    unique: []
+    service: []
   Crawl:
     fields:
       lastParsedDate:
-        type: ISODate
+        type: Date
         required: false
       parseStatus:
         type: JSON
@@ -367,18 +397,18 @@ _entities:
         type: Array[String]
         required: false
       createdAt:
-        type: ISODate
+        type: Date
         autoGenerate: true
         ui:
           readOnly: true
           displayAfterField: '-1'
       updatedAt:
-        type: ISODate
+        type: Datetime
         autoUpdate: true
         ui:
           readOnly: true
           clientEdit: true
-          displayAfterField: '-2'
+          displayAfterField: '-1'
       urlId:
         type: ObjectId
         required: true
@@ -387,4 +417,6 @@ _entities:
       title: Crawls
       buttonLabel: Manage Crawls
       description: Manage Crawls of Event sites
+    unique: []
+    service: []
     operations: rd
