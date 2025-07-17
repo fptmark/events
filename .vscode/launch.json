@@ -5,14 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Launch",
+            "name": "Events Server",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "program": "app/main.py",
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
-            }
+            },
+            "args" : ["mongo.json"]
         },
         {
           "name": "Angular",
@@ -20,6 +21,7 @@
           "request": "launch",
           "url": "http://localhost:4200",
           "webRoot": "${workspaceFolder}/ui/src",
+          "preLaunchTask": "ng serve",
           "skipFiles": [
             "<node_internals>/**",
             "chrome-error://*"
@@ -34,6 +36,29 @@
             "!**/node_modules/**",
             "!**/chrome-error://**"
           ]
+        },
+        {
+          "name": "Angular Debug with Auto Serve",
+          "type": "pwa-chrome",
+          "request": "launch",
+          "url": "http://localhost:4200",
+          "webRoot": "${workspaceFolder}/ui/src",
+          "preLaunchTask": "ng serve",
+          "sourceMapPathOverrides": {
+            "webpack:///src/*": "${webRoot}/*",
+            "webpack:///*": "${webRoot}/*"
+          },
+          "smartStep": true,
+          "trace": true,
+          "skipFiles": ["<node_internals>/**", "chrome-error://*"]
+        },
+        {
+          "name": "Debug Angular",
+          "type": "pwa-chrome",
+          "request": "launch",
+          "url": "http://localhost:4200",
+          "webRoot": "${workspaceFolder}/ui/src",
+          "preLaunchTask": "ng serve"
         },
         {
           "name": "Attach to Chrome",

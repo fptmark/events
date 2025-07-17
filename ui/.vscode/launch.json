@@ -7,7 +7,29 @@
       "type": "chrome",
       "request": "launch",
       "preLaunchTask": "npm: start",
-      "url": "http://localhost:4200/"
+      "url": "http://localhost:4200/",
+      "webRoot": "${workspaceFolder}"
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Debug UI",
+      "url": "http://localhost:4200",
+      "webRoot": "${workspaceFolder}/src",
+      "sourceMaps": true,
+      "sourceMapPathOverrides": {
+        "webpack:///./src/*": "${workspaceFolder}/src/*",
+        "webpack:///src/*": "${workspaceFolder}/src/*",
+        "webpack:///*": "*",
+        "webpack:///./~/*": "${workspaceFolder}/node_modules/*"
+      },
+      "trace": true,
+      "smartStep": false,
+      "disableNetworkCache": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/node_modules/**"
+      ]
     },
     {
       "name": "ng test",

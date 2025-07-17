@@ -29,6 +29,7 @@ help:
 	@echo ""
 	@echo "Developer targets (code generation - requires S2R_DIR):"
 	@echo "  clean       - Remove app directory and start fresh"
+	@echo "  firsttime   - Copy server generic files"
 	@echo "  rebuild     - Full rebuild: schema + all generators"
 	@echo "  schema      - Convert schema.mmd to schema.yaml and generate diagram"
 	@echo "  main        - Generate main.py"
@@ -83,12 +84,14 @@ redis:
 clean: 
 	rm -rf app
 	rm -f openapi.json
+
+firsttime:
 	cp -r $(GENERICS) app
+	rm app/Makefile
 	mv app/config/*.json .
 
 rebuild:
 	$(MAKE) schema
-	mkdir -p app/utilities
 	$(MAKE) main
 	$(MAKE) models
 	$(MAKE) services
