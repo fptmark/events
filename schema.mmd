@@ -1,4 +1,4 @@
-%% @dictionary main { email: "^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", url: "^https?://[^\s]+$" }
+%% @dictionary main { email: "^[a-zA-Z0-9](\.?[a-zA-Z0-9_+%-])*@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$",  url: "^https?://[^\s]+$" }
 erDiagram
     BaseEntity { 
         Date createdAt %% @validate {autoGenerate: true} @ui {readOnly: true}
@@ -42,7 +42,7 @@ erDiagram
         String name          %% @validate { required: true, max_length: 100 }
         String preferences   %% @validate { required: false } @ui { displayPages: "details"}
         Integer radiusMiles  %% @validate { required: false, ge: 0 }
-        ObjectId userId     %% @ui {show: { "displayInfo": [ { "displayPages": "summary", "fields": ["email"] }, { "displayPages": "details|edit", "fields": ["email", "username" ]} ]} }
+        ObjectId userId     %% @ui {show: { "displayInfo": [ { "displayPages": "summary", "fields": ["email"] }, { "displayPages": "create|edit", "fields": ["email", "username" ]} ]} }
     
         %% @ui { title: "Profile", buttonLabel: "Manage User Profiles", description: "Manage User Preferences" }
     	%% @include BaseEntity

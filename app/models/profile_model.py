@@ -48,7 +48,7 @@ class Profile(BaseModel):
                   'userId': {   'type': 'ObjectId',
                                 'ui': {   'show': {   'displayInfo': [   {   'displayPages': 'summary',
                                                                              'fields': [   'email']},
-                                                                         {   'displayPages': 'details|edit',
+                                                                         {   'displayPages': 'create|edit',
                                                                              'fields': [   'email',
                                                                                            'username']}]}},
                                 'required': True},

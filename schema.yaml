@@ -13,7 +13,7 @@ _relationships:
   target: Crawl
 _dictionaries:
   main:
-    email: ^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}$
+    email: ^[a-zA-Z0-9](.?[a-zA-Z0-9_+%-])*@[a-zA-Z0-9-]+(.[a-zA-Z0-9-]+)*.[a-zA-Z]{2,}$
     url: ^https?://[^s]+$
 _services:
 - auth.cookies.redis
@@ -182,7 +182,7 @@ _entities:
             - displayPages: summary
               fields:
               - email
-            - displayPages: details|edit
+            - displayPages: create|edit
               fields:
               - email
               - username
