@@ -361,16 +361,15 @@ export class EntityService {
   }
 
   _formatObjectIdHTML(entity: string, id: string, showValue: string, mode: ViewMode): string {
-    // Format the ObjectId value as a link
-    let link = `entity/${entity}/${id}`
+    // Format the ObjectId value as a link with click handler instead of direct href
     if (this.modeService.inSummaryMode(mode)) {
       // Use provided showValue, fallback to 'View' only if empty
       const displayText = showValue || 'View';
-      return `<a href=${link}>${displayText}</a>`
+      return `<a href="javascript:void(0)" onclick="window.navigateToEntity('${entity}', '${id}')" style="cursor: pointer; color: blue; text-decoration: underline;">${displayText}</a>`
     } else if (this.modeService.inDetailsMode(mode)) {
       // Use provided showValue, fallback to id only if empty
       const displayText = showValue || id;
-      return `<a href=${link}>${displayText}</a>`
+      return `<a href="javascript:void(0)" onclick="window.navigateToEntity('${entity}', '${id}')" style="cursor: pointer; color: blue; text-decoration: underline;">${displayText}</a>`
     } else if (this.modeService.inEditMode(mode)) {
       return id
     }

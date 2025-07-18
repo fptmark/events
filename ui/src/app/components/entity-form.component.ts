@@ -513,15 +513,9 @@ export class EntityFormComponent implements OnInit {
         return;
       }
       
-      // In view mode, navigate to the entity
-      const value = this.entityForm?.get(fieldName)?.value;
-      if (!value) {
-        console.log(`No value for ${fieldName}`);
-        return;
-      }
-      
-      console.log(`In view mode, navigating to ${entityType}/${value}`);
-      this.entityService.viewEntity(entityType, value);
+      // In view mode, ObjectId links now handle navigation via onclick handlers
+      // No need to navigate here - the HTML links handle it themselves
+      console.log(`ObjectId link clicked for ${fieldName}, handled by onclick handler`);
     } catch (error) {
       console.error('Error in openLink:', error);
     }

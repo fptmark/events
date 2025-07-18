@@ -110,6 +110,25 @@ export class AppComponent implements OnInit {
   ngOnInit() {
     console.log('AppComponent: Initializing application');
     
+    // Set up global navigation function for ObjectId links
+    (window as any).navigateToEntity = (entityType: string, entityId: string) => {
+      console.log(`Global navigateToEntity called for ${entityType}/${entityId}`);
+      
+      // Check if entity exists before navigating
+      this.restService.getEntity(entityType, entityId, 'DETAILS').subscribe({
+        next: () => {
+          // Entity exists, proceed with navigation
+          console.log(`Entity ${entityType}/${entityId} exists, navigating`);
+          this.router.navigate(['/entity', entityType, entityId]);
+        },
+        error: (err) => {
+          // Entity doesn't exist, show error popup
+          const message = err.error?.message || `${entityType} with ID ${entityId} was not found`;
+          alert(message);
+        }
+      });
+    };
+    
     // Initialize the metadata service - this will load entity data
     this.metadataService.initialize().subscribe({
       next: () => {
