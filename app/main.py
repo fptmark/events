@@ -48,12 +48,9 @@ def parse_args():
     parser.add_argument('--log-level', 
                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                        help='Override log level from config')
-    # parser.add_argument('--initdb', action='store_true',
-    #                    help='Initialize database: manage required indexes based on model metadata, then exit')
-    # parser.add_argument('--resetdb', action='store_true',
-    #                    help='Clear all indexes on database, then exit')
     parser.add_argument('--noinitdb', action='store_true',
-                       help='Skip automatic database initialization on startup (for large databases)')
+                           help='Skip automatic database initialization on startup (for large databases)')
+  
     return parser.parse_args()
 
 # Parse command line arguments
@@ -98,40 +95,6 @@ if db_type.lower() not in supported_types:
 
 logger.info(f"Database type {db_type} is supported")
 
-# Handle database management commands before creating FastAPI app
-# if args.initdb or args.resetdb:
-#     import asyncio
-    
-#     async def handle_db_command():
-#         try:
-#             # Initialize database connection
-#             db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name)
-#             initializer = DatabaseInitializer(db_instance)
-            
-#             if args.initdb:
-#                 logger.info("--initdb flag specified, initializing database schema")
-#                 logger.info("Starting database initialization...")
-#                 await initializer.initialize_database()
-#                 logger.info("Database initialization completed successfully")
-            
-#             elif args.resetdb:
-#                 logger.info("--resetdb flag specified, resetting database indexes")
-#                 logger.info("Starting database reset (indexes only)...")
-#                 await initializer.reset_database_indexes()
-#                 logger.info("Database reset completed successfully")
-            
-#             # Cleanup
-#             await DatabaseFactory.close()
-#             logger.info("Database connection closed")
-            
-#         except Exception as e:
-#             logger.error(f"Failed to execute database command: {str(e)}")
-#             sys.exit(1)
-    
-#     # Run database command and exit
-#     asyncio.run(handle_db_command())
-#     sys.exit(0)
-
 # Create the FastAPI app.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -147,7 +110,8 @@ async def lifespan(app: FastAPI):
         # Initialize database connection for normal server operation
         db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name)
         logger.info(f"Connected to {db_type} successfully")
-        
+
+                
         # Auto-run database initialization unless --noinitdb flag is set
         if not args.noinitdb:
             logger.info("Running automatic database initialization...")
@@ -218,53 +182,14 @@ def get_openapi():
 # Override the /docs endpoint to use our custom OpenAPI spec
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
-    """Custom Swagger UI with expanded models"""
-    from fastapi.responses import HTMLResponse
-    
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>API Documentation</title>
-        <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
-        <style>
-        html {
-            box-sizing: border-box;
-            overflow: -moz-scrollbars-vertical;
-            overflow-y: scroll;
-        }
-        *, *:before, *:after {
-            box-sizing: inherit;
-        }
-        body {
-            margin:0;
-            background: #fafafa;
-        }
-        </style>
-    </head>
-    <body>
-        <div id="swagger-ui"></div>
-        <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-        <script>
-        console.log('Initializing Swagger UI with expanded models...');
-        const ui = SwaggerUIBundle({
-            url: '/openapi.json',
-            dom_id: '#swagger-ui',
-            presets: [
-                SwaggerUIBundle.presets.apis,
-                SwaggerUIBundle.presets.standalone
-            ],
-            layout: "BaseLayout",
-            defaultModelExpandDepth: 5,
-            defaultModelsExpandDepth: 1,
-            docExpansion: "list"
-        });
-        console.log('Swagger UI initialized:', ui);
-        </script>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html)
+    """Custom Swagger UI that uses our detailed OpenAPI spec"""
+    from fastapi.openapi.docs import get_swagger_ui_html
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title="API Documentation",
+        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
+    )
 
 # Add CORS middleware
 ui_port = config.get('ui_port', 4200)
@@ -345,7 +270,7 @@ def handle_request_validation_error_notifications(exc: RequestValidationError, e
         message = error['msg']
         value = error.get('input')
         notify_validation_error(f"Invalid {field}: {message}", 
-                              field=field, value=value, entity=entity)
+                              field_name=field, value=value, entity=entity)
 
 def handle_not_found_error_notifications(exc: NotFoundError, entity: str, operation: str):
     """Handle not found error notifications"""
@@ -355,7 +280,7 @@ def handle_not_found_error_notifications(exc: NotFoundError, entity: str, operat
 def handle_duplicate_error_notifications(exc: DuplicateError, entity: str, operation: str):
     """Handle duplicate error notifications"""
     from app.notification import notify_validation_error
-    notify_validation_error(exc.message, field=exc.field, value=exc.value, entity=entity)
+    notify_validation_error(exc.message, field_name=exc.field, value=exc.value, entity=entity)
 
 def handle_generic_error_notifications(exc: Exception, entity: str, operation: str):
     """Handle generic error notifications"""
@@ -439,7 +364,6 @@ def main():
     logger.info("Welcome to the  Management System")
     logger.info(" Access Swagger docs at http://127.0.0.1:5500/docs")
 
-    # Start the server normally if --initdb is not present
     import uvicorn
     uvicorn.run(
         "app.main:app",
