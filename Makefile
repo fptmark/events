@@ -22,7 +22,6 @@ help:
 	@echo "  runmongo    - Run server with MongoDB backend"
 	@echo "  startes     - Start Elasticsearch in Docker"
 	@echo "  runes       - Run server with current backend"
-	@echo "  indexes     - Initialize database indexes"
 	@echo "  test        - Run tests"
 	@echo "  cli         - Run command-line interface"
 	@echo "  redis       - Start Redis service"
@@ -67,9 +66,6 @@ startes:
 	  -e xpack.security.enabled=false \
           -v $(ES_DATA_DIR):/usr/share/elasticsearch/data \
 	  elasticsearch:8.12.2
-
-indexes:
-	PYTHONPATH=. python app/main.py $(BACKEND).json --initdb
 
 test: test.py
 	pytest -s test.py
