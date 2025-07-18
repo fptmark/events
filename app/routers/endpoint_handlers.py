@@ -36,8 +36,14 @@ async def auto_validate_fk_fields(entity_dict: Dict[str, Any], entity_name: str,
                 fk_entity_cls = ModelImportCache.get_model_class(fk_entity_name)
                 await fk_entity_cls.get(entity_dict[field_name])
             except NotFoundError:
-                notify_warning(f"{entity_name} {entity_id}: {field_name} '{entity_dict[field_name]}' not found", 
-                             NotificationType.DATABASE, entity_id=entity_id)
+                # Router packages complete notification with all context - same format as model validation
+                fk_entity_name = field_name[:-2].capitalize()  # Remove 'Id' suffix and capitalize
+                notify_warning(f"{fk_entity_name} {entity_dict[field_name]} not found", 
+                             NotificationType.DATABASE, 
+                             entity=entity_name, 
+                             entity_id=entity_id, 
+                             field_name=field_name, 
+                             value=entity_dict[field_name])
             except ImportError:
                 # FK entity class doesn't exist - skip validation
                 pass
@@ -88,22 +94,38 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Dict[str, Any] |
                     # Log FK lookup error but don't fail the whole request
                     entity_id = entity_dict.get('id', 'unknown')
                     
-                    # Extract clean error message
+                    # Extract clean error message and format consistently
                     error_msg = str(fk_error)
+                    fk_entity_name = fk_id_field[:-2].capitalize()  # Remove 'Id' suffix and capitalize
+                    
+                    # Router packages complete notification with all context
                     if "Document not found:" in error_msg:
                         # Extract the missing ID from the error
                         missing_id = error_msg.split("Document not found: ")[-1].strip()
-                        clean_msg = f"{fk_id_field} '{missing_id}' not found"
+                        missing_value = missing_id
+                    elif "not found" in error_msg and "with ID" in error_msg:
+                        # Extract ID from "account with ID 507f1f77bcf86cd799439011 was not found"
+                        import re
+                        match = re.search(r'with ID (\w+)', error_msg)
+                        if match:
+                            missing_value = match.group(1)
+                        else:
+                            missing_value = entity_dict.get(fk_name, {}).get('id', 'unknown')
                     else:
-                        clean_msg = f"{fk_id_field} failed to load: {error_msg}"
+                        missing_value = entity_dict.get(fk_name, {}).get('id', 'unknown')
                     
-                    notify_warning(f"{entity_name} {entity_id}: {clean_msg}", NotificationType.DATABASE, entity_id=entity_id)
+                    notify_warning(f"{fk_entity_name} {missing_value} not found", 
+                                 NotificationType.DATABASE, 
+                                 entity=entity_name, 
+                                 entity_id=entity_id, 
+                                 field_name=fk_id_field, 
+                                 value=missing_value)
                     # Return an object indicating the FK doesn't exist
                     entity_dict[fk_name] = {"exists": False}
     
     except Exception as view_error:
         # Log view parsing error but continue without FK data
-        notify_warning(f"Failed to parse view parameter: {str(view_error)}", NotificationType.VALIDATION)
+        notify_warning(f"Failed to parse view parameter: {str(view_error)}", NotificationType.VALIDATION, entity=entity_name)
 
 
 async def list_entities_handler(entity_cls: Type, entity_name: str, request: Request) -> Dict[str, Any]:
@@ -142,7 +164,7 @@ async def list_entities_handler(entity_cls: Type, entity_name: str, request: Req
         collection = end_notifications()
         return collection.to_entity_grouped_response(data=response['data'], is_bulk=True)
     except Exception as e:
-        notify_error(f"Failed to retrieve {entity_lower}s: {str(e)}", NotificationType.SYSTEM)
+        notify_error(f"Failed to retrieve entities: {str(e)}", NotificationType.SYSTEM, entity=entity_name)
         collection = end_notifications()
         return collection.to_entity_grouped_response(data=[], is_bulk=True)
     finally:
@@ -186,7 +208,7 @@ async def get_entity_handler(entity_cls: Type, entity_name: str, entity_id: str,
         end_notifications()
         raise
     except Exception as e:
-        notify_error(f"Failed to retrieve {entity_lower}: {str(e)}", NotificationType.SYSTEM)
+        notify_error(f"Failed to retrieve entity: {str(e)}", NotificationType.SYSTEM, entity=entity_name)
         collection = end_notifications()
         return collection.to_entity_grouped_response(None, is_bulk=False)
     finally:
@@ -205,7 +227,7 @@ async def create_entity_handler(entity_cls: Type, entity_name: str, entity_data:
         # Add any warnings from save operation
         for warning in warnings:
             notify_warning(warning, NotificationType.DATABASE)
-        notify_success(f"{entity_name} created successfully", NotificationType.BUSINESS)
+        notify_success("Created successfully", NotificationType.BUSINESS, entity=entity_name)
         collection = end_notifications()
         return collection.to_entity_grouped_response(result.model_dump(), is_bulk=False)
     except (ValidationError, DuplicateError):
@@ -243,7 +265,7 @@ async def update_entity_handler(entity_cls: Type, entity_name: str, entity_id: s
         # Add any warnings from save operation
         for warning in save_warnings:
             notify_warning(warning, NotificationType.DATABASE)
-        notify_success(f"{entity_name} updated successfully", NotificationType.BUSINESS)
+        notify_success("Updated successfully", NotificationType.BUSINESS, entity=entity_name)
         collection = end_notifications()
         return collection.to_entity_grouped_response(result.model_dump(), is_bulk=False)
     except (NotFoundError, ValidationError, DuplicateError):
@@ -268,7 +290,7 @@ async def delete_entity_handler(entity_cls: Type, entity_name: str, entity_id: s
     try:
         success, warnings = await entity_cls.delete(entity_id)
         if success:
-            notify_success(f"{entity_name} deleted successfully", NotificationType.BUSINESS)
+            notify_success("Deleted successfully", NotificationType.BUSINESS, entity=entity_name)
         for warning in warnings:
             notify_warning(warning, NotificationType.DATABASE)
         collection = end_notifications()

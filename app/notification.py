@@ -334,16 +334,28 @@ class SimpleNotificationCollection:
             NotificationLevel.ERROR: logging.ERROR
         }
         
+        # Build unified format: [WARNING] User:687800bc55017d54db8e6042 [validation] password="<current_value>" String should have at least 8 characters
         prefix = "  " * indent
-        log_msg = f"{prefix}[{notification.type.value}] {notification.message}"
         
-        if notification.entity and indent == 0:
-            log_msg = f"{notification.entity}: {log_msg}"
-        if notification.operation and indent == 0:
-            log_msg = f"{log_msg} ({notification.operation})"
+        # Entity part with ID
+        if notification.entity and notification.entity_id:
+            entity_part = f"{notification.entity}:{notification.entity_id}"
+        elif notification.entity:
+            entity_part = notification.entity
+        else:
+            entity_part = "System"
+        
+        # Field part with value
+        field_part = ""
         if notification.field_name:
-            log_msg = f"{log_msg} [field: {notification.field_name}]"
-            
+            if notification.value is not None:
+                field_part = f"{notification.field_name}=\"{notification.value}\" "
+            else:
+                field_part = f"{notification.field_name}=\"\" "
+        
+        # Build final log message
+        log_msg = f"{prefix}[{notification.level.value.upper()}] {entity_part} [{notification.type.value}] {field_part}{notification.message}"
+        
         logging.log(log_level_map[notification.level], log_msg)
         
         # Log details with increased indentation

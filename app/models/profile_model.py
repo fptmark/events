@@ -4,16 +4,12 @@ from typing import Optional, List, Dict, Any, Self, ClassVar, Union, Annotated, 
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
 from pydantic_core import core_schema
-#from typing_extensions import Annotated
-import logging
 import warnings as python_warnings
 from app.db import DatabaseFactory
 import app.utils as helpers
 from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 from app.notification import notify_warning, NotificationType
-
-logger = logging.getLogger(__name__)
 
 
 class UniqueValidationError(Exception):
@@ -100,14 +96,13 @@ class Profile(BaseModel):
                         # Convert Pydantic errors to notifications
                         entity_id = doc.get('id')
                         if not entity_id:
-                            logger.error(f"Profile document missing ID field: {doc}")
-                            notify_warning("Document missing ID field", NotificationType.DATABASE)
+                            notify_warning("Document missing ID field", NotificationType.DATABASE, entity=Profile)
                             entity_id = "missing"
   
                         for error in e.errors():
                             field_name = str(error['loc'][-1])
                             notify_warning(
-                                message=f"Profile {entity_id}.{field_name}:  validation failed - {error['msg']}",
+                                message=error['msg'],
                                 type=NotificationType.VALIDATION,
                                 entity="Profile",
                                 field_name=field_name,
@@ -137,7 +132,6 @@ class Profile(BaseModel):
                     if caught_warnings:
                         entity_id = data_dict.get('id')
                         if not entity_id:
-                            logger.error(f"Profile document missing ID field: {data_dict}")
                             notify_warning("Document missing ID field", NotificationType.DATABASE)
                             entity_id = "missing"
 
@@ -151,11 +145,11 @@ class Profile(BaseModel):
                         
                         if datetime_field_names:
                             field_list = ', '.join(datetime_field_names)
-                            notify_warning(f"User {entity_id}: {field_list} datetime serialization warnings", NotificationType.VALIDATION)
+                            notify_warning(f"{field_list} datetime serialization warnings", NotificationType.VALIDATION, entity="Profile", entity_id=entity_id)
                         else:
                             # Fallback for non-datetime warnings
                             warning_count = len(caught_warnings)
-                            notify_warning(f"User {entity_id}: {warning_count} serialization warnings", NotificationType.VALIDATION)
+                            notify_warning(f"User {entity_id}: {warning_count} serialization warnings", NotificationType.VALIDATION, entity="Profile")
  
             return {"data": profile_data}
             
@@ -183,7 +177,6 @@ class Profile(BaseModel):
                     # Convert validation errors to notifications
                     entity_id = raw_doc.get('id')
                     if not entity_id:
-                        logger.error(f"User document missing ID field: {raw_doc}")
                         notify_warning("Document missing ID field", NotificationType.DATABASE)
                         entity_id = "missing"
                     for error in e.errors():
@@ -224,7 +217,6 @@ class Profile(BaseModel):
                 # Convert to notifications and ValidationError format
                 entity_id = self.id
                 if not entity_id:
-                    logger.error(f"User instance missing ID during save: {self.model_dump()}")
                     notify_warning("User instance missing ID during save", NotificationType.DATABASE)
                     entity_id = "missing"
 
