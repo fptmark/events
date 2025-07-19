@@ -21,7 +21,9 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let entity of entities" (click)="selectEntity(entity)">
+            <tr *ngFor="let entity of entities" 
+                (click)="selectEntity(entity)"
+                [class.invalid-fk]="hasInvalidForeignKeys(entity)">
               <td *ngFor="let col of displayColumns" [class.bold]="col.bold">
                 {{ getFieldValue(entity, col.field) }}
               </td>
@@ -32,7 +34,10 @@
       
       <!-- Default display fallback -->
       <ng-template #defaultDisplay>
-        <div *ngFor="let entity of entities" class="entity-item" (click)="selectEntity(entity)">
+        <div *ngFor="let entity of entities" 
+             class="entity-item" 
+             [class.invalid-fk]="hasInvalidForeignKeys(entity)"
+             (click)="selectEntity(entity)">
           <strong>{{ entity.id }}</strong>
           <div *ngIf="entity.name">{{ entity.name }}</div>
           <div *ngIf="entity.title">{{ entity.title }}</div>

@@ -75,4 +75,41 @@ export class EntitySelectorModalComponent {
 
     return value;
   }
+
+  /**
+   * Check if entity has broken FK relationships
+   * Returns true if any ObjectId field has broken FK (missing, no exists attr, or exists: false)
+   */
+  hasInvalidForeignKeys(entity: any): boolean {
+    if (!entity) return false;
+    
+    // Check all properties for ObjectId patterns
+    for (const [key, value] of Object.entries(entity)) {
+      // Look for properties ending with 'Id' that have FK data
+      if (key.endsWith('Id')) {
+        // Derive the FK entity name from the field name (e.g., accountId -> account)
+        const fkEntityName = key.substring(0, key.length - 2);
+        
+        // Check if the corresponding FK entity object exists
+        const fkObject = entity[fkEntityName];
+        
+        if (fkObject && typeof fkObject === 'object') {
+          // Cast to any to access exists property safely
+          const fkData = fkObject as any;
+          
+          // Check if the FK object is missing exists property OR exists is false
+          // Both scenarios indicate a broken FK relationship
+          if (!fkData.hasOwnProperty('exists') || fkData.exists === false) {
+            return true;
+          }
+        } else {
+          // If no FK object exists at all, that's also a broken relationship
+          // (unless it's an optional FK, but we'll treat missing FK data as broken)
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
 }

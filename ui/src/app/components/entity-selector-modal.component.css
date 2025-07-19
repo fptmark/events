@@ -81,3 +81,29 @@
 .entity-table .bold {
   font-weight: bold;
 }
+
+/* Styles for entities with invalid foreign keys */
+.invalid-fk {
+  color: #6c757d !important;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.entity-table tr.invalid-fk {
+  background-color: #f8f9fa;
+  color: #6c757d;
+}
+
+.entity-table tr.invalid-fk:hover {
+  background-color: #e9ecef;
+}
+
+.entity-item.invalid-fk {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.entity-item.invalid-fk:hover {
+  background-color: #e9ecef;
+}
