@@ -200,10 +200,14 @@ class Profile(BaseModel):
         except Exception as e:
             raise DatabaseError(str(e), "Profile", "get")
 
-    async def save(self) -> tuple[Self, List[str]]:
+    async def save(self, entity_id: str = '') -> tuple[Self, List[str]]:
         try:
             _, unique_validations = Config.validations(True)
             unique_constraints = self._metadata.get('uniques', []) if unique_validations else []
+
+            # update uses the id
+            if len(entity_id) > 0:
+                self.id = entity_id
             
             self.updatedAt = datetime.now(timezone.utc)
             
@@ -215,8 +219,7 @@ class Profile(BaseModel):
                 data = validated_instance.model_dump()
             except PydanticValidationError as e:
                 # Convert to notifications and ValidationError format
-                entity_id = self.id
-                if not entity_id:
+                if len(entity_id) == 0:
                     notify_warning("User instance missing ID during save", NotificationType.DATABASE)
                     entity_id = "missing"
 
