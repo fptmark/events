@@ -84,17 +84,35 @@ export class EntityFormService {
     entityType: string, 
     fieldName: string, 
     entityForm: FormGroup, 
-    entity: any
+    entity: any,
+    customMessage?: string
   ): SafeHtml {
     const controlValue = entityForm.get(fieldName)?.value;
     const rawValue = entity?.[fieldName];
     
-    // Handle empty values with proper spacing
+    // Check for ObjectId fields with FK validation
+    const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
+    if (fieldMeta?.type === 'ObjectId' && entity) {
+      const fkEntityName = fieldName.endsWith('Id') ? fieldName.slice(0, -2) : fieldName;
+      const embeddedData = entity[fkEntityName];
+      if (embeddedData?.exists === false) {
+        // For non-existent entities, show plain text ID with warning icon
+        const displayText = rawValue || '&nbsp;';
+        const warningMessage = customMessage || "Entity does not exist";
+        const displayValue = `${displayText} <span class="text-warning ms-1" title="${warningMessage}">⚠️</span>`;
+        return this.sanitizer.bypassSecurityTrustHtml(displayValue);
+      }
+      // For existing entities, let the normal link rendering handle it
+      return controlValue;
+    }
+    
+    // Handle empty values with proper spacing for non-ObjectId fields
     const displayText = controlValue || (controlValue === 0 ? '0' : '&nbsp;');
     
     // If field is invalid, add warning icon
     if (this.isFieldValueInvalid(entityType, fieldName, rawValue)) {
-      const displayValue = `${displayText} <span class="text-warning ms-1" title="Invalid value">⚠️</span>`;
+      const warningMessage = customMessage || "Invalid value";
+      const displayValue = `${displayText} <span class="text-warning ms-1" title="${warningMessage}">⚠️</span>`;
       return this.sanitizer.bypassSecurityTrustHtml(displayValue);
     }
     

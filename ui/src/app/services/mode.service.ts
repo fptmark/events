@@ -14,19 +14,19 @@ export class ModeService {
 
     constructor(){}
 
-    inSummaryMode(mode: ViewMode): boolean {
+    inSummaryMode(mode: ViewMode | string): boolean {
         return mode === SUMMARY;
     }
 
-    inDetailsMode(mode: ViewMode): boolean {
+    inDetailsMode(mode: ViewMode | string): boolean {
         return mode === DETAILS;
     }
 
-    inCreateMode(mode: ViewMode): boolean {
+    inCreateMode(mode: ViewMode | string): boolean {
         return mode === CREATE;
     }
 
-    inEditMode(mode: ViewMode): boolean {
+    inEditMode(mode: ViewMode | string): boolean {
         return mode === EDIT;
     }
 

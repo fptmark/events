@@ -101,7 +101,7 @@
                           <div
                             *ngIf="isDetailsMode()"
                             [id]="fieldName"
-                            [innerHTML]="entityForm.get(fieldName)?.value"
+                            [innerHTML]="getDisplayValueWithWarning(fieldName)"
                             class="form-control link-input"
                             (click)="openLink(fieldName)">
                           </div>

@@ -525,7 +525,7 @@ export class EntityFormComponent implements OnInit {
   /**
    * Get display value with validation warning for details mode
    */
-  getDisplayValueWithWarning(fieldName: string): any {
+  getDisplayValueWithWarning(fieldName: string, customMessage?: string): any {
     if (!this.isDetailsMode() || !this.entityForm) {
       return this.entityForm?.get(fieldName)?.value || '';
     }
@@ -534,7 +534,8 @@ export class EntityFormComponent implements OnInit {
       this.entityType, 
       fieldName, 
       this.entityForm, 
-      this.entity
+      this.entity,
+      customMessage
     );
   }
 

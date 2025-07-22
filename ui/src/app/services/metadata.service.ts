@@ -222,10 +222,21 @@ export class MetadataService {
     const displayFields = this.modeService.getViewFields(entityMetadata, mode);
     
     for (const fieldName of displayFields) {
-      // For each field that is an ObjectId with a show config
-      const showConfig = this.getShowConfig(entityType, fieldName, mode);
-      if (showConfig) {
-        viewSpec[showConfig.endpoint] = showConfig.displayInfo[0].fields;
+      // For each field that is an ObjectId
+      if (entityMetadata.fields[fieldName]?.type === 'ObjectId') {
+        let showConfig = this.getShowConfig(entityType, fieldName, mode);
+        
+        // Force a synthetic show config for details mode so we know if the FK exists
+        if (!showConfig && this.modeService.inDetailsMode(mode)) {
+          showConfig = {
+            endpoint: fieldName.substring(0, fieldName.length - 2), 
+            displayInfo: [{displayPages: 'details', fields: ['id']}]
+          };
+        }
+        
+        if (showConfig) {
+          viewSpec[showConfig.endpoint] = showConfig.displayInfo[0].fields;
+        }
       }
     }
     
