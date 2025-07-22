@@ -71,7 +71,7 @@
                             [formControlName]="fieldName"
                             class="form-select"
                             [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
-                            <option value="">Select {{ getFieldDisplayName(fieldName) }}</option>
+                            <option value="">{{ isFieldRequired(fieldName) ? 'Select ' + getFieldDisplayName(fieldName) + '...' : '' }}</option>
                             <option *ngFor="let option of getFieldOptions(fieldName)" [value]="option">
                               {{ option }}
                             </option>
@@ -153,7 +153,15 @@
 
                         <!-- Default case for all other standard inputs -->
                         <ng-container *ngSwitchDefault>
-                          <input
+                          <!-- Details mode: show as div with innerHTML for validation warnings -->
+                          <div *ngIf="isDetailsMode()"
+                               [id]="fieldName"
+                               [innerHTML]="getDisplayValueWithWarning(fieldName)"
+                               class="form-control"
+                               style="min-height: 38px; white-space: nowrap; overflow-x: auto;">
+                          </div>
+                          <!-- Edit/Create mode: show as input -->
+                          <input *ngIf="!isDetailsMode()"
                             [type]="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType"
                             [id]="fieldName" 
                             [formControlName]="fieldName" 
@@ -162,6 +170,11 @@
                         </ng-container>
                         
                         <!-- Validation error messages -->
+
+                        <!-- Enum validation errors (for edit/create mode) -->
+                        <div *ngIf="hasEnumValidationError(fieldName)" class="text-danger mt-1 small">
+                          {{ getEnumValidationError(fieldName) }}
+                        </div>
 
                         <!-- Client-side validation errors use Bootstrap's invalid-feedback -->
                         <div *ngIf="isFieldInvalid(fieldName)" class="invalid-feedback d-block">

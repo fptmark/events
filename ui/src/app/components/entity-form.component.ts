@@ -13,6 +13,7 @@ import { NotificationService, ValidationFailure, ErrorDetail } from '../services
 import currency from 'currency.js';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ValidationService } from '../services/validation.service';
+import { EntityFormService } from '../services/entity-form.service';
 import { OperationResultBannerComponent, OperationResultType } from './operation-result-banner.component';
 import { OperationResultService } from '../services/operation-result.service';
 
@@ -83,6 +84,7 @@ export class EntityFormComponent implements OnInit {
     private navigationService: NavigationService,
     private notificationService: NotificationService,
     private validationService: ValidationService,
+    private entityFormService: EntityFormService,
     private sanitizer: DomSanitizer,
     private operationResultService: OperationResultService
   ) {}
@@ -196,48 +198,13 @@ export class EntityFormComponent implements OnInit {
    * @param entityData Optional entity data for edit/view modes
    */
   populateFormValues(entityData?: any): void {
-    if (!this.entityForm || !this.sortedFields.length) return;
-
-    for( const fieldName of this.sortedFields) {
-      const control = this.entityForm.get(fieldName);
-      if (!control) continue;
-      
-      // Get field metadata
-      const metadata = this.metadataService.getFieldMetadata(this.entityType, fieldName);
-      const rawValue = entityData?.[fieldName];
-
-      // Check if it's an ObjectId field with a show configuration for the current mode
-      const showConfig = metadata?.ui?.show ? this.metadataService.getShowConfig(this.entityType, fieldName, this.mode) : null;
-
-      // force the type to text for id fields
-      let type = (fieldName === 'id') ? 'text' : metadata?.type || 'text'
-      console.log(`Processing field ${fieldName} of type ${type} with raw value:`, rawValue);
-      
-      if (type === 'ObjectId' && showConfig) {
-        // For ObjectId fields with show config, use embedded FK data
-        const formattedValue = this.entityService.formatObjectIdValueWithEmbeddedData(
-          this.entityType, fieldName, this.mode, rawValue, entityData, showConfig
-        );
-        
-        // If it's in details mode, sanitize the HTML output
-        if (this.isDetailsMode()) {
-          control.setValue(this.sanitizer.bypassSecurityTrustHtml(formattedValue));
-        } else {
-          control.setValue(formattedValue);
-        }
-      } else {
-        // For other field types or ObjectId without show config, use the synchronous formatter
-        console.log(`Formatting field ${fieldName} with raw value:`, rawValue);
-        const formattedValue = this.entityService.formatFieldValue(this.entityType, fieldName, this.mode, rawValue);
-        
-        // If it's an ObjectId field in details mode (without show config), sanitize the HTML
-        if (type === 'ObjectId' && this.isDetailsMode()) {
-           control.setValue(this.sanitizer.bypassSecurityTrustHtml(formattedValue));
-        } else {
-          control.setValue(formattedValue);
-        }
-      }
-    }
+    this.entityFormService.populateFormValues(
+      this.entityType,
+      this.mode,
+      this.entityForm!,
+      this.sortedFields,
+      entityData
+    );
   }
 
   onSubmit(): void {
@@ -297,111 +264,12 @@ export class EntityFormComponent implements OnInit {
   
   // Process form data before submitting to the API
   processFormData(): Record<string, any> {
-    const processedData: Record<string, any> = {};
-
-    try {
-      if (!this.entityForm) return processedData;
-
-      // Process all form controls directly (including disabled fields)
-      for (const fieldName in this.entityForm.controls) {
-        const control = this.entityForm.controls[fieldName];
-        const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
-        const value = control.value;
-
-        // Special handling for boolean fields - always include in payload
-        if (fieldMeta?.type === 'Boolean') {
-          // For checkboxes, convert to strict boolean value
-          // This handles cases where the value might be something other than a strict boolean
-          // Boolean fields should never be null or undefined, default to false if so
-          processedData[fieldName] = value === null || value === undefined ? false : Boolean(value);
-          continue;
-        }
-        
-        const isEmpty = value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
-        if (isEmpty && !fieldMeta?.required) {
-          continue;
-        }
-
-        // Special handling for Currency fields
-        if (fieldMeta?.type === 'Currency') {
-          
-          // Parse currency value at submission time
-          if (typeof value === 'string' && value.trim() !== '') {
-            try {
-              // Validate that only legal currency characters are present
-              const legalCurrencyPattern = /^[\$\-\(\)\,\.0-9\s]+$/;
-              if (!legalCurrencyPattern.test(value)) {
-                throw new Error('Invalid characters in currency value. Only [$-().,] and numbers are allowed.');
-              }
-              
-              const parsed = currency(value, {
-                precision: 2, 
-                symbol: '$',
-                decimal: '.',
-                separator: ',',
-                errorOnInvalid: true
-              });
-              
-              processedData[fieldName] = parsed.value;
-              
-              // Skip the general field processing below since we handled currency conversion
-              continue;
-            } catch (e) {
-              // If parsing fails, mark the field as invalid
-              console.error('Currency parsing error:', e);
-              control.setErrors({ 'currencyFormat': 'Invalid currency format. Use $X,XXX.XX or (X,XXX.XX) for negative values.' });
-              
-              // Show error notification
-              this.notificationService.showError({
-                message: `Invalid currency format in ${this.getFieldDisplayName(fieldName)}`,
-                error_type: 'validation_error',
-                context: {
-                  entity: this.entityType,
-                  invalid_fields: [{
-                    field: fieldName,
-                    constraint: 'Invalid currency format. Use $X,XXX.XX or (X,XXX.XX) for negative values.'
-                  }]
-                }
-              });
-              
-              // Set this flag to make the error visible
-              control.markAsTouched();
-              control.markAsDirty();
-              
-              // Skip this field in processed data
-              continue;
-            }
-          }
-        }
-
-        // Special handling for Date and Datetime fields
-        if (fieldMeta?.type === 'Date' || fieldMeta?.type === 'Datetime') {
-          if (typeof value === 'string' && value.trim() !== '') {
-            try {
-                const dateValue = new Date(value);
-                if (!isNaN(dateValue.getTime())) {
-                  const value = dateValue.toISOString();
-                  processedData[fieldName] = fieldMeta?.type === 'Date' ? value.split('T')[0] : value
-                  continue;
-                }
-            } catch (e) {
-              console.error('Date/Datetime parsing error:', e);
-              // Let it fall through to regular processing
-            }
-          }
-        }
-
-        // For all other field types
-        // Include field if it's auto-generated/updated, required, or has a value
-        if (fieldMeta?.autoUpdate || fieldMeta?.autoGenerate || fieldMeta?.required || !isEmpty) {
-            processedData[fieldName] = isEmpty ? null : value;
-        }
-      }
-    } catch (error) {
-      console.error('Error processing form data:', error);
-    }
-
-    return processedData;
+    return this.entityFormService.processFormData(
+      this.entityType,
+      this.entityForm!,
+      (fieldName: string) => this.getFieldDisplayName(fieldName),
+      this.notificationService
+    );
   }
 
   /**
@@ -608,6 +476,33 @@ export class EntityFormComponent implements OnInit {
   }
 
   /**
+   * Get enum-specific validation error for invalid values
+   */
+  getEnumValidationError(fieldName: string): string | null {
+    if (!this.isEditMode() && !this.isCreateMode()) return null;
+    
+    const control = this.entityForm?.get(fieldName);
+    const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+    
+    // Check if this is an enum field and has an invalid value
+    if (fieldMeta?.enum?.values && this.entity) {
+      const rawValue = this.entity[fieldName];
+      if (rawValue && !fieldMeta.enum.values.includes(rawValue)) {
+        return `"${rawValue}" is not valid`;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Check if field has enum validation error
+   */
+  hasEnumValidationError(fieldName: string): boolean {
+    return this.getEnumValidationError(fieldName) !== null;
+  }
+
+  /**
    * Check for pending operation results for this entity type
    */
   private checkForOperationResult(): void {
@@ -625,6 +520,22 @@ export class EntityFormComponent implements OnInit {
    */
   onBannerDismissed(): void {
     this.operationMessage = null;
+  }
+
+  /**
+   * Get display value with validation warning for details mode
+   */
+  getDisplayValueWithWarning(fieldName: string): any {
+    if (!this.isDetailsMode() || !this.entityForm) {
+      return this.entityForm?.get(fieldName)?.value || '';
+    }
+
+    return this.entityFormService.getDisplayValueWithWarning(
+      this.entityType, 
+      fieldName, 
+      this.entityForm, 
+      this.entity
+    );
   }
 
 }
