@@ -381,9 +381,14 @@ export class EntityFormComponent implements OnInit {
         return;
       }
       
-      // In view mode, ObjectId links now handle navigation via onclick handlers
-      // No need to navigate here - the HTML links handle it themselves
-      console.log(`ObjectId link clicked for ${fieldName}, handled by onclick handler`);
+      // In view mode, navigate to the referenced entity
+      const objectIdValue = this.entity?.[fieldName];
+      if (objectIdValue) {
+        console.log(`Navigating to ${entityType} with ID: ${objectIdValue}`);
+        this.router.navigate(['/entity', entityType, objectIdValue]);
+      } else {
+        console.log(`No ObjectId value found for ${fieldName}`);
+      }
     } catch (error) {
       console.error('Error in openLink:', error);
     }
@@ -476,19 +481,16 @@ export class EntityFormComponent implements OnInit {
   }
 
   /**
-   * Get enum-specific validation error for invalid values
+   * Get enum-specific validation error for invalid values - works in all modes
    */
   getEnumValidationError(fieldName: string): string | null {
-    if (!this.isEditMode() && !this.isCreateMode()) return null;
-    
-    const control = this.entityForm?.get(fieldName);
     const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
     
     // Check if this is an enum field and has an invalid value
     if (fieldMeta?.enum?.values && this.entity) {
       const rawValue = this.entity[fieldName];
       if (rawValue && !fieldMeta.enum.values.includes(rawValue)) {
-        return `"${rawValue}" is not valid`;
+        return `existing value "${rawValue}" is not a valid selection`;
       }
     }
     
@@ -501,6 +503,49 @@ export class EntityFormComponent implements OnInit {
   hasEnumValidationError(fieldName: string): boolean {
     return this.getEnumValidationError(fieldName) !== null;
   }
+
+  /**
+   * Get ObjectId-specific validation error for non-existent entities - works in all modes
+   */
+  getObjectIdValidationError(fieldName: string): string | null {
+    const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+    
+    // Check if this is an ObjectId field with non-existent entity
+    if (fieldMeta?.type === 'ObjectId' && this.entity) {
+      const fkEntityName = fieldName.endsWith('Id') ? fieldName.slice(0, -2) : fieldName;
+      const embeddedData = this.entity[fkEntityName];
+      if (embeddedData?.exists === false) {
+        return 'Entity does not exist';
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Check if field has ObjectId validation error
+   */
+  hasObjectIdValidationError(fieldName: string): boolean {
+    return this.getObjectIdValidationError(fieldName) !== null;
+  }
+
+  /**
+   * Get unified validation error for any field (excludes enums/ObjectIds) - works in all modes
+   */
+  getGeneralValidationError(fieldName: string): string | null {
+    if (!this.entity) return null;
+    
+    const rawValue = this.entity[fieldName];
+    return this.entityFormService.getFieldValidationError(this.entityType, fieldName, rawValue);
+  }
+
+  /**
+   * Check if field has general validation error
+   */
+  hasGeneralValidationError(fieldName: string): boolean {
+    return this.getGeneralValidationError(fieldName) !== null;
+  }
+
 
   /**
    * Check for pending operation results for this entity type
@@ -523,19 +568,18 @@ export class EntityFormComponent implements OnInit {
   }
 
   /**
-   * Get display value with validation warning for details mode
+   * Get clean display value without warnings for details mode
    */
-  getDisplayValueWithWarning(fieldName: string, customMessage?: string): any {
+  getDisplayValue(fieldName: string): any {
     if (!this.isDetailsMode() || !this.entityForm) {
       return this.entityForm?.get(fieldName)?.value || '';
     }
 
-    return this.entityFormService.getDisplayValueWithWarning(
+    return this.entityFormService.getDisplayValue(
       this.entityType, 
       fieldName, 
       this.entityForm, 
-      this.entity,
-      customMessage
+      this.entity
     );
   }
 

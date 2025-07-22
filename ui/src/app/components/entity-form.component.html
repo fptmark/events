@@ -66,7 +66,9 @@
                       <ng-container [ngSwitch]="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType">
                         <!-- Select dropdown -->
                         <ng-container *ngSwitchCase="'select'">
+                          <!-- Dropdown for edit/create modes -->
                           <select
+                            *ngIf="!isDetailsMode()"
                             [id]="fieldName"
                             [formControlName]="fieldName"
                             class="form-select"
@@ -76,6 +78,15 @@
                               {{ option }}
                             </option>
                           </select>
+                          
+                          <!-- Text input only for details mode -->
+                          <input 
+                            *ngIf="isDetailsMode()"
+                            type="text"
+                            [id]="fieldName"
+                            [formControlName]="fieldName"
+                            class="form-control"
+                            readonly>
                         </ng-container>
 
                         <!-- Textarea -->
@@ -90,22 +101,39 @@
 
                         <!-- ObjectId input -->
                         <div *ngSwitchCase="'ObjectId'" class="input-group">
+                          <!-- Clickable link for valid ObjectIds in details mode -->
+                          <div
+                            *ngIf="isDetailsMode() && !hasObjectIdValidationError(fieldName)"
+                            [id]="fieldName"
+                            class="form-control"
+                            style="border: none; background: none; padding: 0;">
+                            <a href="javascript:void(0)" 
+                               (click)="openLink(fieldName)"
+                               style="cursor: pointer; color: blue; text-decoration: underline;">
+                              {{ entity[fieldName] }}
+                            </a>
+                          </div>
+                          
+                          <!-- Plain text for invalid ObjectIds in details mode -->
+                          <div
+                            *ngIf="isDetailsMode() && hasObjectIdValidationError(fieldName)"
+                            [id]="fieldName"
+                            class="form-control">
+                            {{ entity[fieldName] }}
+                          </div>
+                          
+                          <!-- Text input for edit/create modes -->
                           <input
-                            *ngIf="isEditMode() || isCreateMode()"
+                            *ngIf="!isDetailsMode()"
                             type="text" 
                             [id]="fieldName" 
                             [formControlName]="fieldName" 
                             class="form-control"
                             [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
                             placeholder="Enter ID or click Select">
-                          <div
-                            *ngIf="isDetailsMode()"
-                            [id]="fieldName"
-                            [innerHTML]="getDisplayValueWithWarning(fieldName)"
-                            class="form-control link-input"
-                            (click)="openLink(fieldName)">
-                          </div>
-                          <button *ngIf="isEditMode() || isCreateMode()" 
+                          
+                          <!-- Select button only for edit/create modes -->
+                          <button *ngIf="!isDetailsMode()" 
                             class="btn btn-outline-secondary" 
                             type="button"
                             (click)="openLink(fieldName)">
@@ -156,7 +184,7 @@
                           <!-- Details mode: show as div with innerHTML for validation warnings -->
                           <div *ngIf="isDetailsMode()"
                                [id]="fieldName"
-                               [innerHTML]="getDisplayValueWithWarning(fieldName)"
+                               [innerHTML]="getDisplayValue(fieldName)"
                                class="form-control"
                                style="min-height: 38px; white-space: nowrap; overflow-x: auto;">
                           </div>
@@ -176,30 +204,18 @@
                           {{ getEnumValidationError(fieldName) }}
                         </div>
 
-                        <!-- Client-side validation errors use Bootstrap's invalid-feedback -->
+                        <!-- ObjectId validation errors (for edit/create mode) -->
+                        <div *ngIf="hasObjectIdValidationError(fieldName)" class="text-danger mt-1 small">
+                          {{ getObjectIdValidationError(fieldName) }}
+                        </div>
+
+                        <!-- Unified validation errors (works in all modes, excludes enums/ObjectIds) -->
+                        <div *ngIf="hasGeneralValidationError(fieldName)" class="text-danger mt-1 small">
+                          {{ getGeneralValidationError(fieldName) }}
+                        </div>
+
+                        <!-- Keep only server-side validation errors and currency format errors that aren't handled by unified validation -->
                         <div *ngIf="isFieldInvalid(fieldName)" class="invalid-feedback d-block">
-                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['required']">
-                            {{ getFieldDisplayName(fieldName) }} is required.
-                          </div>
-                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['minlength']">
-                            {{ getFieldDisplayName(fieldName) }} must be at least
-                            {{ entityForm.get(fieldName)?.errors?.['minlength']?.requiredLength }} characters.
-                          </div>
-                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['maxlength']">
-                            {{ getFieldDisplayName(fieldName) }} cannot exceed
-                            {{ entityForm.get(fieldName)?.errors?.['maxlength']?.requiredLength }} characters.
-                          </div>
-                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['pattern']">
-                            {{ getFieldDisplayName(fieldName) }} has an invalid format.
-                          </div>
-                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['min']">
-                            {{ getFieldDisplayName(fieldName) }} must be at least
-                            {{ entityForm.get(fieldName)?.errors?.['min']?.min }}.
-                          </div>
-                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['max']">
-                            {{ getFieldDisplayName(fieldName) }} cannot exceed
-                            {{ entityForm.get(fieldName)?.errors?.['max']?.max }}.
-                          </div>
                           <!-- Custom currency format error -->
                           <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['currencyFormat']">
                             {{ entityForm.get(fieldName)?.errors?.['currencyFormat'] }}
@@ -209,12 +225,6 @@
                             <i class="bi bi-exclamation-triangle-fill me-1"></i>
                             {{ entityForm.get(fieldName)?.errors?.['server'] }}
                           </div>
-                        </div>
-
-                        <!-- Fallback for server-side validation errors -->
-                        <div *ngIf="getFieldValidationError(fieldName) && !isFieldInvalid(fieldName)" class="text-danger mt-1 small">
-                          <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                          {{ getFieldValidationError(fieldName) }}
                         </div>
                       </ng-container>
                     </ng-template>

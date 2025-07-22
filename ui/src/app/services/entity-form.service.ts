@@ -78,43 +78,83 @@ export class EntityFormService {
   }
 
   /**
-   * Get display value with validation warning for details mode
+   * Get validation error message for a field (excluding enums and ObjectIds)
+   * Works across all modes - details, edit, create
    */
-  getDisplayValueWithWarning(
+  getFieldValidationError(entityType: string, fieldName: string, value: any): string | null {
+    const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
+    if (!fieldMeta) return null;
+
+    // Skip enums and ObjectIds - they have their own error handling
+    if (fieldMeta.enum?.values || fieldMeta.type === 'ObjectId') {
+      return null;
+    }
+
+    // Check required fields
+    if (fieldMeta.required && (value === null || value === undefined || value === '')) {
+      return `${this.getFieldDisplayName(entityType, fieldName)} is required.`;
+    }
+
+    // Skip validation if field is empty and not required
+    if (!fieldMeta.required && (value === null || value === undefined || value === '')) {
+      return null;
+    }
+
+    // Check string validations
+    if (typeof value === 'string') {
+      // Min length
+      if (fieldMeta.min_length && value.length < fieldMeta.min_length) {
+        return `${this.getFieldDisplayName(entityType, fieldName)} must be at least ${fieldMeta.min_length} characters.`;
+      }
+      // Max length  
+      if (fieldMeta.max_length && value.length > fieldMeta.max_length) {
+        return `${this.getFieldDisplayName(entityType, fieldName)} cannot exceed ${fieldMeta.max_length} characters.`;
+      }
+      // Pattern validation
+      if (fieldMeta.pattern?.regex) {
+        const regex = new RegExp(fieldMeta.pattern.regex);
+        if (!regex.test(value)) {
+          return fieldMeta.pattern.message || `${this.getFieldDisplayName(entityType, fieldName)} has an invalid format.`;
+        }
+      }
+    }
+
+    // Check number validations
+    if (typeof value === 'number') {
+      // Min value
+      if (fieldMeta.ge !== undefined && value < fieldMeta.ge) {
+        return `${this.getFieldDisplayName(entityType, fieldName)} must be at least ${fieldMeta.ge}.`;
+      }
+      // Max value
+      if (fieldMeta.le !== undefined && value > fieldMeta.le) {
+        return `${this.getFieldDisplayName(entityType, fieldName)} cannot exceed ${fieldMeta.le}.`;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get field display name for error messages
+   */
+  private getFieldDisplayName(entityType: string, fieldName: string): string {
+    const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
+    return fieldMeta?.ui?.displayName || fieldName;
+  }
+
+  /**
+   * Get display value without warnings - just clean display text
+   */
+  getDisplayValue(
     entityType: string, 
     fieldName: string, 
     entityForm: FormGroup, 
-    entity: any,
-    customMessage?: string
+    entity: any
   ): SafeHtml {
     const controlValue = entityForm.get(fieldName)?.value;
-    const rawValue = entity?.[fieldName];
     
-    // Check for ObjectId fields with FK validation
-    const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
-    if (fieldMeta?.type === 'ObjectId' && entity) {
-      const fkEntityName = fieldName.endsWith('Id') ? fieldName.slice(0, -2) : fieldName;
-      const embeddedData = entity[fkEntityName];
-      if (embeddedData?.exists === false) {
-        // For non-existent entities, show plain text ID with warning icon
-        const displayText = rawValue || '&nbsp;';
-        const warningMessage = customMessage || "Entity does not exist";
-        const displayValue = `${displayText} <span class="text-warning ms-1" title="${warningMessage}">⚠️</span>`;
-        return this.sanitizer.bypassSecurityTrustHtml(displayValue);
-      }
-      // For existing entities, let the normal link rendering handle it
-      return controlValue;
-    }
-    
-    // Handle empty values with proper spacing for non-ObjectId fields
+    // Handle empty values with proper spacing
     const displayText = controlValue || (controlValue === 0 ? '0' : '&nbsp;');
-    
-    // If field is invalid, add warning icon
-    if (this.isFieldValueInvalid(entityType, fieldName, rawValue)) {
-      const warningMessage = customMessage || "Invalid value";
-      const displayValue = `${displayText} <span class="text-warning ms-1" title="${warningMessage}">⚠️</span>`;
-      return this.sanitizer.bypassSecurityTrustHtml(displayValue);
-    }
     
     return this.sanitizer.bypassSecurityTrustHtml(displayText);
   }
