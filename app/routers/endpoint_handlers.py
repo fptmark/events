@@ -245,23 +245,18 @@ async def create_entity_handler(entity_cls: Type, entity_name: str, entity_data:
 
 
 async def update_entity_handler(entity_cls: Type, entity_name: str, entity_id: str, entity_data: Any) -> Dict[str, Any]:
-    """Reusable handler for PUT endpoint."""
+    """Reusable handler for PUT endpoint - True PUT semantics (full replacement)."""
     entity_lower = entity_name.lower()
     notifications = start_notifications(entity=entity_name, operation=f"update_{entity_lower}")
     
     try:
-        existing, warnings = await entity_cls.get(entity_id)
-        # Add any warnings from get operation
-        for warning in warnings:
-            notify_warning(warning, NotificationType.DATABASE)
-            
-        # Merge payload data into existing entity and force validation
-        update_dict = entity_data.model_dump(exclude_unset=True)
-        updated = existing.model_copy(update=update_dict)
+        # True PUT semantics: validate complete entity data with URL's entity_id
+        entity_dict = entity_data.model_dump()
+        validated_entity = entity_cls.model_validate(entity_dict)
         
-        # Force validation by recreating the model (triggers field validators)
-        validated_updated = entity_cls.model_validate(updated.model_dump())
-        result, save_warnings = await validated_updated.save()
+        # Save with entity_id from URL (authoritative) - this handles auto-fields internally
+        result, save_warnings = await validated_entity.save(entity_id=entity_id)
+        
         # Add any warnings from save operation
         for warning in save_warnings:
             notify_warning(warning, NotificationType.DATABASE)
