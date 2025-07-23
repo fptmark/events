@@ -66,9 +66,33 @@ class ComprehensiveTestRunner:
                     "get_validation": "get_all",
                     "unique_validation": True
                 }
+            ),
+            TestConfig(
+                name="Elasticsearch without validation",
+                database="elasticsearch",
+                validation="none",
+                config_data={
+                    "database": "elasticsearch",
+                    "es_host": "localhost",
+                    "es_port": 9200,
+                    "es_index": "eventmgr",
+                    "get_validation": "",
+                    "unique_validation": False
+                }
+            ),
+            TestConfig(
+                name="Elasticsearch with validation",
+                database="elasticsearch",
+                validation="get_all",
+                config_data={
+                    "database": "elasticsearch",
+                    "es_host": "localhost",
+                    "es_port": 9200,
+                    "es_index": "eventmgr",
+                    "get_validation": "get_all",
+                    "unique_validation": True
+                }
             )
-            # NOTE: Elasticsearch configurations temporarily disabled due to server hanging issues
-            # TODO: Debug and re-enable Elasticsearch tests
         ]
     
     def cleanup_port(self):
