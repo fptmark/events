@@ -10,6 +10,8 @@ import app.utils as helpers
 from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 from app.notification import notify_warning, NotificationType
+from app.models.utils import process_raw_results
+from app.models.list_params import ListParams
 
 
 class UniqueValidationError(Exception):
@@ -72,76 +74,36 @@ class TagAffinity(BaseModel):
             
             raw_docs, warnings, total_count = await DatabaseFactory.get_all("tagaffinity", unique_constraints)
             
-            tagaffinitys = []
+            tagaffinity_data = process_raw_results(cls, "TagAffinity", raw_docs, warnings)
             
-            # Conditional validation - validate AFTER read if requested
-            if get_validations:
-                for doc in raw_docs:
-                    try:
-                        tagaffinitys.append(cls.model_validate(doc))
-                    except PydanticValidationError as e:
-                        # Convert Pydantic errors to notifications
-                        entity_id = doc.get('id')
-                        if not entity_id:
-                            notify_warning("Document missing ID field", NotificationType.DATABASE, entity=TagAffinity)
-                            entity_id = "missing"
-  
-                        for error in e.errors():
-                            field_name = str(error['loc'][-1])
-                            notify_warning(
-                                message=error['msg'],
-                                type=NotificationType.VALIDATION,
-                                entity="TagAffinity",
-                                field_name=field_name,
-                                value=error.get('input'),
-                                operation="get_all",
-                                entity_id=entity_id
-                            )
-
-                        # Create instance without validation for failed docs
-                        tagaffinitys.append(cls.model_construct(**doc))
-            else:
-                tagaffinitys = [cls.model_construct(**doc) for doc in raw_docs]  # NO validation  
-            
-            # Add database warnings
-            for warning in warnings:
-                notify_warning(warning, NotificationType.DATABASE)
-            
-            # Convert models to dictionaries for FastAPI response validation
-            tagaffinity_data = []
-            for tagaffinity in tagaffinitys:
-                with python_warnings.catch_warnings(record=True) as caught_warnings:
-                    python_warnings.simplefilter("always")
-                    data_dict = tagaffinity.model_dump()
-                    tagaffinity_data.append(data_dict)
-                    
-                    # Add any serialization warnings as notifications
-                    if caught_warnings:
-                        entity_id = data_dict.get('id')
-                        if not entity_id:
-                            notify_warning("Document missing ID field", NotificationType.DATABASE)
-                            entity_id = "missing"
-
-                        datetime_field_names = []
-                        
-                        # Use the model's metadata to find datetime fields
-                        for field_name, field_meta in cls._metadata.get('fields', {}).items():
-                            if field_meta.get('type') == 'ISODate':
-                                if field_name in data_dict and isinstance(data_dict[field_name], str):
-                                    datetime_field_names.append(field_name)
-                        
-                        if datetime_field_names:
-                            field_list = ', '.join(datetime_field_names)
-                            notify_warning(f"{field_list} datetime serialization warnings", NotificationType.VALIDATION, entity="TagAffinity", entity_id=entity_id)
-                        else:
-                            # Fallback for non-datetime warnings
-                            warning_count = len(caught_warnings)
-                            notify_warning(f"User {entity_id}: {warning_count} serialization warnings", NotificationType.VALIDATION, entity="TagAffinity")
- 
             return {"data": tagaffinity_data}
             
         except Exception as e:
             raise DatabaseError(str(e), "TagAffinity", "get_all")
+
+    @classmethod
+    async def get_list(cls, list_params) -> Dict[str, Any]:
+        """Get paginated, sorted, and filtered list of entity."""
+        try:
+            get_validations, unique_validations = Config.validations(True)
+            unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
+            
+            # Get filtered data from database
+            raw_docs, warnings, total_count = await DatabaseFactory.get_list("tagaffinity", unique_constraints, list_params)
+            
+            # Use common processing
+            tagaffinity_data = process_raw_results(cls, "TagAffinity", raw_docs, warnings)
+            
+            return {
+                "data": tagaffinity_data,
+                "total_count": total_count,
+                "page": list_params.page,
+                "page_size": list_params.page_size,
+                "total_pages": (total_count + list_params.page_size - 1) // list_params.page_size
+            }
+            
+        except Exception as e:
+            raise DatabaseError(str(e), "TagAffinity", "get_list")
 
 
     @classmethod
