@@ -115,6 +115,17 @@ class DatabaseFactory:
         return data, warnings, total_count
 
     @classmethod
+    async def get_list(cls, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+        """Get paginated/filtered list of documents from a collection with count"""
+        data, warnings, total_count = await cls.get_instance().get_list(collection, unique_constraints, list_params)
+        
+        # Convert database warnings to appropriate notifications
+        for warning in warnings:
+            cls._notify_database_message(warning, collection, "get_list")
+            
+        return data, warnings, total_count
+
+    @classmethod
     async def get_by_id(cls, collection: str, doc_id: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Get document by ID"""
         data, warnings = await cls.get_instance().get_by_id(collection, doc_id, unique_constraints)

@@ -75,6 +75,21 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
+    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+        """Get paginated/filtered list of documents from a collection with count"""
+        pass
+
+    @abstractmethod
+    def _build_query_filter(self, list_params, entity_metadata: Optional[Dict[str, Any]] = None) -> Any:
+        """Build database-specific query filter from ListParams"""
+        pass
+
+    @abstractmethod  
+    def _build_sort_spec(self, list_params) -> Any:
+        """Build database-specific sort specification from ListParams"""
+        pass
+
+    @abstractmethod
     async def get_by_id(self, collection: str, doc_id: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Get a document by ID"""
         pass

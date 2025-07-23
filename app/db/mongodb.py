@@ -99,6 +99,80 @@ class MongoDatabase(DatabaseInterface):
                 operation="get_all"
             )
 
+    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+        """Get paginated/filtered list of documents from a collection with count."""
+        self._ensure_initialized()
+        
+        try:
+            from app.models.list_params import ListParams
+            warnings = []
+            
+            # Check unique constraints if provided
+            if unique_constraints:
+                missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
+                if missing_indexes:
+                    warnings.extend(missing_indexes)
+            
+            # If no list_params provided, fall back to get_all behavior
+            if not list_params:
+                return await self.get_all(collection, unique_constraints)
+            
+            # Build MongoDB aggregation pipeline
+            pipeline = []
+            
+            # Build match stage for filtering
+            match_query = self._build_query_filter(list_params)
+            if match_query:
+                pipeline.append({"$match": match_query})
+            
+            # Use facet to get both data and count in one query
+            facet_pipeline = {
+                "data": [],
+                "count": [{"$count": "total"}]
+            }
+            
+            # Add sorting to data pipeline
+            sort_spec = self._build_sort_spec(list_params)
+            if sort_spec:
+                facet_pipeline["data"].append({"$sort": sort_spec})
+            
+            # Add pagination to data pipeline
+            facet_pipeline["data"].extend([
+                {"$skip": list_params.skip},
+                {"$limit": list_params.page_size}
+            ])
+            
+            pipeline.append({"$facet": facet_pipeline})
+            
+            # Execute aggregation
+            cursor = self._get_db()[collection].aggregate(pipeline)
+            result = await cursor.to_list(1)
+            
+            if not result:
+                return [], warnings, 0
+            
+            facet_result = result[0]
+            raw_data = facet_result.get("data", [])
+            count_result = facet_result.get("count", [])
+            total_count = count_result[0]["total"] if count_result else 0
+            
+            # Process results (normalize IDs)
+            results = []
+            for doc in raw_data:
+                if self.id_field in doc:
+                    doc['id'] = str(doc[self.id_field])
+                    del doc[self.id_field]  # Remove _id, replace with id
+                results.append(cast(Dict[str, Any], doc))
+            
+            return results, warnings, total_count
+            
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=collection,
+                operation="get_list"
+            )
+
     async def get_by_id(self, collection: str, doc_id: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Get a document by ID."""
         self._ensure_initialized()
@@ -549,6 +623,53 @@ class MongoDatabase(DatabaseInterface):
                 operation="exists"
             )
     
+    def _build_query_filter(self, list_params, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Build MongoDB query from ListParams with field-type awareness."""
+        if not list_params or not list_params.filters:
+            return {}
+        
+        query = {}
+        for field, value in list_params.filters.items():
+            if isinstance(value, dict) and ('$gte' in value or '$lte' in value):
+                # Range filter - use as-is
+                query[field] = value
+            else:
+                # Determine matching strategy based on field type
+                field_type = self._get_field_type(field, entity_metadata)
+                if field_type == 'String':
+                    # Text fields: partial match with regex
+                    query[field] = {"$regex": f".*{self._escape_regex(str(value))}.*", "$options": "i"}
+                else:
+                    # Non-text fields (enums, numbers, dates, etc.): exact match
+                    query[field] = value
+        
+        return query
+
+    def _build_sort_spec(self, list_params) -> Dict[str, int]:
+        """Build MongoDB sort specification from ListParams."""
+        if not list_params or not list_params.sort_field:
+            return {}
+        return {list_params.sort_field: 1 if list_params.sort_order == "asc" else -1}
+
+    def _get_field_type(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
+        """Get field type from entity metadata or default to String."""
+        if not entity_metadata or 'fields' not in entity_metadata:
+            return 'String'  # Default to string for partial matching
+        
+        field_info = entity_metadata.get('fields', {}).get(field_name, {})
+        field_type = field_info.get('type', 'String')
+        
+        # Check if field has enum values - treat as exact match even if type is String
+        if 'enum' in field_info:
+            return 'Enum'  # Use exact matching for enum fields
+        
+        return field_type
+
+    def _escape_regex(self, text: str) -> str:
+        """Escape special regex characters in search text."""
+        import re
+        return re.escape(text)
+
     async def _check_unique_indexes(self, collection: str, unique_constraints: List[List[str]]) -> List[str]:
         """Check if unique indexes exist for the given constraints. Returns list of missing constraint descriptions."""
         if not unique_constraints:

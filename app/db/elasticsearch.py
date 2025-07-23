@@ -86,6 +86,95 @@ class ElasticsearchDatabase(DatabaseInterface):
                 operation="get_all"
             )
 
+    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+        """Get paginated/filtered list of documents from a collection with count."""
+        es = self._get_client()
+
+        if not await es.indices.exists(index=collection):
+            return [], [], 0
+
+        try:
+            from app.models.list_params import ListParams
+            warnings = []
+            
+            # Check unique constraints if provided
+            if unique_constraints:
+                missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
+                if missing_indexes:
+                    warnings.extend(missing_indexes)
+            
+            # If no list_params provided, fall back to get_all behavior
+            if not list_params:
+                return await self.get_all(collection, unique_constraints)
+
+            # Build Elasticsearch query
+            query_body = {
+                "from": list_params.skip,
+                "size": list_params.page_size,
+                "query": self._build_es_query(list_params)
+            }
+            
+            # Add sorting if specified
+            if list_params.sort_field:
+                query_body["sort"] = [
+                    {list_params.sort_field: {"order": list_params.sort_order}}
+                ]
+
+            res = await es.search(index=collection, body=query_body)
+            hits = res.get("hits", {}).get("hits", [])
+            results = [{**hit["_source"], "id": hit["_id"]} for hit in hits]
+            
+            # Extract total count from search response
+            total_count = res.get("hits", {}).get("total", {}).get("value", 0)
+            
+            return results, warnings, total_count
+            
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=collection,
+                operation="get_list"
+            )
+
+    def _build_es_query(self, list_params) -> Dict[str, Any]:
+        """Build Elasticsearch query from ListParams."""
+        if not list_params.search_filters and not list_params.field_filters:
+            return {"match_all": {}}
+        
+        must_clauses = []
+        
+        # Add text search filters
+        for field, value in list_params.search_filters.items():
+            must_clauses.append({
+                "wildcard": {
+                    field: f"*{value}*"
+                }
+            })
+        
+        # Add field filters
+        for field, value in list_params.field_filters.items():
+            if isinstance(value, dict) and ('$gte' in value or '$lte' in value):
+                # Range filter
+                range_filter = {}
+                if '$gte' in value:
+                    range_filter['gte'] = value['$gte']
+                if '$lte' in value:
+                    range_filter['lte'] = value['$lte']
+                must_clauses.append({
+                    "range": {field: range_filter}
+                })
+            else:
+                # Exact match
+                must_clauses.append({
+                    "term": {f"{field}.keyword": value} if isinstance(value, str) else {"term": {field: value}}
+                })
+        
+        return {
+            "bool": {
+                "must": must_clauses
+            }
+        }
+
     async def get_by_id(self, collection: str, doc_id: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Get a document by ID."""
         es = self._get_client()
