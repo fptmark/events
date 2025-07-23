@@ -73,7 +73,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             
             res = await es.search(index=collection, query={"match_all": {}}, size=1000)
             hits = res.get("hits", {}).get("hits", [])
-            results = [{**hit["_source"], "id": hit["_id"]} for hit in hits]
+            results = [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
             
             # Extract total count from search response
             total_count = res.get("hits", {}).get("total", {}).get("value", 0)
@@ -86,7 +86,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                 operation="get_all"
             )
 
-    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count."""
         es = self._get_client()
 
@@ -107,22 +107,21 @@ class ElasticsearchDatabase(DatabaseInterface):
             if not list_params:
                 return await self.get_all(collection, unique_constraints)
 
-            # Build Elasticsearch query
+            # Build Elasticsearch query using new helper methods
             query_body = {
-                "from": list_params.skip,
+                "from": (list_params.page - 1) * list_params.page_size,
                 "size": list_params.page_size,
-                "query": self._build_es_query(list_params)
+                "query": self._build_query_filter(list_params, entity_metadata)
             }
             
             # Add sorting if specified
-            if list_params.sort_field:
-                query_body["sort"] = [
-                    {list_params.sort_field: {"order": list_params.sort_order}}
-                ]
+            sort_spec = self._build_sort_spec(list_params)
+            if sort_spec:
+                query_body["sort"] = sort_spec
 
             res = await es.search(index=collection, body=query_body)
             hits = res.get("hits", {}).get("hits", [])
-            results = [{**hit["_source"], "id": hit["_id"]} for hit in hits]
+            results = [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
             
             # Extract total count from search response
             total_count = res.get("hits", {}).get("total", {}).get("value", 0)
@@ -136,44 +135,6 @@ class ElasticsearchDatabase(DatabaseInterface):
                 operation="get_list"
             )
 
-    def _build_es_query(self, list_params) -> Dict[str, Any]:
-        """Build Elasticsearch query from ListParams."""
-        if not list_params.search_filters and not list_params.field_filters:
-            return {"match_all": {}}
-        
-        must_clauses = []
-        
-        # Add text search filters
-        for field, value in list_params.search_filters.items():
-            must_clauses.append({
-                "wildcard": {
-                    field: f"*{value}*"
-                }
-            })
-        
-        # Add field filters
-        for field, value in list_params.field_filters.items():
-            if isinstance(value, dict) and ('$gte' in value or '$lte' in value):
-                # Range filter
-                range_filter = {}
-                if '$gte' in value:
-                    range_filter['gte'] = value['$gte']
-                if '$lte' in value:
-                    range_filter['lte'] = value['$lte']
-                must_clauses.append({
-                    "range": {field: range_filter}
-                })
-            else:
-                # Exact match
-                must_clauses.append({
-                    "term": {f"{field}.keyword": value} if isinstance(value, str) else {"term": {field: value}}
-                })
-        
-        return {
-            "bool": {
-                "must": must_clauses
-            }
-        }
 
     async def get_by_id(self, collection: str, doc_id: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Get a document by ID."""
@@ -186,11 +147,31 @@ class ElasticsearchDatabase(DatabaseInterface):
                 if missing_indexes:
                     warnings.extend(missing_indexes)
             
-            res = await es.get(index=collection, id=doc_id)
-            result = {**res["_source"], "id": res["_id"]}
+            # Try the ID as-is first, then try to find by normalized ID if that fails
+            try:
+                res = await es.get(index=collection, id=doc_id)
+            except ESNotFoundError:
+                # If direct lookup fails, try to find document by searching for normalized ID
+                # This handles case where we receive lowercase ID but ES has mixed case
+                search_res = await es.search(
+                    index=collection,
+                    body={
+                        "query": {"match_all": {}},
+                        "size": 10000  # Get all documents to search through
+                    }
+                )
+                
+                for hit in search_res.get("hits", {}).get("hits", []):
+                    if self._normalize_id(hit["_id"]) == self._normalize_id(doc_id):
+                        res = {"_source": hit["_source"], "_id": hit["_id"]}
+                        break
+                else:
+                    raise NotFoundError(collection, doc_id)
+            
+            result = {**res["_source"], "id": self._normalize_id(res["_id"])}
             return result, warnings
-        except ESNotFoundError:
-            raise NotFoundError(collection, doc_id)
+        except NotFoundError:
+            raise
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
@@ -246,6 +227,62 @@ class ElasticsearchDatabase(DatabaseInterface):
                 entity=collection,
                 operation="create_collection"
             )
+
+    def _build_query_filter(self, list_params, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Build Elasticsearch query from ListParams with field-type awareness."""
+        if not list_params or not list_params.filters:
+            return {"match_all": {}}
+        
+        must_clauses = []
+        for field, value in list_params.filters.items():
+            if isinstance(value, dict) and ('$gte' in value or '$lte' in value):
+                # Range filter - convert MongoDB-style to Elasticsearch range query
+                range_query = {}
+                if '$gte' in value:
+                    range_query['gte'] = value['$gte']
+                if '$lte' in value:
+                    range_query['lte'] = value['$lte']
+                must_clauses.append({"range": {field: range_query}})
+            else:
+                # Determine matching strategy based on field type
+                field_type = self._get_field_type(field, entity_metadata)
+                if field_type == 'String':
+                    # Text fields: partial match with wildcard
+                    must_clauses.append({
+                        "wildcard": {
+                            f"{field}.keyword": f"*{value}*"
+                        }
+                    })
+                else:
+                    # Non-text fields (enums, numbers, dates, etc.): exact match
+                    must_clauses.append({"term": {f"{field}.keyword": value}})
+        
+        if must_clauses:
+            return {"bool": {"must": must_clauses}}
+        else:
+            return {"match_all": {}}
+
+    def _build_sort_spec(self, list_params) -> List[Dict[str, Any]]:
+        """Build Elasticsearch sort specification from ListParams."""
+        if not list_params or not list_params.sort_field:
+            return []
+        
+        sort_order = "asc" if list_params.sort_order == "asc" else "desc"
+        return [{f"{list_params.sort_field}.keyword": {"order": sort_order}}]
+
+    def _get_field_type(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
+        """Get field type from entity metadata or default to String."""
+        if not entity_metadata:
+            return 'String'
+        
+        field_info = entity_metadata.get('fields', {}).get(field_name, {})
+        field_type = field_info.get('type', 'String')
+        
+        # Check if field has enum values - treat as exact match even if type is String
+        if 'enum' in field_info:
+            return 'Enum'  # Use exact matching for enum fields
+        
+        return field_type
 
     async def delete_collection(self, collection: str) -> bool:
         """Delete a collection."""
@@ -329,7 +366,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                 
             res = await es.search(index=collection, query={"match_all": {}})
             hits = res.get("hits", {}).get("hits", [])
-            return [{**hit["_source"], "id": hit["_id"]} for hit in hits]
+            return [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
         except Exception as e:
             raise DatabaseError(
                 message=str(e),

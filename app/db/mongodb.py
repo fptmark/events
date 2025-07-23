@@ -99,7 +99,7 @@ class MongoDatabase(DatabaseInterface):
                 operation="get_all"
             )
 
-    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count."""
         self._ensure_initialized()
         
@@ -121,7 +121,7 @@ class MongoDatabase(DatabaseInterface):
             pipeline = []
             
             # Build match stage for filtering
-            match_query = self._build_query_filter(list_params)
+            match_query = self._build_query_filter(list_params, entity_metadata)
             if match_query:
                 pipeline.append({"$match": match_query})
             

@@ -96,7 +96,7 @@ class UserEvent(BaseModel):
             unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
             
             # Get filtered data from database
-            raw_docs, warnings, total_count = await DatabaseFactory.get_list("userevent", unique_constraints, list_params)
+            raw_docs, warnings, total_count = await DatabaseFactory.get_list("userevent", unique_constraints, list_params, cls._metadata)
             
             # Use common processing
             userevent_data = process_raw_results(cls, "UserEvent", raw_docs, warnings)

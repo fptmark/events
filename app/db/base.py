@@ -34,6 +34,12 @@ class DatabaseInterface(ABC):
             operation="init"
         )
     
+    def _normalize_id(self, doc_id: str) -> str:
+        """Normalize document ID to lowercase for consistent cross-database behavior"""
+        if not doc_id:
+            return doc_id
+        return str(doc_id).lower()
+    
     def _wrap_database_operation(self, operation: str, entity: str):
         """Decorator to wrap database operations with error handling"""
         def decorator(func):
@@ -75,7 +81,7 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count"""
         pass
 
