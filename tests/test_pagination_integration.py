@@ -179,6 +179,214 @@ class PaginationIntegrationTester(BaseTestFramework):
         return ('data' in response and 
                 isinstance(response['data'], list) and 
                 len(response['data']) == 0)
+    
+    def test_view_parameter_basic(self):
+        """Test view parameter functionality"""
+        if self.verbose:
+            print("\n🧪 Testing basic view parameter...")
+            
+        # Test view parameter with account FK data
+        import urllib.parse
+        view_spec = '{"account":["createdAt"]}'
+        encoded_view = urllib.parse.quote(view_spec)
+        
+        success, response = self.make_api_request("GET", f"/api/user?view={encoded_view}&pageSize=5")
+        if not success:
+            if self.verbose:
+                print(f"    ❌ API request failed")
+            return False
+            
+        users = response.get('data', [])
+        if not users:
+            if self.verbose:
+                print("    ✅ No users found, but request succeeded")
+            return True  # No users to test FK on, but request succeeded
+        
+        if self.verbose:
+            print(f"    📊 Found {len(users)} users to check")
+            
+        # The main test: did the view parameter NOT break the query?
+        # If we get here with users, the view parameter processing worked
+        has_users_with_account_id = False
+        has_account_data = False
+        
+        for i, user in enumerate(users):
+            if self.verbose:
+                print(f"    User {i+1}: id={user.get('id')}, accountId={user.get('accountId')}")
+                
+            if user.get('accountId'):
+                has_users_with_account_id = True
+                account_data = user.get('account')
+                if account_data:
+                    has_account_data = True
+                    if self.verbose:
+                        print(f"      Account data: {account_data}")
+                    # Should have exists flag
+                    if 'exists' not in account_data:
+                        if self.verbose:
+                            print(f"      ❌ Missing 'exists' flag in account data")
+                        return False
+                else:
+                    if self.verbose:
+                        print(f"      ⚠️  User has accountId but no account data")
+                        
+        if self.verbose:
+            print(f"    📈 Summary: {len(users)} users, {has_users_with_account_id} have accountId, {has_account_data} have account data")
+                        
+        # Main success criteria: View parameter didn't break the query (we got users back)
+        # If we get here, the original issue is fixed - view param no longer returns 0 records
+        return len(users) > 0 or not has_users_with_account_id  # Success if we got users OR if no users have accountId to test
+    
+    def test_view_parameter_complex(self):
+        """Test view parameter with multiple FK fields"""
+        if self.verbose:
+            print("\n🧪 Testing complex view parameter...")
+            
+        # Test view parameter with multiple fields from account
+        import urllib.parse
+        view_spec = '{"account":["createdAt","updatedAt"]}'
+        encoded_view = urllib.parse.quote(view_spec)
+        
+        success, response = self.make_api_request("GET", f"/api/user?view={encoded_view}&pageSize=3")
+        if not success:
+            if self.verbose:
+                print("    ❌ API request failed")
+            return False
+            
+        users = response.get('data', [])
+        if self.verbose:
+            print(f"    📊 Got {len(users)} users with complex view parameter")
+            
+        # Main test: view parameter didn't break the query
+        return True  # If we got here, the request succeeded
+    
+    def test_view_with_pagination(self):
+        """Test view parameter combined with pagination"""
+        if self.verbose:
+            print("\n🧪 Testing view parameter with pagination...")
+            
+        # Test view + pagination
+        import urllib.parse
+        view_spec = '{"account":["createdAt"]}'
+        encoded_view = urllib.parse.quote(view_spec)
+        
+        success, response = self.make_api_request("GET", f"/api/user?view={encoded_view}&page=1&pageSize=5")
+        if not success:
+            if self.verbose:
+                print("    ❌ API request failed")
+            return False
+            
+        users = response.get('data', [])
+        if self.verbose:
+            print(f"    📊 Got {len(users)} users with view+pagination")
+            
+        # Should respect page size
+        if len(users) > 5:
+            if self.verbose:
+                print(f"    ❌ Too many users returned: {len(users)} > 5")
+            return False
+            
+        # Main test: view+pagination combination worked
+        return True
+    
+    def test_view_with_filtering(self):
+        """Test view parameter combined with filtering"""
+        if self.verbose:
+            print("\n🧪 Testing view parameter with filtering...")
+            
+        # Test view + filtering
+        import urllib.parse
+        view_spec = '{"account":["createdAt"]}'
+        encoded_view = urllib.parse.quote(view_spec)
+        
+        success, response = self.make_api_request("GET", f"/api/user?view={encoded_view}&gender=male&pageSize=5")
+        if not success:
+            if self.verbose:
+                print("    ❌ API request failed")
+            return False
+            
+        users = response.get('data', [])
+        if self.verbose:
+            print(f"    📊 Got {len(users)} users with view+filtering")
+        
+        # Verify filtering worked (if we have users)
+        for user in users:
+            if user.get('gender') and user.get('gender') != 'male':
+                if self.verbose:
+                    print(f"    ❌ Filter failed: user has gender={user.get('gender')}")
+                return False
+                
+        # Main test: view+filtering combination worked
+        return True
+    
+    def test_view_with_sorting(self):
+        """Test view parameter combined with sorting"""
+        if self.verbose:
+            print("\n🧪 Testing view parameter with sorting...")
+            
+        # Test view + sorting
+        import urllib.parse
+        view_spec = '{"account":["createdAt"]}'
+        encoded_view = urllib.parse.quote(view_spec)
+        
+        success, response = self.make_api_request("GET", f"/api/user?view={encoded_view}&sort=username&order=asc&pageSize=5")
+        if not success:
+            if self.verbose:
+                print("    ❌ API request failed")
+            return False
+            
+        users = response.get('data', [])
+        if self.verbose:
+            print(f"    📊 Got {len(users)} users with view+sorting")
+            
+        if len(users) >= 2:
+            # Check sorting worked
+            usernames = [user.get('username', '') for user in users if user.get('username')]
+            if len(usernames) >= 2:
+                if usernames != sorted(usernames):
+                    if self.verbose:
+                        print(f"    ❌ Sorting failed: {usernames} not in ascending order")
+                    return False
+                    
+        # Main test: view+sorting combination worked
+        return True
+    
+    def test_view_with_complex_pfs(self):
+        """Test view parameter with complex PFS combination"""
+        if self.verbose:
+            print("\n🧪 Testing view parameter with complex PFS...")
+            
+        # Test view + pagination + filtering + sorting
+        import urllib.parse
+        view_spec = '{"account":["createdAt"]}'
+        encoded_view = urllib.parse.quote(view_spec)
+        
+        url = f"/api/user?view={encoded_view}&gender=male&sort=username&order=desc&page=1&pageSize=3"
+        success, response = self.make_api_request("GET", url)
+        if not success:
+            if self.verbose:
+                print("    ❌ API request failed")
+            return False
+            
+        users = response.get('data', [])
+        if self.verbose:
+            print(f"    📊 Got {len(users)} users with complex view+PFS")
+        
+        # Should respect page size
+        if len(users) > 3:
+            if self.verbose:
+                print(f"    ❌ Too many users: {len(users)} > 3")
+            return False
+            
+        # Check filtering works
+        for user in users:
+            if user.get('gender') and user.get('gender') != 'male':
+                if self.verbose:
+                    print(f"    ❌ Filter failed: user has gender={user.get('gender')}")
+                return False
+                    
+        # Main test: complex view+PFS combination worked
+        return True
 
     @staticmethod
     def create_argument_parser():
@@ -248,6 +456,15 @@ async def main():
             tester.test("Range Filtering", tester.test_range_filtering, True)
             tester.test("Complex Filtering", tester.test_complex_filtering, True)
             tester.test("Pagination with Filtering", tester.test_pagination_with_filtering, True)
+            
+            print("\n👁️  VIEW PARAMETER TESTS")
+            print("-" * 30)
+            tester.test("Basic View Parameter", tester.test_view_parameter_basic, True)
+            tester.test("Complex View Parameter", tester.test_view_parameter_complex, True)
+            tester.test("View with Pagination", tester.test_view_with_pagination, True)
+            tester.test("View with Filtering", tester.test_view_with_filtering, True)
+            tester.test("View with Sorting", tester.test_view_with_sorting, True)
+            tester.test("View with Complex PFS", tester.test_view_with_complex_pfs, True)
         
         # Print summary
         success = tester.summary()

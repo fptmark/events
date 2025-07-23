@@ -34,15 +34,17 @@ class TestResult:
     error: Optional[str] = None
 
 class ComprehensiveTestRunner:
-    def __init__(self, verbose: bool = False, curl: bool = False):
+    def __init__(self, verbose: bool = False, curl: bool = False, mongo_only: bool = False, es_only: bool = False):
         self.server_port = 5500
         self.server_process = None
         self.temp_configs = []
         self.verbose = verbose
         self.curl = curl
+        self.mongo_only = mongo_only
+        self.es_only = es_only
         
-        # Define all test configurations (Elasticsearch disabled due to hanging issues)
-        self.test_configs = [
+        # Define all test configurations
+        all_configs = [
             TestConfig(
                 name="MongoDB without validation",
                 database="mongodb",
@@ -70,7 +72,7 @@ class ComprehensiveTestRunner:
             TestConfig(
                 name="Elasticsearch without validation",
                 database="elasticsearch",
-                validation="none",
+                validation="none", 
                 config_data={
                     "database": "elasticsearch",
                     "es_host": "localhost",
@@ -82,7 +84,7 @@ class ComprehensiveTestRunner:
             ),
             TestConfig(
                 name="Elasticsearch with validation",
-                database="elasticsearch",
+                database="elasticsearch", 
                 validation="get_all",
                 config_data={
                     "database": "elasticsearch",
@@ -94,6 +96,17 @@ class ComprehensiveTestRunner:
                 }
             )
         ]
+        
+        # Filter configurations based on database flags
+        if self.mongo_only and not self.es_only:
+            # Only MongoDB
+            self.test_configs = [config for config in all_configs if config.database == "mongodb"]
+        elif self.es_only and not self.mongo_only:
+            # Only Elasticsearch
+            self.test_configs = [config for config in all_configs if config.database == "elasticsearch"]
+        else:
+            # Default: run all configurations (both flags, or neither flag)
+            self.test_configs = all_configs
     
     def cleanup_port(self):
         """Kill any processes using our port"""
@@ -343,6 +356,15 @@ class ComprehensiveTestRunner:
         """Run all test configurations"""
         print("🧪 COMPREHENSIVE TEST SUITE")
         print("=" * 80)
+        
+        # Show which databases are being tested
+        if self.mongo_only and not self.es_only:
+            print("🗄️  Testing: MongoDB only")
+        elif self.es_only and not self.mongo_only:
+            print("🔍 Testing: Elasticsearch only")
+        else:
+            print("🗄️  Testing: MongoDB + Elasticsearch")
+            
         print(f"Running {len(self.test_configs)} configurations...")
         print()
         
@@ -413,9 +435,20 @@ def main():
                        help='Show detailed URL testing and response information')
     parser.add_argument('--curl', action='store_true',
                        help='Dump all API calls in curl format to curl.sh (overwrites existing file)')
+    parser.add_argument('--mongo', action='store_true',
+                       help='Include MongoDB configurations (both validation modes)')
+    parser.add_argument('--es', action='store_true',
+                       help='Include Elasticsearch configurations (both validation modes)')
     args = parser.parse_args()
     
-    runner = ComprehensiveTestRunner(verbose=args.verbose, curl=args.curl)
+    # Note: --mongo and --es can be used together (same as default)
+    
+    runner = ComprehensiveTestRunner(
+        verbose=args.verbose, 
+        curl=args.curl, 
+        mongo_only=args.mongo, 
+        es_only=args.es
+    )
     
     try:
         results = runner.run_all_tests()
