@@ -8,7 +8,30 @@ the dynamic router creation process and avoid expensive importlib operations.
 import yaml
 import logging
 from pathlib import Path
-from typing import Dict, Any, Type, List
+from typing import Dict, Any, Type, List, Protocol
+from pydantic import BaseModel
+
+
+class EntityModelProtocol(Protocol):
+    """Protocol for entity model classes with required methods and attributes."""
+    _metadata: Dict[str, Any]
+    
+    @classmethod
+    async def get_all(cls) -> Dict[str, Any]: ...
+    
+    @classmethod
+    async def get_list(cls, list_params) -> Dict[str, Any]: ...
+    
+    @classmethod
+    async def get(cls, entity_id: str): ...
+    
+    async def save(self, entity_id: str = '') -> tuple: ...
+    
+    @classmethod
+    async def delete(cls, entity_id: str) -> tuple[bool, list]: ...
+    
+    @classmethod
+    def model_validate(cls, data: Dict[str, Any]) -> 'EntityModelProtocol': ...
 import importlib
 
 logger = logging.getLogger(__name__)
@@ -48,12 +71,12 @@ class ModelImportCache:
     """Centralized cache for all model class imports to avoid repeated importlib operations."""
     
     # Cache for imported model classes to avoid repeated imports
-    _model_class_cache: Dict[str, Type] = {}
-    _create_class_cache: Dict[str, Type] = {}
-    _update_class_cache: Dict[str, Type] = {}
+    _model_class_cache: Dict[str, Type[EntityModelProtocol]] = {}
+    _create_class_cache: Dict[str, Type[BaseModel]] = {}
+    _update_class_cache: Dict[str, Type[BaseModel]] = {}
     
     @classmethod
-    def get_model_class(cls, entity_name: str) -> Type:
+    def get_model_class(cls, entity_name: str) -> Type[EntityModelProtocol]:
         """Dynamically import the main model class with caching."""
         # Check cache first
         if entity_name in cls._model_class_cache:
@@ -72,7 +95,7 @@ class ModelImportCache:
             raise ImportError(f"Could not import model class {entity_name}")
     
     @classmethod
-    def get_create_class(cls, entity_name: str) -> Type:
+    def get_create_class(cls, entity_name: str) -> Type[BaseModel]:
         """Dynamically import the Create model class with caching."""
         # Check cache first
         if entity_name in cls._create_class_cache:
@@ -91,7 +114,7 @@ class ModelImportCache:
             raise ImportError(f"Could not import create class {entity_name}Create")
     
     @classmethod
-    def get_update_class(cls, entity_name: str) -> Type:
+    def get_update_class(cls, entity_name: str) -> Type[BaseModel]:
         """Dynamically import the Update model class with caching."""
         # Check cache first
         if entity_name in cls._update_class_cache:
