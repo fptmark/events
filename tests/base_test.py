@@ -30,13 +30,19 @@ class TestResult:
 class BaseTestFramework:
     """Base test framework that can be extended for different entities"""
     
-    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500"):
+    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl: bool = False):
         self.config_file = config_file
         self.server_url = server_url
+        self.verbose = verbose
+        self.curl = curl
         self.test_count = 0
         self.passed = 0
         self.failed = 0
         self.results: List[TestResult] = []
+        
+        # Initialize curl.sh file if --curl option is enabled
+        if self.curl:
+            self._init_curl_file()
         
         # Load config and initialize database through existing abstraction
         self.config = Config.initialize(config_file)
@@ -126,9 +132,63 @@ class BaseTestFramework:
         
         return self.failed == 0
     
+    def _init_curl_file(self):
+        """Initialize curl.sh file, overwriting if it exists"""
+        try:
+            with open('curl.sh', 'w') as f:
+                f.write('#!/bin/bash\n')
+                f.write('# Generated curl commands from test execution\n')
+                f.write('# Run: chmod +x curl.sh && ./curl.sh\n\n')
+            print("📁 Initialized curl.sh - API calls will be logged")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not initialize curl.sh: {e}")
+    
+    def _append_to_curl_file(self, method: str, url: str, data: Dict = None):
+        """Append a curl command to curl.sh"""
+        try:
+            with open('curl.sh', 'a') as f:
+                f.write(f'echo "=== {method} {url} ==="\n')
+                
+                if method.upper() == "GET":
+                    f.write(f'curl -X GET "{url}"\n')
+                elif method.upper() in ["POST", "PUT"]:
+                    if data:
+                        import json
+                        json_data = json.dumps(data, indent=2)
+                        # Escape quotes for shell
+                        escaped_data = json_data.replace('"', '\\"')
+                        f.write(f'curl -X {method.upper()} "{url}" \\\n')
+                        f.write(f'  -H "Content-Type: application/json" \\\n')
+                        f.write(f'  -d "{escaped_data}"\n')
+                    else:
+                        f.write(f'curl -X {method.upper()} "{url}"\n')
+                elif method.upper() == "DELETE":
+                    f.write(f'curl -X DELETE "{url}"\n')
+                
+                f.write('echo ""\n\n')  # Add spacing between commands
+        except Exception as e:
+            if self.verbose:
+                print(f"⚠️ Warning: Could not write to curl.sh: {e}")
+    
     def make_api_request(self, method: str, endpoint: str, data: Dict = None, expected_status: int = 200) -> Tuple[bool, Dict]:
         """Helper method for API requests"""
         url = f"{self.server_url}{endpoint}"
+        
+        # Log to curl.sh if --curl option is enabled
+        if self.curl:
+            self._append_to_curl_file(method, url, data)
+        
+        # Verbose mode: show detailed request info
+        if self.verbose:
+            print(f"🔗 Testing URL: {method} {url}")
+            if data:
+                # Show abbreviated request data
+                data_str = str(data)
+                if len(data_str) > 100:
+                    data_str = data_str[:97] + "..."
+                print(f"   📤 Request: {data_str}")
+        
+        start_time = datetime.now()
         
         try:
             if method.upper() == "GET":
@@ -142,7 +202,42 @@ class BaseTestFramework:
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
             
-            print(f"  {method} {endpoint} -> {response.status_code}")
+            # Calculate response time
+            duration = (datetime.now() - start_time).total_seconds() * 1000
+            
+            # Show basic or verbose response info
+            if self.verbose:
+                print(f"   📥 Response: {response.status_code} {response.reason} ({duration:.0f}ms)")
+                
+                # Show response summary
+                try:
+                    json_response = response.json()
+                    if 'data' in json_response and isinstance(json_response['data'], list):
+                        count = len(json_response['data'])
+                        print(f"   📊 Data: Retrieved {count} items")
+                        if 'total_count' in json_response:
+                            print(f"   📊 Total: {json_response['total_count']} total items")
+                    elif 'detail' in json_response:
+                        detail = json_response['detail']
+                        if isinstance(detail, list) and len(detail) > 0:
+                            print(f"   📊 Error: {detail[0].get('msg', str(detail[0]))}")
+                        else:
+                            print(f"   📊 Error: {detail}")
+                    elif response.status_code >= 400:
+                        print(f"   📊 Error: {response.text[:100]}")
+                    elif len(response.text) < 200:
+                        print(f"   📊 Response: {response.text}")
+                except:
+                    if len(response.text) < 100:
+                        print(f"   📊 Response: {response.text}")
+                
+                # Show pass/fail status
+                if response.status_code == expected_status:
+                    print(f"   ✅ Result: PASS - Status {response.status_code} as expected")
+                else:
+                    print(f"   ❌ Result: FAIL - Expected {expected_status}, got {response.status_code}")
+            else:
+                print(f"  {method} {endpoint} -> {response.status_code}")
             
             if response.status_code == expected_status:
                 try:
@@ -150,7 +245,8 @@ class BaseTestFramework:
                 except:
                     return True, {"raw_response": response.text}
             else:
-                print(f"  Expected {expected_status}, got {response.status_code}")
+                if not self.verbose:  # Only print if not already shown in verbose mode
+                    print(f"  Expected {expected_status}, got {response.status_code}")
                 try:
                     return False, response.json()
                 except:
@@ -214,4 +310,8 @@ class BaseTestFramework:
                            help='Server URL for API tests (default: http://127.0.0.1:5500)')
         parser.add_argument('--preserve', action='store_true',
                            help='Preserve test data after running tests (for troubleshooting)')
+        parser.add_argument('--verbose', action='store_true',
+                           help='Show detailed URL testing and response information')
+        parser.add_argument('--curl', action='store_true',
+                           help='Dump all API calls in curl format to curl.sh (overwrites existing file)')
         return parser

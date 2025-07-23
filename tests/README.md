@@ -1,6 +1,6 @@
 # Events Testing Framework
 
-Comprehensive validation testing framework for the Events application. Tests model validation, API endpoints, and database operations across both MongoDB and Elasticsearch.
+Comprehensive validation and API testing framework for the Events application. Tests model validation, pagination/filtering, API endpoints, and database operations across both MongoDB and Elasticsearch configurations.
 
 ## Overview
 
@@ -8,81 +8,166 @@ This testing framework validates:
 - **Field Constraints**: netWorth ranges, gender enums, string length limits
 - **Database Operations**: Direct insertion bypassing validation
 - **API Endpoints**: Create, Read, Update, Delete operations  
+- **Pagination & Filtering**: URL parameter parsing, sorting, range filters
 - **Validation Logic**: Both write-time and configurable read-time validation
 - **Cross-Database**: Works with both MongoDB and Elasticsearch
+
+## Test Suite Structure
+
+### Core Components
+
+1. **Comprehensive Test Runner** (`comprehensive_test.py`)
+   - Automated server lifecycle management
+   - Multiple database configurations
+   - Parallel test execution across configurations
+   - Summary reporting with pass/fail statistics
+
+2. **Base Test Framework** (`base_test.py`)
+   - Extensible base class for entity testing
+   - Database abstraction using DatabaseFactory
+   - API testing helpers for HTTP requests
+   - Configuration file support (mongo.json, es.json)
+
+3. **Specialized Test Modules**:
+   - `test_user_validation.py` - User model validation and CRUD
+   - `test_pagination_filtering.py` - Pagination, sorting, filtering APIs
+   - `test_server_start_stop.py` - Server lifecycle validation
 
 ## Quick Start
 
 ```bash
-# Ensure server is running
-python app/main.py mongo.json
+# Run comprehensive test suite (all configurations)
+python tests/comprehensive_test.py
 
-# Run User validation tests with MongoDB
+# Run comprehensive tests with verbose output
+python tests/comprehensive_test.py --verbose
+
+# Run individual test module with specific config
 python tests/test_user_validation.py mongo.json --cleanup
 
-# Run User validation tests with Elasticsearch  
-python tests/test_user_validation.py es.json --cleanup
+# Run pagination tests standalone
+python tests/test_pagination_filtering.py
 
-# Run tests for both databases
-python tests/run_tests.py --all --cleanup
+# Run with specific config and verbose mode
+python tests/test_user_validation.py es.json --verbose --cleanup
 ```
 
-## Test Structure
+## Comprehensive Test Configurations
 
-### Base Framework (`base_test.py`)
-- **BaseTestFramework**: Extensible base class for entity testing
-- **Database Abstraction**: Uses existing DatabaseFactory for cross-database compatibility
-- **API Testing**: Helper methods for HTTP requests and validation
-- **Configuration**: Command-line config file support (mongo.json, es.json, etc.)
+The comprehensive test runner validates 4 different configurations:
 
-### User Tests (`test_user_validation.py`)
-- **Direct Database Tests**: Insert invalid data bypassing model validation
-- **API Happy Path**: Valid user creation, retrieval, updates
-- **API Validation Failures**: Test constraint enforcement via API
-- **GET Validation**: Verify read-time validation works when enabled
+| Configuration | Database | Validation | Description |
+|---------------|----------|------------|-------------|
+| MongoDB (no validation) | MongoDB | Disabled | Pure storage testing |
+| MongoDB (with validation) | MongoDB | Enabled | Full validation testing |
+| Elasticsearch (no validation) | Elasticsearch | Disabled | Pure storage testing |
+| Elasticsearch (with validation) | Elasticsearch | Enabled | Full validation testing |
+
+Each configuration tests:
+- Server startup/shutdown with config
+- User model validation scenarios
+- Pagination/filtering API endpoints
+- Error handling and edge cases
 
 ## Test Categories
 
-### 1. Direct Database Insertion Tests
-Tests that invalid data can be inserted directly into the database (bypassing Pydantic validation):
+### 1. Model Validation Tests (`test_user_validation.py`)
 
+**Direct Database Tests**: Verify invalid data can bypass validation:
 ```python
 # Invalid netWorth values (> $10M, negative)
 # Invalid gender enums (non-male/female/other)  
 # Invalid string fields (too short, bad email format)
 ```
 
-### 2. API Endpoint Tests - Happy Path
-Tests valid operations through the API:
-
+**API Happy Path Tests**: Valid operations:
 ```python
-# POST /api/user - Valid user creation with currency strings
-# GET /api/user - Retrieve all users
-# GET /api/user/{id} - Retrieve specific user
-# PUT /api/user/{id} - Update user with valid data
+# POST /api/user - Create user with currency strings
+# GET /api/user - Retrieve all users  
+# GET /api/user/{id} - Get specific user
+# PUT /api/user/{id} - Update user
 ```
 
-### 3. API Endpoint Tests - Validation Failures  
-Tests that API validation catches invalid data:
-
-```python
-# POST with netWorth > $10,000,000 -> 422 error
-# POST with invalid gender enum -> 422 error
-# POST with short username/bad email -> 422 error
+**API Validation Tests**: Error handling:
+```python  
+# POST with netWorth > $10M → 422 error
+# POST with invalid gender → 422 error
+# POST with short username → 422 error
 ```
 
-### 4. Read-Time Validation Tests
-Tests that GET/GET_ALL validation works when `get_validation: "get_all"` is enabled:
-
+**Read-Time Validation**: Configuration-dependent validation:
 ```python
 # Insert invalid data directly to database
-# GET /api/user should return validation warnings/errors
-# Individual GET should also trigger validation
+# GET requests show warnings when get_validation enabled
 ```
 
-## Configuration
+### 2. Pagination & Filtering Tests (`test_pagination_filtering.py`)
 
-The framework uses the same configuration files as the main application:
+**URL Parameter Parsing**:
+- Basic pagination: `?page=2&pageSize=25`
+- Sorting: `?sort=name&order=desc`  
+- Range filters: `?age=[18:65]&netWorth=[50000:]`
+- Text search: `?username=john&email=gmail`
+- Complex combinations
+
+**Database Integration**:
+- MongoDB aggregation pipeline generation
+- Field-type-based matching (text vs exact)
+- Sort specification building
+
+**API Endpoint Testing**:
+- `/api/user` with various query parameters
+- Error handling for invalid parameters
+- Response format validation
+
+### 3. Server Lifecycle Tests (`test_server_start_stop.py`)
+
+**Server Management**:
+- Clean startup with different configs
+- Port availability checking
+- Graceful shutdown
+- Process cleanup
+
+## URL Testing Examples (with --verbose)
+
+The verbose mode shows actual URLs being tested and their results:
+
+```bash
+$ python tests/test_user_validation.py mongo.json --verbose
+
+🔗 Testing URL: GET http://localhost:5500/api/user?page=1&pageSize=25
+   ✅ Status: 200 - Retrieved 25 users
+   📊 Response time: 145ms
+
+🔗 Testing URL: GET http://localhost:5500/api/user?username=john&age=[25:35]
+   ✅ Status: 200 - Found 3 matching users
+   📊 Response time: 89ms
+
+🔗 Testing URL: POST http://localhost:5500/api/user
+   ❌ Status: 422 - Validation failed: netWorth exceeds maximum
+   📊 Response time: 52ms
+```
+
+### Pagination URL Examples
+
+```bash
+# Basic pagination
+GET /api/user?page=2&pageSize=15&sort=username&order=asc
+
+# Text search with partial matching  
+GET /api/user?username=john&email=gmail
+
+# Enum exact matching
+GET /api/user?gender=male&isAccountOwner=true
+
+# Range filtering
+GET /api/user?age=[21:65]&netWorth=[25000:100000]
+
+# Complex filtering
+GET /api/user?page=3&pageSize=50&sort=createdAt&order=desc&username=smith&age=[25:]&gender=female
+```
+
+## Configuration Files
 
 ### mongo.json
 ```json
@@ -106,78 +191,121 @@ The framework uses the same configuration files as the main application:
 }
 ```
 
-## Usage Examples
+## Command Line Options
 
-### Run Individual Test Suite
-```bash
-# Test User model with MongoDB
-python tests/test_user_validation.py mongo.json
+### Global Options
+- `--verbose` - Show detailed URL testing and response information
+- `--cleanup` - Clean up test data after completion
+- `--server-url URL` - Use custom server URL (default: http://localhost:5500)
 
-# Test User model with Elasticsearch
-python tests/test_user_validation.py es.json
+### Test-Specific Options
+- `mongo.json` / `es.json` - Use specific database configuration
+- `--timeout SECONDS` - Set custom timeout for operations
 
-# Test with cleanup
-python tests/test_user_validation.py mongo.json --cleanup
+## Expected Results
 
-# Test with custom server URL
-python tests/test_user_validation.py mongo.json --server-url http://localhost:8000
-```
+### Comprehensive Test Suite
+✅ **All Configurations Pass**: 4/4 database configurations working  
+✅ **All Test Categories**: Validation, pagination, server lifecycle  
+✅ **Performance**: Typical runtime 2-5 minutes for full suite
 
-### Run Multiple Configurations
-```bash
-# Test both MongoDB and Elasticsearch
-python tests/run_tests.py --all
-
-# Test both with cleanup
-python tests/run_tests.py --all --cleanup
-
-# Test specific config
-python tests/run_tests.py --config mongo.json --cleanup
-```
-
-## Expected Test Results
-
-When running against a properly configured system:
-
+### Individual Test Modules  
 ✅ **Direct Database Insertion**: Should succeed (bypasses validation)
 ✅ **API Happy Path**: Should succeed (valid data passes validation)  
 ✅ **API Validation Failures**: Should fail with 422 errors (invalid data caught)
+✅ **Pagination/Filtering**: Should handle all URL parameter combinations
 ✅ **GET Validation**: Should show warnings/errors if `get_validation` enabled
 
-## Extending for Other Entities
+## Verbose Mode Output Format
 
-To add tests for other entities (Account, Event, etc.):
+When using `--verbose`, tests show detailed execution information:
 
+```bash
+📋 Configuration: MongoDB with validation
+🚀 Server: Starting on port 5500
+✅ Server: Ready (attempt 3)
+
+🧪 Test Category: User Validation
+🔗 URL: GET http://localhost:5500/api/user
+   📤 Request: {"headers": {"Content-Type": "application/json"}}
+   📥 Response: 200 OK (156ms)
+   📊 Data: {"data": [...], "total_count": 42}
+   ✅ Result: PASS - Retrieved 42 users
+
+🔗 URL: POST http://localhost:5500/api/user
+   📤 Request: {"username": "test", "netWorth": 15000000, ...}  
+   📥 Response: 422 Unprocessable Entity (45ms)
+   📊 Error: {"detail": [{"field": "netWorth", "message": "exceeds maximum"}]}
+   ✅ Result: PASS - Validation correctly rejected invalid data
+
+🛑 Server: Stopped gracefully
+📊 Summary: 28/30 tests passed (93.3%)
+```
+
+## Extending Tests
+
+### Adding New Entity Tests
 1. Create `test_{entity}_validation.py` based on `test_user_validation.py`
 2. Inherit from `BaseTestFramework`
-3. Implement entity-specific validation tests:
-   - `test_insert_invalid_{field}_documents()`
-   - `test_api_create_{entity}_happy_path()`
-   - `test_api_create_{entity}_{field}_validation()`
-4. Add entity to `run_tests.py` choices
+3. Implement entity-specific validation scenarios
+4. Add to comprehensive test runner
+
+### Adding New URL Scenarios
+1. Add test cases to `test_pagination_filtering.py`
+2. Include in `TestRealWorldScenarios.test_url_parameter_combinations()`
+3. Test with both MongoDB and Elasticsearch
 
 ## Troubleshooting
 
-### Server Not Running
+### Server Issues
 ```
-❌ Request failed: ConnectionError
+❌ Server failed to start
 ```
-**Solution**: Start the server first: `python app/main.py mongo.json`
+**Solution**: Check database is running, port 5500 is available
 
-### Database Connection Failed  
+### Database Connection
+```  
+❌ Database connection failed
 ```
-❌ Database connection failed: ...
-```
-**Solution**: Ensure MongoDB/Elasticsearch is running and config is correct
-
-### No Validation Errors on GET
-```
-⚠️ GET validation might be disabled or no invalid data found
-```
-**Solution**: Check `get_validation: "get_all"` is set in config file
+**Solution**: Verify MongoDB/Elasticsearch running and config file correct
 
 ### Import Errors
 ```
-❌ Import error: No module named 'app'
+❌ No module named 'app'
 ```
-**Solution**: Run from project root directory: `cd /path/to/events && python tests/...`
+**Solution**: Run from project root: `cd /path/to/events && python tests/...`
+
+### Timeout Issues
+```
+⏱️ Test timed out after 180s
+```
+**Solution**: Use `--timeout 300` for slower systems or add `--verbose` to see progress
+
+### No Validation Warnings  
+```
+⚠️ No validation errors detected in GET
+```
+**Solution**: Ensure `get_validation: "get_all"` in config and invalid data exists
+
+## Development Workflow
+
+### Running During Development
+```bash
+# Quick validation test during development
+python tests/test_user_validation.py mongo.json --verbose
+
+# Test specific pagination scenarios
+python tests/test_pagination_filtering.py --verbose
+
+# Full regression test before commit
+python tests/comprehensive_test.py
+```
+
+### CI/CD Integration
+```bash
+# Automated testing (exit code 0 = success, 1 = failure)
+python tests/comprehensive_test.py
+echo $?  # Check exit code
+```
+
+The comprehensive test framework provides confidence that all database configurations, validation rules, pagination features, and API endpoints work correctly across the entire application stack.

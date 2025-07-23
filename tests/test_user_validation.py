@@ -33,8 +33,8 @@ import app.utils as utils
 class UserValidationTester(BaseTestFramework):
     """User-specific validation test suite"""
     
-    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500"):
-        super().__init__(config_file, server_url)
+    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl: bool = False):
+        super().__init__(config_file, server_url, verbose, curl)
         self.test_user_ids = []  # Track created users for cleanup
         
     # === Direct Database Tests (Bypassing Validation) ===
@@ -855,7 +855,7 @@ async def main():
     print(f"Server: {args.server_url}")
     print("="*60)
     
-    tester = UserValidationTester(args.config_file, args.server_url)
+    tester = UserValidationTester(args.config_file, args.server_url, args.verbose, args.curl)
     
     # Setup database connection
     if not await tester.setup_database_connection():
