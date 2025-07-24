@@ -138,6 +138,14 @@ import { OperationResultService } from '../services/operation-result.service';
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    
+    /* Tighten up table row heights */
+    .table td,
+    .table th {
+      padding-top: 0.25rem;
+      padding-bottom: 0.25rem;
+      vertical-align: middle;
+    }
   `]
 })
 export class EntityListComponent implements OnInit, OnDestroy {
