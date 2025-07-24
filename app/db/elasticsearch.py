@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from elasticsearch import AsyncElasticsearch, NotFoundError as ESNotFoundError
 from bson import ObjectId
@@ -13,7 +14,29 @@ class ElasticsearchDatabase(DatabaseInterface):
         super().__init__()
         self._client: Optional[AsyncElasticsearch] = None
         self._url: str = ""
-        self._dbname: str = ""
+    
+    def _convert_datetime_fields(self, document: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert datetime string fields back to datetime objects for Pydantic compatibility."""
+        if not document:
+            return document
+        
+        # Known datetime fields that need conversion
+        datetime_fields = {'createdAt', 'updatedAt', 'dob'}
+        
+        doc_copy = document.copy()
+        for field_name, value in doc_copy.items():
+            if field_name in datetime_fields and isinstance(value, str):
+                try:
+                    # Parse ISO format datetime strings back to datetime objects
+                    if value.endswith('Z'):
+                        # Remove Z and add +00:00 for proper parsing
+                        value = value[:-1] + '+00:00'
+                    doc_copy[field_name] = datetime.fromisoformat(value)
+                except (ValueError, TypeError):
+                    # If parsing fails, leave as string (Pydantic will handle validation)
+                    pass
+        
+        return doc_copy
 
     @property
     def id_field(self) -> str:
@@ -73,7 +96,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             
             res = await es.search(index=collection, query={"match_all": {}}, size=1000)
             hits = res.get("hits", {}).get("hits", [])
-            results = [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
+            results = [self._convert_datetime_fields({**hit["_source"], "id": self._normalize_id(hit["_id"])}) for hit in hits]
             
             # Extract total count from search response
             total_count = res.get("hits", {}).get("total", {}).get("value", 0)
@@ -121,7 +144,7 @@ class ElasticsearchDatabase(DatabaseInterface):
 
             res = await es.search(index=collection, body=query_body)
             hits = res.get("hits", {}).get("hits", [])
-            results = [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
+            results = [self._convert_datetime_fields({**hit["_source"], "id": self._normalize_id(hit["_id"])}) for hit in hits]
             
             # Extract total count from search response
             total_count = res.get("hits", {}).get("total", {}).get("value", 0)
@@ -168,7 +191,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                 else:
                     raise NotFoundError(collection, doc_id)
             
-            result = {**res["_source"], "id": self._normalize_id(res["_id"])}
+            result = self._convert_datetime_fields({**res["_source"], "id": self._normalize_id(res["_id"])})
             return result, warnings
         except NotFoundError:
             raise
@@ -366,7 +389,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                 
             res = await es.search(index=collection, query={"match_all": {}})
             hits = res.get("hits", {}).get("hits", [])
-            return [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
+            return [self._convert_datetime_fields({**hit["_source"], "id": self._normalize_id(hit["_id"])}) for hit in hits]
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
