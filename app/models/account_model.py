@@ -10,8 +10,7 @@ import app.utils as helpers
 from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 from app.notification import notify_warning, NotificationType
-from app.models.utils import process_raw_results
-from app.models.list_params import ListParams
+import app.models.utils as utils
 
 
 class UniqueValidationError(Exception):
@@ -68,7 +67,7 @@ class Account(BaseModel):
             
             raw_docs, warnings, total_count = await DatabaseFactory.get_all("account", unique_constraints)
             
-            account_data = process_raw_results(cls, "Account", raw_docs, warnings)
+            account_data = utils.process_raw_results(cls, "Account", raw_docs, warnings)
             
             return {"data": account_data}
             
@@ -86,7 +85,7 @@ class Account(BaseModel):
             raw_docs, warnings, total_count = await DatabaseFactory.get_list("account", unique_constraints, list_params, cls._metadata)
             
             # Use common processing
-            account_data = process_raw_results(cls, "Account", raw_docs, warnings)
+            account_data = utils.process_raw_results(cls, "Account", raw_docs, warnings)
             
             return {
                 "data": account_data,
@@ -160,6 +159,9 @@ class Account(BaseModel):
                 validated_instance = self.__class__.model_validate(self.model_dump())
                 # Use the validated data for save
                 data = validated_instance.model_dump()
+                                
+                # Validate ObjectId references exist
+                await utils.validate_objectid_references("User", data, self._metadata)
             except PydanticValidationError as e:
                 # Convert to notifications and ValidationError format
                 if len(entity_id) == 0:

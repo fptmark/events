@@ -10,8 +10,7 @@ import app.utils as helpers
 from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 from app.notification import notify_warning, NotificationType
-from app.models.utils import process_raw_results
-from app.models.list_params import ListParams
+import app.models.utils as utils
 
 class GenderEnum(str, Enum):
     MALE = 'male'
@@ -130,7 +129,7 @@ class User(BaseModel):
             
             raw_docs, warnings, total_count = await DatabaseFactory.get_all("user", unique_constraints)
             
-            user_data = process_raw_results(cls, "User", raw_docs, warnings)
+            user_data = utils.process_raw_results(cls, "User", raw_docs, warnings)
             
             return {"data": user_data}
             
@@ -148,7 +147,7 @@ class User(BaseModel):
             raw_docs, warnings, total_count = await DatabaseFactory.get_list("user", unique_constraints, list_params, cls._metadata)
             
             # Use common processing
-            user_data = process_raw_results(cls, "User", raw_docs, warnings)
+            user_data = utils.process_raw_results(cls, "User", raw_docs, warnings)
             
             return {
                 "data": user_data,
@@ -187,7 +186,7 @@ class User(BaseModel):
                     for error in e.errors():
                         field_name = str(error['loc'][-1])
                         notify_warning(
-                            message=f"User {entity_id}: {field_name} validation failed - {error['msg']}",
+                            message=error['msg'],
                             type=NotificationType.VALIDATION,
                             entity="User",
                             field_name=field_name,
@@ -222,6 +221,9 @@ class User(BaseModel):
                 validated_instance = self.__class__.model_validate(self.model_dump())
                 # Use the validated data for save
                 data = validated_instance.model_dump()
+                                
+                # Validate ObjectId references exist
+                await utils.validate_objectid_references("User", data, self._metadata)
             except PydanticValidationError as e:
                 # Convert to notifications and ValidationError format
                 if len(entity_id) == 0:
@@ -231,7 +233,7 @@ class User(BaseModel):
                 for err in e.errors():
                     field_name = str(err["loc"][-1])
                     notify_warning(
-                        message=f"User {entity_id}: {field_name} validation failed - {err['msg']}",
+                        message=err['msg'],
                         type=NotificationType.VALIDATION,
                         entity="User",
                         field_name=field_name,
