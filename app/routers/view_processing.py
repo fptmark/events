@@ -134,16 +134,21 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Optional[Dict[st
                         else:
                             missing_value = entity_dict.get(fk_name, {}).get('id', 'unknown')
                     else:
-                        missing_value = entity_dict.get(fk_name, {}).get('id', 'unknown')
+                        missing_value = entity_dict.get(fk_id_field, 'unknown')
                     
-                    notify_warning(f"{fk_entity_name} {missing_value} not found", 
-                                 NotificationType.DATABASE, 
-                                 entity=entity_name, 
-                                 entity_id=entity_id, 
-                                 field_name=fk_id_field, 
-                                 value=missing_value)
-                    # Return an object indicating the FK doesn't exist
-                    entity_dict[fk_name] = {"exists": False}
+                    # Create ValidationError instead of just notification
+                    from app.errors import ValidationError, ValidationFailure
+                    validation_failure = ValidationFailure(
+                        field_name=fk_id_field,
+                        message=f"Id {missing_value} does not exist",
+                        value=missing_value
+                    )
+                    
+                    raise ValidationError(
+                        message=f"Invalid {fk_id_field}: {fk_entity_name} does not exist",
+                        entity=entity_name,
+                        invalid_fields=[validation_failure]
+                    )
     
     except Exception as view_error:
         # Log view parsing error but continue without FK data
@@ -162,14 +167,21 @@ async def auto_validate_fk_fields(entity_dict: Dict[str, Any], entity_name: str,
                 fk_entity_cls = ModelImportCache.get_model_class(fk_entity_name)
                 await fk_entity_cls.get(entity_dict[field_name])
             except NotFoundError:
-                # Router packages complete notification with all context - same format as model validation
+                # Create ValidationError for ObjectId reference that doesn't exist
+                from app.errors import ValidationError, ValidationFailure
                 fk_entity_name = field_name[:-2].capitalize()  # Remove 'Id' suffix and capitalize
-                notify_warning(f"{fk_entity_name} {entity_dict[field_name]} not found", 
-                             NotificationType.DATABASE, 
-                             entity=entity_name, 
-                             entity_id=entity_id, 
-                             field_name=field_name, 
-                             value=entity_dict[field_name])
+                
+                validation_failure = ValidationFailure(
+                    field_name=field_name,
+                    message=f"Id {entity_dict[field_name]} does not exist",
+                    value=entity_dict[field_name]
+                )
+                
+                raise ValidationError(
+                    message=f"Invalid {field_name}: {fk_entity_name} does not exist",
+                    entity=entity_name,
+                    invalid_fields=[validation_failure]
+                )
             except ImportError:
                 # FK entity class doesn't exist - skip validation
                 pass
