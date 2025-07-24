@@ -74,3 +74,47 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
                     notify_warning(f"{entity_type} {entity_id}: {warning_count} serialization warnings", NotificationType.VALIDATION, entity=entity_type)
 
     return entity_data
+
+
+async def validate_objectid_references(entity_name: str, data: Dict[str, Any], metadata: Dict[str, Any]) -> None:
+    """
+    Generic ObjectId reference validation for any entity.
+    
+    Args:
+        entity_name: Name of the entity being validated (e.g., "User")
+        data: Entity data dictionary to validate
+        metadata: Entity metadata containing field definitions
+    
+    Raises:
+        ValidationError: If any ObjectId references don't exist
+    """
+    from app.errors import ValidationError, ValidationFailure, NotFoundError
+    from app.routers.router_factory import ModelImportCache
+    
+    validation_failures = []
+    
+    # Check all ObjectId fields in the entity metadata
+    for field_name, field_meta in metadata.get('fields', {}).items():
+        if field_meta.get('type') == 'ObjectId' and data.get(field_name):
+            try:
+                # Derive FK entity name from field name (e.g., accountId -> Account)
+                fk_entity_name = field_name[:-2].capitalize()  # Remove 'Id' suffix and capitalize
+                fk_entity_cls = ModelImportCache.get_model_class(fk_entity_name)
+                await fk_entity_cls.get(data[field_name])
+            except NotFoundError:
+                validation_failures.append(ValidationFailure(
+                    field_name=field_name,
+                    message=f"Id {data[field_name]} does not exist",
+                    value=data[field_name]
+                ))
+            except ImportError:
+                # FK entity class doesn't exist - skip validation
+                pass
+    
+    # Raise ValidationError if any ObjectId references are invalid
+    if validation_failures:
+        raise ValidationError(
+            message="Invalid ObjectId references",
+            entity=entity_name,
+            invalid_fields=validation_failures
+        )
