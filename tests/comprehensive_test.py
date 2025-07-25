@@ -34,7 +34,7 @@ class TestResult:
     error: Optional[str] = None
 
 class ComprehensiveTestRunner:
-    def __init__(self, verbose: bool = False, curl: bool = False, mongo_only: bool = False, es_only: bool = False):
+    def __init__(self, verbose: bool = False, curl: bool = False, mongo_only: bool = False, es_only: bool = False, noop: bool = False):
         self.server_port = 5500
         self.server_process = None
         self.temp_configs = []
@@ -42,6 +42,7 @@ class ComprehensiveTestRunner:
         self.curl = curl
         self.mongo_only = mongo_only
         self.es_only = es_only
+        self.noop = noop
         
         # Define all test configurations
         all_configs = [
@@ -135,8 +136,9 @@ class ComprehensiveTestRunner:
             self.server_process = subprocess.Popen(
                 [sys.executable, "app/main.py", config_file],
                 env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
                 cwd=Path(__file__).parent.parent  # Run from project root
             )
             
@@ -157,6 +159,18 @@ class ComprehensiveTestRunner:
                 time.sleep(1)
             
             print("  ❌ Server failed to start")
+            # Get server output to see what went wrong
+            if self.server_process:
+                try:
+                    stdout, stderr = self.server_process.communicate(timeout=2)
+                    if stdout:
+                        print("📋 Server STDOUT:")
+                        print(stdout)
+                    if stderr:
+                        print("📋 Server STDERR:")  
+                        print(stderr)
+                except:
+                    print("  ⚠️  Could not get server output")
             return False
             
         except Exception as e:
@@ -224,10 +238,15 @@ class ComprehensiveTestRunner:
                     error="Server failed to start"
                 )
             
-            # Run tests
-            print("🧪 Running tests...")
-            test_env = os.environ.copy()
-            test_env['PYTHONPATH'] = '.'
+            # Run tests or noop
+            if self.noop:
+                # Noop mode - just test connectivity
+                return self._run_noop_test(config, start_time)
+            else:
+                # Regular test mode
+                print("🧪 Running tests...")
+                test_env = os.environ.copy()
+                test_env['PYTHONPATH'] = '.'
             
             # Build command args with verbose and curl if needed  
             extra_args = []
@@ -352,10 +371,73 @@ class ComprehensiveTestRunner:
         
         return combined_result
     
+    def _run_noop_test(self, config: TestConfig, start_time: float) -> TestResult:
+        """Run no-op connectivity test without actual test execution"""
+        print("🔗 Running no-op connectivity test...")
+        
+        try:
+            import requests
+            
+            # Test basic endpoint
+            response = requests.get(f"http://localhost:{self.server_port}/api/user", timeout=5)
+            if response.status_code != 200:
+                return TestResult(
+                    config_name=config.name,
+                    success=False,
+                    passed=0,
+                    failed=1,
+                    total=1,
+                    duration=time.time() - start_time,
+                    error=f"Basic endpoint failed: {response.status_code}"
+                )
+            print(f"  ✅ Basic endpoint responds: {response.status_code}")
+            
+            # Test view endpoint (the problematic one)
+            view_url = f"http://localhost:{self.server_port}/api/user?view=%7b%22account%22%3a%5b%22createdat%22%5d%7d"
+            print("  🔍 Testing view endpoint (known to hang in full tests)...")
+            response = requests.get(view_url, timeout=15)  # Longer timeout for view
+            if response.status_code != 200:
+                return TestResult(
+                    config_name=config.name,
+                    success=False,
+                    passed=1,
+                    failed=1,
+                    total=2,
+                    duration=time.time() - start_time,
+                    error=f"View endpoint failed: {response.status_code}"
+                )
+            print(f"  ✅ View endpoint responds: {response.status_code}")
+            
+            # Success
+            return TestResult(
+                config_name=config.name,
+                success=True,
+                passed=2,
+                failed=0,
+                total=2,
+                duration=time.time() - start_time
+            )
+            
+        except Exception as e:
+            return TestResult(
+                config_name=config.name,
+                success=False,
+                passed=0,
+                failed=2,
+                total=2,
+                duration=time.time() - start_time,
+                error=f"Connectivity test failed: {e}"
+            )
+    
     def run_all_tests(self) -> List[TestResult]:
         """Run all test configurations"""
-        print("🧪 COMPREHENSIVE TEST SUITE")
-        print("=" * 80)
+        if self.noop:
+            print("🧪 COMPREHENSIVE TEST SUITE - NO-OP MODE")
+            print("=" * 80)
+            print("🔗 Testing process management and connectivity only")
+        else:
+            print("🧪 COMPREHENSIVE TEST SUITE")
+            print("=" * 80)
         
         # Show which databases are being tested
         if self.mongo_only and not self.es_only:
@@ -439,6 +521,8 @@ def main():
                        help='Include MongoDB configurations (both validation modes)')
     parser.add_argument('--es', action='store_true',
                        help='Include Elasticsearch configurations (both validation modes)')
+    parser.add_argument('--noop', action='store_true',
+                       help='Run no-op connectivity tests only (no actual test execution)')
     args = parser.parse_args()
     
     # Note: --mongo and --es can be used together (same as default)
@@ -447,7 +531,8 @@ def main():
         verbose=args.verbose, 
         curl=args.curl, 
         mongo_only=args.mongo, 
-        es_only=args.es
+        es_only=args.es,
+        noop=args.noop
     )
     
     try:
