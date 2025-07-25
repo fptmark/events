@@ -268,3 +268,16 @@ async def _process_single_entity_fks(entity_dict: Dict[str, Any], view_spec: Dic
     # Determine if FK processing should happen
     if view_spec or should_process_fk_fields(operation_is_get_all, view_spec is not None):
         await process_entity_fks(entity_dict, view_spec, entity_name, entity_cls)
+
+
+async def get_entity_with_fk(entity_cls, entity_id: str, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Get single entity with FK processing - works for any entity type."""
+    entity, warnings = await entity_cls.get(entity_id)
+    entity_dict = entity.model_dump()
+    
+    get_validations, _ = Config.validations(False)
+    if view_spec or get_validations:
+        entity_name = entity_cls.__name__
+        await process_entity_fks(entity_dict, view_spec, entity_name, entity_cls)
+    
+    return {"data": entity_dict, "warnings": warnings}

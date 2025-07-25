@@ -122,7 +122,7 @@ class User(BaseModel):
         return helpers.get_metadata("User", cls._metadata)
 
     @classmethod
-    async def get_all(cls) -> Dict[str, Any]:
+    async def get_all(cls, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         try:
             get_validations, unique_validations = Config.validations(True)
             unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
@@ -131,13 +131,18 @@ class User(BaseModel):
             
             user_data = utils.process_raw_results(cls, "User", raw_docs, warnings)
             
+            # Process FK fields if needed
+            if view_spec or get_validations:
+                for user_dict in user_data:
+                    await utils.process_entity_fks(user_dict, view_spec, "User", cls)
+            
             return {"data": user_data}
             
         except Exception as e:
             raise DatabaseError(str(e), "User", "get_all")
 
     @classmethod
-    async def get_list(cls, list_params) -> Dict[str, Any]:
+    async def get_list(cls, list_params, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Get paginated, sorted, and filtered list of entity."""
         try:
             get_validations, unique_validations = Config.validations(True)
@@ -148,6 +153,11 @@ class User(BaseModel):
             
             # Use common processing
             user_data = utils.process_raw_results(cls, "User", raw_docs, warnings)
+            
+            # Process FK fields if needed
+            if view_spec or get_validations:
+                for user_dict in user_data:
+                    await utils.process_entity_fks(user_dict, view_spec, "User", cls)
             
             return {
                 "data": user_data,
@@ -203,6 +213,7 @@ class User(BaseModel):
             raise
         except Exception as e:
             raise DatabaseError(str(e), "User", "get")
+
 
     async def save(self, entity_id: str = '') -> tuple[Self, List[str]]:
         try:

@@ -8,6 +8,7 @@ notification handling.
 
 import json
 import logging
+import inspect
 from typing import Dict, Any, Type, Optional, Union, Protocol
 from urllib.parse import unquote
 from fastapi import Request
@@ -21,6 +22,7 @@ from app.notification import (
     NotificationType
 )
 from app.errors import ValidationError, NotFoundError, DuplicateError
+from app.models.list_params import ListParams
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +53,7 @@ class EntityModelProtocol(Protocol):
 
 async def list_all_entities_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, request: Request) -> Dict[str, Any]:
     """Reusable handler for LIST endpoint (get all - legacy version)."""
-    from app.routers.view_processing import process_view_data
     
-    get_validations, _ = Config.validations(True)
     entity_lower = entity_name.lower()
     notifications = start_notifications(entity=entity_name, operation=f"list_{entity_lower}s")
     
@@ -63,11 +63,8 @@ async def list_all_entities_handler(entity_cls: Type[EntityModelProtocol], entit
     view_spec = json.loads(unquote(view_param)) if view_param else None
     
     try:
-        # Get data from model (model will add notifications to current context)
-        response = await entity_cls.get_all()
-        
-        # Process view data using common utility function
-        response = await process_view_data(response, view_spec, entity_name, entity_cls, get_validations)
+        # Get data from model with FK processing (model handles all business logic)
+        response = await entity_cls.get_all(view_spec=view_spec)
 
     except Exception as e:
         # Handle any errors in the processing
@@ -81,10 +78,7 @@ async def list_all_entities_handler(entity_cls: Type[EntityModelProtocol], entit
 
 async def list_entities_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, request: Request) -> Dict[str, Any]:
     """Reusable handler for LIST endpoint (paginated version)."""
-    from app.models.list_params import ListParams
-    from app.routers.view_processing import process_view_data
     
-    get_validations, _ = Config.validations(True)
     entity_lower = entity_name.lower()
     notifications = start_notifications(entity=entity_name, operation=f"list_{entity_lower}s")
     
@@ -97,11 +91,8 @@ async def list_entities_handler(entity_cls: Type[EntityModelProtocol], entity_na
     list_params = ListParams.from_query_params(query_params)
     
     try:
-        # Get paginated data from model  
-        response = await entity_cls.get_list(list_params)
-        
-        # Process view data using common utility function
-        response = await process_view_data(response, view_spec, entity_name, entity_cls, get_validations)
+        # Get paginated data from model with FK processing (model handles all business logic)
+        response = await entity_cls.get_list(list_params, view_spec=view_spec)
         
         collection = end_notifications()
         return collection.to_entity_grouped_response(data=response['data'], is_bulk=True)
@@ -115,9 +106,7 @@ async def list_entities_handler(entity_cls: Type[EntityModelProtocol], entity_na
 
 async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, entity_id: str, request: Request) -> Dict[str, Any]:
     """Reusable handler for GET endpoint."""
-    from app.routers.view_processing import add_view_data, auto_validate_fk_fields
     
-    get_validations, _ = Config.validations(False)
     entity_lower = entity_name.lower()
     notifications = start_notifications(entity=entity_name, operation=f"get_{entity_lower}")
     
@@ -127,25 +116,16 @@ async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name:
     view_spec = json.loads(unquote(view_param)) if view_param else None
     
     try:
-        entity, warnings = await entity_cls.get(entity_id)
+        # Get entity with FK processing (model handles all business logic)
+        from app.models.utils import get_entity_with_fk
+        response = await get_entity_with_fk(entity_cls, entity_id, view_spec)
         
         # Add any warnings as notifications
-        for warning in warnings or []:
+        for warning in response.get("warnings", []):
             notify_warning(warning, NotificationType.DATABASE)
         
-        # Process FK includes if view parameter is provided
-        # Serialize entity data (datetime warnings should be eliminated by json_encoders)
-        entity_dict = entity.model_dump()
-        
-        # entity_dict['exists'] = True  # If no exception thrown, entity exists
-        await add_view_data(entity_dict, view_spec, entity_name, get_validations)
-        
-        # Auto-validate FK fields when get_validations=True and no view parameter provided
-        if get_validations and not view_spec:
-            await auto_validate_fk_fields(entity_dict, entity_name, entity_cls)
-        
         collection = end_notifications()
-        return collection.to_entity_grouped_response(entity_dict, is_bulk=False)
+        return collection.to_entity_grouped_response(response['data'], is_bulk=False)
     except NotFoundError:
         # Let the NotFoundError bubble up to FastAPI's exception handler
         # which will return a proper 404 response
