@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from bson.objectid import ObjectId
 from typing import Dict, Any, Optional, TypeVar, Type
 from pydantic import BaseModel
 from beanie import Document

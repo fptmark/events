@@ -136,19 +136,20 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Optional[Dict[st
                     else:
                         missing_value = entity_dict.get(fk_id_field, 'unknown')
                     
-                    # Create ValidationError instead of just notification
-                    from app.errors import ValidationError, ValidationFailure
-                    validation_failure = ValidationFailure(
-                        field_name=fk_id_field,
+                    # Add warning notification instead of raising ValidationError
+                    # This allows data to be returned with FK validation warnings
+                    notify_warning(
                         message=f"Id {missing_value} does not exist",
-                        value=missing_value
+                        type=NotificationType.VALIDATION,
+                        entity=entity_name,
+                        field_name=fk_id_field,
+                        value=missing_value,
+                        operation="get_data",
+                        entity_id=entity_id
                     )
                     
-                    raise ValidationError(
-                        message=f"Invalid {fk_id_field}: {fk_entity_name} does not exist",
-                        entity=entity_name,
-                        invalid_fields=[validation_failure]
-                    )
+                    # Set FK data to indicate non-existence but continue processing
+                    entity_dict[fk_name] = {"exists": False}
     
     except Exception as view_error:
         # Log view parsing error but continue without FK data
@@ -167,20 +168,16 @@ async def auto_validate_fk_fields(entity_dict: Dict[str, Any], entity_name: str,
                 fk_entity_cls = ModelImportCache.get_model_class(fk_entity_name)
                 await fk_entity_cls.get(entity_dict[field_name])
             except NotFoundError:
-                # Create ValidationError for ObjectId reference that doesn't exist
-                from app.errors import ValidationError, ValidationFailure
-                fk_entity_name = field_name[:-2].capitalize()  # Remove 'Id' suffix and capitalize
-                
-                validation_failure = ValidationFailure(
-                    field_name=field_name,
+                # Add warning notification instead of raising ValidationError
+                # This allows data to be returned with FK validation warnings
+                notify_warning(
                     message=f"Id {entity_dict[field_name]} does not exist",
-                    value=entity_dict[field_name]
-                )
-                
-                raise ValidationError(
-                    message=f"Invalid {field_name}: {fk_entity_name} does not exist",
+                    type=NotificationType.VALIDATION,
                     entity=entity_name,
-                    invalid_fields=[validation_failure]
+                    field_name=field_name,
+                    value=entity_dict[field_name],
+                    operation="get_data",
+                    entity_id=entity_id
                 )
             except ImportError:
                 # FK entity class doesn't exist - skip validation

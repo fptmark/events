@@ -32,7 +32,7 @@ class Config:
                 'server_port': 8000,
                 'environment': 'production',
                 'log_level': 'info',
-                'get-validation': 'default'
+                'get_validation': 'default'
             }
         return load_settings(config_path)
 
@@ -48,13 +48,24 @@ class Config:
 
     @staticmethod
     def validations(get_all: bool) -> Tuple[bool, bool]:
-        """Get the current validation type from config"""
-        get_validation = False
-        validation = Config._config.get('get_validation', '') 
-        if get_all and validation == 'get_all':
+        """Get the current validation type from config
+        
+        Rules:
+        - get_validation="get": Only single get operations get FK validation
+        - get_validation="get_all": All read operations get FK validation
+        - Any other value: No FK validation
+        """
+        validation = Config._config.get('get_validation', '')
+        
+        if validation == 'get_all':
+            # get_all setting applies to ALL operations (both single get and get_all)
+            get_validation = True
+        elif validation == 'get' and not get_all:
+            # get setting applies only to single get operations
             get_validation = True
         else:
-            get_validation = validation in ['get', 'get_all'] #
+            # No FK validation
+            get_validation = False
 
         unique_validation = Config._config.get('unique_validation', False)
         return (get_validation, unique_validation)
