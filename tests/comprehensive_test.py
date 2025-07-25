@@ -250,13 +250,13 @@ class ComprehensiveTestRunner:
                 env=test_env  # Use test environment
             )
             
-            # Run pagination/filtering integration tests
+            # Run FK processing tests  
             if self.verbose:
-                print("  📄 Running pagination/filtering integration tests with verbose output...")
+                print("  🔗 Running FK processing tests with verbose output...")
             else:
-                print("  📄 Running pagination/filtering integration tests...")
+                print("  🔗 Running FK processing tests...")
             result2 = subprocess.run(
-                [sys.executable, "tests/test_pagination_integration.py", config_file] + extra_args,
+                [sys.executable, "tests/test_fk_processing.py", config_file] + extra_args,
                 capture_output=True,
                 text=True,
                 timeout=180,
