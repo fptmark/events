@@ -73,7 +73,7 @@ class UserEvent(BaseModel):
         return helpers.get_metadata("UserEvent", cls._metadata)
 
     @classmethod
-    async def get_all(cls) -> Dict[str, Any]:
+    async def get_all(cls, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         try:
             get_validations, unique_validations = Config.validations(True)
             unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
@@ -81,6 +81,11 @@ class UserEvent(BaseModel):
             raw_docs, warnings, total_count = await DatabaseFactory.get_all("userevent", unique_constraints)
             
             userevent_data = utils.process_raw_results(cls, "UserEvent", raw_docs, warnings)
+
+            # Process FK fields if needed
+            if view_spec or get_validations:
+                for userevent_dict in userevent_data:
+                    await utils.process_entity_fks(userevent_dict, view_spec, "UserEvent", cls)
             
             return {"data": userevent_data}
             
@@ -88,7 +93,7 @@ class UserEvent(BaseModel):
             raise DatabaseError(str(e), "UserEvent", "get_all")
 
     @classmethod
-    async def get_list(cls, list_params) -> Dict[str, Any]:
+    async def get_list(cls, list_params, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Get paginated, sorted, and filtered list of entity."""
         try:
             get_validations, unique_validations = Config.validations(True)
@@ -99,6 +104,11 @@ class UserEvent(BaseModel):
             
             # Use common processing
             userevent_data = utils.process_raw_results(cls, "UserEvent", raw_docs, warnings)
+            
+            # Process FK fields if needed
+            if view_spec or get_validations:
+                for userevent_dict in userevent_data:
+                    await utils.process_entity_fks(userevent_dict, view_spec, "UserEvent", cls)
             
             return {
                 "data": userevent_data,
@@ -137,7 +147,7 @@ class UserEvent(BaseModel):
                     for error in e.errors():
                         field_name = str(error['loc'][-1])
                         notify_warning(
-                            message=f"UserEvent {entity_id}: {field_name} validation failed - {error['msg']}",
+                            message=error['msg'],
                             type=NotificationType.VALIDATION,
                             entity="UserEvent",
                             field_name=field_name,
@@ -178,21 +188,21 @@ class UserEvent(BaseModel):
             except PydanticValidationError as e:
                 # Convert to notifications and ValidationError format
                 if len(entity_id) == 0:
-                    notify_warning("User instance missing ID during save", NotificationType.DATABASE)
+                    notify_warning("UserEvent instance missing ID during save", NotificationType.DATABASE)
                     entity_id = "missing"
 
-                for err in e.errors():
-                    field_name = str(err["loc"][-1])
+                for error in e.errors():
+                    field_name = str(error["loc"][-1])
                     notify_warning(
-                        message=f"UserEvent {entity_id}: {field_name} validation failed - {err['msg']}",
+                        message=error['msg'],
                         type=NotificationType.VALIDATION,
                         entity="UserEvent",
                         field_name=field_name,
-                        value=err.get("input"),
+                        value=error.get("input"),
                         operation="save"
                     )
-                failures = [ValidationFailure(field_name=str(err["loc"][-1]), message=err["msg"], value=err.get("input")) for err in e.errors()]
-                raise ValidationError(message="Validation failed before save", entity="UserEvent", invalid_fields=failures)
+                failures = [ValidationFailure(field_name=str(error["loc"][-1]), message=error["msg"], value=error.get("input")) for error in e.error()]
+                raise ValidationError(message=error['msg'], entity="UserEvent", invalid_fields=failures)
             
             # Save document with unique constraints - pass complete data
             result, warnings = await DatabaseFactory.save_document("userevent", data, unique_constraints)

@@ -130,7 +130,7 @@ class User(BaseModel):
             raw_docs, warnings, total_count = await DatabaseFactory.get_all("user", unique_constraints)
             
             user_data = utils.process_raw_results(cls, "User", raw_docs, warnings)
-            
+
             # Process FK fields if needed
             if view_spec or get_validations:
                 for user_dict in user_data:
@@ -214,7 +214,6 @@ class User(BaseModel):
         except Exception as e:
             raise DatabaseError(str(e), "User", "get")
 
-
     async def save(self, entity_id: str = '') -> tuple[Self, List[str]]:
         try:
             _, unique_validations = Config.validations(True)
@@ -241,18 +240,18 @@ class User(BaseModel):
                     notify_warning("User instance missing ID during save", NotificationType.DATABASE)
                     entity_id = "missing"
 
-                for err in e.errors():
-                    field_name = str(err["loc"][-1])
+                for error in e.errors():
+                    field_name = str(error["loc"][-1])
                     notify_warning(
-                        message=err['msg'],
+                        message=error['msg'],
                         type=NotificationType.VALIDATION,
                         entity="User",
                         field_name=field_name,
-                        value=err.get("input"),
+                        value=error.get("input"),
                         operation="save"
                     )
-                failures = [ValidationFailure(field_name=str(err["loc"][-1]), message=err["msg"], value=err.get("input")) for err in e.errors()]
-                raise ValidationError(message="Validation failed before save", entity="User", invalid_fields=failures)
+                failures = [ValidationFailure(field_name=str(error["loc"][-1]), message=error["msg"], value=error.get("input")) for error in e.error()]
+                raise ValidationError(message=error['msg'], entity="User", invalid_fields=failures)
             
             # Save document with unique constraints - pass complete data
             result, warnings = await DatabaseFactory.save_document("user", data, unique_constraints)
