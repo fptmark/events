@@ -76,9 +76,8 @@ class ComprehensiveTestRunner:
                 validation="none", 
                 config_data={
                     "database": "elasticsearch",
-                    "es_host": "localhost",
-                    "es_port": 9200,
-                    "es_index": "eventmgr",
+                    "db_uri": "http://localhost:9200",
+                    "db_name": "eventMgr",
                     "get_validation": "",
                     "unique_validation": False
                 }
@@ -89,9 +88,8 @@ class ComprehensiveTestRunner:
                 validation="get_all",
                 config_data={
                     "database": "elasticsearch",
-                    "es_host": "localhost",
-                    "es_port": 9200,
-                    "es_index": "eventmgr",
+                    "db_uri": "http://localhost:9200",
+                    "db_name": "eventMgr",
                     "get_validation": "get_all",
                     "unique_validation": True
                 }
