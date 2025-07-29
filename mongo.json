@@ -5,7 +5,7 @@
     "db_name"		: "eventMgr",
     "host"		: "0.0.0.0",
     "server_port"	: 5500,
-    "get_validation"	: "get_all",
+    "fk_validationN": "multiple",
     "unique_validation" : true,
     "log_level"		: "info",
     "environment"	: "development",

@@ -9,34 +9,32 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
     get_validations, _ = Config.validations(True)
     entities = []
 
-    # Conditional validation - validate AFTER read if requested
-    if get_validations:
-        for doc in raw_docs:
-            try:
-                entities.append(cls.model_validate(doc))
-            except PydanticValidationError as e:
-                # Convert Pydantic errors to notifications (match original get_all logic)
-                entity_id = doc.get('id')
-                if not entity_id:
-                    notify_warning("Document missing ID field", NotificationType.DATABASE, entity=entity_type)
-                    entity_id = "missing"
+    # ALWAYS validate model data against Pydantic schema (enum, range, string validation, etc.)
+    # This is independent of GV settings which only control FK validation
+    for doc in raw_docs:
+        try:
+            entities.append(cls.model_validate(doc))
+        except PydanticValidationError as e:
+            # Convert Pydantic errors to notifications
+            entity_id = doc.get('id')
+            if not entity_id:
+                notify_warning("Document missing ID field", NotificationType.DATABASE, entity=entity_type)
+                entity_id = "missing"
 
-                for error in e.errors():
-                    field_name = str(error['loc'][-1])
-                    notify_warning(
-                        message=error['msg'],
-                        type=NotificationType.VALIDATION,
-                        entity=entity_type,
-                        field_name=field_name,
-                        value=error.get('input'),
-                        operation="get_data",
-                        entity_id=entity_id
-                    )
+            for error in e.errors():
+                field_name = str(error['loc'][-1])
+                notify_warning(
+                    message=error['msg'],
+                    type=NotificationType.VALIDATION,
+                    entity=entity_type,
+                    field_name=field_name,
+                    value=error.get('input'),
+                    operation="get_data",
+                    entity_id=entity_id
+                )
 
-                # Create instance without validation for failed docs
-                entities.append(cls.model_construct(**doc))
-    else:
-        entities = [cls.model_construct(**doc) for doc in raw_docs]  # NO validation  
+            # Create instance without validation for failed docs
+            entities.append(cls.model_construct(**doc))  
 
     # Add database warnings
     for warning in warnings:
@@ -199,8 +197,10 @@ async def process_entity_fks(entity_dict: Dict[str, Any], view_spec: Optional[Di
                 # FK doesn't exist - always just set exists=False regardless of view
                 entity_dict[fk_name] = {"exists": False}
                 
-                # Add warning only when view provided (GV warnings already added in process_raw_results)
-                if view_spec and fk_name in view_spec:
+                # Add FK validation warning only when view provided or GV enabled
+                # (Model validation is handled separately and always runs)
+                get_validations, _ = Config.validations(False)
+                if view_spec or get_validations:
                     notify_warning(
                         message=f"Id {entity_dict[field_name]} does not exist",
                         type=NotificationType.VALIDATION,
@@ -270,14 +270,54 @@ async def _process_single_entity_fks(entity_dict: Dict[str, Any], view_spec: Dic
         await process_entity_fks(entity_dict, view_spec, entity_name, entity_cls)
 
 
+async def validate_entity_model(entity_dict: Dict[str, Any], entity_name: str, entity_cls) -> None:
+    """
+    Always validate entity against its Pydantic model - independent of FK processing.
+    
+    This handles basic model validation:
+    - Enum validation (gender must be 'male', 'female', 'other')
+    - Range validation (netWorth >= 0)
+    - String validation (length, format, etc.)
+    - Type validation (int, float, bool, etc.)
+    
+    This does NOT handle FK validation - that's separate.
+    """
+    entity_id = entity_dict.get('id', 'unknown')
+    
+    try:
+        # Validate the entity data against its Pydantic model
+        entity_cls.model_validate(entity_dict)
+        # If validation passes, no notifications needed
+    except PydanticValidationError as e:
+        # Convert Pydantic validation errors to notifications
+        for error in e.errors():
+            field_name = str(error['loc'][-1]) if error.get('loc') else 'unknown'
+            message = error.get('msg', 'Validation error')
+            value = error.get('input')
+            
+            notify_warning(
+                message=message,
+                type=NotificationType.VALIDATION,
+                entity=entity_name,
+                field_name=field_name,
+                value=value,
+                operation="get_data",
+                entity_id=entity_id
+            )
+
+
 async def get_entity_with_fk(entity_cls, entity_id: str, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Get single entity with FK processing - works for any entity type."""
     entity, warnings = await entity_cls.get(entity_id)
     entity_dict = entity.model_dump()
+    entity_name = entity_cls.__name__
     
+    # Step 1: ALWAYS run model validation (enum, range, string validation, etc.)
+    await validate_entity_model(entity_dict, entity_name, entity_cls)
+    
+    # Step 2: Conditionally run FK processing based on GV settings or view parameter
     get_validations, _ = Config.validations(False)
     if view_spec or get_validations:
-        entity_name = entity_cls.__name__
         await process_entity_fks(entity_dict, view_spec, entity_name, entity_cls)
     
     return {"data": entity_dict, "warnings": warnings}

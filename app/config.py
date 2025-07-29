@@ -32,7 +32,7 @@ class Config:
                 'server_port': 8000,
                 'environment': 'production',
                 'log_level': 'info',
-                'get_validation': 'default'
+                'fk_validation': ''
             }
         return load_settings(config_path)
 
@@ -47,28 +47,27 @@ class Config:
     #     return Config._config.get('unique_validation', False)
 
     @staticmethod
-    def validations(get_all: bool) -> Tuple[bool, bool]:
+    def validations(get_multiple: bool) -> Tuple[bool, bool]:
         """Get the current validation type from config
         
         Rules:
-        - get_validation="get": Only single get operations get FK validation
-        - get_validation="get_all": All read operations get FK validation
+        - fk_validation="single|multiple" : validate fk on single get (get) or multiple gets (get_all, list)
         - Any other value: No FK validation
         """
-        validation = Config._config.get('get_validation', '')
+        validation = Config._config.get('fk_validation', '')
         
-        if validation == 'get_all':
+        if validation == 'multiple':
             # get_all setting applies to ALL operations (both single get and get_all)
-            get_validation = True
-        elif validation == 'get' and not get_all:
+            fk_validation = True
+        elif validation == 'single' and not get_multiple:
             # get setting applies only to single get operations
-            get_validation = True
+            fk_validation = True
         else:
             # No FK validation
-            get_validation = False
+            fk_validation = False
 
         unique_validation = Config._config.get('unique_validation', False)
-        return (get_validation, unique_validation)
+        return (fk_validation, unique_validation)
 
     # @staticmethod
     # def is_get_validation(get_all: bool) -> bool:
