@@ -34,7 +34,7 @@ class TestResult:
     error: Optional[str] = None
 
 class ComprehensiveTestRunner:
-    def __init__(self, verbose: bool = False, curl: bool = False, mongo_only: bool = False, es_only: bool = False, noop: bool = False):
+    def __init__(self, verbose: bool = False, curl: bool = False, mongo_only: bool = False, es_only: bool = False, noop: bool = False, pfs_only: bool = False, newdata: bool = False):
         self.server_port = 5500
         self.server_process = None
         self.temp_configs = []
@@ -43,6 +43,8 @@ class ComprehensiveTestRunner:
         self.mongo_only = mongo_only
         self.es_only = es_only
         self.noop = noop
+        self.pfs_only = pfs_only
+        self.newdata = newdata
         
         # Define all test configurations
         all_configs = [
@@ -54,19 +56,19 @@ class ComprehensiveTestRunner:
                     "database": "mongodb",
                     "db_uri": "mongodb://localhost:27017",
                     "db_name": "eventMgr",
-                    "get_validation": "",
+                    "fk_validation": "",
                     "unique_validation": False
                 }
             ),
             TestConfig(
                 name="MongoDB with validation",
                 database="mongodb", 
-                validation="get_all",
+                validation="multiple",
                 config_data={
                     "database": "mongodb",
                     "db_uri": "mongodb://localhost:27017",
                     "db_name": "eventMgr",
-                    "get_validation": "get_all",
+                    "fk_validation": "multiple",
                     "unique_validation": True
                 }
             ),
@@ -78,19 +80,19 @@ class ComprehensiveTestRunner:
                     "database": "elasticsearch",
                     "db_uri": "http://localhost:9200",
                     "db_name": "eventMgr",
-                    "get_validation": "",
+                    "fk_validation": "",
                     "unique_validation": False
                 }
             ),
             TestConfig(
                 name="Elasticsearch with validation",
                 database="elasticsearch", 
-                validation="get_all",
+                validation="multiple",
                 config_data={
                     "database": "elasticsearch",
                     "db_uri": "http://localhost:9200",
                     "db_name": "eventMgr",
-                    "get_validation": "get_all",
+                    "fk_validation": "multiple",
                     "unique_validation": True
                 }
             )
@@ -198,8 +200,8 @@ class ComprehensiveTestRunner:
         time.sleep(1)
     
     def create_config_file(self, config: TestConfig) -> str:
-        """Create temporary config file"""
-        filename = "temp_test_config.json"  # Reuse same file
+        """Create temporary config file in tests directory"""
+        filename = "tests/temp_test_config.json"  # Create in tests dir
         
         with open(filename, 'w') as f:
             json.dump(config.config_data, f, indent=2)
@@ -242,7 +244,10 @@ class ComprehensiveTestRunner:
                 return self._run_noop_test(config, start_time)
             else:
                 # Regular test mode
-                print("🧪 Running tests...")
+                if self.pfs_only:
+                    print("🧪 Running pagination/filter/sort tests only...")
+                else:
+                    print("🧪 Running tests...")
                 test_env = os.environ.copy()
                 test_env['PYTHONPATH'] = '.'
             
@@ -253,36 +258,92 @@ class ComprehensiveTestRunner:
             if self.curl:
                 extra_args.append("--curl")
             
-            # Run user validation tests
-            if self.verbose:
-                print("  📝 Running user validation tests with verbose output...")
-            else:
-                print("  📝 Running user validation tests...")
-            result1 = subprocess.run(
-                [sys.executable, "tests/test_user_validation.py", config_file] + extra_args,
-                capture_output=True,
-                text=True,
-                timeout=180,
-                cwd=Path(__file__).parent.parent,  # Run from project root
-                env=test_env  # Use test environment
-            )
+            results = []
             
-            # Run FK processing tests  
-            if self.verbose:
-                print("  🔗 Running FK processing tests with verbose output...")
+            if self.newdata:
+                # NEWDATA MODE: Use dedicated newdata validation module
+                if self.verbose:
+                    print("  🧹 NEWDATA MODE: Running controlled validation tests...")
+                else:
+                    print("  🧹 NEWDATA MODE: Controlled validation tests...")
+                
+                result_newdata = subprocess.run(
+                    [sys.executable, "tests/test_newdata_validation.py", 
+                     "--config", config_file, 
+                     "--server", f"http://localhost:{self.server_port}"] + (["--curl"] if self.curl else []),
+                    capture_output=True,
+                    text=True,
+                    timeout=600,  # Longer timeout for wipe + create + test cycle
+                    cwd=Path(__file__).parent.parent,
+                    env=test_env
+                )
+                results.append(result_newdata)
+                
             else:
-                print("  🔗 Running FK processing tests...")
-            result2 = subprocess.run(
-                [sys.executable, "tests/test_fk_processing.py", config_file] + extra_args,
-                capture_output=True,
-                text=True,
-                timeout=180,
-                cwd=Path(__file__).parent.parent,
-                env=test_env
-            )
+                # DEFAULT MODE: Use existing database state
+                if not self.pfs_only:
+                    # Run user validation tests
+                    if self.verbose:
+                        print("  📝 Running user validation tests with verbose output...")
+                    else:
+                        print("  📝 Running user validation tests...")
+                    result1 = subprocess.run(
+                        [sys.executable, "tests/test_user_validation.py", config_file] + extra_args,
+                        capture_output=True,
+                        text=True,
+                        timeout=180,
+                        cwd=Path(__file__).parent.parent,  # Run from project root
+                        env=test_env  # Use test environment
+                    )
+                    results.append(result1)
+                    
+                    # Run FK processing tests  
+                    if self.verbose:
+                        print("  🔗 Running FK processing tests with verbose output...")
+                    else:
+                        print("  🔗 Running FK processing tests...")
+                    result2 = subprocess.run(
+                        [sys.executable, "tests/test_fk_processing.py", config_file] + extra_args,
+                        capture_output=True,
+                        text=True,
+                        timeout=180,
+                        cwd=Path(__file__).parent.parent,
+                        env=test_env
+                    )
+                    results.append(result2)
+                
+                # Always run pagination tests (either as part of full suite or PFS-only)
+                if self.verbose:
+                    print("  📄 Running pagination tests with verbose output...")
+                else:
+                    print("  📄 Running pagination tests...")
+                result3 = subprocess.run(
+                    [sys.executable, "tests/test_pagination_integration.py", config_file] + extra_args,
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    cwd=Path(__file__).parent.parent,
+                    env=test_env
+                )
+                results.append(result3)
+                
+                # Run API validation module tests
+                if self.verbose:
+                    print("  🔍 Running API validation module tests with verbose output...")
+                else:
+                    print("  🔍 Running API validation module tests...")
+                result5 = subprocess.run(
+                    [sys.executable, "tests/modules/test_api_module.py"],
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    cwd=Path(__file__).parent.parent,
+                    env=test_env
+                )
+                results.append(result5)
             
             # Combine results
-            result = self._combine_test_results(result1, result2)
+            result = self._combine_test_results(*results)
             
             # Parse results
             output = result.stdout
@@ -295,9 +356,9 @@ class ComprehensiveTestRunner:
                 if result.stderr:
                     print(f"  ⚠️  Test stderr output:")
                     print("     " + result.stderr.replace("\n", "\n     "))
-                if result.stdout and len(result.stdout) > 500:
-                    print(f"  📄 Test stdout (showing last 500 chars):")
-                    print("     " + result.stdout[-500:].replace("\n", "\n     "))
+                if result.stdout:
+                    print(f"  📄 Test stdout:")
+                    print("     " + result.stdout.replace("\n", "\n     "))
             else:
                 if result.stderr:
                     print(f"  Test stderr: {result.stderr}")
@@ -350,16 +411,17 @@ class ComprehensiveTestRunner:
             # Always stop server
             self.stop_server()
     
-    def _combine_test_results(self, result1: subprocess.CompletedProcess, result2: subprocess.CompletedProcess) -> subprocess.CompletedProcess:
+    def _combine_test_results(self, *results: subprocess.CompletedProcess) -> subprocess.CompletedProcess:
         """Combine results from multiple test runs."""
         from types import SimpleNamespace
         
-        # Combine stdout and stderr
-        combined_stdout = f"{result1.stdout}\n{'='*50}\n{result2.stdout}"
-        combined_stderr = f"{result1.stderr}\n{'='*50}\n{result2.stderr}"
+        # Combine stdout and stderr from all results
+        separator = '='*50
+        combined_stdout = f"\n{separator}\n".join(result.stdout for result in results)
+        combined_stderr = f"\n{separator}\n".join(result.stderr for result in results)
         
-        # Return code is success only if both succeeded
-        combined_returncode = 0 if (result1.returncode == 0 and result2.returncode == 0) else 1
+        # Return code is success only if all succeeded
+        combined_returncode = 0 if all(result.returncode == 0 for result in results) else 1
         
         # Create a combined result object
         combined_result = SimpleNamespace()
@@ -433,9 +495,18 @@ class ComprehensiveTestRunner:
             print("🧪 COMPREHENSIVE TEST SUITE - NO-OP MODE")
             print("=" * 80)
             print("🔗 Testing process management and connectivity only")
-        else:
-            print("🧪 COMPREHENSIVE TEST SUITE")
+        elif self.pfs_only:
+            print("🧪 COMPREHENSIVE TEST SUITE - PAGINATION/FILTER/SORT ONLY")
             print("=" * 80)
+            print("📄 Testing pagination, filtering, and sorting functionality only")
+        elif self.newdata:
+            print("🧪 COMPREHENSIVE TEST SUITE - CONTROLLED DATA MODE")
+            print("=" * 80)
+            print("🧹 Wiping database and creating controlled test data with known validation issues")
+        else:
+            print("🧪 COMPREHENSIVE TEST SUITE - EXISTING DATA MODE")
+            print("=" * 80)
+            print("📊 Using existing database state (may have unpredictable results)")
         
         # Show which databases are being tested
         if self.mongo_only and not self.es_only:
@@ -498,8 +569,8 @@ class ComprehensiveTestRunner:
     def cleanup(self):
         """Clean up temporary files"""
         try:
-            if os.path.exists("temp_test_config.json"):
-                os.remove("temp_test_config.json")
+            if os.path.exists("tests/temp_test_config.json"):
+                os.remove("tests/temp_test_config.json")
         except:
             pass
         
@@ -521,6 +592,10 @@ def main():
                        help='Include Elasticsearch configurations (both validation modes)')
     parser.add_argument('--noop', action='store_true',
                        help='Run no-op connectivity tests only (no actual test execution)')
+    parser.add_argument('--pfs', action='store_true',
+                       help='Run only pagination/filter/sort tests (skip user validation and FK processing)')
+    parser.add_argument('--newdata', action='store_true',
+                       help='Wipe database and create controlled test data with known validation issues (guarantees clean state)')
     args = parser.parse_args()
     
     # Note: --mongo and --es can be used together (same as default)
@@ -530,7 +605,9 @@ def main():
         curl=args.curl, 
         mongo_only=args.mongo, 
         es_only=args.es,
-        noop=args.noop
+        noop=args.noop,
+        pfs_only=args.pfs,
+        newdata=args.newdata
     )
     
     try:

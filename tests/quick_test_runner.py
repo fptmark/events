@@ -17,14 +17,14 @@ def create_validation_configs():
             "database": "mongodb",
             "db_uri": "mongodb://localhost:27017",
             "db_name": "eventMgr", 
-            "get_validation": "get_all",
+            "fk_validation": "multiple",
             "unique_validation": True
         },
         "es_validation.json": {
             "database": "elasticsearch",
             "db_uri": "http://localhost:9200", 
             "db_name": "eventMgr",
-            "get_validation": "get_all",
+            "fk_validation": "multiple",
             "unique_validation": True
         }
     }

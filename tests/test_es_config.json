@@ -2,6 +2,6 @@
     "database": "elasticsearch",
     "db_uri": "http://localhost:9200",
     "db_name": "eventMgr",
-    "get_validation": "",
+    "fk_validation": "",
     "unique_validation": false
 }

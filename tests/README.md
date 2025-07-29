@@ -107,7 +107,7 @@ Each configuration tests:
 - Basic pagination: `?page=2&pageSize=25`
 - Sorting: `?sort=name&order=desc`  
 - Range filters: `?age=[18:65]&netWorth=[50000:]`
-- Text search: `?username=john&email=gmail`
+- Text search: `?filter=username:john,email:gmail`
 - Complex combinations
 
 **Database Integration**:
@@ -139,7 +139,7 @@ $ python tests/test_user_validation.py mongo.json --verbose
    ✅ Status: 200 - Retrieved 25 users
    📊 Response time: 145ms
 
-🔗 Testing URL: GET http://localhost:5500/api/user?username=john&age=[25:35]
+🔗 Testing URL: GET http://localhost:5500/api/user?filter=username:john,age:range:[25:35]
    ✅ Status: 200 - Found 3 matching users
    📊 Response time: 89ms
 
@@ -155,16 +155,16 @@ $ python tests/test_user_validation.py mongo.json --verbose
 GET /api/user?page=2&pageSize=15&sort=username&order=asc
 
 # Text search with partial matching  
-GET /api/user?username=john&email=gmail
+GET /api/user?filter=username:john,email:gmail
 
 # Enum exact matching
-GET /api/user?gender=male&isAccountOwner=true
+GET /api/user?filter=gender:male,isAccountOwner:true
 
 # Range filtering
-GET /api/user?age=[21:65]&netWorth=[25000:100000]
+GET /api/user?filter=age:range:[21:65],netWorth:range:[25000:100000]
 
 # Complex filtering
-GET /api/user?page=3&pageSize=50&sort=createdAt&order=desc&username=smith&age=[25:]&gender=female
+GET /api/user?filter=username:smith,age:range:[25:],gender:female&page=3&pageSize=50&sort=createdAt&order=desc
 ```
 
 ## Configuration Files

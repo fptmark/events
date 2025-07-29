@@ -41,7 +41,7 @@ class ComprehensiveTestOrchestrator:
             "database": database,
             "db_uri": "mongodb://localhost:27017" if database == "mongodb" else "http://localhost:9200",
             "db_name": "eventMgr",
-            "get_validation": gv_setting,
+            "fk_validation": "multiple" if gv_setting == "get_all" else "",
             "unique_validation": gv_setting == "get_all"
         }
         config_file = "temp_comprehensive_test_config.json"

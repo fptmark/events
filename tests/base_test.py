@@ -133,21 +133,23 @@ class BaseTestFramework:
         return self.failed == 0
     
     def _init_curl_file(self):
-        """Initialize curl.sh file, overwriting if it exists"""
+        """Initialize curl.sh file in tests directory, overwriting if it exists"""
         try:
-            with open('curl.sh', 'w') as f:
+            with open('tests/curl.sh', 'w') as f:
                 f.write('#!/bin/bash\n')
                 f.write('# Generated curl commands from test execution\n')
-                f.write('# Run: chmod +x curl.sh && ./curl.sh\n\n')
-            print("📁 Initialized curl.sh - API calls will be logged")
+                f.write('# Run: chmod +x tests/curl.sh && ./tests/curl.sh\n\n')
+            print("📁 Initialized tests/curl.sh - API calls will be logged")
         except Exception as e:
-            print(f"⚠️ Warning: Could not initialize curl.sh: {e}")
+            print(f"⚠️ Warning: Could not initialize tests/curl.sh: {e}")
     
     def _append_to_curl_file(self, method: str, url: str, data: Dict = None):
-        """Append a curl command to curl.sh"""
+        """Append a curl command to tests/curl.sh"""
         try:
-            with open('curl.sh', 'a') as f:
-                f.write(f'echo "=== {method} {url} ==="\n')
+            with open('tests/curl.sh', 'a') as f:
+                # Show decoded URL in echo statement
+                decoded_url = self._get_decoded_url_for_display(url)
+                f.write(f'echo "=== {method} {decoded_url} ==="\n')
                 
                 if method.upper() == "GET":
                     f.write(f'curl -X GET "{url}"\n')
@@ -168,7 +170,61 @@ class BaseTestFramework:
                 f.write('echo ""\n\n')  # Add spacing between commands
         except Exception as e:
             if self.verbose:
-                print(f"⚠️ Warning: Could not write to curl.sh: {e}")
+                print(f"⚠️ Warning: Could not write to tests/curl.sh: {e}")
+    
+    def _get_decoded_url_comment(self, url: str) -> str:
+        """Generate a comment showing decoded URL parameters"""
+        from urllib.parse import urlparse, parse_qs, unquote
+        
+        parsed = urlparse(url)
+        if not parsed.query:
+            return ""
+        
+        # Parse query parameters
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        decoded_parts = []
+        
+        for key, values in params.items():
+            for value in values:
+                decoded_value = unquote(value)
+                # Only add comment if the value was actually encoded (contains special chars)
+                if decoded_value != value and any(char in decoded_value for char in ['{', '}', ':', '"', ' ']):
+                    decoded_parts.append(f"{key}={decoded_value}")
+                elif decoded_value != value:
+                    decoded_parts.append(f"{key}={decoded_value}")
+        
+        if decoded_parts:
+            return f"Decoded parameters: {', '.join(decoded_parts)}"
+        
+        return ""
+    
+    def _get_decoded_url_for_display(self, url: str) -> str:
+        """Return URL with decoded parameters for display in echo statements"""
+        from urllib.parse import urlparse, parse_qs, unquote, urlencode
+        
+        parsed = urlparse(url)
+        if not parsed.query:
+            return url
+        
+        # Parse and decode all query parameters
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        decoded_params = {}
+        
+        for key, values in params.items():
+            decoded_values = []
+            for value in values:
+                decoded_value = unquote(value)
+                decoded_values.append(decoded_value)
+            decoded_params[key] = decoded_values
+        
+        # Rebuild URL with decoded (readable) parameters for display
+        readable_params = []
+        for key, values in decoded_params.items():
+            for value in values:
+                readable_params.append(f"{key}={value}")
+        
+        readable_query = "&".join(readable_params)
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{readable_query}"
     
     def make_api_request(self, method: str, endpoint: str, data: Dict = None, expected_status: int = 200) -> Tuple[bool, Dict]:
         """Helper method for API requests"""

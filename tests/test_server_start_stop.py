@@ -25,7 +25,7 @@ def test_server_lifecycle():
         "database": "mongodb",
         "db_uri": "mongodb://localhost:27017",
         "db_name": "eventMgr",
-        "get_validation": "",
+        "fk_validation": "",
         "unique_validation": False
     }
     
@@ -109,7 +109,7 @@ def run_comprehensive_tests():
             "database": "mongodb",
             "db_uri": "mongodb://localhost:27017",
             "db_name": "eventMgr",
-            "get_validation": "",
+            "fk_validation": "",
             "unique_validation": False
         },
         {
@@ -117,7 +117,7 @@ def run_comprehensive_tests():
             "database": "mongodb",
             "db_uri": "mongodb://localhost:27017",
             "db_name": "eventMgr",
-            "get_validation": "get_all",
+            "fk_validation": "multiple",
             "unique_validation": True
         },
         {
@@ -125,7 +125,7 @@ def run_comprehensive_tests():
             "database": "elasticsearch",
             "db_uri": "http://localhost:9200",
             "db_name": "eventMgr",
-            "get_validation": "",
+            "fk_validation": "",
             "unique_validation": False
         },
         {
@@ -133,7 +133,7 @@ def run_comprehensive_tests():
             "database": "elasticsearch",
             "db_uri": "http://localhost:9200",
             "db_name": "eventMgr",
-            "get_validation": "get_all",
+            "fk_validation": "multiple",
             "unique_validation": True
         }
     ]
@@ -274,14 +274,14 @@ def run_noop_process_tests():
             "database": "mongodb",
             "db_uri": "mongodb://localhost:27017",
             "db_name": "eventMgr",
-            "get_validation": "",
+            "fk_validation": "",
             "unique_validation": False
         }),
         ("Elasticsearch", {
             "database": "elasticsearch", 
             "db_uri": "http://localhost:9200",
             "db_name": "eventMgr",
-            "get_validation": "",
+            "fk_validation": "",
             "unique_validation": False
         })
     ]

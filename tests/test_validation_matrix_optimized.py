@@ -22,7 +22,7 @@ from collections import defaultdict
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 class GVSetting(Enum):
-    ON = "get_all"
+    ON = "multiple"
     OFF = ""
 
 class ViewParam(Enum):
@@ -55,7 +55,7 @@ class ServerConfig:
             "database": self.database.value,
             "db_uri": "mongodb://localhost:27017" if self.database == Database.MONGODB else "http://localhost:9200",
             "db_name": "eventMgr",
-            "get_validation": self.gv_setting.value,
+            "fk_validation": self.gv_setting.value,
             "unique_validation": self.gv_setting == GVSetting.ON
         }
     

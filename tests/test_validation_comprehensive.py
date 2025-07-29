@@ -40,7 +40,7 @@ class ServerConfig:
             "database": self.database,
             "db_uri": "mongodb://localhost:27017" if self.database == "mongodb" else "http://localhost:9200",
             "db_name": "eventMgr",
-            "get_validation": "get_all" if self.gv_enabled else "",
+            "fk_validation": "multiple" if self.gv_enabled else "",
             "unique_validation": self.gv_enabled
         }
     
