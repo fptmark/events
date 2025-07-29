@@ -57,7 +57,7 @@ class PaginationIntegrationTester(BaseTestFramework):
             print("\n🧪 Testing field filtering...")
             
         # Test boolean field filtering (more likely to have data)
-        success, response = self.make_api_request("GET", "/api/user?isAccountOwner=true&pageSize=10")
+        success, response = self.make_api_request("GET", "/api/user?filter=isAccountOwner:true&pageSize=10")
         if not success or 'data' not in response:
             return False
             
@@ -71,7 +71,7 @@ class PaginationIntegrationTester(BaseTestFramework):
             print("\n🧪 Testing text search filtering...")
             
         # Test partial text matching
-        success, response = self.make_api_request("GET", "/api/user?username=test&pageSize=10")
+        success, response = self.make_api_request("GET", "/api/user?filter=username:test&pageSize=10")
         if not success:
             return False
             
@@ -87,7 +87,7 @@ class PaginationIntegrationTester(BaseTestFramework):
             print("\n🧪 Testing range filtering...")
             
         # Test range filtering on netWorth
-        success, response = self.make_api_request("GET", "/api/user?netWorth=[1000:50000]&pageSize=10")
+        success, response = self.make_api_request("GET", "/api/user?filter=netWorth:range:[1000:50000]&pageSize=10")
         if not success:
             return False
             
@@ -107,7 +107,7 @@ class PaginationIntegrationTester(BaseTestFramework):
             print("\n🧪 Testing complex filtering...")
             
         # Test multiple filters combined
-        url = "/api/user?gender=male&isAccountOwner=true&netWorth=[1000:]&pageSize=5"
+        url = "/api/user?filter=gender:male,isAccountOwner:true,netWorth:range:[1000:]&pageSize=5"
         success, response = self.make_api_request("GET", url)
         if not success:
             return False
@@ -131,12 +131,12 @@ class PaginationIntegrationTester(BaseTestFramework):
             print("\n🧪 Testing pagination with filtering...")
             
         # Get first page
-        success1, response1 = self.make_api_request("GET", "/api/user?gender=male&page=1&pageSize=5")
+        success1, response1 = self.make_api_request("GET", "/api/user?filter=gender:male&page=1&pageSize=5")
         if not success1:
             return False
             
         # Get second page  
-        success2, response2 = self.make_api_request("GET", "/api/user?gender=male&page=2&pageSize=5")
+        success2, response2 = self.make_api_request("GET", "/api/user?filter=gender:male&page=2&pageSize=5")
         if not success2:
             return False
             
@@ -171,7 +171,7 @@ class PaginationIntegrationTester(BaseTestFramework):
             print("\n🧪 Testing empty results...")
             
         # Use a filter that's unlikely to match anything
-        success, response = self.make_api_request("GET", "/api/user?username=nonexistentuser12345")
+        success, response = self.make_api_request("GET", "/api/user?filter=username:nonexistentuser12345")
         if not success:
             return False
             
@@ -299,7 +299,7 @@ class PaginationIntegrationTester(BaseTestFramework):
         view_spec = '{"account":["createdAt"]}'
         encoded_view = urllib.parse.quote(view_spec)
         
-        success, response = self.make_api_request("GET", f"/api/user?view={encoded_view}&gender=male&pageSize=5")
+        success, response = self.make_api_request("GET", f"/api/user?view={encoded_view}&filter=gender:male&pageSize=5")
         if not success:
             if self.verbose:
                 print("    ❌ API request failed")
@@ -361,7 +361,7 @@ class PaginationIntegrationTester(BaseTestFramework):
         view_spec = '{"account":["createdAt"]}'
         encoded_view = urllib.parse.quote(view_spec)
         
-        url = f"/api/user?view={encoded_view}&gender=male&sort=username&order=desc&page=1&pageSize=3"
+        url = f"/api/user?view={encoded_view}&filter=gender:male&sort=username&order=desc&page=1&pageSize=3"
         success, response = self.make_api_request("GET", url)
         if not success:
             if self.verbose:
