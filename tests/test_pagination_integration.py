@@ -17,8 +17,9 @@ from tests.base_test import BaseTestFramework
 class PaginationIntegrationTester(BaseTestFramework):
     """Pagination and filtering integration test suite"""
     
-    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl: bool = False):
+    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl: bool = False, nopaging: bool = False):
         super().__init__(config_file, server_url, verbose, curl)
+        self.nopaging = nopaging
     
     def test_basic_pagination(self):
         """Test basic pagination parameters"""
@@ -29,9 +30,13 @@ class PaginationIntegrationTester(BaseTestFramework):
         if not success or 'data' not in response:
             return False
             
-        # Just verify the request succeeded and we got a valid response structure
+        # Validate pagination structure and values (skip if nopaging flag is set)
+        if not self.nopaging and not self.validate_pagination(response, "/api/user?page=2&pageSize=15", expected_page=2, expected_per_page=15):
+            return False
+            
+        # Verify data count doesn't exceed page size
         data = response.get('data', [])
-        return isinstance(data, list) and len(data) <= 15  # Data count should not exceed page size
+        return isinstance(data, list) and len(data) <= 15
     
     def test_sorting_parameters(self):
         """Test sorting parameters"""
@@ -47,6 +52,10 @@ class PaginationIntegrationTester(BaseTestFramework):
         if len(users) < 2:
             return True  # Can't test sorting with < 2 users
             
+        # Validate pagination is present
+        if not self.validate_pagination(response, "/api/user?sort=username&order=asc&pageSize=5"):
+            return False
+        
         # Check if usernames are in ascending order
         usernames = [user.get('username', '') for user in users if 'username' in user]
         return usernames == sorted(usernames)
@@ -141,7 +150,7 @@ class PaginationIntegrationTester(BaseTestFramework):
             return False
             
         # Verify pagination metadata is consistent
-        if response1.get('page_size') != response2.get('page_size'):
+        if response1.get('pagination', {}).get('per_page') != response2.get('pagination', {}).get('per_page'):
             return False
             
         # If both pages have data, verify no overlap
@@ -388,6 +397,117 @@ class PaginationIntegrationTester(BaseTestFramework):
         # Main test: complex view+PFS combination worked
         return True
 
+    def test_comprehensive_pagination(self):
+        """Test comprehensive pagination scenarios"""
+        if self.verbose:
+            print("\n🧪 Testing comprehensive pagination scenarios...")
+        
+        tests_passed = 0
+        tests_total = 0
+        
+        # Test 1: Default pagination (no parameters)
+        tests_total += 1
+        success, response = self.make_api_request("GET", "/api/user")
+        if success and (self.nopaging or self.validate_pagination(response, "/api/user")):
+            tests_passed += 1
+            if self.verbose:
+                print("    ✅ Default pagination test passed")
+        else:
+            if self.verbose:
+                print("    ❌ Default pagination test failed")
+        
+        # Test 2: First page with custom page size
+        tests_total += 1
+        success, response = self.make_api_request("GET", "/api/user?page=1&pageSize=10")
+        if success and (self.nopaging or self.validate_pagination(response, "/api/user?page=1&pageSize=10", expected_page=1, expected_per_page=10)):
+            tests_passed += 1
+            if self.verbose:
+                print("    ✅ First page custom size test passed")
+        else:
+            if self.verbose:
+                print("    ❌ First page custom size test failed")
+        
+        # Test 3: Middle page
+        tests_total += 1
+        success, response = self.make_api_request("GET", "/api/user?page=3&pageSize=5")
+        if success and (self.nopaging or self.validate_pagination(response, "/api/user?page=3&pageSize=5", expected_page=3, expected_per_page=5)):
+            if self.nopaging:
+                # Skip pagination-specific validations when nopaging is enabled
+                tests_passed += 1
+                if self.verbose:
+                    print("    ✅ Middle page test passed (pagination validation skipped)")
+            else:
+                pagination = response.get('pagination', {})
+                if pagination.get('has_prev') == True and pagination.get('page') == 3:
+                    tests_passed += 1
+                    if self.verbose:
+                        print("    ✅ Middle page test passed")
+                else:
+                    if self.verbose:
+                        print("    ❌ Middle page navigation hints failed")
+        else:
+            if self.verbose:
+                print("    ❌ Middle page test failed")
+        
+        # Test 4: Last page calculation
+        tests_total += 1
+        success, response = self.make_api_request("GET", "/api/user?pageSize=1000")  # Large page size to get all records
+        if success and (self.nopaging or self.validate_pagination(response, "/api/user?pageSize=1000")):
+            if self.nopaging:
+                # Skip pagination-specific validations when nopaging is enabled
+                tests_passed += 1
+                if self.verbose:
+                    print("    ✅ Last page test passed (pagination validation skipped)")
+            else:
+                pagination = response.get('pagination', {})
+                total_records = pagination.get('total', 0)
+                if total_records > 0:
+                    # Test actual last page
+                    last_page = pagination.get('total_pages', 1)
+                    success2, response2 = self.make_api_request("GET", f"/api/user?page={last_page}&pageSize=10")
+                    if success2 and self.validate_pagination(response2, f"/api/user?page={last_page}&pageSize=10"):
+                        last_pagination = response2.get('pagination', {})
+                        if last_pagination.get('has_next') == False and last_pagination.get('page') == last_page:
+                            tests_passed += 1
+                            if self.verbose:
+                                print("    ✅ Last page test passed")
+                        else:
+                            if self.verbose:
+                                print("    ❌ Last page navigation hints failed")
+                    else:
+                        if self.verbose:
+                            print("    ❌ Last page request failed")
+                else:
+                    # No records, but request succeeded
+                    tests_passed += 1
+                    if self.verbose:
+                        print("    ✅ Last page test passed (no records)")
+        else:
+            if self.verbose:
+                print("    ❌ Last page calculation test failed")
+        
+        # Test 5: Pagination with view parameter
+        tests_total += 1
+        import urllib.parse
+        view_spec = '{"account":["createdAt"]}'
+        encoded_view = urllib.parse.quote(view_spec)
+        success, response = self.make_api_request("GET", f"/api/user?view={encoded_view}&page=2&pageSize=5")
+        if success and (self.nopaging or self.validate_pagination(response, f"/api/user?view={encoded_view}&page=2&pageSize=5", expected_page=2, expected_per_page=5)):
+            tests_passed += 1
+            if self.verbose:
+                if self.nopaging:
+                    print("    ✅ Pagination with view parameter test passed (pagination validation skipped)")
+                else:
+                    print("    ✅ Pagination with view parameter test passed")
+        else:
+            if self.verbose:
+                print("    ❌ Pagination with view parameter test failed")
+        
+        if self.verbose:
+            print(f"    📊 Comprehensive pagination: {tests_passed}/{tests_total} tests passed")
+        
+        return tests_passed == tests_total
+
     @staticmethod
     def create_argument_parser():
         """Create argument parser for pagination tests"""
@@ -407,6 +527,8 @@ class PaginationIntegrationTester(BaseTestFramework):
                            help='Run only basic API tests (excludes pagination/filtering)')
         parser.add_argument('--pfs', action='store_true',
                            help='Run only pagination/filtering/sorting tests')
+        parser.add_argument('--nopaging', action='store_true',
+                           help='Skip pagination data validation (for working without pagination implementation)')
         return parser
 
 async def main():
@@ -430,7 +552,7 @@ async def main():
     print(f"Mode: {' + '.join(test_mode)} tests")
     print("="*60)
     
-    tester = PaginationIntegrationTester(args.config_file, args.server_url, args.verbose, args.curl)
+    tester = PaginationIntegrationTester(args.config_file, args.server_url, args.verbose, args.curl, args.nopaging)
     
     # Setup database connection
     if not await tester.setup_database_connection():
@@ -449,6 +571,7 @@ async def main():
         if run_pfs:
             print("\n🔍 PAGINATION/FILTERING/SORTING TESTS")
             print("-" * 45)
+            tester.test("Comprehensive Pagination", tester.test_comprehensive_pagination, True)
             tester.test("Basic Pagination", tester.test_basic_pagination, True)
             tester.test("Sorting Parameters", tester.test_sorting_parameters, True) 
             tester.test("Field Filtering", tester.test_field_filtering, True)

@@ -98,7 +98,7 @@ Each configuration tests:
 **Read-Time Validation**: Configuration-dependent validation:
 ```python
 # Insert invalid data directly to database
-# GET requests show warnings when get_validation enabled
+# GET requests show warnings when fk_validation enabled
 ```
 
 ### 2. Pagination & Filtering Tests (`test_pagination_filtering.py`)
@@ -175,7 +175,7 @@ GET /api/user?filter=username:smith,age:range:[25:],gender:female&page=3&pageSiz
     "database": "mongodb",
     "db_uri": "mongodb://localhost:27017", 
     "db_name": "eventMgr",
-    "get_validation": "get_all",
+    "fk_validation": "multiple",
     "unique_validation": true
 }
 ```
@@ -186,7 +186,7 @@ GET /api/user?filter=username:smith,age:range:[25:],gender:female&page=3&pageSiz
     "database": "elasticsearch",
     "db_uri": "http://localhost:9200",
     "db_name": "eventmgr", 
-    "get_validation": "get_all",
+    "fk_validation": "multiple",
     "unique_validation": true
 }
 ```
@@ -214,7 +214,7 @@ GET /api/user?filter=username:smith,age:range:[25:],gender:female&page=3&pageSiz
 ✅ **API Happy Path**: Should succeed (valid data passes validation)  
 ✅ **API Validation Failures**: Should fail with 422 errors (invalid data caught)
 ✅ **Pagination/Filtering**: Should handle all URL parameter combinations
-✅ **GET Validation**: Should show warnings/errors if `get_validation` enabled
+✅ **FK Validation**: Should show warnings/errors if `fk_validation` enabled
 
 ## Verbose Mode Output Format
 
@@ -285,7 +285,7 @@ When using `--verbose`, tests show detailed execution information:
 ```
 ⚠️ No validation errors detected in GET
 ```
-**Solution**: Ensure `get_validation: "get_all"` in config and invalid data exists
+**Solution**: Ensure `fk_validation: "multiple"` in config and invalid data exists
 
 ## Development Workflow
 

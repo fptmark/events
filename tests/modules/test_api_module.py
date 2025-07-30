@@ -3,12 +3,19 @@
 API validation test module - focused on basic API validation functionality
 """
 
-import requests
-import json
+import sys
+from pathlib import Path
 from typing import Dict, Any, List
 
-class APITestModule:
-    def __init__(self, server_port: int = 5500):
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from tests.base_test import BaseTestFramework
+
+class APITestModule(BaseTestFramework):
+    def __init__(self, server_port: int = 5500, curl: bool = False):
+        # Initialize BaseTestFramework with a dummy config (not used for API calls)
+        super().__init__("dummy.json", f"http://localhost:{server_port}", curl=curl)
         self.server_port = server_port
         self.test_user_ids = {
             "bad_fk": "68814e0e73b517d9e048b093",
@@ -21,19 +28,17 @@ class APITestModule:
     def run_single_api_test(self, user_id: str, field_type: str) -> Dict[str, Any]:
         """Test a single API call with known bad data"""
         
-        url = f"http://localhost:{self.server_port}/api/user/{user_id}"
+        endpoint = f"/api/user/{user_id}"
         
-        print(f"🧪 Testing GET {url} for {field_type}")
+        print(f"🧪 Testing GET {endpoint} for {field_type}")
         print("=" * 60)
         
         try:
-            response = requests.get(url, timeout=10)
+            success, response_data = self.make_api_request("GET", endpoint, expected_status=200)
             
-            print(f"Status Code: {response.status_code}")
-            print()
-            
-            if response.status_code == 200:
-                response_data = response.json()
+            if success:
+                print(f"Status Code: 200")
+                print()
                 print("Response structure:")
                 for key, value in response_data.items():
                     if key == 'data' and isinstance(value, dict):
@@ -66,20 +71,20 @@ class APITestModule:
                     "test_type": "api",
                     "field_type": field_type,
                     "user_id": user_id,
-                    "status_code": response.status_code,
+                    "status_code": 200,
                     "response_data": response_data,
                     **result
                 }
                 
             else:
-                print(f"❌ API returned status {response.status_code}")
+                print(f"❌ API request failed")
                 return {
                     "test_type": "api",
                     "field_type": field_type,
                     "user_id": user_id,
-                    "status_code": response.status_code,
+                    "status_code": 0,
                     "success": False,
-                    "details": f"HTTP {response.status_code}"
+                    "details": "Request failed"
                 }
                 
         except Exception as e:
@@ -228,3 +233,41 @@ class APITestModule:
             "expected_field": expected["field_name"], 
             "found_messages": [n.get('message') for n in field_notifications]
         }
+
+
+def main():
+    """Main function for running API validation tests"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='API validation test module')
+    parser.add_argument('--curl', action='store_true',
+                       help='Log API calls to curl.sh file')
+    parser.add_argument('--server-port', type=int, default=5500,
+                       help='Server port (default: 5500)')
+    
+    args = parser.parse_args()
+    
+    # Initialize API test module with curl support
+    api_tester = APITestModule(server_port=args.server_port, curl=args.curl)
+    
+    # Run all tests
+    results = api_tester.run_all_api_tests()
+    
+    # Print summary
+    total_tests = len(results)
+    passed_tests = sum(1 for r in results if r.get('success', False))
+    failed_tests = total_tests - passed_tests
+    
+    print()
+    print("=" * 80)
+    print("API MODULE TEST SUMMARY")
+    print("=" * 80)
+    print(f"Total tests: {total_tests}")
+    print(f"Passed: {passed_tests}")
+    print(f"Failed: {failed_tests}")
+    
+    return 0 if failed_tests == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

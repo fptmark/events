@@ -34,7 +34,7 @@ class TestResult:
     error: Optional[str] = None
 
 class ComprehensiveTestRunner:
-    def __init__(self, verbose: bool = False, curl: bool = False, mongo_only: bool = False, es_only: bool = False, noop: bool = False, pfs_only: bool = False, newdata: bool = False):
+    def __init__(self, verbose: bool = False, curl: bool = False, mongo_only: bool = False, es_only: bool = False, noop: bool = False, pfs_only: bool = False, newdata: bool = False, nopaging: bool = False):
         self.server_port = 5500
         self.server_process = None
         self.temp_configs = []
@@ -45,6 +45,7 @@ class ComprehensiveTestRunner:
         self.noop = noop
         self.pfs_only = pfs_only
         self.newdata = newdata
+        self.nopaging = nopaging
         
         # Define all test configurations
         all_configs = [
@@ -257,6 +258,8 @@ class ComprehensiveTestRunner:
                 extra_args.append("--verbose")
             if self.curl:
                 extra_args.append("--curl")
+            if self.nopaging:
+                extra_args.append("--nopaging")
             
             results = []
             
@@ -333,7 +336,7 @@ class ComprehensiveTestRunner:
                 else:
                     print("  🔍 Running API validation module tests...")
                 result5 = subprocess.run(
-                    [sys.executable, "tests/modules/test_api_module.py"],
+                    [sys.executable, "tests/modules/test_api_module.py"] + (["--curl"] if self.curl else []),
                     capture_output=True,
                     text=True,
                     timeout=180,
@@ -596,6 +599,8 @@ def main():
                        help='Run only pagination/filter/sort tests (skip user validation and FK processing)')
     parser.add_argument('--newdata', action='store_true',
                        help='Wipe database and create controlled test data with known validation issues (guarantees clean state)')
+    parser.add_argument('--nopaging', action='store_true',
+                       help='Skip pagination data validation (for working without pagination implementation)')
     args = parser.parse_args()
     
     # Note: --mongo and --es can be used together (same as default)
@@ -607,7 +612,8 @@ def main():
         es_only=args.es,
         noop=args.noop,
         pfs_only=args.pfs,
-        newdata=args.newdata
+        newdata=args.newdata,
+        nopaging=args.nopaging
     )
     
     try:

@@ -226,6 +226,71 @@ class BaseTestFramework:
         readable_query = "&".join(readable_params)
         return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{readable_query}"
     
+    def validate_pagination(self, response: Dict, endpoint: str = "", expected_page: int = None, expected_per_page: int = None) -> bool:
+        """Validate GitHub-style pagination structure and values"""
+        if 'pagination' not in response:
+            if self.verbose:
+                print(f"   ❌ Missing pagination object in response for {endpoint}")
+            return False
+        
+        pagination = response['pagination']
+        required_fields = ['page', 'per_page', 'total', 'total_pages', 'has_next', 'has_prev']
+        
+        for field in required_fields:
+            if field not in pagination:
+                if self.verbose:
+                    print(f"   ❌ Missing pagination field '{field}' for {endpoint}")
+                return False
+        
+        # Validate field types and basic logic
+        if not isinstance(pagination['page'], int) or pagination['page'] < 1:
+            if self.verbose:
+                print(f"   ❌ Invalid page number: {pagination['page']} for {endpoint}")
+            return False
+        
+        if not isinstance(pagination['per_page'], int) or pagination['per_page'] < 1:
+            if self.verbose:
+                print(f"   ❌ Invalid per_page: {pagination['per_page']} for {endpoint}")
+            return False
+        
+        if not isinstance(pagination['total'], int) or pagination['total'] < 0:
+            if self.verbose:
+                print(f"   ❌ Invalid total: {pagination['total']} for {endpoint}")
+            return False
+        
+        # Validate navigation hints make sense
+        current_page = pagination['page']
+        total_pages = pagination['total_pages']
+        
+        expected_has_prev = current_page > 1
+        expected_has_next = current_page < total_pages
+        
+        if pagination['has_prev'] != expected_has_prev:
+            if self.verbose:
+                print(f"   ❌ Incorrect has_prev: {pagination['has_prev']}, expected {expected_has_prev} for {endpoint}")
+            return False
+        
+        if pagination['has_next'] != expected_has_next:
+            if self.verbose:
+                print(f"   ❌ Incorrect has_next: {pagination['has_next']}, expected {expected_has_next} for {endpoint}")
+            return False
+        
+        # Validate expected values if provided
+        if expected_page and pagination['page'] != expected_page:
+            if self.verbose:
+                print(f"   ❌ Expected page {expected_page}, got {pagination['page']} for {endpoint}")
+            return False
+        
+        if expected_per_page and pagination['per_page'] != expected_per_page:
+            if self.verbose:
+                print(f"   ❌ Expected per_page {expected_per_page}, got {pagination['per_page']} for {endpoint}")
+            return False
+        
+        if self.verbose:
+            print(f"   ✅ Pagination valid: page {pagination['page']}/{pagination['total_pages']}, {pagination['per_page']} per page, {pagination['total']} total")
+        
+        return True
+
     def make_api_request(self, method: str, endpoint: str, data: Dict = None, expected_status: int = 200) -> Tuple[bool, Dict]:
         """Helper method for API requests"""
         url = f"{self.server_url}{endpoint}"

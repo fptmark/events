@@ -6,28 +6,28 @@ Standalone test of FK processing logic (no dependencies required)
 # Simulate Config.validations function
 def mock_validations(get_all: bool):
     """Mock the Config.validations function"""
-    # Simulate current config: get_validation = ""  (off)
+    # Simulate current config: fk_validation = ""  (off)
     validation = ""
     
-    if validation == 'get_all':
-        # get_all setting applies to ALL operations (both single get and get_all)
-        get_validation = True
-    elif validation == 'get' and not get_all:
-        # get setting applies only to single get operations
-        get_validation = True
+    if validation == 'multiple':
+        # multiple setting applies to ALL operations (both single get and get_all)
+        fk_validation = True
+    elif validation == 'single' and not get_all:
+        # single setting applies only to single get operations
+        fk_validation = True
     else:
         # No FK validation
-        get_validation = False
+        fk_validation = False
 
-    return (get_validation, False)  # unique_validation not relevant here
+    return (fk_validation, False)  # unique_validation not relevant here
 
 def should_process_fk_fields(operation_is_get_all: bool, has_view_spec: bool) -> bool:
     """
     Determine if FK fields should be processed based on user's original rules:
     
-    1. View parameter ALWAYS triggers FK processing regardless of get_validations
-    2. get_validations="get" applies only to single get operations  
-    3. get_validations="get_all" applies to all read operations
+    1. View parameter ALWAYS triggers FK processing regardless of fk_validation
+    2. fk_validation="single" applies only to single get operations  
+    3. fk_validation="multiple" applies to all read operations
     
     Args:
         operation_is_get_all: True for get_all/list, False for single get
@@ -40,17 +40,17 @@ def should_process_fk_fields(operation_is_get_all: bool, has_view_spec: bool) ->
     if has_view_spec:
         return True
         
-    # Rules 2 & 3: Check get_validations setting
-    get_validation, _ = mock_validations(operation_is_get_all)
-    return get_validation
+    # Rules 2 & 3: Check fk_validation setting
+    fk_validation, _ = mock_validations(operation_is_get_all)
+    return fk_validation
 
 def test_fk_logic():
     """Test all 4 conditions"""
     print("FK Processing Logic Test")
     print("=" * 50)
     
-    # Test with get_validation = "get_all"
-    print("Testing with get_validation = '' (off):")
+    # Test with fk_validation = "multiple"
+    print("Testing with fk_validation = '' (off):")
     
     # Condition 1: GET /api/user (get_all operation, no view)
     result1 = should_process_fk_fields(operation_is_get_all=True, has_view_spec=False)
@@ -68,7 +68,7 @@ def test_fk_logic():
     result4 = should_process_fk_fields(operation_is_get_all=False, has_view_spec=True)
     print(f"  GET /api/user/{{id}}?view=... (with view): {result4} - {'SHOULD process' if result4 else 'should NOT process'}")
     
-    print("\nExpected behavior with get_validation='' (off):")
+    print("\nExpected behavior with fk_validation='' (off):")
     print("  - Conditions 1,3 (no view) should return False (should NOT process)")
     print("  - Conditions 2,4 (with view) should return True (view param always triggers FK)")
     print("  - All requests should return data, but FK processing differs")

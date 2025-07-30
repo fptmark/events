@@ -95,7 +95,24 @@ class ComprehensiveValidationTester:
         ]
     
     def get_test_cases_for_config(self, config: ServerConfig) -> List[TestCase]:
-        """Get test cases for a specific configuration, ordered simple to complex"""
+        """Get test cases for a specific configuration, ordered simple to complex
+        
+        VALIDATION LOGIC:
+        1. Model validation (enum, range, etc.) ALWAYS happens regardless of fk_validation setting
+        2. FK validation ONLY happens when: fk_validation=ON OR view parameter is present
+        
+        Test Users:
+        - bad_enum_user: has invalid gender enum (model validation issue)
+        - bad_currency_user: has negative netWorth (model validation issue)  
+        - bad_fk_user: has non-existent accountId (FK validation issue)
+        - multiple_errors_user: has all three validation issues
+        
+        Expected Notifications:
+        - fk_validation=OFF + no view: only model validation notifications
+        - fk_validation=OFF + view present: model + FK validation notifications  
+        - fk_validation=ON + no view: model + FK validation notifications
+        - fk_validation=ON + view present: model + FK validation notifications
+        """
         
         if not self.test_data:
             raise ValueError("Test data not initialized. Call setup_test_data() first.")
@@ -107,120 +124,146 @@ class ComprehensiveValidationTester:
         multiple_errors_user = self.test_data["multiple_errors"]
         
         base_cases = [
-            # 1. Simple field validation tests
+            # 1. Model validation tests - ALWAYS occur regardless of fk_validation setting
             TestCase(
                 name="enum_validation",
-                description="Test bad enum value in gender field",
+                description="Test bad enum value in gender field - Model validation should ALWAYS work",
                 url_path=f"/api/user/{bad_enum_user}",
                 expected_notifications=[
                     {
                         "type": "VALIDATION",
                         "field_name": "gender", 
                         "message_contains": "male or female",
-                        "description": "Gender enum validation should always work"
+                        "description": "Gender enum validation should always work regardless of fk_validation setting"
                     }
                 ]
             ),
             
             TestCase(
                 name="currency_validation", 
-                description="Test negative netWorth value",
+                description="Test negative netWorth value - Model validation should ALWAYS work",
                 url_path=f"/api/user/{bad_currency_user}",
                 expected_notifications=[
                     {
                         "type": "VALIDATION",
                         "field_name": "netWorth",
                         "message_contains": "greater than or equal to 0",
-                        "description": "Currency validation should always work"
+                        "description": "Currency validation should always work regardless of fk_validation setting"
                     }
                 ]
             ),
             
-            # 2. FK validation (depends on GV setting)
+            # 2. FK validation (depends on GV setting) - NO VIEW PARAMETER
             TestCase(
                 name="fk_validation_no_view",
-                description="Test bad FK without view parameter",
+                description="Test bad FK without view parameter - FK validation should NOT occur when fk_validation=OFF",
                 url_path=f"/api/user/{bad_fk_user}",
                 expected_notifications=[
                     {
                         "type": "VALIDATION", 
                         "field_name": "accountId",
                         "message_contains": "does not exist",
-                        "description": f"FK validation should {'work' if config.gv_enabled else 'NOT work'} with GV={'ON' if config.gv_enabled else 'OFF'}"
+                        "description": f"FK validation should work when fk_validation=ON"
                     }
-                ] if config.gv_enabled else []
+                ] if config.gv_enabled else []  # Empty list when gv_enabled=False (fk_validation=OFF)
             ),
             
-            # 3. FK validation with view parameter
+            # 3. FK validation with view parameter - ALWAYS triggers FK validation
             TestCase(
                 name="fk_validation_with_view",
-                description="Test bad FK with view parameter",
+                description="Test bad FK with view parameter - FK validation should ALWAYS occur when view is present",
                 url_path=f"/api/user/{bad_fk_user}?view=%7B%22account%22%3A%5B%22id%22%5D%7D",
                 expected_notifications=[
                     {
                         "type": "VALIDATION",
                         "field_name": "accountId", 
                         "message_contains": "does not exist",
-                        "description": "FK validation should work with view parameter regardless of GV setting"
+                        "description": "FK validation should work with view parameter regardless of fk_validation setting"
                     }
                 ]
             ),
             
-            # 4. PFS request with validation
+            # 4. Model validation with PFS parameters - Model validation should ALWAYS work
             TestCase(
                 name="enum_validation_pfs",
-                description="Test bad enum with pagination parameters",
+                description="Test bad enum with pagination parameters - Model validation should work with PFS",
                 url_path=f"/api/user/{bad_enum_user}?page=1&pageSize=5&sort=username&order=asc",
                 expected_notifications=[
                     {
                         "type": "VALIDATION",
                         "field_name": "gender",
                         "message_contains": "male or female", 
-                        "description": "Enum validation should work with PFS parameters"
+                        "description": "Enum validation should work with PFS parameters (model validation always occurs)"
                     }
                 ]
             ),
             
-            # 5. Complex: PFS + view + validation
+            # 5. FK validation with PFS + view parameters - View parameter triggers FK validation
             TestCase(
                 name="fk_validation_pfs_view",
-                description="Test bad FK with both PFS and view parameters",
+                description="Test bad FK with both PFS and view parameters - FK validation occurs due to view parameter",
                 url_path=f"/api/user/{bad_fk_user}?view=%7B%22account%22%3A%5B%22id%22%5D%7D&page=1&pageSize=3&sort=createdAt&order=desc",
                 expected_notifications=[
                     {
                         "type": "VALIDATION",
                         "field_name": "accountId",
                         "message_contains": "does not exist",
-                        "description": "FK validation should work with view+PFS parameters"
+                        "description": "FK validation should work with view+PFS parameters (view triggers FK validation)"
                     }
                 ]
             ),
             
-            # 6. Multiple validation errors
+            # 6. Multiple validation errors WITH view parameter (FK validation triggered)
             TestCase(
-                name="multiple_validations",
-                description="Test multiple validation errors in single user",
+                name="multiple_validations_with_view",
+                description="Test multiple validation errors with view parameter - all validations should occur",
                 url_path=f"/api/user/{multiple_errors_user}?view=%7B%22account%22%3A%5B%22id%22%5D%7D",
                 expected_notifications=[
                     {
                         "type": "VALIDATION",
                         "field_name": "gender",
                         "message_contains": "male or female",
-                        "description": "Gender validation error"
+                        "description": "Gender validation error (always occurs)"
                     },
                     {
                         "type": "VALIDATION",
                         "field_name": "netWorth", 
                         "message_contains": "greater than or equal to 0",
-                        "description": "Currency validation error"
+                        "description": "Currency validation error (always occurs)"
                     },
                     {
                         "type": "VALIDATION",
                         "field_name": "accountId",
                         "message_contains": "does not exist", 
-                        "description": "FK validation error"
+                        "description": "FK validation error (occurs because view parameter is present)"
                     }
                 ]
+            ),
+            
+            # 7. Multiple validation errors WITHOUT view parameter (FK validation conditional)
+            TestCase(
+                name="multiple_validations_no_view",
+                description="Test multiple validation errors without view parameter - FK validation depends on fk_validation setting",
+                url_path=f"/api/user/{multiple_errors_user}",
+                expected_notifications=[
+                    {
+                        "type": "VALIDATION",
+                        "field_name": "gender",
+                        "message_contains": "male or female",
+                        "description": "Gender validation error (always occurs)"
+                    },
+                    {
+                        "type": "VALIDATION",
+                        "field_name": "netWorth", 
+                        "message_contains": "greater than or equal to 0",
+                        "description": "Currency validation error (always occurs)"
+                    }
+                ] + ([{
+                    "type": "VALIDATION",
+                    "field_name": "accountId",
+                    "message_contains": "does not exist", 
+                    "description": "FK validation error (occurs because fk_validation=ON)"
+                }] if config.gv_enabled else [])  # FK notification only when fk_validation=ON
             )
         ]
         

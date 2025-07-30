@@ -766,14 +766,14 @@ class UserValidationTester(BaseTestFramework):
     
     # === Validation on GET/GET_ALL Tests ===
     
-    async def test_get_validation_with_invalid_data(self):
+    async def test_fk_validation_with_invalid_data(self):
         """Test that get/get_all validation behaves correctly based on current settings"""
         print("🔍 Testing get/get_all validation on invalid data...")
         
         # Check current validation settings
         from app.config import Config
-        get_validation, unique_validation = Config.validations(True)  # True for get_all
-        print(f"    Current validation settings: get_validation={get_validation}, unique_validation={unique_validation}")
+        fk_validation, unique_validation = Config.validations(True)  # True for get_all
+        print(f"    Current validation settings: fk_validation={fk_validation}, unique_validation={unique_validation}")
         
         # First, ensure we have some invalid data in the database
         await self.test_insert_invalid_networth_documents()
@@ -793,7 +793,7 @@ class UserValidationTester(BaseTestFramework):
             print(f"    Retrieved {len(users)} users")
             print(f"    Notifications: {len(notifications)}")
             
-            if get_validation:
+            if fk_validation:
                 # Validation is enabled - should find validation issues
                 validation_notifications = [n for n in notifications if isinstance(n, dict) and n.get("type") == "validation"]
                 
@@ -815,10 +815,10 @@ class UserValidationTester(BaseTestFramework):
             
             return True
         else:
-            # 500 error might be expected when get_validation encounters invalid data
+            # 500 error might be expected when fk_validation encounters invalid data
             if "500" in str(response):
                 print(f"    ✅ GET returned 500 - validation caught invalid data and failed as expected")
-                print(f"    This confirms get_validation is working properly")
+                print(f"    This confirms fk_validation is working properly")
                 return True
             else:
                 print(f"    ❌ Failed to retrieve users: {response}")
@@ -913,8 +913,8 @@ async def main():
                     tester.test_api_create_user_string_validation, True)
         
         # Test 6: GET/GET_ALL validation (async)
-        get_validation_result = await tester.test_get_validation_with_invalid_data()
-        tester.test("GET Validation with Invalid Data", lambda: get_validation_result, True)
+        fk_validation_result = await tester.test_fk_validation_with_invalid_data()
+        tester.test("FK Validation with Invalid Data", lambda: fk_validation_result, True)
         
         # Cleanup unless preserve is requested (async)
         if not args.preserve:

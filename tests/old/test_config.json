@@ -4,7 +4,7 @@
     "db_name": "eventMgr",
     "host": "0.0.0.0",
     "server_port": 5500,
-    "get_validation": "",
+    "fk_validation": "",
     "unique_validation": true,
     "log_level": "info",
     "environment": "development"

@@ -41,17 +41,16 @@ class TestDataCreator:
             await DatabaseFactory.close()
             print("✅ Database connection closed")
     
-    async def create_test_account(self) -> str:
+    async def create_test_account(self, account_suffix: str = "123456") -> str:
         """Create a test account and return its ID"""
-        account_id = str(uuid.uuid4()).replace('-', '')[:24]
+        # Use predictable test ID that starts with "test_"
+        account_id = f"test_valid_account_{account_suffix}"
         
         account_doc = {
             "id": account_id,
-            "name": f"Test Account {account_id[:8]}",
-            "type": "business",
-            "status": "active",
             "createdAt": datetime.now(timezone.utc),
-            "updatedAt": datetime.now(timezone.utc)
+            "updatedAt": datetime.now(timezone.utc),
+            "expiredAt": None  # Optional field from account model
         }
         
         result, warnings = await DatabaseFactory.save_document("account", account_doc, [])
@@ -62,9 +61,10 @@ class TestDataCreator:
         print(f"✅ Created test account: {account_id}")
         return account_id
     
-    async def create_invalid_user(self, scenario: str, valid_account_id: str) -> str:
-        """Create a user with specific validation issues"""
-        user_id = str(uuid.uuid4()).replace('-', '')[:24]
+    async def create_test_user(self, scenario: str, account_id: str) -> str:
+        """Create a test user with specific validation issues or valid data"""
+        # Use predictable test IDs that start with "test_"
+        user_id = f"test_{scenario}_user_123456"
         base_time = datetime.now(timezone.utc)
         
         # Base valid user data
@@ -80,26 +80,36 @@ class TestDataCreator:
             "updatedAt": base_time
         }
         
-        # Add specific validation issues based on scenario
-        if scenario == "bad_enum":
-            user_doc["gender"] = "invalid_gender"  # Should be 'male', 'female', or 'other'
+        # Add specific validation issues or valid data based on scenario
+        if scenario == "valid_all":
+            user_doc["gender"] = "male"  # Valid
             user_doc["netWorth"] = 50000.0  # Valid
-            user_doc["accountId"] = valid_account_id  # Valid
+            user_doc["accountId"] = account_id  # Valid FK
+            
+        elif scenario == "valid_fk_only":
+            user_doc["gender"] = "female"  # Valid
+            user_doc["netWorth"] = 75000.0  # Valid
+            user_doc["accountId"] = account_id  # Valid FK
+            
+        elif scenario == "bad_enum":
+            user_doc["gender"] = "invalid_gender"  # Invalid enum
+            user_doc["netWorth"] = 50000.0  # Valid
+            user_doc["accountId"] = account_id  # Valid FK
             
         elif scenario == "bad_currency":
             user_doc["gender"] = "male"  # Valid
             user_doc["netWorth"] = -5000.0  # Invalid: must be >= 0
-            user_doc["accountId"] = valid_account_id  # Valid
+            user_doc["accountId"] = account_id  # Valid FK
             
         elif scenario == "bad_fk":
             user_doc["gender"] = "female"  # Valid
             user_doc["netWorth"] = 75000.0  # Valid
-            user_doc["accountId"] = "nonexistent123456789012"  # Invalid: FK doesn't exist
+            user_doc["accountId"] = account_id  # Invalid: FK doesn't exist (passed as nonexistent ID)
             
         elif scenario == "multiple_errors":
             user_doc["gender"] = "bad_value"  # Invalid enum
             user_doc["netWorth"] = -10000.0  # Invalid currency
-            user_doc["accountId"] = "badaccount123456789012"  # Invalid FK
+            user_doc["accountId"] = account_id  # Invalid FK (passed as nonexistent ID)
             
         else:
             raise ValueError(f"Unknown scenario: {scenario}")
@@ -118,30 +128,49 @@ class TestDataCreator:
         
         print("🧪 Creating comprehensive test data...")
         
-        # 1. Create a valid account for FK references
-        valid_account_id = await self.create_test_account()
+        # 1. Create multiple valid accounts for FK references
+        primary_account_id = await self.create_test_account("primary")
+        secondary_account_id = await self.create_test_account("secondary")
         
-        # 2. Create users with different validation issues
+        # 2. Create users with different validation scenarios
         test_users = {}
         
+        # Test scenarios with comprehensive FK coverage
         scenarios = [
-            "bad_enum",      # Invalid gender enum
-            "bad_currency",  # Negative netWorth
-            "bad_fk",        # Invalid accountId FK
-            "multiple_errors" # Multiple validation issues
+            # Valid scenarios for successful FK resolution testing
+            ("valid_all", primary_account_id),         # All fields valid, FK should resolve
+            ("valid_fk_only", secondary_account_id),   # Only FK valid, should still resolve FK
+            
+            # Invalid field scenarios but valid FK (FK should still resolve)
+            ("bad_enum", primary_account_id),          # Invalid gender but valid FK
+            ("bad_currency", primary_account_id),      # Invalid netWorth but valid FK
+            
+            # Invalid FK scenarios (FK should show exists: false)
+            ("bad_fk", None),                          # Invalid FK only
+            ("multiple_errors", None)                  # Multiple errors including invalid FK
         ]
         
-        for scenario in scenarios:
-            user_id = await self.create_invalid_user(scenario, valid_account_id)
+        for scenario, account_id in scenarios:
+            # For bad FK scenarios, pass a non-existent account ID
+            if account_id is None:
+                account_id = f"nonexistent_{scenario}_123456789012"
+            user_id = await self.create_test_user(scenario, account_id)
             test_users[scenario] = user_id
         
         print(f"\n📊 Test data summary:")
-        print(f"   Valid account: {valid_account_id}")
+        print(f"   Primary account: {primary_account_id}")
+        print(f"   Secondary account: {secondary_account_id}")
         for scenario, user_id in test_users.items():
             print(f"   User ({scenario}): {user_id}")
         
+        print(f"\n🎯 FK Testing Coverage:")
+        print(f"   Users with VALID FKs: valid_all, valid_fk_only, bad_enum, bad_currency")
+        print(f"   Users with INVALID FKs: bad_fk, multiple_errors")
+        print(f"   This allows testing view parameters with both existing and non-existing FK references")
+        
         return {
-            "valid_account_id": valid_account_id,
+            "primary_account_id": primary_account_id,
+            "secondary_account_id": secondary_account_id,
             **test_users
         }
     
@@ -243,9 +272,13 @@ async def main():
         if args.action == 'create':
             test_data = await creator.create_comprehensive_test_data()
             print(f"\n🎯 Test data created successfully!")
-            print("Use these IDs in your validation tests:")
+            print("\n📋 Use these IDs in your validation tests:")
             for key, value in test_data.items():
                 print(f"  {key}: {value}")
+            print(f"\n🔍 View parameter testing scenarios:")
+            print(f"  1. Test ?view={{\"account\":[\"createdAt\"]}} with valid FK users (should show account data)")
+            print(f"  2. Test ?view={{\"account\":[\"createdAt\"]}} with invalid FK users (should show exists: false)")
+            print(f"  3. Compare results with and without view parameters for comprehensive FK testing")
                 
         elif args.action == 'cleanup':
             await creator.cleanup_test_data()

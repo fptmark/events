@@ -4,7 +4,7 @@ Comprehensive test wrapper that runs all database/validation combinations.
 
 This script:
 1. Tests both MongoDB and Elasticsearch
-2. Tests both with and without get_validation
+2. Tests both with and without fk_validation
 3. Starts/stops the server between each run
 4. Provides comprehensive reporting
 """

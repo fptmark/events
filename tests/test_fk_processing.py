@@ -3,10 +3,10 @@
 FK Processing Test Suite
 
 Tests all 4 conditions for FK processing:
-1. get_validation=get_all, no view param -> should have data
-2. get_validation=get_all, with view param -> should have data  
-3. get_validation=off, no view param -> should have data
-4. get_validation=off, with view param -> should have data
+1. fk_validation=multiple, no view param -> should have data
+2. fk_validation=multiple, with view param -> should have data  
+3. fk_validation=off, no view param -> should have data
+4. fk_validation=off, with view param -> should have data
 
 Usage:
     python test_fk_processing.py config.json
@@ -154,7 +154,7 @@ class FKProcessingTester(BaseTestFramework):
             return False
     
     def check_current_validation_setting(self):
-        """Check current get_validation setting"""
+        """Check current fk_validation setting"""
         print("🔍 Checking current validation setting...")
         
         # Read the config file to see current setting
@@ -162,15 +162,15 @@ class FKProcessingTester(BaseTestFramework):
             with open(self.config_file, 'r') as f:
                 config = json.load(f)
             
-            get_validation = config.get("get_validation", "")
-            print(f"    Current get_validation: '{get_validation}'")
+            fk_validation = config.get("fk_validation", "")
+            print(f"    Current fk_validation: '{fk_validation}'")
             
-            if get_validation == "get_all":
-                print(f"    📋 Testing with validation ENABLED (get_all)")
-                return "get_all"
-            elif get_validation == "get":
-                print(f"    📋 Testing with validation PARTIAL (get only)")
-                return "get"
+            if fk_validation == "multiple":
+                print(f"    📋 Testing with validation ENABLED (multiple)")
+                return "multiple"
+            elif fk_validation == "single":
+                print(f"    📋 Testing with validation PARTIAL (single only)")
+                return "single"
             else:
                 print(f"    📋 Testing with validation DISABLED")
                 return "off"
