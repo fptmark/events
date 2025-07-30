@@ -1,4 +1,5 @@
 import logging
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from elasticsearch import AsyncElasticsearch, NotFoundError as ESNotFoundError
@@ -137,10 +138,9 @@ class ElasticsearchDatabase(DatabaseInterface):
                 "query": self._build_query_filter(list_params, entity_metadata)
             }
             
-            # Add sorting if specified
+            # Always add sorting for consistent pagination
             sort_spec = self._build_sort_spec(list_params)
-            if sort_spec:
-                query_body["sort"] = sort_spec
+            query_body["sort"] = sort_spec
 
             res = await es.search(index=collection, body=query_body)
             hits = res.get("hits", {}).get("hits", [])
@@ -270,15 +270,17 @@ class ElasticsearchDatabase(DatabaseInterface):
                 # Determine matching strategy based on field type
                 field_type = self._get_field_type(field, entity_metadata)
                 if field_type == 'String':
-                    # Text fields: partial match with wildcard
+                    # Text fields: partial match with wildcard on the base field
+                    # Since our mappings create fields as keyword type, use the field directly
                     must_clauses.append({
                         "wildcard": {
-                            f"{field}.keyword": f"*{value}*"
+                            field: f"*{value}*"
                         }
                     })
                 else:
                     # Non-text fields (enums, numbers, dates, etc.): exact match
-                    must_clauses.append({"term": {f"{field}.keyword": value}})
+                    # Since our mappings create fields as keyword type, use the field directly
+                    must_clauses.append({"term": {field: value}})
         
         if must_clauses:
             return {"bool": {"must": must_clauses}}
@@ -287,11 +289,25 @@ class ElasticsearchDatabase(DatabaseInterface):
 
     def _build_sort_spec(self, list_params) -> List[Dict[str, Any]]:
         """Build Elasticsearch sort specification from ListParams."""
-        if not list_params or not list_params.sort_field:
-            return []
+        if not list_params:
+            # Default sort by createdAt for consistent pagination when no sort specified
+            # Note: Never use _id in sort - it requires fielddata which is disabled by default
+            return [{"createdAt": {"order": "asc"}}]
+        
+        if not list_params.sort_field:
+            # Default sort by createdAt for consistent pagination when no sort specified
+            return [{"createdAt": {"order": "asc"}}]
         
         sort_order = "asc" if list_params.sort_order == "asc" else "desc"
-        return [{f"{list_params.sort_field}.keyword": {"order": sort_order}}]
+        
+        # Map application "id" field to Elasticsearch "_id" field for sorting
+        # But _id requires fielddata, so we fall back to createdAt
+        if list_params.sort_field == "id":
+            # Cannot sort by _id without enabling fielddata, use createdAt instead
+            return [{"createdAt": {"order": sort_order}}]
+        
+        # Since our mappings create fields as keyword type, use the field directly
+        return [{list_params.sort_field: {"order": sort_order}}]
 
     def _get_field_type(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
         """Get field type from entity metadata or default to String."""

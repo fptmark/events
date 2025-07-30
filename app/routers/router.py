@@ -7,42 +7,43 @@ eliminating the need for metadata services, reflection, or async complexity.
 
 from pathlib import Path
 from fastapi import APIRouter, Request
-from typing import Dict, Any, List, Optional, Type
+from typing import Dict, Any, List, Optional, Type, Protocol
 from pydantic import BaseModel, Field
 import logging
 
 from app.routers.router_factory import get_entity_names, ModelImportCache
 from app.routers.endpoint_handlers import (
     list_entities_handler, get_entity_handler, create_entity_handler,
-    update_entity_handler, delete_entity_handler
+    update_entity_handler, delete_entity_handler, EntityModelProtocol
 )
 
 logger = logging.getLogger(__name__)
 
 
 # Generic response models for OpenAPI
-def create_response_models(entity_cls: Type[BaseModel]):
+def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[BaseModel], Type[BaseModel]]:
     """Create response models dynamically for any entity"""
     entity_name = entity_cls.__name__
     
     # Create response models using class-based approach for better type safety
     class EntityResponse(BaseModel):
         data: Optional[Dict[str, Any]] = None
-        message: Optional[str] = None
-        level: Optional[str] = None
-        metadata: Optional[Dict[str, Any]] = None
+        # message: Optional[str] = None
+        # level: Optional[str] = None
+        # metadata: Optional[Dict[str, Any]] = None
         notifications: Optional[Dict[str, Dict[str, Any]]] = None
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
     
     class EntityListResponse(BaseModel):
         data: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
-        message: Optional[str] = None
-        level: Optional[str] = None
-        metadata: Optional[Dict[str, Any]] = None
+        # message: Optional[str] = None
+        # level: Optional[str] = None
+        # metadata: Optional[Dict[str, Any]] = None
         notifications: Optional[Dict[str, Dict[str, Any]]] = None
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
+        pagination: Optional[Dict[str, Any]] = None
     
     # Dynamically set the class names for better OpenAPI docs
     EntityResponse.__name__ = f"{entity_name}Response"

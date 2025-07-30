@@ -22,6 +22,7 @@ from app.notification import (
     NotificationType
 )
 from app.errors import ValidationError, NotFoundError, DuplicateError
+from pydantic_core import ValidationError as PydanticValidationError
 from app.models.list_params import ListParams
 
 logger = logging.getLogger(__name__)
@@ -32,13 +33,10 @@ class EntityModelProtocol(Protocol):
     _metadata: Dict[str, Any]
     
     @classmethod
-    async def get_all(cls) -> Dict[str, Any]: ...
+    async def get_list(cls, list_params=None, view_spec=None) -> Dict[str, Any]: ...
     
     @classmethod
-    async def get_list(cls, list_params) -> Dict[str, Any]: ...
-    
-    @classmethod
-    async def get(cls, entity_id: str): ...
+    async def get(cls, entity_id: str, view_spec=None): ...
     
     async def save(self, entity_id: str = '') -> tuple: ...
     
@@ -52,10 +50,10 @@ class EntityModelProtocol(Protocol):
 
 
 async def list_all_entities_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, request: Request) -> Dict[str, Any]:
-    """Reusable handler for LIST endpoint (get all - legacy version)."""
+    """Reusable handler for LIST endpoint (get all - now uses get_list with default pagination)."""
     
-    entity_lower = entity_name.lower()
-    notifications = start_notifications(entity=entity_name, operation=f"list_{entity_lower}s")
+    # Start notifications for this request
+    start_notifications(entity=entity_name, operation="list_all")
     
     # Extract query parameters for FK processing
     query_params = dict(request.query_params)
@@ -63,24 +61,40 @@ async def list_all_entities_handler(entity_cls: Type[EntityModelProtocol], entit
     view_spec = json.loads(unquote(view_param)) if view_param else None
     
     try:
-        # Get data from model with FK processing (model handles all business logic)
-        response = await entity_cls.get_all(view_spec=view_spec)
+        # Use get_list with no list_params (defaults to page_size=100)
+        response = await entity_cls.get_list(list_params=None, view_spec=view_spec)
+        
+        # End notifications and enhance response
+        collection = end_notifications()
+        enhanced_response = collection.to_entity_grouped_response(
+            data=response.get('data'),
+            is_bulk=True
+        )
+        # Copy all model response data (including pagination) to enhanced response
+        enhanced_response.update(response)
+        return enhanced_response
 
     except Exception as e:
         # Handle any errors in the processing
         notify_error(f"Error listing {entity_name}s: {str(e)}")
-        response = {"data": []}
-    finally:
-        # Add notifications to response
+        # End notifications and enhance response even for errors
         collection = end_notifications()
-        return collection.to_entity_grouped_response(data=response['data'], is_bulk=True)
+        enhanced_response = collection.to_entity_grouped_response(data=[], is_bulk=True)
+        # Add default pagination metadata for error case
+        enhanced_response.update({
+            "total_count": 0, 
+            "page": 1, 
+            "page_size": 100, 
+            "total_pages": 0
+        })
+        return enhanced_response
 
 
 async def list_entities_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, request: Request) -> Dict[str, Any]:
     """Reusable handler for LIST endpoint (paginated version)."""
     
-    entity_lower = entity_name.lower()
-    notifications = start_notifications(entity=entity_name, operation=f"list_{entity_lower}s")
+    # Start notifications for this request
+    start_notifications(entity=entity_name, operation="list")
     
     # Extract query parameters
     query_params = dict(request.query_params)
@@ -94,21 +108,41 @@ async def list_entities_handler(entity_cls: Type[EntityModelProtocol], entity_na
         # Get paginated data from model with FK processing (model handles all business logic)
         response = await entity_cls.get_list(list_params, view_spec=view_spec)
         
+        # End notifications and enhance response
         collection = end_notifications()
-        return collection.to_entity_grouped_response(data=response['data'], is_bulk=True)
+        enhanced_response = collection.to_entity_grouped_response(
+            data=response.get('data'),
+            is_bulk=True
+        )
+        # Preserve all model response data (including pagination)
+        for key, value in response.items():
+            if key not in enhanced_response:
+                enhanced_response[key] = value
+        return enhanced_response
+        
     except Exception as e:
         notify_error(f"Failed to retrieve entities: {str(e)}", NotificationType.SYSTEM, entity=entity_name)
+        # End notifications and enhance response even for errors
         collection = end_notifications()
-        return collection.to_entity_grouped_response(data=[], is_bulk=True)
-    finally:
-        end_notifications()
+        enhanced_response = collection.to_entity_grouped_response(
+            data=[], 
+            is_bulk=True
+        )
+        # Add pagination metadata for error case
+        enhanced_response.update({
+            "total_count": 0, 
+            "page": list_params.page, 
+            "page_size": list_params.page_size, 
+            "total_pages": 0
+        })
+        return enhanced_response
 
 
 async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, entity_id: str, request: Request) -> Dict[str, Any]:
     """Reusable handler for GET endpoint."""
     
-    entity_lower = entity_name.lower()
-    notifications = start_notifications(entity=entity_name, operation=f"get_{entity_lower}")
+    # Start notifications for this request
+    start_notifications(entity=entity_name, operation="get")
     
     # Extract query parameters for FK processing
     query_params = dict(request.query_params)
@@ -116,33 +150,40 @@ async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name:
     view_spec = json.loads(unquote(view_param)) if view_param else None
     
     try:
-        # Get entity with FK processing (model handles all business logic)
-        from app.models.utils import get_entity_with_fk
-        response = await get_entity_with_fk(entity_cls, entity_id, view_spec)
+        # Get entity directly from model (now handles FK processing and view_spec)
+        response = await entity_cls.get(entity_id, view_spec)
         
         # Add any warnings as notifications
         for warning in response.get("warnings", []):
             notify_warning(warning, NotificationType.DATABASE)
         
+        # End notifications and enhance response
         collection = end_notifications()
-        return collection.to_entity_grouped_response(response['data'], is_bulk=False)
+        enhanced_response = collection.to_entity_grouped_response(
+            data=response.get('data'),
+            is_bulk=False
+        )
+        # Copy all model response data (including pagination) to enhanced response
+        enhanced_response.update(response)
+        return enhanced_response
+        
     except NotFoundError:
         # Let the NotFoundError bubble up to FastAPI's exception handler
         # which will return a proper 404 response
-        end_notifications()
         raise
     except Exception as e:
         notify_error(f"Failed to retrieve entity: {str(e)}", NotificationType.SYSTEM, entity=entity_name)
+        # End notifications and enhance response even for errors
         collection = end_notifications()
-        return collection.to_entity_grouped_response(None, is_bulk=False)
-    finally:
-        end_notifications()
+        enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
+        return enhanced_response
 
 
 async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, entity_data: BaseModel) -> Dict[str, Any]:
     """Reusable handler for POST endpoint."""
-    entity_lower = entity_name.lower()
-    notifications = start_notifications(entity=entity_name, operation=f"create_{entity_lower}")
+    
+    # Start notifications for this request
+    start_notifications(entity=entity_name, operation="create")
     
     try:
         # Let model handle all validation and business logic
@@ -152,26 +193,38 @@ async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_na
         for warning in warnings or []:
             notify_warning(warning, NotificationType.DATABASE)
         notify_success("Created successfully", NotificationType.BUSINESS, entity=entity_name)
-        collection = end_notifications()
-        return collection.to_entity_grouped_response(result.model_dump(), is_bulk=False)
+        return {"data": result.model_dump()}
+    except PydanticValidationError as e:
+        # Convert Pydantic validation errors to notifications for middleware to handle
+        for error in e.errors():
+            field_name = str(error["loc"][-1]) if error.get("loc") else "unknown"
+            notify_warning(
+                message=error.get("msg", "Validation error"),
+                type=NotificationType.VALIDATION,
+                entity=entity_name,
+                field_name=field_name,
+                value=error.get("input"),
+                operation="create"
+            )
+        # Convert to our custom ValidationError so middleware handles it properly
+        from app.errors import ValidationFailure
+        failures = [ValidationFailure(field_name=str(error["loc"][-1]), message=error["msg"], value=error.get("input")) for error in e.errors()]
+        raise ValidationError(message="Validation failed", entity=entity_name, invalid_fields=failures)
     except (ValidationError, DuplicateError):
-        # Let these exceptions bubble up to FastAPI exception handlers
-        # which will return proper HTTP status codes (422, 409)
-        end_notifications()
+        # ValidationError and DuplicateError should be handled by middleware 
+        # Let them bubble up so notifications are preserved in middleware response
         raise
     except Exception:
         # Let generic exceptions bubble up to FastAPI exception handler
         # which will return proper HTTP status code (500)
-        end_notifications()
         raise
-    finally:
-        end_notifications()
 
 
 async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, entity_id: str, entity_data: BaseModel) -> Dict[str, Any]:
     """Reusable handler for PUT endpoint - True PUT semantics (full replacement)."""
-    entity_lower = entity_name.lower()
-    notifications = start_notifications(entity=entity_name, operation=f"update_{entity_lower}")
+    
+    # Start notifications for this request
+    start_notifications(entity=entity_name, operation="update")
     
     try:
         # True PUT semantics: validate complete entity data with URL's entity_id
@@ -185,26 +238,39 @@ async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_na
         for warning in save_warnings or []:
             notify_warning(warning, NotificationType.DATABASE)
         notify_success("Updated successfully", NotificationType.BUSINESS, entity=entity_name)
-        collection = end_notifications()
-        return collection.to_entity_grouped_response(result.model_dump(), is_bulk=False)
+        return {"data": result.model_dump()}
+    except PydanticValidationError as e:
+        # Convert Pydantic validation errors to notifications for middleware to handle
+        for error in e.errors():
+            field_name = str(error["loc"][-1]) if error.get("loc") else "unknown"
+            notify_warning(
+                message=error.get("msg", "Validation error"),
+                type=NotificationType.VALIDATION,
+                entity=entity_name,
+                field_name=field_name,
+                value=error.get("input"),
+                operation="update",
+                entity_id=entity_id
+            )
+        # Convert to our custom ValidationError so middleware handles it properly
+        from app.errors import ValidationFailure
+        failures = [ValidationFailure(field_name=str(error["loc"][-1]), message=error["msg"], value=error.get("input")) for error in e.errors()]
+        raise ValidationError(message="Validation failed", entity=entity_name, invalid_fields=failures)
     except (NotFoundError, ValidationError, DuplicateError):
         # Let these exceptions bubble up to FastAPI exception handlers
-        # which will return proper HTTP status codes (404, 422, 409)
-        end_notifications()
+        # Middleware will handle the notifications properly
         raise
     except Exception:
         # Let generic exceptions bubble up to FastAPI exception handler
         # which will return proper HTTP status code (500)
-        end_notifications()
         raise
-    finally:
-        end_notifications()
 
 
 async def delete_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, entity_id: str) -> Dict[str, Any]:
     """Reusable handler for DELETE endpoint."""
-    entity_lower = entity_name.lower()
-    notifications = start_notifications(entity=entity_name, operation=f"delete_{entity_lower}")
+    
+    # Start notifications for this request
+    start_notifications(entity=entity_name, operation="delete")
     
     try:
         success, warnings = await entity_cls.delete(entity_id)
@@ -212,17 +278,12 @@ async def delete_entity_handler(entity_cls: Type[EntityModelProtocol], entity_na
             notify_success("Deleted successfully", NotificationType.BUSINESS, entity=entity_name)
         for warning in warnings or []:
             notify_warning(warning, NotificationType.DATABASE)
-        collection = end_notifications()
-        return collection.to_entity_grouped_response(None, is_bulk=False)
+        return {"data": None}
     except NotFoundError:
         # Let NotFoundError bubble up to FastAPI exception handler
         # which will return proper HTTP status code (404)
-        end_notifications()
         raise
     except Exception:
         # Let generic exceptions bubble up to FastAPI exception handler
         # which will return proper HTTP status code (500)
-        end_notifications()
         raise
-    finally:
-        end_notifications()

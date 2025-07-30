@@ -10,6 +10,7 @@ import app.utils as helpers
 from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
 from app.notification import notify_warning, NotificationType
+from app.models.list_params import ListParams
 import app.models.utils as utils
 
 class RecurrenceEnum(str, Enum):
@@ -99,32 +100,17 @@ class Event(BaseModel):
     def get_metadata(cls) -> Dict[str, Any]:
         return helpers.get_metadata("Event", cls._metadata)
 
-    @classmethod
-    async def get_all(cls, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        try:
-            get_validations, unique_validations = Config.validations(True)
-            unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
-            
-            raw_docs, warnings, total_count = await DatabaseFactory.get_all("event", unique_constraints)
-            
-            event_data = utils.process_raw_results(cls, "Event", raw_docs, warnings)
-
-            # Process FK fields if needed
-            if view_spec or get_validations:
-                for event_dict in event_data:
-                    await utils.process_entity_fks(event_dict, view_spec, "Event", cls)
-            
-            return {"data": event_data}
-            
-        except Exception as e:
-            raise DatabaseError(str(e), "Event", "get_all")
 
     @classmethod
-    async def get_list(cls, list_params, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def get_list(cls, list_params: Optional[ListParams] = None, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Get paginated, sorted, and filtered list of entity."""
         try:
-            get_validations, unique_validations = Config.validations(True)
+            fk_validations, unique_validations = Config.validations(True)
             unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
+            
+            # Use default pagination if none provided (same as DatabaseFactory does)
+            if list_params is None:
+                list_params = ListParams(page=1, page_size=100)
             
             # Get filtered data from database
             raw_docs, warnings, total_count = await DatabaseFactory.get_list("event", unique_constraints, list_params, cls._metadata)
@@ -133,16 +119,24 @@ class Event(BaseModel):
             event_data = utils.process_raw_results(cls, "Event", raw_docs, warnings)
             
             # Process FK fields if needed
-            if view_spec or get_validations:
+            if view_spec or fk_validations:
                 for event_dict in event_data:
-                    await utils.process_entity_fks(event_dict, view_spec, "Event", cls)
-            
+                    await utils.process_entity_fks(event_dict, view_spec, "Event", cls, fk_validations)
+
             return {
                 "data": event_data,
+                "page_size": list_params.page_size,
                 "total_count": total_count,
                 "page": list_params.page,
-                "page_size": list_params.page_size,
-                "total_pages": (total_count + list_params.page_size - 1) // list_params.page_size
+                "total_pages": (total_count + list_params.page_size - 1) // list_params.page_size,
+                "pagination": {
+                    "page": list_params.page,
+                    "per_page": list_params.page_size,
+                    "total": total_count,
+                    "total_pages": (total_count + list_params.page_size - 1) // list_params.page_size,
+                    "has_next": list_params.page < (total_count + list_params.page_size - 1) // list_params.page_size,
+                    "has_prev": list_params.page > 1
+                }
             }
             
         except Exception as e:
@@ -150,9 +144,9 @@ class Event(BaseModel):
 
 
     @classmethod
-    async def get(cls, id: str) -> tuple[Self, List[str]]:
+    async def get(cls, id: str, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         try:
-            get_validations, unique_validations = Config.validations(False)
+            fk_validations, unique_validations = Config.validations(False)
             unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
             
             raw_doc, warnings = await DatabaseFactory.get_by_id("event", str(id), unique_constraints)
@@ -161,36 +155,24 @@ class Event(BaseModel):
             
             # Database warnings are now handled by DatabaseFactory
             
-            # Conditional validation - validate AFTER read if requested
-            if get_validations:
-                try:
-                    return cls.model_validate(raw_doc), warnings  # WITH validation
-                except PydanticValidationError as e:
-                    # Convert validation errors to notifications
-                    entity_id = raw_doc.get('id')
-                    if not entity_id:
-                        notify_warning("Document missing ID field", NotificationType.DATABASE)
-                        entity_id = "missing"
-                    for error in e.errors():
-                        field_name = str(error['loc'][-1])
-                        notify_warning(
-                            message=error['msg'],
-                            type=NotificationType.VALIDATION,
-                            entity="Event",
-                            field_name=field_name,
-                            value=error.get('input'),
-                            operation="get",
-                            entity_id=entity_id
-                        )
-                    return cls.model_construct(**raw_doc), warnings  # Fallback to no validation
-            else:
-                return cls.model_construct(**raw_doc), warnings  # NO validation
+            # Step 1: Use Pydantic validation with notification conversion
+            event_instance = utils.validate_with_notifications(cls, raw_doc, "Event")
+            
+            # Step 2: Get validated dict and process FK fields if needed
+            event_dict = event_instance.model_dump()
+            if view_spec or fk_validations:
+                await utils.process_entity_fks(event_dict, view_spec, "Event", cls, fk_validations)
+            
+            return {
+                "data": event_dict,
+                "warnings": warnings
+            }
         except NotFoundError:
             raise
         except DatabaseError:
             raise
         except Exception as e:
-            raise DatabaseError(str(e), "Event", "get")
+            raise DatabaseError(str(e), "Event", "get") 
 
     async def save(self, entity_id: str = '') -> tuple[Self, List[str]]:
         try:
@@ -211,7 +193,7 @@ class Event(BaseModel):
                 data = validated_instance.model_dump()
                                 
                 # Validate ObjectId references exist
-                await utils.validate_objectid_references("User", data, self._metadata)
+                await utils.validate_objectid_references("Event", data, self._metadata)
             except PydanticValidationError as e:
                 # Convert to notifications and ValidationError format
                 if len(entity_id) == 0:
@@ -228,7 +210,7 @@ class Event(BaseModel):
                         value=error.get("input"),
                         operation="save"
                     )
-                failures = [ValidationFailure(field_name=str(error["loc"][-1]), message=error["msg"], value=error.get("input")) for error in e.error()]
+                failures = [ValidationFailure(field_name=str(error["loc"][-1]), message=error["msg"], value=error.get("input")) for error in e.errors()]
                 raise ValidationError(message=error['msg'], entity="Event", invalid_fields=failures)
             
             # Save document with unique constraints - pass complete data

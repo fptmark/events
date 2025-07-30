@@ -17,6 +17,7 @@ from app.errors import (
     NotFoundError, 
     DuplicateError 
 )
+from app.notification import start_notifications, end_notifications
 
 from app.routers.router import get_all_dynamic_routers
 
@@ -224,7 +225,6 @@ async def handle_exception_with_notifications(
     notification_handler = None
 ) -> JSONResponse:
     """Generic exception handler using notification system"""
-    from app.notification import start_notifications, end_notifications
     
     # Extract entity from URL if not provided
     if entity is None:
@@ -236,19 +236,23 @@ async def handle_exception_with_notifications(
         operation = "system"
     
     logger.error(f"Exception in {entity}.{operation}: {exc}")
-    notifications = start_notifications(entity=entity, operation=operation)
+    start_notifications(entity=entity, operation=operation)
     
     try:
         # Call the specific notification handler
         if notification_handler:
             notification_handler(exc, entity, operation)
         
+        # End notifications and format response
+        collection = end_notifications()
+        enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
         return JSONResponse(
             status_code=status_code,
-            content=notifications.to_response(None)
+            content=enhanced_response
         )
-    finally:
+    except Exception:
         end_notifications()
+        raise
 
 def handle_database_error_notifications(exc: DatabaseError, entity: str, operation: str):
     """Handle database error notifications"""
