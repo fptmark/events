@@ -84,11 +84,13 @@ clean:
 
 generic:
 	cp -r $(GENERICS)/* app/
+	mv app/requirements.txt .
 	rm app/Makefile
 	rm app/config/*.json
 
 firsttime:
 	cp -r $(GENERICS) app
+	mv app/requirements.txt .
 	rm app/Makefile
 	mv app/config/*.json .
 
