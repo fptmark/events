@@ -43,8 +43,8 @@ class TestDataCreator:
     
     async def create_test_account(self, account_suffix: str = "123456") -> str:
         """Create a test account and return its ID"""
-        # Use predictable test ID that starts with "test_"
-        account_id = f"test_valid_account_{account_suffix}"
+        # Use predictable test ID that matches what the test framework expects
+        account_id = f"valid_account_{account_suffix}"
         
         account_doc = {
             "id": account_id,
@@ -63,8 +63,8 @@ class TestDataCreator:
     
     async def create_test_user(self, scenario: str, account_id: str) -> str:
         """Create a test user with specific validation issues or valid data"""
-        # Use predictable test IDs that start with "test_"
-        user_id = f"test_{scenario}_user_123456"
+        # Use predictable test IDs that match what the test framework expects
+        user_id = f"{scenario}_user_123456"
         base_time = datetime.now(timezone.utc)
         
         # Base valid user data
@@ -258,20 +258,35 @@ async def main():
     """Standalone test data creation"""
     import argparse
     parser = argparse.ArgumentParser(description='Test Data Setup')
-    parser.add_argument('action', choices=['create', 'cleanup', 'wipe'], 
-                       help='Action to perform')
     parser.add_argument('--config', default='mongo.json',
                        help='Config file (default: mongo.json)')
+    parser.add_argument('--newdata', action='store_true',
+                       help='Wipe existing data and create fresh test data')
+    parser.add_argument('--wipe', action='store_true', 
+                       help='DESTRUCTIVE: Wipe all test data and exit')
     args = parser.parse_args()
+    
+    # Validate arguments
+    if args.newdata and args.wipe:
+        print("❌ ERROR: Cannot use --newdata and --wipe together")
+        return 1
+    
+    if not args.newdata and not args.wipe:
+        print("❌ ERROR: Must specify either --newdata or --wipe")
+        return 1
     
     creator = TestDataCreator()
     
     try:
         await creator.setup_database(args.config)
         
-        if args.action == 'create':
+        if args.newdata:
+            # Wipe existing test data first
+            await creator.wipe_all_test_data()
+            
+            # Create fresh test data
             test_data = await creator.create_comprehensive_test_data()
-            print(f"\n🎯 Test data created successfully!")
+            print(f"\n🎯 Fresh test data created successfully!")
             print("\n📋 Use these IDs in your validation tests:")
             for key, value in test_data.items():
                 print(f"  {key}: {value}")
@@ -280,10 +295,7 @@ async def main():
             print(f"  2. Test ?view={{\"account\":[\"createdAt\"]}} with invalid FK users (should show exists: false)")
             print(f"  3. Compare results with and without view parameters for comprehensive FK testing")
                 
-        elif args.action == 'cleanup':
-            await creator.cleanup_test_data()
-            
-        elif args.action == 'wipe':
+        elif args.wipe:
             await creator.wipe_all_test_data()
             
     except Exception as e:

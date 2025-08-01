@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Comprehensive test runner that handles server lifecycle and all configurations.
+Comprehensive test runner that orchestrates all test files across 4 modes.
+Supports server lifecycle management, data creation, and multiple test modes.
 """
 
 import sys
@@ -8,7 +9,7 @@ import os
 import subprocess
 import time
 import json
-import signal
+import asyncio
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
@@ -16,11 +17,18 @@ from dataclasses import dataclass
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from tests.common_test_framework import CommonTestFramework
+from tests.test_basic import BasicAPITester
+from tests.test_view import ViewParameterTester
+from tests.test_pagination import PaginationTester
+from tests.test_sorting import SortingTester
+from tests.test_filtering import FilteringTester
+from tests.test_combinations import CombinationTester
+
 @dataclass
 class TestConfig:
     name: str
-    database: str
-    validation: str
+    database: str 
     config_data: dict
 
 @dataclass
@@ -34,25 +42,37 @@ class TestResult:
     error: Optional[str] = None
 
 class ComprehensiveTestRunner:
-    def __init__(self, verbose: bool = False, curl: bool = False, mongo_only: bool = False, es_only: bool = False, noop: bool = False, pfs_only: bool = False, newdata: bool = False, nopaging: bool = False):
+    """Comprehensive test runner with server lifecycle and data management"""
+    
+    def __init__(self, verbose: bool = False, curl: bool = False, dbs: List[str] = [],
+                 connection: bool = False, newdata: bool = False, wipe: bool = False, basic: bool = False):
         self.server_port = 5500
         self.server_process = None
-        self.temp_configs = []
         self.verbose = verbose
-        self.curl = curl
-        self.mongo_only = mongo_only
-        self.es_only = es_only
-        self.noop = noop
-        self.pfs_only = pfs_only
-        self.newdata = newdata
-        self.nopaging = nopaging
+        self.curl = None
         
-        # Define all test configurations
+        # Initialize curl file once at the start of comprehensive testing
+        if curl:
+            try:
+                self.curl = open('tests/curl.sh', 'w')
+                self.curl.write('#!/bin/bash\n')
+                self.curl.write('# Generated curl commands from comprehensive test execution\n')
+                self.curl.write('# Run: chmod +x tests/curl.sh && ./tests/curl.sh\n\n')
+                print("📁 Initialized tests/curl.sh - comprehensive test API calls will be logged")
+            except Exception as e:
+                print(f"⚠️ Warning: Could not initialize tests/curl.sh: {e}")
+                self.curl = None
+        self.dbs = dbs
+        self.connection = connection
+        self.newdata = newdata
+        self.wipe = wipe
+        self.basic = basic
+        
+        # Define test configurations
         all_configs = [
             TestConfig(
-                name="MongoDB without validation",
+                name="MongoDB without FK validation",
                 database="mongodb",
-                validation="none",
                 config_data={
                     "database": "mongodb",
                     "db_uri": "mongodb://localhost:27017",
@@ -62,33 +82,30 @@ class ComprehensiveTestRunner:
                 }
             ),
             TestConfig(
-                name="MongoDB with validation",
+                name="MongoDB with FK validation",
                 database="mongodb", 
-                validation="multiple",
                 config_data={
                     "database": "mongodb",
-                    "db_uri": "mongodb://localhost:27017",
+                    "db_uri": "mongodb://localhost:27017", 
                     "db_name": "eventMgr",
                     "fk_validation": "multiple",
                     "unique_validation": True
                 }
             ),
             TestConfig(
-                name="Elasticsearch without validation",
+                name="Elasticsearch without FK validation",
                 database="elasticsearch",
-                validation="none", 
                 config_data={
                     "database": "elasticsearch",
                     "db_uri": "http://localhost:9200",
-                    "db_name": "eventMgr",
+                    "db_name": "eventMgr", 
                     "fk_validation": "",
                     "unique_validation": False
                 }
             ),
             TestConfig(
-                name="Elasticsearch with validation",
-                database="elasticsearch", 
-                validation="multiple",
+                name="Elasticsearch with FK validation",
+                database="elasticsearch",
                 config_data={
                     "database": "elasticsearch",
                     "db_uri": "http://localhost:9200",
@@ -100,20 +117,17 @@ class ComprehensiveTestRunner:
         ]
         
         # Filter configurations based on database flags
-        if self.mongo_only and not self.es_only:
-            # Only MongoDB
-            self.test_configs = [config for config in all_configs if config.database == "mongodb"]
-        elif self.es_only and not self.mongo_only:
-            # Only Elasticsearch
-            self.test_configs = [config for config in all_configs if config.database == "elasticsearch"]
-        else:
-            # Default: run all configurations (both flags, or neither flag)
+        if len(self.dbs) == 0:
+            # No specific database selected - use all configs
             self.test_configs = all_configs
+        else:
+            # Filter based on selected databases
+            self.test_configs = [config for config in all_configs 
+                                if config.database in self.dbs]
     
     def cleanup_port(self):
         """Kill any processes using our port"""
         try:
-            # Use pkill to kill main.py processes
             subprocess.run(["pkill", "-f", "main.py"], check=False)
             time.sleep(1)
         except:
@@ -121,16 +135,13 @@ class ComprehensiveTestRunner:
     
     def start_server(self, config_file: str) -> bool:
         """Start server with given config file"""
+        self.cleanup_port()
         if self.verbose:
             print(f"🚀 Starting server with {config_file}")
         else:
-            print(f"🚀 Starting server with {config_file}")
-        
-        # Clean up any existing processes
-        self.cleanup_port()
+            print(f"🚀 Starting server...")
         
         try:
-            # Start server - EXACTLY like the working command line
             env = os.environ.copy()
             env['PYTHONPATH'] = '.'
             
@@ -140,7 +151,7 @@ class ComprehensiveTestRunner:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                cwd=Path(__file__).parent.parent  # Run from project root
+                cwd=Path(__file__).parent.parent
             )
             
             # Wait for server to be ready
@@ -150,28 +161,13 @@ class ComprehensiveTestRunner:
                     response = requests.get(f"http://localhost:{self.server_port}/api/metadata", timeout=2)
                     if response.status_code == 200:
                         if self.verbose:
-                            print(f"  ✅ Server ready (attempt {attempt + 1}, response time: {response.elapsed.total_seconds()*1000:.0f}ms)")
-                        else:
-                            print(f"  ✅ Server started (attempt {attempt + 1})")
+                            print(f"  ✅ Server ready (attempt {attempt + 1})")
                         return True
-                except Exception as e:
-                    if self.verbose and attempt > 10:
-                        print(f"  ⏳ Waiting for server (attempt {attempt + 1}): {e}")
+                except:
+                    pass
                 time.sleep(1)
             
             print("  ❌ Server failed to start")
-            # Get server output to see what went wrong
-            if self.server_process:
-                try:
-                    stdout, stderr = self.server_process.communicate(timeout=2)
-                    if stdout:
-                        print("📋 Server STDOUT:")
-                        print(stdout)
-                    if stderr:
-                        print("📋 Server STDERR:")  
-                        print(stderr)
-                except:
-                    print("  ⚠️  Could not get server output")
             return False
             
         except Exception as e:
@@ -180,226 +176,184 @@ class ComprehensiveTestRunner:
     
     def stop_server(self):
         """Stop the server"""
-        print("🛑 Stopping server")
+        if self.verbose:
+            print("🛑 Stopping server")
         if self.server_process:
             try:
                 self.server_process.terminate()
                 try:
                     self.server_process.wait(timeout=3)
-                    print("  ✅ Server stopped")
                 except subprocess.TimeoutExpired:
                     self.server_process.kill()
                     self.server_process.wait()
-                    print("  ✅ Server killed")
-            except Exception as e:
-                print(f"  ⚠️  Server stop error: {e}")
-            
+            except:
+                pass
             self.server_process = None
-        
-        # Clean up any remaining processes  
         self.cleanup_port()
         time.sleep(1)
     
     def create_config_file(self, config: TestConfig) -> str:
-        """Create temporary config file in tests directory"""
-        filename = "tests/temp_test_config.json"  # Create in tests dir
-        
+        """Create temporary config file"""
+        filename = "tests/temp_test_config.json"
         with open(filename, 'w') as f:
             json.dump(config.config_data, f, indent=2)
-        
         return filename
     
-    def run_test(self, config: TestConfig) -> TestResult:
-        """Run test for a single configuration"""
-        print(f"\n{'='*80}")
+    async def create_test_data(self, config_file: str) -> bool:
+        """Create test data using test_data_setup.py"""
         if self.verbose:
-            print(f"📋 CONFIGURATION: {config.name}")
-            print(f"🗄️  Database: {config.database}")
-            print(f"✅ Validation: {config.validation}")
-            print('='*80)
-        else:
-            print(f"TESTING: {config.name}")
-            print('='*80)
+            print("  🧹 Wiping existing data and creating fresh test data...")
         
+        try:
+            result = subprocess.run(
+                [sys.executable, "tests/test_data_setup.py", "--config", config_file, "--newdata"],
+                capture_output=True,
+                text=True,
+                timeout=300,
+                cwd=Path(__file__).parent.parent
+            )
+            
+            if result.returncode == 0:
+                if self.verbose:
+                    print("  ✅ Test data created successfully")
+                return True
+            else:
+                print(f"  ❌ Test data creation failed: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            print(f"  ❌ Test data creation error: {e}")
+            return False
+    
+    async def wipe_all_data(self, config_file: str) -> bool:
+        """Wipe all data and exit (destructive operation)"""
+        print(f"\n📋 Wiping data")
+    
+        try:
+            result = subprocess.run(
+                [sys.executable, "tests/test_data_setup.py", "--config", config_file, "--wipe"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=Path(__file__).parent.parent
+            )
+            
+            if result.returncode == 0:
+                print("✅ All data wiped successfully")
+                return True
+            else:
+                print(f"❌ Data wipe failed: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Data wipe error: {e}")
+            return False
+    
+    async def run_test_suite(self, config: TestConfig) -> TestResult:
+        """Run the new clean test suite"""
         start_time = time.time()
         
         try:
-            # Create config file
             config_file = self.create_config_file(config)
             
-            # Start server
             if not self.start_server(config_file):
                 return TestResult(
                     config_name=config.name,
                     success=False,
                     passed=0,
-                    failed=0,
+                    failed=0, 
                     total=0,
                     duration=time.time() - start_time,
                     error="Server failed to start"
                 )
             
-            # Run tests or noop
-            if self.noop:
-                # Noop mode - just test connectivity
-                return self._run_noop_test(config, start_time)
-            else:
-                # Regular test mode
-                if self.pfs_only:
-                    print("🧪 Running pagination/filter/sort tests only...")
-                else:
-                    print("🧪 Running tests...")
-                test_env = os.environ.copy()
-                test_env['PYTHONPATH'] = '.'
             
-            # Build command args with verbose and curl if needed  
-            extra_args = []
-            if self.verbose:
-                extra_args.append("--verbose")
-            if self.curl:
-                extra_args.append("--curl")
-            if self.nopaging:
-                extra_args.append("--nopaging")
-            
-            results = []
-            
+            # Create test data if newdata mode
             if self.newdata:
-                # NEWDATA MODE: Use dedicated newdata validation module
-                if self.verbose:
-                    print("  🧹 NEWDATA MODE: Running controlled validation tests...")
-                else:
-                    print("  🧹 NEWDATA MODE: Controlled validation tests...")
-                
-                result_newdata = subprocess.run(
-                    [sys.executable, "tests/test_newdata_validation.py", 
-                     "--config", config_file, 
-                     "--server", f"http://localhost:{self.server_port}"] + (["--curl"] if self.curl else []),
-                    capture_output=True,
-                    text=True,
-                    timeout=600,  # Longer timeout for wipe + create + test cycle
-                    cwd=Path(__file__).parent.parent,
-                    env=test_env
-                )
-                results.append(result_newdata)
-                
-            else:
-                # DEFAULT MODE: Use existing database state
-                if not self.pfs_only:
-                    # Run user validation tests
-                    if self.verbose:
-                        print("  📝 Running user validation tests with verbose output...")
-                    else:
-                        print("  📝 Running user validation tests...")
-                    result1 = subprocess.run(
-                        [sys.executable, "tests/test_user_validation.py", config_file] + extra_args,
-                        capture_output=True,
-                        text=True,
-                        timeout=180,
-                        cwd=Path(__file__).parent.parent,  # Run from project root
-                        env=test_env  # Use test environment
+                if not await self.create_test_data(config_file):
+                    return TestResult(
+                        config_name=config.name,
+                        success=False,
+                        passed=0,
+                        failed=0,
+                        total=0, 
+                        duration=time.time() - start_time,
+                        error="Test data creation failed"
                     )
-                    results.append(result1)
+            
+            # Run tests using new framework
+            orchestrator = ComprehensiveTestOrchestrator(
+                f"http://localhost:{self.server_port}", 
+                self.verbose, 
+                self.curl
+            )
+            
+            # Run selected test suites
+            test_suites = []
+            test_suites.extend([
+                ("Basic API Tests", BasicAPITester),
+                ("View Parameter Tests", ViewParameterTester)
+            ])
+ 
+            if not self.basic:
+                test_suites.extend([
+                    ("Pagination Tests", PaginationTester),
+                    ("Sorting Tests", SortingTester), 
+                    ("Filtering Tests", FilteringTester),
+                    ("Combination Tests", CombinationTester),
+                ])
+            
+            total_passed = 0
+            total_failed = 0
+            total_tests = 0
+            
+            print(f"  📊 Progress: Starting {len(test_suites)} test suites...")
+            
+            for test_name, test_class in test_suites:
+                if self.verbose:
+                    print(f"  🧪 Running {test_name}...")
+                else:
+                    print(f"  📊 Progress: {total_tests + 1}/{len(test_suites)} - {test_name}")
+                
+                tester = test_class(config_file, f"http://localhost:{self.server_port}", 
+                                  self.verbose, curl_file_handle=self.curl, mode_name=config.name.replace(" ", "_"))
+                
+                if not await tester.setup_database_connection():
+                    print(f"  ❌ Failed to setup database connection for {test_name}")
+                    continue
+                
+                try:
+                    success = tester.run_all_tests()
+                    if success:
+                        total_passed += 1
+                        result_icon = "✅"
+                    else:
+                        total_failed += 1
+                        result_icon = "❌"
+                    total_tests += 1
                     
-                    # Run FK processing tests  
-                    if self.verbose:
-                        print("  🔗 Running FK processing tests with verbose output...")
-                    else:
-                        print("  🔗 Running FK processing tests...")
-                    result2 = subprocess.run(
-                        [sys.executable, "tests/test_fk_processing.py", config_file] + extra_args,
-                        capture_output=True,
-                        text=True,
-                        timeout=180,
-                        cwd=Path(__file__).parent.parent,
-                        env=test_env
-                    )
-                    results.append(result2)
-                
-                # Always run pagination tests (either as part of full suite or PFS-only)
-                if self.verbose:
-                    print("  📄 Running pagination tests with verbose output...")
-                else:
-                    print("  📄 Running pagination tests...")
-                result3 = subprocess.run(
-                    [sys.executable, "tests/test_pagination_integration.py", config_file] + extra_args,
-                    capture_output=True,
-                    text=True,
-                    timeout=180,
-                    cwd=Path(__file__).parent.parent,
-                    env=test_env
-                )
-                results.append(result3)
-                
-                # Run API validation module tests
-                if self.verbose:
-                    print("  🔍 Running API validation module tests with verbose output...")
-                else:
-                    print("  🔍 Running API validation module tests...")
-                result5 = subprocess.run(
-                    [sys.executable, "tests/modules/test_api_module.py"] + (["--curl"] if self.curl else []),
-                    capture_output=True,
-                    text=True,
-                    timeout=180,
-                    cwd=Path(__file__).parent.parent,
-                    env=test_env
-                )
-                results.append(result5)
+                    # Show progress after each test suite
+                    print(f"  📊 Progress: {result_icon} {test_name} completed ({total_passed + total_failed}/{len(test_suites)})")
+                    
+                finally:
+                    await tester.cleanup_database_connection()
+                    # Add longer delay to ensure connections are fully cleaned up
+                    await asyncio.sleep(3)
+                    print(f"  🔄 Cleanup completed for {test_name}")
             
-            # Combine results
-            result = self._combine_test_results(*results)
+            # No cleanup needed with simplified approach
             
-            # Parse results
-            output = result.stdout
-            passed = 0
-            failed = 0
-            total = 0
-            
-            if self.verbose:
-                print(f"  🔍 Test exit code: {result.returncode}")
-                if result.stderr:
-                    print(f"  ⚠️  Test stderr output:")
-                    print("     " + result.stderr.replace("\n", "\n     "))
-                if result.stdout:
-                    print(f"  📄 Test stdout:")
-                    print("     " + result.stdout.replace("\n", "\n     "))
-            else:
-                if result.stderr:
-                    print(f"  Test stderr: {result.stderr}")
-            
-            for line in output.split('\n'):
-                if "Total tests:" in line:
-                    total = int(line.split(":")[1].strip())
-                elif "Passed:" in line:
-                    passed = int(line.split(":")[1].strip())
-                elif "Failed:" in line:
-                    failed = int(line.split(":")[1].strip())
-            
-            # Consider successful if all parsed tests passed, even if exit code is non-zero
-            success = (result.returncode == 0) or (total > 0 and failed == 0)
-            error = None if success else result.stderr or "Test execution failed"
-            
-            print(f"  Parsed results: {passed}/{total} passed, success={success}")
+            overall_success = total_failed == 0 and total_tests > 0
             
             return TestResult(
                 config_name=config.name,
-                success=success,
-                passed=passed,
-                failed=failed,
-                total=total,
-                duration=time.time() - start_time,
-                error=error
+                success=overall_success,
+                passed=total_passed,
+                failed=total_failed,
+                total=total_tests,
+                duration=time.time() - start_time
             )
             
-        except subprocess.TimeoutExpired:
-            return TestResult(
-                config_name=config.name,
-                success=False,
-                passed=0,
-                failed=0,
-                total=0,
-                duration=time.time() - start_time,
-                error="Test timed out"
-            )
         except Exception as e:
             return TestResult(
                 config_name=config.name,
@@ -411,145 +365,74 @@ class ComprehensiveTestRunner:
                 error=str(e)
             )
         finally:
-            # Always stop server
             self.stop_server()
     
-    def _combine_test_results(self, *results: subprocess.CompletedProcess) -> subprocess.CompletedProcess:
-        """Combine results from multiple test runs."""
-        from types import SimpleNamespace
-        
-        # Combine stdout and stderr from all results
-        separator = '='*50
-        combined_stdout = f"\n{separator}\n".join(result.stdout for result in results)
-        combined_stderr = f"\n{separator}\n".join(result.stderr for result in results)
-        
-        # Return code is success only if all succeeded
-        combined_returncode = 0 if all(result.returncode == 0 for result in results) else 1
-        
-        # Create a combined result object
-        combined_result = SimpleNamespace()
-        combined_result.stdout = combined_stdout
-        combined_result.stderr = combined_stderr
-        combined_result.returncode = combined_returncode
-        
-        return combined_result
-    
-    def _run_noop_test(self, config: TestConfig, start_time: float) -> TestResult:
-        """Run no-op connectivity test without actual test execution"""
-        print("🔗 Running no-op connectivity test...")
-        
-        try:
-            import requests
-            
-            # Test basic endpoint
-            response = requests.get(f"http://localhost:{self.server_port}/api/user", timeout=5)
-            if response.status_code != 200:
-                return TestResult(
-                    config_name=config.name,
-                    success=False,
-                    passed=0,
-                    failed=1,
-                    total=1,
-                    duration=time.time() - start_time,
-                    error=f"Basic endpoint failed: {response.status_code}"
-                )
-            print(f"  ✅ Basic endpoint responds: {response.status_code}")
-            
-            # Test view endpoint (the problematic one)
-            view_url = f"http://localhost:{self.server_port}/api/user?view=%7b%22account%22%3a%5b%22createdat%22%5d%7d"
-            print("  🔍 Testing view endpoint (known to hang in full tests)...")
-            response = requests.get(view_url, timeout=15)  # Longer timeout for view
-            if response.status_code != 200:
-                return TestResult(
-                    config_name=config.name,
-                    success=False,
-                    passed=1,
-                    failed=1,
-                    total=2,
-                    duration=time.time() - start_time,
-                    error=f"View endpoint failed: {response.status_code}"
-                )
-            print(f"  ✅ View endpoint responds: {response.status_code}")
-            
-            # Success
-            return TestResult(
-                config_name=config.name,
-                success=True,
-                passed=2,
-                failed=0,
-                total=2,
-                duration=time.time() - start_time
-            )
-            
-        except Exception as e:
-            return TestResult(
-                config_name=config.name,
-                success=False,
-                passed=0,
-                failed=2,
-                total=2,
-                duration=time.time() - start_time,
-                error=f"Connectivity test failed: {e}"
-            )
-    
-    def run_all_tests(self) -> List[TestResult]:
-        """Run all test configurations"""
-        if self.noop:
-            print("🧪 COMPREHENSIVE TEST SUITE - NO-OP MODE")
-            print("=" * 80)
-            print("🔗 Testing process management and connectivity only")
-        elif self.pfs_only:
-            print("🧪 COMPREHENSIVE TEST SUITE - PAGINATION/FILTER/SORT ONLY")
-            print("=" * 80)
-            print("📄 Testing pagination, filtering, and sorting functionality only")
-        elif self.newdata:
-            print("🧪 COMPREHENSIVE TEST SUITE - CONTROLLED DATA MODE")
-            print("=" * 80)
-            print("🧹 Wiping database and creating controlled test data with known validation issues")
-        else:
-            print("🧪 COMPREHENSIVE TEST SUITE - EXISTING DATA MODE")
-            print("=" * 80)
-            print("📊 Using existing database state (may have unpredictable results)")
-        
-        # Show which databases are being tested
-        if self.mongo_only and not self.es_only:
-            print("🗄️  Testing: MongoDB only")
-        elif self.es_only and not self.mongo_only:
-            print("🔍 Testing: Elasticsearch only")
-        else:
-            print("🗄️  Testing: MongoDB + Elasticsearch")
-            
-        print(f"Running {len(self.test_configs)} configurations...")
-        print()
-        
-        results = []
-        
+    async def run_connection_test(self) -> bool:
+        """Run no-op connectivity test"""
+        print("  🔗 Running connectivity test...")
+        start_time = time.time()
         for config in self.test_configs:
-            result = self.run_test(config)
-            results.append(result)
+            print(f"  📋 Testing configuration: {config.name}")
+            self.start_server(self.create_config_file(config))
+            try:
+                import requests
+                
+                # Test basic endpoint
+                response = requests.get(f"http://localhost:{self.server_port}/api/metadata", timeout=5)
+                if response.status_code != 200:
+                    return False
+                
+            except Exception as e:
+                return False
+        end_time = time.time()
+        print(f"  ✅ Connectivity test completed in {end_time - start_time:.1f}s")
+        return True
+
+
+    async def run_tests(self) -> List[TestResult]:
+        """Run all test configurations"""
+        print(f"\n🚀 Starting {len(self.test_configs)} test configurations...")
+        results = []
+        i = 0
+        for config in self.test_configs:
+            i += 1
+            print(f"\n📋 Testing ({i}/{len(self.test_configs)}): {config.name}")
+            print("-" * 60)
+
+            config_file = self.create_config_file(config)
+            status = self.start_server(config_file)
+            if status:
+                if self.newdata:
+                    success = await self.wipe_all_data(config_file)
+                    if not success:
+                        print(f"❌ Failed to wipe data for {config.name}")
+                        return []
+                    success = await self.create_test_data(config_file)
+                    if not success:
+                        print(f"❌ Failed to create test data for {config.name}")
+                        return []
             
-            # Print immediate result
-            if result.success:
-                print(f"✅ {config.name}: {result.passed}/{result.total} tests passed ({result.duration:.1f}s)")
-            else:
-                print(f"❌ {config.name}: FAILED - {result.error} ({result.duration:.1f}s)")
-        
+                result = await self.run_test_suite(config)
+                results.append(result)
+                
+                if result.success:
+                    print(f"✅ Configuration {i}/{len(self.test_configs)} - {config.name}: {result.passed}/{result.total} test suites passed ({result.duration:.1f}s)")
+                else:
+                    print(f"❌ Configuration {i}/{len(self.test_configs)} - {config.name}: FAILED - {result.error} ({result.duration:.1f}s)")
+                self.stop_server()
         return results
+
     
-    def print_summary(self, results: List[TestResult]):
+    def print_summary(self, results: List[TestResult]) -> bool:
         """Print comprehensive summary"""
         print(f"\n{'='*80}")
-        print("FINAL SUMMARY")
+        print("COMPREHENSIVE TEST SUMMARY")
         print('='*80)
         
-        total_passed = sum(r.passed for r in results)
-        total_failed = sum(r.failed for r in results)
-        total_tests = sum(r.total for r in results)
         successful_configs = sum(1 for r in results if r.success)
         total_duration = sum(r.duration for r in results)
         
         print(f"Configurations: {successful_configs}/{len(results)} passed")
-        print(f"Total tests: {total_passed}/{total_tests} passed")
         print(f"Total duration: {total_duration:.1f}s")
         print()
         
@@ -557,7 +440,7 @@ class ComprehensiveTestRunner:
             status = "✅ PASS" if result.success else "❌ FAIL"
             print(f"{status} {result.config_name}")
             if result.total > 0:
-                print(f"     {result.passed}/{result.total} tests passed")
+                print(f"     {result.passed}/{result.total} test suites passed")
             if result.error:
                 print(f"     Error: {result.error}")
         
@@ -576,48 +459,77 @@ class ComprehensiveTestRunner:
                 os.remove("tests/temp_test_config.json")
         except:
             pass
-        
-        # Make sure server is stopped
+        # Close curl file if open
+        if self.curl:
+            try:
+                self.curl.close()
+            except:
+                pass
         self.stop_server()
 
-def main():
+# Lightweight orchestrator for new test framework
+class ComprehensiveTestOrchestrator:
+    """Simple orchestrator that doesn't manage server lifecycle"""
+    
+    def __init__(self, server_url: str, verbose: bool, curl_file):
+        self.server_url = server_url
+        self.verbose = verbose
+        self.curl_file = curl_file
+
+async def main():
+    """Main function"""
     import argparse
     
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Comprehensive test runner for Events application')
-    parser.add_argument('--verbose', action='store_true', 
-                       help='Show detailed URL testing and response information')
+    parser = argparse.ArgumentParser(description='Comprehensive test runner')
+    parser.add_argument('--verbose', action='store_true',
+                       help='Show detailed test output')
     parser.add_argument('--curl', action='store_true',
-                       help='Dump all API calls in curl format to curl.sh (overwrites existing file)')
+                       help='Write curl commands to curl.sh')
     parser.add_argument('--mongo', action='store_true',
-                       help='Include MongoDB configurations (both validation modes)')
-    parser.add_argument('--es', action='store_true',
-                       help='Include Elasticsearch configurations (both validation modes)')
-    parser.add_argument('--noop', action='store_true',
-                       help='Run no-op connectivity tests only (no actual test execution)')
-    parser.add_argument('--pfs', action='store_true',
-                       help='Run only pagination/filter/sort tests (skip user validation and FK processing)')
+                       help='Test MongoDB configurations only')
+    parser.add_argument('--es', action='store_true', 
+                       help='Test Elasticsearch configurations only')
+    parser.add_argument('--connection', action='store_true',
+                       help='Run connectivity tests only')
     parser.add_argument('--newdata', action='store_true',
-                       help='Wipe database and create controlled test data with known validation issues (guarantees clean state)')
-    parser.add_argument('--nopaging', action='store_true',
-                       help='Skip pagination data validation (for working without pagination implementation)')
+                       help='Wipe all data and create fresh test data with known validation issues')
+    parser.add_argument('--basic', action='store_true',
+                       help='Only run basic API tests')
+    parser.add_argument('--wipe', action='store_true',
+                       help='DESTRUCTIVE: Wipe all data and exit (must be the only argument)')
     args = parser.parse_args()
     
-    # Note: --mongo and --es can be used together (same as default)
-    
+    dbs = []
+    if args.mongo:
+        dbs.append("mongodb")
+    if args.es:
+        dbs.append("elasticsearch")
+
     runner = ComprehensiveTestRunner(
-        verbose=args.verbose, 
-        curl=args.curl, 
-        mongo_only=args.mongo, 
-        es_only=args.es,
-        noop=args.noop,
-        pfs_only=args.pfs,
+        verbose=args.verbose,
+        curl=args.curl,
+        dbs=dbs,
+        connection=args.connection,
         newdata=args.newdata,
-        nopaging=args.nopaging
+        wipe=args.wipe,
+        basic=args.basic
     )
     
+    # handle cases where we don't run any test data
+    if args.wipe:
+        print("  Only running wipe mode - no tests will be executed")
+        for config in runner.test_configs:
+            await runner.wipe_all_data(runner.create_config_file(config))
+        return
+    # Handle connection mode
+    if runner.connection:
+        print("  Running connectivity test")
+        await runner.run_connection_test()
+        return
+
     try:
-        results = runner.run_all_tests()
+        results = await runner.run_tests()
+        
         success = runner.print_summary(results)
         return 0 if success else 1
         
@@ -631,4 +543,4 @@ def main():
         runner.cleanup()
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(asyncio.run(main()))

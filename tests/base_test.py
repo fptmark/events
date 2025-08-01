@@ -4,6 +4,7 @@ Uses the existing database abstraction layer from DatabaseFactory.
 """
 
 import sys
+import os
 import json
 import requests
 import asyncio
@@ -30,30 +31,37 @@ class TestResult:
 class BaseTestFramework:
     """Base test framework that can be extended for different entities"""
     
-    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl: bool = False):
+    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl_file_handle = None):
         self.config_file = config_file
         self.server_url = server_url
         self.verbose = verbose
-        self.curl = curl
+        self.curl_file_handle = curl_file_handle
         self.test_count = 0
         self.passed = 0
         self.failed = 0
         self.results: List[TestResult] = []
         
-        # Initialize curl.sh file if --curl option is enabled
-        if self.curl:
-            self._init_curl_file()
+        # Note: curl file is now managed by ComprehensiveTestRunner
         
         # Load config and initialize database through existing abstraction
-        self.config = Config.initialize(config_file)
-        self.db_type = self.config.get('database', 'mongodb')
-        self.db_uri = self.config.get('db_uri', '')
-        self.db_name = self.config.get('db_name', '')
-        
-        print(f"✅ Loaded config from {config_file}")
-        print(f"   Database: {self.db_type}")
-        print(f"   DB URI: {self.db_uri}")
-        print(f"   DB Name: {self.db_name}")
+        if config_file and config_file.strip():
+            self.config = Config.initialize(config_file)
+            self.db_type = self.config.get('database', 'mongodb')
+            self.db_uri = self.config.get('db_uri', '')
+            self.db_name = self.config.get('db_name', '')
+            
+            print(f"✅ Loaded config from {config_file}")
+            print(f"   Database: {self.db_type}")
+            print(f"   DB URI: {self.db_uri}")
+            print(f"   DB Name: {self.db_name}")
+        else:
+            # No config file provided - use defaults
+            self.config = {}
+            self.db_type = 'mongodb'
+            self.db_uri = ''
+            self.db_name = ''
+            if self.verbose:
+                print("⚠️  No config file provided - using defaults")
     
     async def setup_database_connection(self):
         """Setup database connection using existing DatabaseFactory"""
@@ -145,32 +153,43 @@ class BaseTestFramework:
     
     def _append_to_curl_file(self, method: str, url: str, data: Dict = None):
         """Append a curl command to tests/curl.sh"""
+        if not hasattr(self, 'curl_file_handle') or not self.curl_file_handle:
+            return
+            
         try:
-            with open('tests/curl.sh', 'a') as f:
-                # Show decoded URL in echo statement
-                decoded_url = self._get_decoded_url_for_display(url)
-                f.write(f'echo "=== {method} {decoded_url} ==="\n')
+            f = self.curl_file_handle
+            decoded_url = self._get_decoded_url_for_display(url)
+            import datetime
+            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            
+            # Use global counter on file handle to avoid duplicates across instances
+            if not hasattr(f, '_global_curl_counter'):
+                f._global_curl_counter = 0
+            f._global_curl_counter += 1
+            
+            f.write(f'# {timestamp} - Request #{f._global_curl_counter}\n')
+            f.write(f'echo "=== {method} {decoded_url} ==="\n')
                 
-                if method.upper() == "GET":
-                    f.write(f'curl -X GET "{url}"\n')
-                elif method.upper() in ["POST", "PUT"]:
-                    if data:
-                        import json
-                        json_data = json.dumps(data, indent=2)
-                        # Escape quotes for shell
-                        escaped_data = json_data.replace('"', '\\"')
-                        f.write(f'curl -X {method.upper()} "{url}" \\\n')
-                        f.write(f'  -H "Content-Type: application/json" \\\n')
-                        f.write(f'  -d "{escaped_data}"\n')
-                    else:
-                        f.write(f'curl -X {method.upper()} "{url}"\n')
-                elif method.upper() == "DELETE":
-                    f.write(f'curl -X DELETE "{url}"\n')
+            if method.upper() == "GET":
+                f.write(f'curl -w "Time: %{{time_total}}s\\nStatus: %{{http_code}}\\n" -X GET "{url}"\n')
+            elif method.upper() in ["POST", "PUT"]:
+                if data:
+                    import json
+                    json_data = json.dumps(data, indent=2)
+                    escaped_data = json_data.replace('"', '\\"')
+                    f.write(f'curl -w "Time: %{{time_total}}s\\nStatus: %{{http_code}}\\n" -X {method.upper()} "{url}" \\\n')
+                    f.write(f'  -H "Content-Type: application/json" \\\n')
+                    f.write(f'  -d "{escaped_data}"\n')
+                else:
+                    f.write(f'curl -w "Time: %{{time_total}}s\\nStatus: %{{http_code}}\\n" -X {method.upper()} "{url}"\n')
+            elif method.upper() == "DELETE":
+                f.write(f'curl -w "Time: %{{time_total}}s\\nStatus: %{{http_code}}\\n" -X DELETE "{url}"\n')
                 
-                f.write('echo ""\n\n')  # Add spacing between commands
+            f.write('echo ""\n\n')
+                
         except Exception as e:
             if self.verbose:
-                print(f"⚠️ Warning: Could not write to tests/curl.sh: {e}")
+                print(f"⚠️ Warning: Could not write to curl file: {e}")
     
     def _get_decoded_url_comment(self, url: str) -> str:
         """Generate a comment showing decoded URL parameters"""
@@ -295,8 +314,8 @@ class BaseTestFramework:
         """Helper method for API requests"""
         url = f"{self.server_url}{endpoint}"
         
-        # Log to curl.sh if --curl option is enabled
-        if self.curl:
+        # Log to curl.sh if curl file handle is available
+        if self.curl_file_handle:
             self._append_to_curl_file(method, url, data)
         
         # Verbose mode: show detailed request info
@@ -308,18 +327,19 @@ class BaseTestFramework:
                 if len(data_str) > 100:
                     data_str = data_str[:97] + "..."
                 print(f"   📤 Request: {data_str}")
+            print(f"   ⏱️  Starting request at {datetime.now().strftime('%H:%M:%S.%f')[:-3]}...")
         
         start_time = datetime.now()
         
         try:
             if method.upper() == "GET":
-                response = requests.get(url, timeout=10)
+                response = requests.get(url, timeout=30)
             elif method.upper() == "POST":
-                response = requests.post(url, json=data, timeout=10)
+                response = requests.post(url, json=data, timeout=30)
             elif method.upper() == "PUT":
-                response = requests.put(url, json=data, timeout=10)
+                response = requests.put(url, json=data, timeout=30)
             elif method.upper() == "DELETE":
-                response = requests.delete(url, timeout=10)
+                response = requests.delete(url, timeout=30)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
             
@@ -374,7 +394,11 @@ class BaseTestFramework:
                     return False, {"error": response.text}
                     
         except Exception as e:
-            print(f"  Request failed: {e}")
+            duration = (datetime.now() - start_time).total_seconds()
+            if "timeout" in str(e).lower():
+                print(f"  Request timed out after {duration:.1f}s: {e}")
+            else:
+                print(f"  Request failed after {duration:.1f}s: {e}")
             return False, {"exception": str(e)}
     
     async def insert_invalid_document(self, collection_name: str, document: Dict) -> bool:

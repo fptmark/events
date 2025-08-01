@@ -1,269 +1,196 @@
 #!/usr/bin/env python3
 """
-Basic API tests for User endpoints.
-
-Tests fundamental GET operations:
-- GET /user (list all users)
-- GET /user/{id} (get specific user)
-
-Supports both standalone execution and orchestrated testing.
-Can run across all 4 modes: MongoDB/Elasticsearch with/without validation.
-
-Usage:
-    # Standalone with specific config
-    python test_basic.py --config mongo.json
-    
-    # Standalone across all 4 modes
-    python test_basic.py --all-modes
-    
-    # With verbose output and curl generation
-    python test_basic.py --config es.json --verbose --curl
+Basic API functionality tests.
+Tests fundamental GET /user/{id} and GET /user endpoints without additional parameters.
 """
 
 import sys
 import asyncio
-import argparse
 from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tests.test_common import (
-    TestRunner, APIClient, ResponseValidator, TestMode, 
-    ConfigManager, DatabaseTestHelper, TestDataManager
-)
+from tests.common_test_framework import CommonTestFramework, TEST_USERS
 
-class BasicTestSuite:
-    """Basic API test suite"""
+class BasicAPITester(CommonTestFramework):
+    """Test basic API functionality"""
     
-    def __init__(self, verbose: bool = False):
-        self.verbose = verbose
-        self.runner = TestRunner("Basic API Tests", verbose=verbose)
+    def test_individual_user_gets(self) -> bool:
+        """Test GET /user/{id} for various user scenarios"""
+        tests_passed = 0
+        tests_total = 0
+        
+        # Test 1: Valid user with no validation issues
+        tests_total += 1
+        if self.test_api_call(
+            "GET", 
+            f"/api/user/{TEST_USERS['valid_all']}", 
+            "Get valid user",
+            expected_notifications=[],
+            should_have_data=True
+        ):
+            tests_passed += 1
+            
+        # Test 2: User with enum validation issue
+        tests_total += 1
+        if self.test_api_call(
+            "GET", 
+            f"/api/user/{TEST_USERS['bad_enum']}", 
+            "Get user with bad enum",
+            expected_notifications=["gender"],
+            should_have_data=True
+        ):
+            tests_passed += 1
+            
+        # Test 3: User with currency validation issue
+        tests_total += 1
+        if self.test_api_call(
+            "GET", 
+            f"/api/user/{TEST_USERS['bad_currency']}", 
+            "Get user with bad currency",
+            expected_notifications=["netWorth"],
+            should_have_data=True
+        ):
+            tests_passed += 1
+            
+        # Test 4: User with FK issue (only shows notification when FK validation is ON)
+        tests_total += 1
+        expected_fk_notifications = ["accountId"] if "FK_ON" in self.mode_name else []
+        if self.test_api_call(
+            "GET", 
+            f"/api/user/{TEST_USERS['bad_fk']}", 
+            "Get user with bad FK",
+            expected_notifications=expected_fk_notifications,
+            should_have_data=True
+        ):
+            tests_passed += 1
+            
+        # Test 5: User with multiple validation issues
+        tests_total += 1
+        expected_multi_notifications = ["gender", "netWorth"]
+        if "FK_ON" in self.mode_name:
+            expected_multi_notifications.append("accountId")
+            
+        if self.test_api_call(
+            "GET", 
+            f"/api/user/{TEST_USERS['multiple_errors']}", 
+            "Get user with multiple errors",
+            expected_notifications=expected_multi_notifications,
+            should_have_data=True
+        ):
+            tests_passed += 1
+            
+        # Test 6: Non-existent user (should return 404)
+        tests_total += 1
+        if self.test_api_call(
+            "GET", 
+            "/api/user/nonexistent_user_123456", 
+            "Get non-existent user",
+            expected_status=404,
+            should_have_data=False
+        ):
+            tests_passed += 1
+        
+        if self.verbose:
+            print(f"  📊 Individual user tests: {tests_passed}/{tests_total} passed")
+            
+        return tests_passed == tests_total
     
-    def test_get_user_list(self, config_file: str, curl: bool = False) -> bool:
-        """Test GET /user endpoint"""
-        client = APIClient(verbose=self.verbose, curl_file="tests/curl.sh" if curl else None)
+    def test_user_list(self) -> bool:
+        """Test GET /user basic list functionality"""
+        tests_passed = 0
+        tests_total = 0
         
-        try:
-            response = client.get('/api/user')
+        # Test 1: Basic list request
+        tests_total += 1
+        if self.test_api_call(
+            "GET", 
+            "/api/user", 
+            "Get user list",
+            should_have_data=True
+        ):
+            tests_passed += 1
             
-            # Should return 200 with user list
-            is_valid, msg = ResponseValidator.validate_success_response(response, ['data'])
-            if not is_valid:
-                print(f"  ❌ Response validation failed: {msg}")
-                return False
+        # Test 2: List with pagination parameters
+        tests_total += 1
+        if self.test_api_call(
+            "GET", 
+            "/api/user?pageSize=3", 
+            "Get user list with page size",
+            should_have_data=True
+        ):
+            tests_passed += 1
+        
+        if self.verbose:
+            print(f"  📊 User list tests: {tests_passed}/{tests_total} passed")
             
-            users = response.json_data.get('data', [])
-            print(f"  ✅ Retrieved {len(users)} users")
-            
-            # Basic structure validation
-            if len(users) > 0:
-                user = users[0]
-                expected_fields = ['_id', 'username', 'email', 'firstName', 'lastName']
-                for field in expected_fields:
-                    if field not in user:
-                        print(f"  ❌ Missing field in user object: {field}")
-                        return False
-                
-                print(f"  ✅ User objects have expected structure")
-            
-            return True
-            
-        except Exception as e:
-            print(f"  ❌ Exception in get_user_list: {e}")
-            return False
+        return tests_passed == tests_total
     
-    def test_get_user_by_id(self, config_file: str, curl: bool = False) -> bool:
-        """Test GET /user/{id} endpoint"""
-        client = APIClient(verbose=self.verbose, curl_file="tests/curl.sh" if curl else None)
+    def run_all_tests(self) -> bool:
+        """Run all basic API tests"""
+        if self.verbose:
+            print(f"\n🧪 BASIC API TESTS - {self.mode_name}")
+            print("=" * 60)
         
-        try:
-            # First get a user ID from the list
-            list_response = client.get('/api/user')
-            if list_response.status_code != 200 or not list_response.json_data:
-                print("  ❌ Could not get user list to find test ID")
-                return False
-            
-            users = list_response.json_data.get('data', [])
-            if len(users) == 0:
-                print("  ⚠️  No users found in database - skipping get by ID test")
-                return True  # Not a failure, just no data
-            
-            # Test with first user
-            test_user = users[0]
-            user_id = test_user['_id']
-            
-            print(f"  🔍 Testing with user ID: {user_id}")
-            
-            response = client.get(f'/api/user/{user_id}')
-            
-            # Should return 200 with single user
-            is_valid, msg = ResponseValidator.validate_success_response(response)
-            if not is_valid:
-                print(f"  ❌ Response validation failed: {msg}")
-                return False
-            
-            user_data = response.json_data
-            
-            # Verify it's the same user
-            if user_data.get('_id') != user_id:
-                print(f"  ❌ Returned user ID {user_data.get('_id')} doesn't match requested {user_id}")
-                return False
-            
-            # Verify expected fields
-            expected_fields = ['_id', 'username', 'email', 'firstName', 'lastName']
-            for field in expected_fields:
-                if field not in user_data:
-                    print(f"  ❌ Missing field in user object: {field}")
-                    return False
-            
-            print(f"  ✅ Successfully retrieved user: {user_data.get('username')}")
-            return True
-            
-        except Exception as e:
-            print(f"  ❌ Exception in get_user_by_id: {e}")
-            return False
-    
-    def test_get_user_by_invalid_id(self, config_file: str, curl: bool = False) -> bool:
-        """Test GET /user/{id} with invalid ID"""
-        client = APIClient(verbose=self.verbose, curl_file="tests/curl.sh" if curl else None)
+        # Write curl commands (only for first mode)
         
-        try:
-            # Test with clearly invalid ID
-            invalid_id = "nonexistent_user_id_12345"
-            
-            print(f"  🔍 Testing with invalid user ID: {invalid_id}")
-            
-            response = client.get(f'/api/user/{invalid_id}')
-            
-            # Should return 404 
-            if response.status_code != 404:
-                print(f"  ❌ Expected 404 for invalid ID, got {response.status_code}")
-                return False
-            
-            print(f"  ✅ Correctly returned 404 for invalid user ID")
-            return True
-            
-        except Exception as e:
-            print(f"  ❌ Exception in get_user_by_invalid_id: {e}")
-            return False
-    
-    def test_get_user_empty_id(self, config_file: str, curl: bool = False) -> bool:
-        """Test GET /user/ (empty ID - should route to list)"""
-        client = APIClient(verbose=self.verbose, curl_file="tests/curl.sh" if curl else None)
+        # Run tests
+        test1_result = self.test_individual_user_gets()
+        test2_result = self.test_user_list()
         
-        try:
-            # Test with trailing slash (should route to list endpoint)
-            response = client.get('/api/user/')
-            
-            # Should behave same as GET /user
-            is_valid, msg = ResponseValidator.validate_success_response(response, ['data'])
-            if not is_valid:
-                print(f"  ❌ Response validation failed: {msg}")
-                return False
-            
-            users = response.json_data.get('data', [])
-            print(f"  ✅ GET /user/ correctly routed to list endpoint, got {len(users)} users")
-            
-            return True
-            
-        except Exception as e:
-            print(f"  ❌ Exception in get_user_empty_id: {e}")
-            return False
-    
-    def test_basic_connectivity(self, config_file: str, curl: bool = False) -> bool:
-        """Test basic server connectivity"""
-        client = APIClient(verbose=self.verbose, curl_file="tests/curl.sh" if curl else None)
+        overall_success = test1_result and test2_result
         
-        try:
-            # Test metadata endpoint as connectivity check
-            response = client.get('/api/metadata')
+        if self.verbose:
+            status = "✅ ALL PASS" if overall_success else "❌ SOME FAILED"
+            print(f"\n{status} - Basic API Tests ({self.mode_name})")
             
-            if response.status_code != 200:
-                print(f"  ❌ Metadata endpoint failed: {response.status_code}")
-                return False
-            
-            print(f"  ✅ Server connectivity confirmed")
-            return True
-            
-        except Exception as e:
-            print(f"  ❌ Exception in basic_connectivity: {e}")
-            return False
-    
-    def run_all_tests(self, config_file: str, curl: bool = False) -> bool:
-        """Run all basic tests with a specific config"""
-        print(f"\n{'='*80}")
-        print(f"BASIC API TESTS")
-        print(f"Config: {config_file}")
-        print('='*80)
-        
-        tests = [
-            ("Basic Connectivity", self.test_basic_connectivity),
-            ("GET /user (list all)", self.test_get_user_list),
-            ("GET /user/{id} (valid ID)", self.test_get_user_by_id),
-            ("GET /user/{id} (invalid ID)", self.test_get_user_by_invalid_id),
-            ("GET /user/ (empty ID routing)", self.test_get_user_empty_id),
-        ]
-        
-        for test_name, test_func in tests:
-            self.runner.run_test(test_name, test_func, config_file=config_file, curl=curl)
-        
-        return self.runner.print_summary()
-    
-    def run_4_mode_tests(self, curl: bool = False) -> bool:
-        """Run all basic tests across 4 modes"""
-        print(f"\n{'='*80}")
-        print(f"BASIC API TESTS - ALL 4 MODES")
-        print('='*80)
-        
-        tests = [
-            ("Basic Connectivity", self.test_basic_connectivity),
-            ("GET /user (list all)", self.test_get_user_list),
-            ("GET /user/{id} (valid ID)", self.test_get_user_by_id),
-            ("GET /user/{id} (invalid ID)", self.test_get_user_by_invalid_id),
-            ("GET /user/ (empty ID routing)", self.test_get_user_empty_id),
-        ]
-        
-        for test_name, test_func in tests:
-            self.runner.run_4_mode_test(test_name, test_func)
-        
-        return self.runner.print_summary()
+        return overall_success
 
-def main():
-    """Main entry point"""
-    parser = argparse.ArgumentParser(description='Basic API tests for User endpoints')
-    parser.add_argument('--config', type=str, help='Config file path')
-    parser.add_argument('--all-modes', action='store_true', 
-                       help='Run tests across all 4 modes (MongoDB/ES with/without validation)')
-    parser.add_argument('--verbose', action='store_true', help='Verbose output')
-    parser.add_argument('--curl', action='store_true', help='Generate curl.sh file')
+async def main():
+    """Main function for standalone execution"""
+    import argparse
     
+    parser = argparse.ArgumentParser(description='Basic API functionality tests')
+    parser.add_argument('config_file', nargs='?', default='mongo.json',
+                       help='Configuration file path')
+    parser.add_argument('--server-url', default='http://127.0.0.1:5500',
+                       help='Server URL for API tests')
+    parser.add_argument('--verbose', action='store_true',
+                       help='Show detailed test output')
+    parser.add_argument('--curl', action='store_true',
+                       help='Write curl commands to curl.sh')
     args = parser.parse_args()
     
-    if not args.config and not args.all_modes:
-        print("❌ Must specify either --config <file> or --all-modes")
-        return 1
+    print("🚀 Basic API Functionality Tests")
+    print(f"Config: {args.config_file}")
+    print(f"Server: {args.server_url}")
+    print("=" * 50)
     
-    if args.config and args.all_modes:
-        print("❌ Cannot specify both --config and --all-modes")
-        return 1
+    tester = BasicAPITester(args.config_file, args.server_url, args.verbose, args.curl, "Standalone")
     
-    suite = BasicTestSuite(verbose=args.verbose)
+    # Setup database connection
+    if not await tester.setup_database_connection():
+        print("❌ Failed to setup database connection")
+        return False
     
     try:
-        if args.all_modes:
-            success = suite.run_4_mode_tests(curl=args.curl)
-        else:
-            success = suite.run_all_tests(args.config, curl=args.curl)
+        success = tester.run_all_tests()
         
-        return 0 if success else 1
+        # Print final result
+        print(f"\n📊 FINAL RESULT: {'✅ PASS' if success else '❌ FAIL'}")
+        return success
         
-    except KeyboardInterrupt:
-        print("\n⚠️  Interrupted by user")
-        return 1
-    except Exception as e:
-        print(f"❌ Test suite failed: {e}")
-        return 1
+    finally:
+        await tester.cleanup_database_connection()
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        success = asyncio.run(main())
+        sys.exit(0 if success else 1)
+    except KeyboardInterrupt:
+        print("\n\nTests cancelled by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n\nTests failed with exception: {e}")
+        sys.exit(1)
