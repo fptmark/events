@@ -3,7 +3,7 @@ List parameters for pagination, sorting, and filtering.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, List
 import re
 from app.notification import notify_error
 
@@ -14,8 +14,7 @@ class ListParams:
     
     page: int = 1
     page_size: int = 25
-    sort_field: Optional[str] = None
-    sort_order: str = "asc"  # "asc" or "desc"
+    sort_fields: List[tuple[str, str]] = field(default_factory=list)  # [(field, order), ...]
     filters: Dict[str, Any] = field(default_factory=dict)   # field=value or field=[min:max]
     
     @property
@@ -48,13 +47,14 @@ class ListParams:
                     else:
                         params.page_size = size_val
                 elif key == 'sort':
-                    params.sort_field = value
+                    params.sort_fields = cls._parse_sort_parameter(value)
                 elif key == 'order':
-                    if value not in ['asc', 'desc']:
-                        notify_error(f"Sort order must be 'asc' or 'desc', got: {value}")
-                        params.sort_order = 'asc'
-                    else:
-                        params.sort_order = value
+                    # Legacy support: if only one sort field and no explicit order in sort param
+                    if len(params.sort_fields) == 1 and params.sort_fields[0][1] == 'asc':
+                        if value not in ['asc', 'desc']:
+                            notify_error(f"Sort order must be 'asc' or 'desc', got: {value}")
+                        else:
+                            params.sort_fields[0] = (params.sort_fields[0][0], value)
                 elif key == 'view':
                     # Skip view parameter - it's handled separately by the router
                     continue
@@ -70,6 +70,38 @@ class ListParams:
         
         return params
     
+    @staticmethod
+    def _parse_sort_parameter(sort_str: str) -> List[tuple[str, str]]:
+        """
+        Parse sort parameter into list of (field, order) tuples.
+        
+        Examples:
+        - "username" -> [("username", "asc")]
+        - "-username" -> [("username", "desc")]
+        - "firstName,lastName" -> [("firstName", "asc"), ("lastName", "asc")]
+        - "firstName,-createdAt" -> [("firstName", "asc"), ("createdAt", "desc")]
+        """
+        if not sort_str or sort_str.strip() == "":
+            return []
+        
+        sort_fields = []
+        for field_spec in sort_str.split(','):
+            field_spec = field_spec.strip()
+            if not field_spec:
+                continue
+                
+            if field_spec.startswith('-'):
+                # Descending order
+                field_name = field_spec[1:].strip()
+                if field_name:  # Make sure there's a field name after the '-'
+                    sort_fields.append((field_name, 'desc'))
+                # If field_spec is just "-", ignore it
+            else:
+                # Ascending order (default)
+                sort_fields.append((field_spec, 'asc'))
+        
+        return sort_fields
+
     @staticmethod
     def _parse_filter_parameter(filter_str: str) -> Dict[str, Any]:
         """Parse filter parameter string into filters dict.
@@ -287,5 +319,5 @@ class ListParams:
     def __str__(self) -> str:
         """String representation for debugging."""
         return (f"ListParams(page={self.page}, page_size={self.page_size}, "
-                f"sort={self.sort_field}:{self.sort_order}, "
+                f"sort={','.join([f'{field}:{order}' for field, order in self.sort_fields])}, "
                 f"filters={self.filters})")

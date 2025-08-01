@@ -646,10 +646,16 @@ class MongoDatabase(DatabaseInterface):
         return query
 
     def _build_sort_spec(self, list_params) -> Dict[str, int]:
-        """Build MongoDB sort specification from ListParams."""
-        if not list_params or not list_params.sort_field:
+        """Build MongoDB sort specification from ListParams.""" 
+        if not list_params or not list_params.sort_fields:
             return {}
-        return {list_params.sort_field: 1 if list_params.sort_order == "asc" else -1}
+        
+        # Build sort spec maintaining field order
+        sort_spec = {}
+        for field, order in list_params.sort_fields:
+            sort_spec[field] = 1 if order == "asc" else -1
+        
+        return sort_spec
 
     def _get_field_type(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
         """Get field type from entity metadata or default to String."""

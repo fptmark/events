@@ -260,6 +260,7 @@ class ElasticsearchDatabase(DatabaseInterface):
         for field, value in list_params.filters.items():
             if isinstance(value, dict) and ('$gte' in value or '$lte' in value):
                 # Range filter - convert MongoDB-style to Elasticsearch range query
+                # Range queries work on the base field (no .keyword needed for numeric fields)
                 range_query = {}
                 if '$gte' in value:
                     range_query['gte'] = value['$gte']
@@ -270,8 +271,8 @@ class ElasticsearchDatabase(DatabaseInterface):
                 # Determine matching strategy based on field type
                 field_type = self._get_field_type(field, entity_metadata)
                 if field_type == 'String':
-                    # Text fields: partial match with wildcard on the base field
-                    # Since our mappings create fields as keyword type, use the field directly
+                    # Text fields: partial match with wildcard on the base text field
+                    # For partial matching, use the analyzed text field (without .keyword)
                     must_clauses.append({
                         "wildcard": {
                             field: f"*{value}*"
@@ -279,8 +280,9 @@ class ElasticsearchDatabase(DatabaseInterface):
                     })
                 else:
                     # Non-text fields (enums, numbers, dates, etc.): exact match
-                    # Since our mappings create fields as keyword type, use the field directly
-                    must_clauses.append({"term": {field: value}})
+                    # For exact matching on text fields, we need to use .keyword
+                    filter_field = self._get_filter_field_name(field)
+                    must_clauses.append({"term": {filter_field: value}})
         
         if must_clauses:
             return {"bool": {"must": must_clauses}}
@@ -289,25 +291,57 @@ class ElasticsearchDatabase(DatabaseInterface):
 
     def _build_sort_spec(self, list_params) -> List[Dict[str, Any]]:
         """Build Elasticsearch sort specification from ListParams."""
-        if not list_params:
+        if not list_params or not list_params.sort_fields:
             # Default sort by createdAt for consistent pagination when no sort specified
             # Note: Never use _id in sort - it requires fielddata which is disabled by default
             return [{"createdAt": {"order": "asc"}}]
         
-        if not list_params.sort_field:
-            # Default sort by createdAt for consistent pagination when no sort specified
-            return [{"createdAt": {"order": "asc"}}]
+        sort_spec = []
+        for field, order in list_params.sort_fields:
+            # Map application "id" field to Elasticsearch "_id" field for sorting
+            # But _id requires fielddata, so we fall back to createdAt
+            if field == "id":
+                # Cannot sort by _id without enabling fielddata, use createdAt instead
+                sort_spec.append({"createdAt": {"order": order}})
+            else:
+                # For text fields, we need to use the .keyword subfield for sorting
+                # Numeric fields (netWorth, createdAt, updatedAt, etc.) and pure keyword fields (username, email) don't need .keyword
+                sort_field = self._get_sort_field_name(field)
+                sort_spec.append({sort_field: {"order": order}})
         
-        sort_order = "asc" if list_params.sort_order == "asc" else "desc"
+        return sort_spec
+    
+    def _get_sort_field_name(self, field: str) -> str:
+        """Get the correct field name for sorting in Elasticsearch."""
+        # These fields are typically stored as pure keyword type or numeric, no .keyword needed
+        keyword_fields = {'username', 'email', 'netWorth', 'createdAt', 'updatedAt', 'isAccountOwner'}
         
-        # Map application "id" field to Elasticsearch "_id" field for sorting
-        # But _id requires fielddata, so we fall back to createdAt
-        if list_params.sort_field == "id":
-            # Cannot sort by _id without enabling fielddata, use createdAt instead
-            return [{"createdAt": {"order": sort_order}}]
+        # These fields are typically stored as text with .keyword subfield
+        text_fields = {'firstName', 'lastName', 'gender', 'accountId', 'password'}
         
-        # Since our mappings create fields as keyword type, use the field directly
-        return [{list_params.sort_field: {"order": sort_order}}]
+        if field in keyword_fields:
+            return field
+        elif field in text_fields:
+            return f"{field}.keyword"
+        else:
+            # For unknown fields, assume they need .keyword (safer default for text fields)
+            return f"{field}.keyword"
+    
+    def _get_filter_field_name(self, field: str) -> str:
+        """Get the correct field name for exact match filtering in Elasticsearch."""
+        # These fields are typically stored as pure keyword type or numeric, no .keyword needed
+        keyword_fields = {'username', 'email', 'netWorth', 'createdAt', 'updatedAt', 'isAccountOwner'}
+        
+        # These fields are typically stored as text with .keyword subfield for exact matching
+        text_fields = {'firstName', 'lastName', 'gender', 'accountId', 'password'}
+        
+        if field in keyword_fields:
+            return field
+        elif field in text_fields:
+            return f"{field}.keyword"  
+        else:
+            # For unknown fields, assume they need .keyword (safer default for text fields)
+            return f"{field}.keyword"
 
     def _get_field_type(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
         """Get field type from entity metadata or default to String."""
