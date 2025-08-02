@@ -9,8 +9,8 @@ from .base import DatabaseInterface, T, SyntheticDuplicateError
 from ..errors import DatabaseError, ValidationError, ValidationFailure, DuplicateError, NotFoundError
 
 class MongoDatabase(DatabaseInterface):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, case_sensitive_sorting: bool = False):
+        super().__init__(case_sensitive_sorting)
         self._client: Optional[AsyncIOMotorClient] = None
         self._db: Optional[AsyncIOMotorDatabase] = None
 
@@ -144,8 +144,13 @@ class MongoDatabase(DatabaseInterface):
             
             pipeline.append({"$facet": facet_pipeline})
             
-            # Execute aggregation
-            cursor = self._get_db()[collection].aggregate(pipeline)
+            # Execute aggregation with collation for case-insensitive sorting
+            collation = None
+            if not self.case_sensitive_sorting:
+                # Use case-insensitive collation
+                collation = {"locale": "en", "strength": 2}  # strength 2 = case insensitive
+            
+            cursor = self._get_db()[collection].aggregate(pipeline, collation=collation)
             result = await cursor.to_list(1)
             
             if not result:

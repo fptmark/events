@@ -18,8 +18,9 @@ class SyntheticDuplicateError(Exception):
 class DatabaseInterface(ABC):
     """Base interface for database implementations"""
     
-    def __init__(self):
+    def __init__(self, case_sensitive_sorting: bool = False):
         self._initialized = False
+        self.case_sensitive_sorting = case_sensitive_sorting  # Default to case-insensitive sorting
     
     def _ensure_initialized(self) -> None:
         """Ensure database is initialized, raise RuntimeError if not"""

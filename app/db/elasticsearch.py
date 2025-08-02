@@ -11,8 +11,8 @@ from ..errors import DatabaseError, DuplicateError, NotFoundError
 class ElasticsearchDatabase(DatabaseInterface):
     """Elasticsearch implementation of DatabaseInterface."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, case_sensitive_sorting: bool = False):
+        super().__init__(case_sensitive_sorting)
         self._client: Optional[AsyncElasticsearch] = None
         self._url: str = ""
     
@@ -307,9 +307,33 @@ class ElasticsearchDatabase(DatabaseInterface):
                 # For text fields, we need to use the .keyword subfield for sorting
                 # Numeric fields (netWorth, createdAt, updatedAt, etc.) and pure keyword fields (username, email) don't need .keyword
                 sort_field = self._get_sort_field_name(field)
-                sort_spec.append({sort_field: {"order": order}})
+                
+                # Configure case sensitivity for text fields
+                sort_config = {"order": order}
+                if not self.case_sensitive_sorting and self._is_text_field(field):
+                    # For case-insensitive sorting on text fields, use normalizer or script
+                    # Since we can't easily modify field mappings, use a script for case-insensitive sort
+                    sort_config = {
+                        "_script": {
+                            "type": "string",
+                            "script": {
+                                "lang": "painless",
+                                "source": f"doc['{sort_field}'].value.toLowerCase()"
+                            },
+                            "order": order
+                        }
+                    }
+                    sort_spec.append(sort_config)
+                else:
+                    sort_spec.append({sort_field: sort_config})
         
         return sort_spec
+    
+    def _is_text_field(self, field: str) -> bool:
+        """Check if field is a text field that should use case-insensitive sorting."""
+        # These fields are typically stored as text and benefit from case-insensitive sorting
+        text_fields = {'firstName', 'lastName', 'username', 'email', 'gender', 'accountId'}
+        return field in text_fields
     
     def _get_sort_field_name(self, field: str) -> str:
         """Get the correct field name for sorting in Elasticsearch."""

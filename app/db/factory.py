@@ -20,7 +20,7 @@ class DatabaseFactory:
     _db_type: Optional[str] = None
 
     @classmethod
-    async def initialize(cls, db_type: str, connection_str: str, database_name: str) -> DatabaseInterface:
+    async def initialize(cls, db_type: str, connection_str: str, database_name: str, case_sensitive_sorting: bool = False) -> DatabaseInterface:
         db: DatabaseInterface
         """Initialize database connection."""
         if cls._instance is not None:
@@ -29,9 +29,9 @@ class DatabaseFactory:
             
         try:
             if db_type.lower() == "mongodb":
-                db = MongoDatabase()
+                db = MongoDatabase(case_sensitive_sorting=case_sensitive_sorting)
             elif db_type.lower() == "elasticsearch":
-                db = ElasticsearchDatabase()
+                db = ElasticsearchDatabase(case_sensitive_sorting=case_sensitive_sorting)
             else:
                 raise ValueError(f"Unsupported database type: {db_type}")
                 
