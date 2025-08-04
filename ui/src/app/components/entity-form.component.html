@@ -103,7 +103,7 @@
                         <div *ngSwitchCase="'ObjectId'" class="input-group">
                           <!-- Clickable link for valid ObjectIds in details mode -->
                           <div
-                            *ngIf="isDetailsMode() && !hasObjectIdValidationError(fieldName)"
+                            *ngIf="isDetailsMode() && !hasFieldValidationError(fieldName)"
                             [id]="fieldName"
                             class="form-control"
                             style="border: none; background: none; padding: 0;">
@@ -116,7 +116,7 @@
                           
                           <!-- Plain text for invalid ObjectIds in details mode -->
                           <div
-                            *ngIf="isDetailsMode() && hasObjectIdValidationError(fieldName)"
+                            *ngIf="isDetailsMode() && hasFieldValidationError(fieldName)"
                             [id]="fieldName"
                             class="form-control">
                             {{ entity[fieldName] }}
@@ -197,34 +197,9 @@
                             [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
                         </ng-container>
                         
-                        <!-- Validation error messages -->
-
-                        <!-- Enum validation errors (for edit/create mode) -->
-                        <div *ngIf="hasEnumValidationError(fieldName)" class="text-danger mt-1 small">
-                          {{ getEnumValidationError(fieldName) }}
-                        </div>
-
-                        <!-- ObjectId validation errors (for edit/create mode) -->
-                        <div *ngIf="hasObjectIdValidationError(fieldName)" class="text-danger mt-1 small">
-                          {{ getObjectIdValidationError(fieldName) }}
-                        </div>
-
-                        <!-- Unified validation errors (works in all modes, excludes enums/ObjectIds) -->
-                        <div *ngIf="hasGeneralValidationError(fieldName)" class="text-danger mt-1 small">
-                          {{ getGeneralValidationError(fieldName) }}
-                        </div>
-
-                        <!-- Keep only server-side validation errors and currency format errors that aren't handled by unified validation -->
-                        <div *ngIf="isFieldInvalid(fieldName)" class="invalid-feedback d-block">
-                          <!-- Custom currency format error -->
-                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['currencyFormat']">
-                            {{ entityForm.get(fieldName)?.errors?.['currencyFormat'] }}
-                          </div>
-                          <!-- Server-side validation error -->
-                          <div *ngIf="entityForm && entityForm.get(fieldName)?.errors?.['server']">
-                            <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                            {{ entityForm.get(fieldName)?.errors?.['server'] }}
-                          </div>
+                        <!-- P5: UNIFIED validation error display - handles ALL error types -->
+                        <div *ngIf="hasFieldValidationError(fieldName)" class="text-danger mt-1 small">
+                          {{ getFieldValidationError(fieldName) }}
                         </div>
                       </ng-container>
                     </ng-template>

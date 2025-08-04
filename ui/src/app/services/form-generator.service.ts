@@ -48,10 +48,9 @@ export class FormGeneratorService {
           validators = this.getValidators(fieldMeta);
         }
 
-        // Create the form control with appropriate disabled state
-        let ctl = this.fb.control({
-          // No initial value - will be set by entity-form
-        }, validators);
+        // Create the form control with appropriate initial value based on field type
+        const initialValue = this.getInitialFieldValue(entityType, fieldName, mode);
+        let ctl = this.fb.control(initialValue, validators);
         if (this.getFieldAttributes(entityType, fieldName, mode).enabled === false) {
           ctl.disable();
         }
@@ -67,6 +66,39 @@ export class FormGeneratorService {
     };
   }
   
+  /**
+   * Get appropriate initial value for field based on type and mode
+   */
+  private getInitialFieldValue(entityType: string, fieldName: string, mode: ViewMode): any {
+    if (!this.modeService.inCreateMode(mode)) {
+      // For edit/details mode, values will be populated later by populateFormFields
+      return null;
+    }
+
+    // For CREATE mode, provide appropriate initial values to prevent validation errors
+    const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
+    const fieldType = fieldMeta?.type || 'String';
+
+    switch (fieldType) {
+      case 'String':
+      case 'text':
+        return ''; // Empty string prevents required validation from triggering immediately
+      case 'Boolean':
+        return false; // Booleans always need a value
+      case 'Currency':
+      case 'Number':
+        return null; // Numbers can start as null
+      case 'Date':
+      case 'Datetime':
+        return null; // Dates can start as null
+      case 'ObjectId':
+        return ''; // Empty string prevents required validation
+      default:
+        // For enums and other types, use empty string
+        return '';
+    }
+  }
+
   // Old method removed - we only need generateEntityForm
   
   private getValidators(fieldMeta: FieldMetadata): any[] {

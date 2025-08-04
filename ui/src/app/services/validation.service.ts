@@ -52,17 +52,30 @@ export class ValidationService {
    * ONLY handles the unified notification system format
    */
   convertApiErrorToValidationFailures(error: any): ValidationFailure[] {
-    // Check for notification system format with field-specific errors
+    console.log('DEBUG: convertApiErrorToValidationFailures called with:', error);
+    
+    // Check for notification system format with field-specific errors and warnings
     if (error.notifications?.length) {
-      return error.notifications
-        .filter((notif: any) => notif.field && notif.level === 'error')
+      console.log('DEBUG: Found notifications:', error.notifications);
+      
+      const validationFailures = error.notifications
+        .filter((notif: any) => {
+          const hasField = !!notif.field;
+          const isErrorOrWarning = notif.level === 'error' || notif.level === 'warning';
+          console.log(`DEBUG: Notification - field: ${notif.field}, level: ${notif.level}, message: ${notif.message}, hasField: ${hasField}, isErrorOrWarning: ${isErrorOrWarning}`);
+          return hasField && isErrorOrWarning;
+        })
         .map((notif: any) => ({
           field: notif.field,
           constraint: notif.message,
           value: notif.value
         }));
+      
+      console.log('DEBUG: Extracted ValidationFailures:', validationFailures);
+      return validationFailures;
     }
     
+    console.log('DEBUG: No notifications found');
     return [];
   }
 

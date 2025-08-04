@@ -103,7 +103,7 @@ export class EntityFormComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    // Simplified initialization
+    // P1-P5 Unified Architecture
     this.route.params.subscribe(params => {
       this.entityType = params['entityType'].toLowerCase();
       this.entityId = params['id'];
@@ -121,38 +121,118 @@ export class EntityFormComponent implements OnInit {
       // Check for operation results when navigating to this entity
       this.checkForOperationResult();
       
-      this.loadEntity();
+      // Generate form (same for all modes)
+      const result = this.formGenerator.generateEntityForm(this.entityType, this.mode);
+      this.entityForm = result.form;
+      this.sortedFields = result.displayFields;
+      
+      // Setup mode-specific behavior using P1-P5 functions
+      this.setupMode();
     });
   }
 
-  loadEntity(): void {
-    this.error = '';
-    
-    // Generate the form first (same for all modes)
-    const result = this.formGenerator.generateEntityForm(this.entityType, this.mode);
-    this.entityForm = result.form;
-    this.sortedFields = result.displayFields;
-    
-    // For create mode, just populate with defaults and we're done
-    if (this.isCreateMode()) {
-      this.populateFormValues();
-      return;
+  /**
+   * P1-P5 Architecture: Setup mode-specific behavior
+   */
+  setupMode(): void {
+    switch(this.mode) {
+      case CREATE:
+        this.setupCreateMode();
+        break;
+      case EDIT:
+        this.setupEditMode();
+        break;
+      case DETAILS:
+        this.setupDetailsMode();
+        break;
     }
+  }
+
+  /**
+   * Create Mode: P1 + P2 + P5 → Form with Submit
+   */
+  setupCreateMode(): void {
+    // Create mode starts with empty form, no server data needed
+    this.entity = {}; // Empty entity for create mode
     
-    // For edit/view mode, fetch the data first, then populate
+    // P1: Populate enums (clear invalid values, though none exist in create mode)
+    this.entityFormService.populateEnums(this.entityType, this.entityForm!, this.entity, this.sortedFields);
+    
+    // P2: ObjectId selector is available on-demand when user clicks Select
+    // P5: Real-time validation will be handled by getFieldValidationError()
+    
+    console.log('Create mode setup complete - Form ready with Submit button');
+  }
+
+  /**
+   * Edit Mode: P1 + P2 + P3 + P4 + P5 → Form with Submit
+   */
+  setupEditMode(): void {
+    // Get entity from server with full response including notifications
     this.restService.getEntity(this.entityType, this.entityId, this.mode).subscribe({
-      next: (response) => {
-        this.entity = response;
+      next: (fullResponse: any) => {
+        this.entity = fullResponse.data;
         
         if (!this.entity) {
           this.error = 'No entity data returned from the server.';
           return;
         }
 
-        // Populate form with entity data for edit/view mode
-        this.populateFormValues(this.entity);
+        // Let NotificationService handle the response for global notifications
+        this.notificationService.handleApiResponse(fullResponse);
+
+        // P4: Populate editable boxes from payload
+        this.entityFormService.populateFormFields(this.entityType, this.entityForm!, this.entity, this.sortedFields, this.mode);
+        
+        // P3: Populate field errors below each field from payload (use FULL response)
+        const validationFailures = this.validationService.convertApiErrorToValidationFailures(fullResponse);
+        this.validationErrors = validationFailures;
+        console.log('P3: Edit mode validation errors:', this.validationErrors);
+        console.log('P3: Full server response:', fullResponse);
+        this.entityFormService.populateFieldErrors(this.validationErrors);
+        
+        // P1: Populate enums (clear out/blank enum on error)
+        this.entityFormService.populateEnums(this.entityType, this.entityForm!, this.entity, this.sortedFields);
+        
+        // P2: ObjectId selector is available on-demand when user clicks Select
+        // P5: Real-time validation will be handled by getFieldValidationError()
+        
+        console.log('Edit mode setup complete - Form ready with Submit button');
       },
-      error: (err) => {
+      error: (err: any) => {
+        console.error('Error loading entity:', err);
+        this.error = 'Failed to load entity data. Please try again later.';
+      }
+    });
+  }
+
+  /**
+   * Details Mode: P3 + P4' → Form without Submit button
+   */
+  setupDetailsMode(): void {
+    this.restService.getEntity(this.entityType, this.entityId, this.mode).subscribe({
+      next: (fullResponse: any) => {
+        this.entity = fullResponse.data;
+        
+        if (!this.entity) {
+          this.error = 'No entity data returned from the server.';
+          return;
+        }
+
+        // Let NotificationService handle the response for global notifications
+        this.notificationService.handleApiResponse(fullResponse);
+
+        // P4: Populate non-editable boxes from payload
+        this.entityFormService.populateFormFields(this.entityType, this.entityForm!, this.entity, this.sortedFields, this.mode);
+        
+        // P3: Populate field errors below each field from payload (use FULL response)
+        const validationFailures = this.validationService.convertApiErrorToValidationFailures(fullResponse);
+        this.validationErrors = validationFailures;
+        this.entityFormService.populateFieldErrors(this.validationErrors);
+        
+        console.log('Details mode setup complete - Form ready without Submit button');
+      },
+      error: (err: any) => {
         console.error('Error loading entity:', err);
         this.error = 'Failed to load entity data. Please try again later.';
       }
@@ -193,19 +273,6 @@ export class EntityFormComponent implements OnInit {
   }
   
   
-  /**
-   * Populates form values based on mode and entity data
-   * @param entityData Optional entity data for edit/view modes
-   */
-  populateFormValues(entityData?: any): void {
-    this.entityFormService.populateFormValues(
-      this.entityType,
-      this.mode,
-      this.entityForm!,
-      this.sortedFields,
-      entityData
-    );
-  }
 
   onSubmit(): void {
     if (!this.entityForm) return;
@@ -216,44 +283,14 @@ export class EntityFormComponent implements OnInit {
       return;
     }
     
-    // Clear previous error messages
+    // Clear previous error messages and prepare for submission
     this.error = '';
     this.validationErrors = [];
     this.notificationService.clear();
-    
     this.submitting = true;
     
-    // Process the form data before sending it to the API
-    const formData = this.processFormData();
-    
-    // After processing, check if any fields were marked invalid
-    if (this.entityForm.invalid) {
-      this.submitting = false;
-      
-      // Show validation error notification with form validation errors
-      const invalidControls = Object.keys(this.entityForm.controls)
-        .filter(key => this.entityForm?.get(key)?.errors)
-        .map(field => {
-          const fieldControl = this.entityForm?.get(field);
-          return {
-            field,
-            constraint: Object.keys(fieldControl?.errors || {})
-              .map(key => this.validationService.getValidationMessage(this.entityType, field, {[key]: fieldControl?.errors?.[key]}) || '')
-              .join(', '),
-            value: fieldControl?.value
-          };
-        });
-
-      this.notificationService.showError({
-        message: 'Please fix the validation errors below before submitting.',
-        error_type: 'validation_error',
-        context: {
-          entity: this.entityType,
-          invalid_fields: invalidControls
-        }
-      });
-      return;
-    }
+    // Get form data and send to server - let server handle all validation
+    const formData = this.getFormData();
     
     if (this.isEditMode()) {
       this.updateEntity(formData);
@@ -262,14 +299,44 @@ export class EntityFormComponent implements OnInit {
     }
   }
   
-  // Process form data before submitting to the API
-  processFormData(): Record<string, any> {
-    return this.entityFormService.processFormData(
-      this.entityType,
-      this.entityForm!,
-      (fieldName: string) => this.getFieldDisplayName(fieldName),
-      this.notificationService
-    );
+  /**
+   * Get simple form data for server submission - no client-side validation
+   */
+  getFormData(): Record<string, any> {
+    const formData: Record<string, any> = {};
+    
+    if (!this.entityForm) return formData;
+    
+    // Extract form values with proper handling for different field types
+    Object.keys(this.entityForm.controls).forEach(fieldName => {
+      const control = this.entityForm?.get(fieldName);
+      let value = control?.value;
+      const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+      
+      // Boolean fields: always include (false is a valid value)
+      if (fieldMeta?.type === 'Boolean') {
+        formData[fieldName] = Boolean(value); // Ensure it's always true/false, never null
+      }
+      // Other fields: include all non-empty values
+      else if (value !== null && value !== undefined && value !== '') {
+        // Convert currency fields to numbers before sending to server
+        if (fieldMeta?.type === 'Currency' && typeof value === 'string') {
+          try {
+            // Use currency.js to parse currency string to number
+            const currencyValue = currency(value);
+            formData[fieldName] = currencyValue.value;
+          } catch (error) {
+            console.warn(`Failed to parse currency value for ${fieldName}:`, value, error);
+            // If parsing fails, send the original value and let server handle validation
+            formData[fieldName] = value;
+          }
+        } else {
+          formData[fieldName] = value;
+        }
+      }
+    });
+    
+    return formData;
   }
 
   /**
@@ -291,25 +358,29 @@ export class EntityFormComponent implements OnInit {
     // Clear any existing notifications
     this.notificationService.clear();
     
-    // Extract error message from server response using unified notification format
-    const errorMessage = err.error?.message || 'An error occurred while processing your request.';
+    console.log('API Error:', err); // Debug logging
     
-    // Try to extract field-specific validation errors regardless of status code
+    // Extract error message with better fallback logic
+    let errorMessage = 'An error occurred while processing your request.';
+    
+    if (err.error?.message) {
+      errorMessage = err.error.message;
+    } else if (err.message) {
+      errorMessage = err.message;
+    } else if (err.status === 422) {
+      errorMessage = 'Validation errors occurred. Please check the form fields below.';
+    } else if (err.status === 500) {
+      errorMessage = 'Server error occurred. Please try again or contact support.';  
+    } else if (err.status === 0 || err.name === 'HttpErrorResponse') {
+      errorMessage = 'Network error. Please check your connection and try again.';
+    }
+    
+    // Extract field-specific validation errors from server response
     const validationFailures = this.validationService.convertApiErrorToValidationFailures(err.error);
     
     if (validationFailures.length > 0) {
-      // Handle structured validation errors
+      // "Goto Edit Mode and use payload" - store validation errors for P3/P5 display
       this.validationErrors = validationFailures;
-      
-      // Mark form fields as invalid with server errors
-      validationFailures.forEach((error: ValidationFailure) => {
-        const control = this.entityForm?.get(error.field);
-        if (control) {
-          control.markAsTouched();
-          control.markAsDirty();
-          control.setErrors({ server: error.constraint });
-        }
-      });
       
       // Show validation error notification
       this.notificationService.showError('Please fix the validation errors highlighted below.');
@@ -357,7 +428,7 @@ export class EntityFormComponent implements OnInit {
   
   /**
    * Handles click on an ObjectId field
-   * In view mode: Navigate to the referenced entity
+   * In view mode: Always perform preflight check before navigation (ignore cached exists state)
    * In edit/create mode: Show selector with available IDs
    * @param fieldName The field name
    */
@@ -381,17 +452,54 @@ export class EntityFormComponent implements OnInit {
         return;
       }
       
-      // In view mode, navigate to the referenced entity
+      // In view mode, always perform preflight check regardless of any cached state
       const objectIdValue = this.entity?.[fieldName];
       if (objectIdValue) {
-        console.log(`Navigating to ${entityType} with ID: ${objectIdValue}`);
-        this.router.navigate(['/entity', entityType, objectIdValue]);
+        console.log(`Always performing preflight check for ${entityType} with ID: ${objectIdValue}`);
+        this.preflightCheckAndNavigate(fieldName, entityType, objectIdValue);
       } else {
         console.log(`No ObjectId value found for ${fieldName}`);
       }
     } catch (error) {
       console.error('Error in openLink:', error);
     }
+  }
+
+  /**
+   * Preflight check: Verify FK entity exists before navigation
+   * If it doesn't exist, show error below field instead of navigating
+   */
+  preflightCheckAndNavigate(fieldName: string, entityType: string, objectIdValue: string): void {
+    // Try to get the FK entity to verify it exists
+    this.restService.getEntity(entityType, objectIdValue, this.mode).subscribe({
+      next: (entity) => {
+        // FK entity exists - safe to navigate
+        console.log(`FK entity ${entityType}/${objectIdValue} exists, navigating`);
+        this.router.navigate(['/entity', entityType, objectIdValue]);
+      },
+      error: (err) => {
+        // FK entity doesn't exist - show error below field instead of navigating
+        console.log(`FK entity ${entityType}/${objectIdValue} does not exist, showing error`);
+        
+        // Add validation error for this field to show "Entity does not exist"
+        const validationError = {
+          field: fieldName,
+          constraint: 'Entity does not exist',
+          value: objectIdValue
+        };
+        
+        // Add to existing validation errors (don't replace them)
+        if (!this.validationErrors) {
+          this.validationErrors = [];
+        }
+        
+        // Remove any existing error for this field and add the new one
+        this.validationErrors = this.validationErrors.filter(error => error.field !== fieldName);
+        this.validationErrors.push(validationError);
+        
+        console.log(`Added validation error for ${fieldName}: Entity does not exist`);
+      }
+    });
   }
   
   /**
@@ -475,75 +583,40 @@ export class EntityFormComponent implements OnInit {
     return !!(control && control.invalid && (control.dirty || control.touched));
   }
   
+  /**
+   * P5: UNIFIED validation function - handles ALL validation types
+   * Used by Create Mode, Edit Mode (real-time validation)
+   */
   getFieldValidationError(fieldName: string): string | null {
-    const control = this.entityForm?.get(fieldName);
-    return control?.errors?.['server'] || null;
-  }
-
-  /**
-   * Get enum-specific validation error for invalid values - works in all modes
-   */
-  getEnumValidationError(fieldName: string): string | null {
-    const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+    if (!this.entityForm) return null;
     
-    // Check if this is an enum field and has an invalid value
-    if (fieldMeta?.enum?.values && this.entity) {
-      const rawValue = this.entity[fieldName];
-      if (rawValue && !fieldMeta.enum.values.includes(rawValue)) {
-        return `existing value "${rawValue}" is not a valid selection`;
-      }
+    const control = this.entityForm.get(fieldName);
+    if (!control) return null;
+    
+    // In create mode, don't show validation errors until user has interacted with field
+    // or form has been submitted. In edit/details mode, always show validation errors.
+    if (this.isCreateMode() && !control.dirty && !control.touched && !this.submitting) {
+      return null;
     }
     
-    return null;
-  }
-
-  /**
-   * Check if field has enum validation error
-   */
-  hasEnumValidationError(fieldName: string): boolean {
-    return this.getEnumValidationError(fieldName) !== null;
-  }
-
-  /**
-   * Get ObjectId-specific validation error for non-existent entities - works in all modes
-   */
-  getObjectIdValidationError(fieldName: string): string | null {
-    const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+    const currentValue = control.value;
     
-    // Check if this is an ObjectId field with non-existent entity
-    if (fieldMeta?.type === 'ObjectId' && this.entity) {
-      const fkEntityName = fieldName.endsWith('Id') ? fieldName.slice(0, -2) : fieldName;
-      const embeddedData = this.entity[fkEntityName];
-      if (embeddedData?.exists === false) {
-        return 'Entity does not exist';
-      }
-    }
-    
-    return null;
+    // Use P5 function for unified real-time validation
+    return this.entityFormService.performRealtimeValidation(
+      this.entityType, 
+      fieldName, 
+      currentValue, 
+      this.entity, 
+      this.mode,
+      this.validationErrors
+    );
   }
 
   /**
-   * Check if field has ObjectId validation error
+   * Check if field has ANY validation error
    */
-  hasObjectIdValidationError(fieldName: string): boolean {
-    return this.getObjectIdValidationError(fieldName) !== null;
-  }
-
-  /**
-   * Get unified validation error for any field (excludes enums/ObjectIds) - works in all modes
-   */
-  getGeneralValidationError(fieldName: string): string | null {
-    if (!this.entity) return null;
-    
-    const rawValue = this.entity[fieldName];
-    return this.entityFormService.getFieldValidationError(this.entityType, fieldName, rawValue);
-  }
-
-  /**
-   * Check if field has general validation error
-   */
-  hasGeneralValidationError(fieldName: string): boolean {
-    return this.getGeneralValidationError(fieldName) !== null;
+  hasFieldValidationError(fieldName: string): boolean {
+    return this.getFieldValidationError(fieldName) !== null;
   }
 
 

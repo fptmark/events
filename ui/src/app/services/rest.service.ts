@@ -75,11 +75,10 @@ export class RestService {
     return throwError(() => error)
   }
 
-  getEntity(entityType: string, id: string, mode: string): Observable<Entity> {
+  getEntity(entityType: string, id: string, mode: string): Observable<BackendApiResponse<Entity>> {
     const args = this.metadataService.getShowViewParams(entityType, mode)
     const url = this.configService.getApiUrl(`${entityType}/${id}`) + args
     return this.http.get<BackendApiResponse<Entity>>(url).pipe(
-      map((response: BackendApiResponse<Entity>) => this.handleApiResponse(response)),
       catchError(error => this.handleError(error))
     )
   }
