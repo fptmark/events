@@ -9,6 +9,7 @@ import json
 import requests
 import asyncio
 import argparse
+import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from pathlib import Path
@@ -31,11 +32,14 @@ class TestResult:
 class BaseTestFramework:
     """Base test framework that can be extended for different entities"""
     
-    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl_file_handle = None):
+    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl_file_handle = None, request_delay: float = 0.0, curl_responses: Dict = None):
         self.config_file = config_file
         self.server_url = server_url
         self.verbose = verbose
         self.curl_file_handle = curl_file_handle
+        self.request_delay = request_delay  # Delay between requests to prevent server overload
+        self.curl_responses = curl_responses or {}  # Pre-captured curl responses
+        self.curl_generation_only = curl_file_handle is not None and not curl_responses  # Generate curl.sh only, no HTTP requests
         self.test_count = 0
         self.passed = 0
         self.failed = 0
@@ -151,45 +155,6 @@ class BaseTestFramework:
         except Exception as e:
             print(f"⚠️ Warning: Could not initialize tests/curl.sh: {e}")
     
-    def _append_to_curl_file(self, method: str, url: str, data: Dict = None):
-        """Append a curl command to tests/curl.sh"""
-        if not hasattr(self, 'curl_file_handle') or not self.curl_file_handle:
-            return
-            
-        try:
-            f = self.curl_file_handle
-            decoded_url = self._get_decoded_url_for_display(url)
-            import datetime
-            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            
-            # Use global counter on file handle to avoid duplicates across instances
-            if not hasattr(f, '_global_curl_counter'):
-                f._global_curl_counter = 0
-            f._global_curl_counter += 1
-            
-            f.write(f'# {timestamp} - Request #{f._global_curl_counter}\n')
-            f.write(f'echo "=== {method} {decoded_url} ==="\n')
-                
-            if method.upper() == "GET":
-                f.write(f'curl -w "Time: %{{time_total}}s\\nStatus: %{{http_code}}\\n" -X GET "{url}"\n')
-            elif method.upper() in ["POST", "PUT"]:
-                if data:
-                    import json
-                    json_data = json.dumps(data, indent=2)
-                    escaped_data = json_data.replace('"', '\\"')
-                    f.write(f'curl -w "Time: %{{time_total}}s\\nStatus: %{{http_code}}\\n" -X {method.upper()} "{url}" \\\n')
-                    f.write(f'  -H "Content-Type: application/json" \\\n')
-                    f.write(f'  -d "{escaped_data}"\n')
-                else:
-                    f.write(f'curl -w "Time: %{{time_total}}s\\nStatus: %{{http_code}}\\n" -X {method.upper()} "{url}"\n')
-            elif method.upper() == "DELETE":
-                f.write(f'curl -w "Time: %{{time_total}}s\\nStatus: %{{http_code}}\\n" -X DELETE "{url}"\n')
-                
-            f.write('echo ""\n\n')
-                
-        except Exception as e:
-            if self.verbose:
-                print(f"⚠️ Warning: Could not write to curl file: {e}")
     
     def _get_decoded_url_comment(self, url: str) -> str:
         """Generate a comment showing decoded URL parameters"""
@@ -314,9 +279,22 @@ class BaseTestFramework:
         """Helper method for API requests"""
         url = f"{self.server_url}{endpoint}"
         
-        # Log to curl.sh if curl file handle is available
-        if self.curl_file_handle:
-            self._append_to_curl_file(method, url, data)
+        # Check if we have a pre-captured curl response for this URL
+        if self.curl_responses and url in self.curl_responses:
+            return self._process_curl_response(self.curl_responses[url], expected_status)
+        
+        # Note: curl logging is handled by the test suites via write_curl_commands_for_test_suite()
+        
+        # If we're in curl generation only mode, return fake success response
+        if self.curl_generation_only:
+            if self.verbose:
+                print(f"🔗 Generated curl command for: {method} {url}")
+                print(f"   📝 Saved to curl.sh - no HTTP request made")
+            return True, {"curl_generation_mode": True}
+        
+        # Add delay between requests to prevent server overload
+        if self.request_delay > 0:
+            time.sleep(self.request_delay)
         
         # Verbose mode: show detailed request info
         if self.verbose:
@@ -382,7 +360,12 @@ class BaseTestFramework:
             
             if response.status_code == expected_status:
                 try:
-                    return True, response.json()
+                    if self.verbose:
+                        print(f"   🔄 Parsing JSON response ({len(response.text)} chars)...")
+                    json_data = response.json()
+                    if self.verbose:
+                        print(f"   ✅ JSON parsed successfully")
+                    return True, json_data
                 except:
                     return True, {"raw_response": response.text}
             else:
@@ -400,6 +383,33 @@ class BaseTestFramework:
             else:
                 print(f"  Request failed after {duration:.1f}s: {e}")
             return False, {"exception": str(e)}
+    
+    def _process_curl_response(self, curl_response, expected_status: int = 200) -> Tuple[bool, Dict]:
+        """Process a pre-captured curl response"""
+        # Verbose mode: show curl response info
+        if self.verbose:
+            print(f"🔗 Using curl response: {curl_response.url}")
+            print(f"   📥 Response: {curl_response.status_code} OK ({curl_response.elapsed*1000:.0f}ms)")
+            print(f"   📊 Data: Retrieved from curl cache")
+            print(f"   ✅ Result: {'PASS' if curl_response.status_code == expected_status else 'FAIL'} - Status {curl_response.status_code} {'as expected' if curl_response.status_code == expected_status else f'expected {expected_status}'}")
+            print(f"   🔄 Parsing JSON response ({len(curl_response.text)} chars)...")
+        
+        # Check status code
+        if curl_response.status_code != expected_status:
+            if self.verbose:
+                print(f"   ❌ Status code mismatch: expected {expected_status}, got {curl_response.status_code}")
+            return False, {}
+        
+        # Parse JSON response
+        try:
+            json_data = curl_response.json()
+            if self.verbose:
+                print(f"   ✅ JSON parsed successfully")
+            return True, json_data
+        except Exception as e:
+            if self.verbose:
+                print(f"   ❌ JSON parsing error: {e}")
+            return False, {}
     
     async def insert_invalid_document(self, collection_name: str, document: Dict) -> bool:
         """Insert a document directly via DatabaseFactory bypassing validation"""

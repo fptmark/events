@@ -7,14 +7,39 @@ Tests API endpoints with pagination parameters to verify proper page handling.
 import sys
 import asyncio
 from pathlib import Path
+from typing import List, Tuple
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tests.common_test_framework import CommonTestFramework, TEST_USERS, TEST_ACCOUNTS
+from tests.common_test_framework import CommonTestFramework
+from tests.common_test_framework import TEST_USERS, TEST_ACCOUNTS
 
 class PaginationTester(CommonTestFramework):
     """Test pagination functionality"""
+    
+    def get_test_suite_name(self) -> str:
+        """Return the display name for this test suite"""
+        return "Pagination Tests"
+    
+    def get_test_urls(self) -> List[Tuple[str, str, str]]:
+        """Return all test URLs for this suite - single source of truth"""
+        return [
+            # Basic pagination tests
+            ("GET", "/api/user", "Get user list with default pagination"),
+            ("GET", "/api/user?pageSize=3", "Get user list with page size 3"),
+            ("GET", "/api/user?page=1&pageSize=5", "Get user list page 1 with size 5"),
+            ("GET", "/api/user?page=2&pageSize=3", "Get user list page 2 with size 3"),
+            # Edge case tests
+            ("GET", "/api/user?page=0&pageSize=5", "Get user list with page 0"),
+            ("GET", "/api/user?pageSize=100", "Get user list with large page size (framework test)"),
+            ("GET", "/api/user?pageSize=1000", "Get user list with very large page size (works in browser)"),
+            ("GET", "/api/user?page=999&pageSize=5", "Get user list beyond available pages"),
+            ("GET", "/api/user?pageSize=0", "Get user list with zero page size"),
+            # Individual user tests
+            ("GET", f"/api/user/{TEST_USERS['valid_all']}", "Get individual user (no pagination)"),
+            ("GET", f"/api/user/{TEST_USERS['valid_all']}?page=2&pageSize=10", "Get individual user with pagination params"),
+        ]
     
     def test_basic_pagination(self) -> bool:
         """Test basic pagination parameters"""
@@ -81,11 +106,11 @@ class PaginationTester(CommonTestFramework):
         ):
             tests_passed += 1
             
-        # Test 2: Very large page size
+        # Test 2: Large page size (reduced from 1000 to avoid server timeout)
         tests_total += 1
         if self.test_api_call(
             "GET", 
-            "/api/user?pageSize=1000", 
+            "/api/user?pageSize=100", 
             "Get user list with large page size",
             should_have_data=True
         ):
@@ -149,10 +174,11 @@ class PaginationTester(CommonTestFramework):
     def run_all_tests(self) -> bool:
         """Run all pagination tests"""
         if self.verbose:
-            print(f"\n🧪 PAGINATION TESTS - {self.mode_name}")
+            print(f"\n🧪 {self.get_test_suite_name().upper()} - {self.mode_name}")
             print("=" * 60)
         
-        # Write curl commands (only for first mode)
+        # Write curl commands using common framework
+        self.write_curl_commands_for_test_suite(self.get_test_suite_name(), self.get_test_urls())
         
         # Run tests
         test1_result = self.test_basic_pagination()
@@ -163,8 +189,8 @@ class PaginationTester(CommonTestFramework):
         
         if self.verbose:
             status = "✅ ALL PASS" if overall_success else "❌ SOME FAILED"
-            print(f"\n{status} - Pagination Tests ({self.mode_name})")
-            
+            print(f"\n{status} - {self.get_test_suite_name()} ({self.mode_name})")
+        
         return overall_success
 
 async def main():

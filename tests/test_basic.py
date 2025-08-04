@@ -7,6 +7,7 @@ Tests fundamental GET /user/{id} and GET /user endpoints without additional para
 import sys
 import asyncio
 from pathlib import Path
+from typing import List, Tuple
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -15,6 +16,21 @@ from tests.common_test_framework import CommonTestFramework, TEST_USERS
 
 class BasicAPITester(CommonTestFramework):
     """Test basic API functionality"""
+    
+    def get_test_urls(self) -> List[Tuple[str, str, str]]:
+        """Return all test URLs for this suite - single source of truth"""
+        return [
+            # Individual user tests
+            ("GET", f"/api/user/{TEST_USERS['valid_all']}", "Get valid user"),
+            ("GET", f"/api/user/{TEST_USERS['bad_enum']}", "Get user with bad enum"),
+            ("GET", f"/api/user/{TEST_USERS['bad_currency']}", "Get user with bad currency"),
+            ("GET", f"/api/user/{TEST_USERS['bad_fk']}", "Get user with bad FK"),
+            ("GET", f"/api/user/{TEST_USERS['multiple_errors']}", "Get user with multiple errors"),
+            ("GET", f"/api/user/{TEST_USERS['nonexistent']}", "Get non-existent user"),
+            # User list tests
+            ("GET", "/api/user", "Get user list"),
+            ("GET", "/api/user?pageSize=3", "Get user list with page size"),
+        ]
     
     def test_individual_user_gets(self) -> bool:
         """Test GET /user/{id} for various user scenarios"""
@@ -133,7 +149,8 @@ class BasicAPITester(CommonTestFramework):
             print(f"\n🧪 BASIC API TESTS - {self.mode_name}")
             print("=" * 60)
         
-        # Write curl commands (only for first mode)
+        # Pre-write all curl commands for this test suite using single source of truth
+        self.write_curl_commands_for_test_suite("Basic API Tests")
         
         # Run tests
         test1_result = self.test_individual_user_gets()

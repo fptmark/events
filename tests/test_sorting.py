@@ -232,7 +232,33 @@ class SortingTester(CommonTestFramework):
             print(f"\n🧪 SORTING TESTS - {self.mode_name}")
             print("=" * 60)
         
-        # Write curl commands (only for first mode)
+        # Pre-write all curl commands for this test suite
+        test_urls = [
+            # Basic sorting tests
+            ("GET", "/api/user?sort=username", "Get user list sorted by username ascending"),
+            ("GET", "/api/user?sort=-username", "Get user list sorted by username descending"),
+            ("GET", "/api/user?sort=createdAt", "Get user list sorted by createdAt ascending"),
+            ("GET", "/api/user?sort=-createdAt", "Get user list sorted by createdAt descending"),
+            ("GET", "/api/user?sort=firstName", "Get user list sorted by firstName ascending"),
+            ("GET", "/api/user?sort=-firstName", "Get user list sorted by firstName descending"),
+            # Multiple field sorting tests
+            ("GET", "/api/user?sort=firstName,username", "Get user list sorted by firstName then username"),
+            ("GET", "/api/user?sort=-firstName,username", "Get user list sorted by firstName desc then username asc"),
+            ("GET", "/api/user?sort=firstName,-username", "Get user list sorted by firstName asc then username desc"),
+            ("GET", "/api/user?sort=-firstName,-username", "Get user list sorted by firstName desc then username desc"),
+            ("GET", "/api/user?sort=createdAt,firstName,username", "Get user list sorted by three fields"),
+            # Sorting with pagination tests
+            ("GET", "/api/user?sort=firstName&pageSize=3", "Get user list sorted by firstName with pagination"),
+            ("GET", "/api/user?sort=-createdAt&page=2&pageSize=5", "Get user list sorted by createdAt desc with pagination"),
+            # Invalid sorting tests
+            ("GET", "/api/user?sort=nonexistentfield", "Get user list with invalid sort field"),
+            ("GET", "/api/user?sort=", "Get user list with empty sort parameter"),
+            ("GET", "/api/user?sort=-", "Get user list with malformed sort parameter"),
+            # Individual user sorting tests
+            ("GET", f"/api/user/{TEST_USERS['valid_all']}?sort=username", "Get individual user with sort parameter"),
+            ("GET", f"/api/user/{TEST_USERS['valid_all']}?sort=-createdAt,firstName", "Get individual user with complex sort parameter"),
+        ]
+        self.write_curl_commands_for_test_suite("Sorting Tests", test_urls)
         
         # Run tests
         test1_result = self.test_basic_sorting()

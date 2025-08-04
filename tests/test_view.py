@@ -128,7 +128,20 @@ class ViewParameterTester(CommonTestFramework):
             print(f"\n🧪 VIEW PARAMETER TESTS - {self.mode_name}")
             print("=" * 60)
         
-        # Write curl commands (only for first mode)
+        # Pre-write all curl commands for this test suite
+        test_urls = [
+            # Individual user view tests
+            ("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get valid user with account ID view"),
+            ("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", "Get valid user with full account view"),
+            ("GET", f"/api/user/{TEST_USERS['bad_fk']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with bad FK and account view"),
+            ("GET", f"/api/user/{TEST_USERS['multiple_errors']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with multiple errors and account view"),
+            ("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22nonexistent_field%22%5D%7D", "Get valid user with invalid view field"),
+            # User list view tests
+            ("GET", "/api/user?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user list with account ID view"),
+            ("GET", "/api/user?view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", "Get user list with full account view"),
+            ("GET", "/api/user?pageSize=3&view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user list with pagination and view"),
+        ]
+        self.write_curl_commands_for_test_suite("View Parameter Tests", test_urls)
         
         # Run tests
         test1_result = self.test_individual_user_with_view()

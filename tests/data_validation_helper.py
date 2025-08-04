@@ -185,10 +185,12 @@ class DataValidationHelper:
             else:
                 return 0
         
-        # Default to string comparison
+        # Default to case-insensitive string comparison to match database behavior
         else:
-            str1 = str(val1) if val1 is not None else ''
-            str2 = str(val2) if val2 is not None else ''
+            str1 = str(val1).lower() if val1 is not None else ''
+            str2 = str(val2).lower() if val2 is not None else ''
+            
+            # Use case-insensitive comparison to match database collation behavior
             if str1 < str2:
                 return -1
             elif str1 > str2:

@@ -21,13 +21,15 @@ class CommonTestFramework(BaseTestFramework):
     """Extended test framework with common utilities for all test files"""
     
     def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", 
-                 verbose: bool = False, curl_file_handle = None, mode_name: str = ""):
-        super().__init__(config_file, server_url, verbose, curl_file_handle)
+                 verbose: bool = False, curl_file_handle = None, mode_name: str = "",
+                 request_delay: float = 0.1, curl_responses: Dict = None, json_output: bool = False):
+        super().__init__(config_file, server_url, verbose, curl_file_handle, request_delay, curl_responses)
         self.curl_file_handle = curl_file_handle
         self.mode_name = mode_name
         self.test_results = []
         self.test_counter = 0
         self.passed_counter = 0
+        self.json_output = json_output
         
         # Initialize data validation helper with User model
         try:
@@ -37,6 +39,60 @@ class CommonTestFramework(BaseTestFramework):
             self.data_validator = None
             if verbose:
                 print("⚠️ Warning: Could not initialize data validator")
+    
+    def write_curl_commands_for_test_suite(self, test_suite_name: str, test_urls=None):
+        """
+        Pre-write all curl commands for a test suite.
+        If test_urls is provided, use those. Otherwise, try to get URLs from get_test_urls() method.
+        """
+        if not self.curl_file_handle:
+            return
+        
+        # Get URLs - either from parameter or from get_test_urls method
+        if test_urls is None:
+            if hasattr(self, 'get_test_urls'):
+                test_urls = self.get_test_urls()
+            else:
+                if self.verbose:
+                    print(f"⚠️ Warning: {self.__class__.__name__} doesn't define get_test_urls() method and no test_urls provided")
+                return
+            
+        try:
+            f = self.curl_file_handle
+            f.write(f'# ========== {test_suite_name} ({self.mode_name}) ==========\n')
+            
+            for method, url, description in test_urls:
+                full_url = f"{self.server_url}{url}"
+                decoded_url = self._get_decoded_url_for_display(full_url)
+                
+                f.write(f'# {description}\n')
+                f.write(f'echo "=== {method} {decoded_url} ==="\n')
+                
+                # Generate curl commands that output both JSON response and HTTP status
+                if method.upper() == "GET":
+                    f.write(f'response=$(curl -s -w "\\n%{{http_code}}" "{full_url}")\n')
+                elif method.upper() in ["POST", "PUT"]:
+                    f.write(f'response=$(curl -s -w "\\n%{{http_code}}" -X {method.upper()} "{full_url}")\n')
+                elif method.upper() == "DELETE":
+                    f.write(f'response=$(curl -s -w "\\n%{{http_code}}" -X DELETE "{full_url}")\n')
+                
+                # Split response body from status code and output both
+                f.write('body=$(echo "$response" | head -n -1)\n')
+                f.write('status=$(echo "$response" | tail -n 1)\n')
+                
+                if self.json_output:
+                    # Output structured JSON format
+                    f.write(f'echo "{{\\\"method\\\":\\\"{method}\\\",\\\"url\\\":\\\"{full_url}\\\",\\\"status\\\":$status,\\\"body\\\":$body}}"\n')
+                else:
+                    # Output original format
+                    f.write('echo "$body"\n')
+                    f.write(f'echo "CURL_RESULT|STATUS:$status|TIME:0|URL:{full_url}"\n')
+                
+                f.write('echo "CURL_END"\n\n')
+                
+        except Exception as e:
+            if self.verbose:
+                print(f"⚠️ Warning: Could not write curl commands to file: {e}")
         
     def test_api_call(self, method: str, url: str, description: str, 
                      expected_notifications: List[str] = None,
@@ -60,7 +116,7 @@ class CommonTestFramework(BaseTestFramework):
             print(f"  🧪 {description}")
             print(f"      URL: {url}")
         
-        # Make API request
+        # Make API request (delay is handled in BaseTestFramework.make_api_request)
         success, response = self.make_api_request(method, url, expected_status=expected_status)
         
         if not success:
@@ -71,6 +127,15 @@ class CommonTestFramework(BaseTestFramework):
             else:
                 print(f"  📊 Progress: {self.passed_counter}/{self.test_counter} tests passed")
             return False
+            
+        # Skip data validation in curl generation mode
+        if response.get("curl_generation_mode"):
+            self.test_counter += 1
+            self.passed_counter += 1
+            if self.verbose:
+                print(f"      ✅ {description} - CURL GENERATED")
+                print(f"      📊 Progress: {self.passed_counter}/{self.test_counter} tests passed")
+            return True
             
         # Validate data presence
         if should_have_data:
@@ -249,7 +314,7 @@ class CommonTestFramework(BaseTestFramework):
             print(f"  🧪 {description}")
             print(f"      URL: {url}")
         
-        # Make API request once
+        # Make API request once (delay is handled in BaseTestFramework.make_api_request)
         api_success, response = self.make_api_request(method, url, expected_status=expected_status)
         if not api_success:
             self.test_counter += 1
@@ -257,6 +322,15 @@ class CommonTestFramework(BaseTestFramework):
                 print(f"      ❌ API request failed")
                 print(f"      📊 Progress: {self.passed_counter}/{self.test_counter} tests passed")
             return False
+        
+        # Skip data validation in curl generation mode
+        if response.get("curl_generation_mode"):
+            self.test_counter += 1
+            self.passed_counter += 1
+            if self.verbose:
+                print(f"      ✅ {description} - CURL GENERATED")
+                print(f"      📊 Progress: {self.passed_counter}/{self.test_counter} tests passed")
+            return True
         
         # Validate data presence
         if should_have_data:
@@ -376,7 +450,8 @@ TEST_USERS = {
     "bad_enum": "bad_enum_user_123456",
     "bad_currency": "bad_currency_user_123456",
     "bad_fk": "bad_fk_user_123456",
-    "multiple_errors": "multiple_errors_user_123456"
+    "multiple_errors": "multiple_errors_user_123456",
+    "nonexistent": "nonexistent_user_123456"
 }
 
 TEST_ACCOUNTS = {
