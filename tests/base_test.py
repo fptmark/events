@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from pathlib import Path
 from dataclasses import dataclass
+from abc import ABC, abstractmethod
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -21,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.config import Config
 from app.db import DatabaseFactory
 import app.utils as utils
+from tests.test_case import TestCase
 
 @dataclass
 class TestResult:
@@ -29,10 +31,10 @@ class TestResult:
     details: str
     duration: float = 0.0
 
-class BaseTestFramework:
+class BaseTestFramework(ABC):
     """Base test framework that can be extended for different entities"""
     
-    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl_file_handle = None, request_delay: float = 0.0, curl_responses: Dict = None):
+    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl_file_handle = None, request_delay: float = 0.0, curl_responses: Dict = None, fk_validation: bool = None):
         self.config_file = config_file
         self.server_url = server_url
         self.verbose = verbose
@@ -44,6 +46,7 @@ class BaseTestFramework:
         self.passed = 0
         self.failed = 0
         self.results: List[TestResult] = []
+        self.fk_validation = fk_validation  # Override FK validation state for validation mode
         
         # Note: curl file is now managed by ComprehensiveTestRunner
         
@@ -54,18 +57,29 @@ class BaseTestFramework:
             self.db_uri = self.config.get('db_uri', '')
             self.db_name = self.config.get('db_name', '')
             
-            print(f"✅ Loaded config from {config_file}")
-            print(f"   Database: {self.db_type}")
-            print(f"   DB URI: {self.db_uri}")
-            print(f"   DB Name: {self.db_name}")
+            if self.verbose:
+                print(f"✅ Loaded config from {config_file}")
+                print(f"   Database: {self.db_type}")
+                print(f"   DB URI: {self.db_uri}")
+                print(f"   DB Name: {self.db_name}")
         else:
             # No config file provided - use defaults
             self.config = {}
             self.db_type = 'mongodb'
             self.db_uri = ''
             self.db_name = ''
-            if self.verbose:
+            if curl_responses and fk_validation is not None:
+                # Validation mode: set FK validation state from parameter
+                self.config = {'fk_validation': fk_validation}
+                if self.verbose:
+                    print(f"📋 Validation mode: FK validation {'ON' if fk_validation else 'OFF'}")
+            elif self.verbose and curl_file_handle is None:
                 print("⚠️  No config file provided - using defaults")
+    
+    @abstractmethod
+    def get_test_cases(self) -> List[TestCase]:
+        """Return all test cases for this suite - must be implemented by subclasses"""
+        pass
     
     async def setup_database_connection(self):
         """Setup database connection using existing DatabaseFactory"""
@@ -281,7 +295,16 @@ class BaseTestFramework:
         
         # Check if we have a pre-captured curl response for this URL
         if self.curl_responses and url in self.curl_responses:
+            if self.verbose:
+                print(f"🔗 Using cached curl response for: {url}")
             return self._process_curl_response(self.curl_responses[url], expected_status)
+        
+        # If we have curl_responses but no match, this is an error - don't make HTTP requests!
+        if self.curl_responses:
+            if self.verbose:
+                print(f"❌ No curl response found for: {url}")
+                print(f"   Available URLs: {list(self.curl_responses.keys())[:3]}...")
+            return False, {"error": f"No curl response found for {url}"}
         
         # Note: curl logging is handled by the test suites via write_curl_commands_for_test_suite()
         

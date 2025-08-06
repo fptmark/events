@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Tuple
 
 import json5
 
-class CreateData():
+class RandomData():
 
     def __init__(self, metadata: str, entity: str = "user"):
         all_metadata = json5.loads(metadata)

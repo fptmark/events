@@ -112,3 +112,14 @@ class FixedUsers:
                 valid_records.append(user_data)
         
         return valid_records, invalid_records
+
+# Test user constants for easy reference in test cases
+TEST_USERS = {
+    "valid_all": "valid_all_user_123456",
+    "valid_fk_only": "valid_fk_only_user_123456", 
+    "bad_enum": "bad_enum_user_123456",
+    "bad_currency": "bad_currency_user_123456",
+    "bad_fk": "bad_fk_user_123456",
+    "multiple_errors": "multiple_errors_user_123456",
+    "nonexistent": "nonexistent_user_123456"
+}

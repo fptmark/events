@@ -7,153 +7,33 @@ Tests API endpoints with view parameters to verify FK sub-object population.
 import sys
 import asyncio
 from pathlib import Path
+from typing import List
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tests.common_test_framework import CommonTestFramework, TEST_USERS, TEST_ACCOUNTS
+from tests.base_test import BaseTestFramework
+from tests.test_case import TestCase
+from tests.fixed_users import TEST_USERS
+from tests.fixed_accounts import TEST_ACCOUNTS
 
-class ViewParameterTester(CommonTestFramework):
+class ViewParameterTester(BaseTestFramework):
     """Test view parameter functionality"""
     
-    def test_individual_user_with_view(self) -> bool:
-        """Test GET /user/{id} with view parameters"""
-        tests_passed = 0
-        tests_total = 0
-        
-        # Test 1: Valid FK user with account view
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", 
-            "Get valid user with account ID view",
-            expected_notifications=[],
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 2: Valid FK user with full account view
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", 
-            "Get valid user with full account view",
-            expected_notifications=[],
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 3: User with bad FK and account view (should show FK validation notification)
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            f"/api/user/{TEST_USERS['bad_fk']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", 
-            "Get user with bad FK and account view",
-            expected_notifications=["accountId"],  # FK validation always triggers with view
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 4: User with multiple errors and account view
-        tests_total += 1
-        expected_notifications = ["gender", "netWorth", "accountId"]  # FK validation always triggers with view
-        if self.test_api_call(
-            "GET", 
-            f"/api/user/{TEST_USERS['multiple_errors']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", 
-            "Get user with multiple errors and account view",
-            expected_notifications=expected_notifications,
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 5: Valid user with invalid view field (should still work, just ignore bad fields)
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22nonexistent_field%22%5D%7D", 
-            "Get valid user with invalid view field",
-            expected_notifications=[],
-            should_have_data=True
-        ):
-            tests_passed += 1
-        
-        if self.verbose:
-            print(f"  📊 Individual user view tests: {tests_passed}/{tests_total} passed")
-            
-        return tests_passed == tests_total
-    
-    def test_user_list_with_view(self) -> bool:
-        """Test GET /user list with view parameters"""
-        tests_passed = 0
-        tests_total = 0
-        
-        # Test 1: User list with account ID view
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            "/api/user?view=%7B%22account%22%3A%5B%22id%22%5D%7D", 
-            "Get user list with account ID view",
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 2: User list with full account view
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            "/api/user?view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", 
-            "Get user list with full account view",
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 3: User list with pagination and view
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            "/api/user?pageSize=3&view=%7B%22account%22%3A%5B%22id%22%5D%7D", 
-            "Get user list with pagination and view",
-            should_have_data=True
-        ):
-            tests_passed += 1
-        
-        if self.verbose:
-            print(f"  📊 User list view tests: {tests_passed}/{tests_total} passed")
-            
-        return tests_passed == tests_total
-    
-    def run_all_tests(self) -> bool:
-        """Run all view parameter tests"""
-        if self.verbose:
-            print(f"\n🧪 VIEW PARAMETER TESTS - {self.mode_name}")
-            print("=" * 60)
-        
-        # Pre-write all curl commands for this test suite
-        test_urls = [
-            # Individual user view tests
-            ("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get valid user with account ID view"),
-            ("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", "Get valid user with full account view"),
-            ("GET", f"/api/user/{TEST_USERS['bad_fk']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with bad FK and account view"),
-            ("GET", f"/api/user/{TEST_USERS['multiple_errors']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with multiple errors and account view"),
-            ("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22nonexistent_field%22%5D%7D", "Get valid user with invalid view field"),
-            # User list view tests
-            ("GET", "/api/user?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user list with account ID view"),
-            ("GET", "/api/user?view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", "Get user list with full account view"),
-            ("GET", "/api/user?pageSize=3&view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user list with pagination and view"),
+    def get_test_cases(self) -> List[TestCase]:
+        """Return all test cases for this suite - single source of truth"""
+        return [
+            # Individual user tests with view parameters
+            TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get valid user with account ID view", 200, expected_data_len=1),
+            TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", "Get valid user with full account view", 200, expected_data_len=1),
+            TestCase("GET", f"/api/user/{TEST_USERS['bad_fk']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with bad FK and account view", 200, expected_data_len=1, expected_notification_len=1),
+            TestCase("GET", f"/api/user/{TEST_USERS['multiple_errors']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with multiple errors and account view", 200, expected_data_len=1, expected_notification_len=3),
+            TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22nonexistent_field%22%5D%7D", "Get valid user with invalid view field", 200, expected_data_len=1),
+            # User list tests with view parameters
+            TestCase("GET", "/api/user?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user list with account ID view", 200, expected_paging=True),
+            TestCase("GET", "/api/user?view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", "Get user list with full account view", 200, expected_paging=True),
+            TestCase("GET", "/api/user?pageSize=3&view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user list with pagination and view", 200, expected_paging=True),
         ]
-        self.write_curl_commands_for_test_suite("View Parameter Tests", test_urls)
-        
-        # Run tests
-        test1_result = self.test_individual_user_with_view()
-        test2_result = self.test_user_list_with_view()
-        
-        overall_success = test1_result and test2_result
-        
-        if self.verbose:
-            status = "✅ ALL PASS" if overall_success else "❌ SOME FAILED"
-            print(f"\n{status} - View Parameter Tests ({self.mode_name})")
-            
-        return overall_success
 
 async def main():
     """Main function for standalone execution"""

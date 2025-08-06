@@ -66,3 +66,9 @@ class FixedAccounts:
                 valid_records.append(account_data)
         
         return valid_records, invalid_records
+
+# Test account constants for easy reference in test cases
+TEST_ACCOUNTS = {
+    "primary": "primary_account_123456",
+    "secondary": "secondary_account_123456"
+}

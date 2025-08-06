@@ -7,273 +7,46 @@ Tests API endpoints with sorting parameters to verify proper sort order.
 import sys
 import asyncio
 from pathlib import Path
+from typing import List
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tests.common_test_framework import CommonTestFramework, TEST_USERS, TEST_ACCOUNTS
+from tests.base_test import BaseTestFramework
+from tests.test_case import TestCase
+from tests.fixed_users import TEST_USERS
+from tests.fixed_accounts import TEST_ACCOUNTS
 
-class SortingTester(CommonTestFramework):
+class SortingTester(BaseTestFramework):
     """Test sorting functionality"""
     
-    def test_basic_sorting(self) -> bool:
-        """Test basic sorting parameters"""
-        tests_passed = 0
-        tests_total = 0
-        
-        # Test 1: Sort by username ascending
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=username", 
-            "Get user list sorted by username ascending",
-            should_have_data=True,
-            validate_sort=[('username', 'asc')]
-        ):
-            tests_passed += 1
-            
-        # Test 2: Sort by username descending
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=-username", 
-            "Get user list sorted by username descending",
-            should_have_data=True,
-            validate_sort=[('username', 'desc')]
-        ):
-            tests_passed += 1
-            
-        # Test 3: Sort by createdAt ascending
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=createdAt", 
-            "Get user list sorted by createdAt ascending",
-            should_have_data=True,
-            validate_sort=[('createdAt', 'asc')]
-        ):
-            tests_passed += 1
-            
-        # Test 4: Sort by createdAt descending
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=-createdAt", 
-            "Get user list sorted by createdAt descending",
-            should_have_data=True,
-            validate_sort=[('createdAt', 'desc')]
-        ):
-            tests_passed += 1
-        
-        if self.verbose:
-            print(f"  📊 Basic sorting tests: {tests_passed}/{tests_total} passed")
-            
-        return tests_passed == tests_total
-    
-    def test_multiple_field_sorting(self) -> bool:
-        """Test sorting by multiple fields"""
-        tests_passed = 0
-        tests_total = 0
-        
-        # Test 1: Sort by multiple fields
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=firstName,lastName", 
-            "Get user list sorted by firstName and lastName",
-            should_have_data=True,
-            validate_sort=[('firstName', 'asc'), ('lastName', 'asc')]
-        ):
-            tests_passed += 1
-            
-        # Test 2: Sort by mixed ascending/descending
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=firstName,-createdAt", 
-            "Get user list sorted by firstName asc, createdAt desc",
-            should_have_data=True,
-            validate_sort=[('firstName', 'asc'), ('createdAt', 'desc')]
-        ):
-            tests_passed += 1
-            
-        # Test 3: Sort by multiple fields with different order
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=-lastName,firstName", 
-            "Get user list sorted by lastName desc, firstName asc",
-            should_have_data=True,
-            validate_sort=[('lastName', 'desc'), ('firstName', 'asc')]
-        ):
-            tests_passed += 1
-        
-        if self.verbose:
-            print(f"  📊 Multiple field sorting tests: {tests_passed}/{tests_total} passed")
-            
-        return tests_passed == tests_total
-    
-    def test_sorting_with_pagination(self) -> bool:
-        """Test sorting combined with pagination"""
-        tests_passed = 0
-        tests_total = 0
-        
-        # Test 1: Sort with page size
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=username&pageSize=3", 
-            "Get user list sorted with pagination",
-            should_have_data=True,
-            validate_sort=[('username', 'asc')]
-        ):
-            tests_passed += 1
-            
-        # Test 2: Sort with specific page
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=-createdAt&page=1&pageSize=5", 
-            "Get user list sorted with specific page",
-            should_have_data=True,
-            validate_sort=[('createdAt', 'desc')]
-        ):
-            tests_passed += 1
-            
-        # Test 3: Sort with second page
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=firstName&page=2&pageSize=3", 
-            "Get user list sorted second page",
-            should_have_data=False,  # May be empty if not enough users
-            validate_sort=[('firstName', 'asc')]
-        ):
-            tests_passed += 1
-        
-        if self.verbose:
-            print(f"  📊 Sorting with pagination tests: {tests_passed}/{tests_total} passed")
-            
-        return tests_passed == tests_total
-    
-    def test_invalid_sorting(self) -> bool:
-        """Test invalid sorting parameters"""
-        tests_passed = 0
-        tests_total = 0
-        
-        # Test 1: Sort by non-existent field (should handle gracefully - no sort validation)
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=nonexistentfield", 
-            "Get user list with invalid sort field",
-            should_have_data=True  # Should still return data, ignore bad sort
-        ):
-            tests_passed += 1
-            
-        # Test 2: Empty sort parameter (no sort validation)
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=", 
-            "Get user list with empty sort parameter",
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 3: Malformed sort parameter (no sort validation)
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            "/api/user?sort=-", 
-            "Get user list with malformed sort parameter",
-            should_have_data=True
-        ):
-            tests_passed += 1
-        
-        if self.verbose:
-            print(f"  📊 Invalid sorting tests: {tests_passed}/{tests_total} passed")
-            
-        return tests_passed == tests_total
-    
-    def test_sorting_with_individual_user(self) -> bool:
-        """Test that individual user endpoints ignore sorting"""
-        tests_passed = 0
-        tests_total = 0
-        
-        # Test 1: Individual user should ignore sort parameter
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            f"/api/user/{TEST_USERS['valid_all']}?sort=username", 
-            "Get individual user with sort parameter",
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 2: Individual user with complex sort (should be ignored)
-        tests_total += 1
-        if self.test_api_call_with_validation(
-            "GET", 
-            f"/api/user/{TEST_USERS['valid_all']}?sort=-createdAt,firstName", 
-            "Get individual user with complex sort parameter",
-            should_have_data=True
-        ):
-            tests_passed += 1
-        
-        if self.verbose:
-            print(f"  📊 Individual user sorting tests: {tests_passed}/{tests_total} passed")
-            
-        return tests_passed == tests_total
-    
-    def run_all_tests(self) -> bool:
-        """Run all sorting tests"""
-        if self.verbose:
-            print(f"\n🧪 SORTING TESTS - {self.mode_name}")
-            print("=" * 60)
-        
-        # Pre-write all curl commands for this test suite
-        test_urls = [
+    def get_test_cases(self) -> List[TestCase]:
+        """Return all test cases for this suite - single source of truth"""
+        return [
             # Basic sorting tests
-            ("GET", "/api/user?sort=username", "Get user list sorted by username ascending"),
-            ("GET", "/api/user?sort=-username", "Get user list sorted by username descending"),
-            ("GET", "/api/user?sort=createdAt", "Get user list sorted by createdAt ascending"),
-            ("GET", "/api/user?sort=-createdAt", "Get user list sorted by createdAt descending"),
-            ("GET", "/api/user?sort=firstName", "Get user list sorted by firstName ascending"),
-            ("GET", "/api/user?sort=-firstName", "Get user list sorted by firstName descending"),
+            TestCase("GET", "/api/user?sort=username", "Get user list sorted by username ascending", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=-username", "Get user list sorted by username descending", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=createdAt", "Get user list sorted by createdAt ascending", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=-createdAt", "Get user list sorted by createdAt descending", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=firstName", "Get user list sorted by firstName ascending", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=-firstName", "Get user list sorted by firstName descending", 200, expected_paging=True),
             # Multiple field sorting tests
-            ("GET", "/api/user?sort=firstName,username", "Get user list sorted by firstName then username"),
-            ("GET", "/api/user?sort=-firstName,username", "Get user list sorted by firstName desc then username asc"),
-            ("GET", "/api/user?sort=firstName,-username", "Get user list sorted by firstName asc then username desc"),
-            ("GET", "/api/user?sort=-firstName,-username", "Get user list sorted by firstName desc then username desc"),
-            ("GET", "/api/user?sort=createdAt,firstName,username", "Get user list sorted by three fields"),
+            TestCase("GET", "/api/user?sort=firstName,username", "Get user list sorted by firstName then username", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=-firstName,username", "Get user list sorted by firstName desc then username asc", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=firstName,-username", "Get user list sorted by firstName asc then username desc", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=-firstName,-username", "Get user list sorted by firstName desc then username desc", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=createdAt,firstName,username", "Get user list sorted by three fields", 200, expected_paging=True),
             # Sorting with pagination tests
-            ("GET", "/api/user?sort=firstName&pageSize=3", "Get user list sorted by firstName with pagination"),
-            ("GET", "/api/user?sort=-createdAt&page=2&pageSize=5", "Get user list sorted by createdAt desc with pagination"),
+            TestCase("GET", "/api/user?sort=firstName&pageSize=3", "Get user list sorted by firstName with pagination", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=-createdAt&page=2&pageSize=5", "Get user list sorted by createdAt desc with pagination", 200, expected_paging=True),
             # Invalid sorting tests
-            ("GET", "/api/user?sort=nonexistentfield", "Get user list with invalid sort field"),
-            ("GET", "/api/user?sort=", "Get user list with empty sort parameter"),
-            ("GET", "/api/user?sort=-", "Get user list with malformed sort parameter"),
+            TestCase("GET", "/api/user?sort=nonexistentfield", "Get user list with invalid sort field", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=", "Get user list with empty sort parameter", 200, expected_paging=True), 
+            TestCase("GET", "/api/user?sort=-", "Get user list with malformed sort parameter", 200, expected_paging=True),
             # Individual user sorting tests
-            ("GET", f"/api/user/{TEST_USERS['valid_all']}?sort=username", "Get individual user with sort parameter"),
-            ("GET", f"/api/user/{TEST_USERS['valid_all']}?sort=-createdAt,firstName", "Get individual user with complex sort parameter"),
+            TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}?sort=username", "Get individual user with sort parameter", 200, expected_data_len=1),
+            TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}?sort=-createdAt,firstName", "Get individual user with complex sort parameter", 200, expected_data_len=1),
         ]
-        self.write_curl_commands_for_test_suite("Sorting Tests", test_urls)
-        
-        # Run tests
-        test1_result = self.test_basic_sorting()
-        test2_result = self.test_multiple_field_sorting()
-        test3_result = self.test_sorting_with_pagination()
-        test4_result = self.test_invalid_sorting()
-        test5_result = self.test_sorting_with_individual_user()
-        
-        overall_success = test1_result and test2_result and test3_result and test4_result and test5_result
-        
-        if self.verbose:
-            status = "✅ ALL PASS" if overall_success else "❌ SOME FAILED"
-            print(f"\n{status} - Sorting Tests ({self.mode_name})")
-            
-        return overall_success
 
 async def main():
     """Main function for standalone execution"""

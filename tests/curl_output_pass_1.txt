@@ -1,0 +1,9 @@
+{
+  "database": "mongodb",
+  "db_uri": "mongodb://localhost:27017",
+  "db_name": "eventMgr",
+  "fk_validation": "",
+  "unique_validation": false
+}
+
+

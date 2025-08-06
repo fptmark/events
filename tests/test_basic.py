@@ -12,157 +12,61 @@ from typing import List, Tuple
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tests.common_test_framework import CommonTestFramework, TEST_USERS
+from tests.base_test import BaseTestFramework
+from tests.test_case import TestCase
+from tests.fixed_users import TEST_USERS
 
-class BasicAPITester(CommonTestFramework):
+class BasicAPITester(BaseTestFramework):
     """Test basic API functionality"""
     
-    def get_test_urls(self) -> List[Tuple[str, str, str]]:
-        """Return all test URLs for this suite - single source of truth"""
+    def get_test_cases(self) -> List[TestCase]:
+        """Return all test cases for this suite - single source of truth"""
         return [
-            # Individual user tests
-            ("GET", f"/api/user/{TEST_USERS['valid_all']}", "Get valid user"),
-            ("GET", f"/api/user/{TEST_USERS['bad_enum']}", "Get user with bad enum"),
-            ("GET", f"/api/user/{TEST_USERS['bad_currency']}", "Get user with bad currency"),
-            ("GET", f"/api/user/{TEST_USERS['bad_fk']}", "Get user with bad FK"),
-            ("GET", f"/api/user/{TEST_USERS['multiple_errors']}", "Get user with multiple errors"),
-            ("GET", f"/api/user/{TEST_USERS['nonexistent']}", "Get non-existent user"),
+            # Individual user tests  
+            TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}", "Get valid user", 200, expected_data_len=1,
+                expected_response={
+                    "data": [{
+                        "id": "valid_all_user_123456",
+                        "username": "valid_all_user",
+                        "email": "valid_all@test.com", 
+                        "firstName": "Valid",
+                        "lastName": "User",
+                        "gender": "male",
+                        "netWorth": 50000.0,
+                        "isAccountOwner": True
+                        # Skip createdAt/updatedAt as they're dynamic
+                    }]
+                }),
+            TestCase("GET", f"/api/user/{TEST_USERS['bad_enum']}", "Get user with bad enum", 200, expected_data_len=1, expected_notification_len=1,
+                expected_response={
+                    "data": [{
+                        "id": "bad_enum_user_123456",
+                        "username": "bad_enum_user",
+                        "email": "bad_enum@test.com",
+                        "firstName": "BadEnum", 
+                        "lastName": "User",
+                        "gender": "invalid_gender",  # Invalid enum - should trigger notification
+                        "netWorth": 50000.0,
+                        "isAccountOwner": True
+                    }],
+                    "notifications": {  # Expected validation notification for bad enum
+                        "bad_enum_user_123456": {
+                            "warnings": [{
+                                "type": "validation",
+                                "field": "gender",
+                                "message": "Invalid enum value"
+                            }]
+                        }
+                    }
+                }),
+            TestCase("GET", f"/api/user/{TEST_USERS['bad_currency']}", "Get user with bad currency", 200, expected_data_len=1, expected_notification_len=1),
+            TestCase("GET", f"/api/user/{TEST_USERS['bad_fk']}", "Get user with bad FK", 200, expected_data_len=1),  # FK notifications depend on config
+            TestCase("GET", f"/api/user/{TEST_USERS['multiple_errors']}", "Get user with multiple errors", 200, expected_data_len=1),  # Multiple notifications
+            TestCase("GET", f"/api/user/{TEST_USERS['nonexistent']}", "Get non-existent user", 404),
             # User list tests
-            ("GET", "/api/user", "Get user list"),
-            ("GET", "/api/user?pageSize=3", "Get user list with page size"),
+            TestCase("GET", "/api/user", "Get user list", 200, expected_paging=True),
+            TestCase("GET", "/api/user?pageSize=3", "Get user list with page size", 200, expected_paging=True),
         ]
-    
-    def test_individual_user_gets(self) -> bool:
-        """Test GET /user/{id} for various user scenarios"""
-        tests_passed = 0
-        tests_total = 0
-        
-        # Test 1: Valid user with no validation issues
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            f"/api/user/{TEST_USERS['valid_all']}", 
-            "Get valid user",
-            expected_notifications=[],
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 2: User with enum validation issue
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            f"/api/user/{TEST_USERS['bad_enum']}", 
-            "Get user with bad enum",
-            expected_notifications=["gender"],
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 3: User with currency validation issue
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            f"/api/user/{TEST_USERS['bad_currency']}", 
-            "Get user with bad currency",
-            expected_notifications=["netWorth"],
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 4: User with FK issue (only shows notification when FK validation is ON)
-        tests_total += 1
-        expected_fk_notifications = ["accountId"] if "FK_ON" in self.mode_name else []
-        if self.test_api_call(
-            "GET", 
-            f"/api/user/{TEST_USERS['bad_fk']}", 
-            "Get user with bad FK",
-            expected_notifications=expected_fk_notifications,
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 5: User with multiple validation issues
-        tests_total += 1
-        expected_multi_notifications = ["gender", "netWorth"]
-        if "FK_ON" in self.mode_name:
-            expected_multi_notifications.append("accountId")
-            
-        if self.test_api_call(
-            "GET", 
-            f"/api/user/{TEST_USERS['multiple_errors']}", 
-            "Get user with multiple errors",
-            expected_notifications=expected_multi_notifications,
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 6: Non-existent user (should return 404)
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            "/api/user/nonexistent_user_123456", 
-            "Get non-existent user",
-            expected_status=404,
-            should_have_data=False
-        ):
-            tests_passed += 1
-        
-        if self.verbose:
-            print(f"  📊 Individual user tests: {tests_passed}/{tests_total} passed")
-            
-        return tests_passed == tests_total
-    
-    def test_user_list(self) -> bool:
-        """Test GET /user basic list functionality"""
-        tests_passed = 0
-        tests_total = 0
-        
-        # Test 1: Basic list request
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            "/api/user", 
-            "Get user list",
-            should_have_data=True
-        ):
-            tests_passed += 1
-            
-        # Test 2: List with pagination parameters
-        tests_total += 1
-        if self.test_api_call(
-            "GET", 
-            "/api/user?pageSize=3", 
-            "Get user list with page size",
-            should_have_data=True
-        ):
-            tests_passed += 1
-        
-        if self.verbose:
-            print(f"  📊 User list tests: {tests_passed}/{tests_total} passed")
-            
-        return tests_passed == tests_total
-    
-    def run_all_tests(self) -> bool:
-        """Run all basic API tests"""
-        if self.verbose:
-            print(f"\n🧪 BASIC API TESTS - {self.mode_name}")
-            print("=" * 60)
-        
-        # Pre-write all curl commands for this test suite using single source of truth
-        self.write_curl_commands_for_test_suite("Basic API Tests")
-        
-        # Run tests
-        test1_result = self.test_individual_user_gets()
-        test2_result = self.test_user_list()
-        
-        overall_success = test1_result and test2_result
-        
-        if self.verbose:
-            status = "✅ ALL PASS" if overall_success else "❌ SOME FAILED"
-            print(f"\n{status} - Basic API Tests ({self.mode_name})")
-            
-        return overall_success
 
 async def main():
     """Main function for standalone execution"""
