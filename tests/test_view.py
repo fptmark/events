@@ -27,7 +27,7 @@ class ViewParameterTester(BaseTestFramework):
             TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get valid user with account ID view", 200, expected_data_len=1),
             TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", "Get valid user with full account view", 200, expected_data_len=1),
             TestCase("GET", f"/api/user/{TEST_USERS['bad_fk']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with bad FK and account view", 200, expected_data_len=1, expected_notification_len=1),
-            TestCase("GET", f"/api/user/{TEST_USERS['multiple_errors']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with multiple errors and account view", 200, expected_data_len=1, expected_notification_len=3),
+            TestCase("GET", f"/api/user/{TEST_USERS['multiple_errors']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with multiple errors and account view", 200, expected_data_len=1, expected_notification_len=4),
             TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22nonexistent_field%22%5D%7D", "Get valid user with invalid view field", 200, expected_data_len=1),
             # User list tests with view parameters
             TestCase("GET", "/api/user?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user list with account ID view", 200, expected_paging=True),

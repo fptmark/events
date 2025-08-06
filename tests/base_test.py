@@ -73,8 +73,8 @@ class BaseTestFramework(ABC):
                 self.config = {'fk_validation': fk_validation}
                 if self.verbose:
                     print(f"📋 Validation mode: FK validation {'ON' if fk_validation else 'OFF'}")
-            elif self.verbose and curl_file_handle is None:
-                print("⚠️  No config file provided - using defaults")
+            # elif self.verbose and curl_file_handle is None:
+            #     print("⚠️  No config file provided - using defaults")
     
     @abstractmethod
     def get_test_cases(self) -> List[TestCase]:

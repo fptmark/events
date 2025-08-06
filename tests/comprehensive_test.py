@@ -469,12 +469,21 @@ class ComprehensiveTestRunner:
             results = None
 
         overall_success = True
+        total_tests = 0
+        total_passed = 0
+        total_failed = 0
         
         for test_type, (test_description, test_class) in self.test_cases.items():
             print(f"\n🧪 Running {test_description} tests...")
             test_obj = test_class("", f"http://localhost:{self.server_port}", self.verbose)
             
+            suite_passed = 0
+            suite_failed = 0
+            suite_total = 0
+            
             for test in test_obj.get_test_cases():
+                suite_total += 1
+                total_tests += 1
                 if self.verbose:
                     print(f"  📝 Executing {test.description}...")
                 
@@ -497,16 +506,30 @@ class ComprehensiveTestRunner:
                     if status and result:
                         if self._verify_result(test, result):
                             print(f"  ✅ {test.description} passed")
+                            suite_passed += 1
+                            total_passed += 1
                         else:
                             print(f"  ❌ {test.description} failed - validation mismatch")
+                            suite_failed += 1
+                            total_failed += 1
                             overall_success = False
                     else:
                         print(f"  ❌ {test.description} failed")
+                        suite_failed += 1
+                        total_failed += 1
                         overall_success = False
                         
                 except Exception as e:
                     print(f"  ❌ {test.description} failed: {e}")
+                    suite_failed += 1
+                    total_failed += 1
                     overall_success = False
+            
+            # Print suite summary
+            print(f"  📊 {test_description}: {suite_passed} passed, {suite_failed} failed, {suite_total} total")
+        
+        # Print overall summary
+        print(f"\n📊 FINAL SUMMARY: {total_passed} passed, {total_failed} failed, {total_tests} total")
         
         return overall_success
     
@@ -627,6 +650,7 @@ def get_test_cases(requested_tests: List[str]) -> Dict[str, Tuple[str, type]]:
         'page': ("Pagination Tests", PaginationTester),
         'sort': ("Sorting Tests", SortingTester),
         'filter': ("Filtering Tests", FilteringTester),
+        'combo': ("Combination Tests", CombinationTester),
     }
 
     if requested_tests is None:
