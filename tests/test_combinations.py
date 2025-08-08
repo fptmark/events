@@ -49,9 +49,9 @@ class CombinationTester(BaseTestFramework):
             TestCase("GET", "/api/user?filter=isAccountOwner:false&page=2&pageSize=3", "Get user list second page with filtering", 200, expected_paging=True),
             
             # Sorting with filtering tests
-            TestCase("GET", "/api/user?filter=isAccountOwner:true&sort=username", "Get user list with filtering and sorting", 200, expected_paging=True),
-            TestCase("GET", "/api/user?filter=gender:male,isAccountOwner:false&sort=-createdAt", "Get user list with multiple filters and reverse sorting", 200, expected_paging=True),
-            TestCase("GET", "/api/user?filter=isAccountOwner:false&sort=firstName,lastName", "Get user list with filtering and multi-field sorting", 200, expected_paging=True),
+            TestCase("GET", "/api/user?filter=isAccountOwner:true&sort=username", "Get user list with filtering and sorting", 200, expected_paging=True, expected_filter={'isAccountOwner': 'true'}, expected_sort=[('username', 'asc')]),
+            TestCase("GET", "/api/user?filter=gender:male,isAccountOwner:false&sort=-createdAt", "Get user list with multiple filters and reverse sorting", 200, expected_paging=True, expected_filter={'gender': 'male', 'isAccountOwner': 'false'}, expected_sort=[('createdAt', 'desc')]),
+            TestCase("GET", "/api/user?filter=isAccountOwner:false&sort=firstName,lastName", "Get user list with filtering and multi-field sorting", 200, expected_paging=True, expected_filter={'isAccountOwner': 'false'}, expected_sort=[('firstName', 'asc'), ('lastName', 'asc')]),
             
             # All parameters combined tests
             TestCase("GET", "/api/user?view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=isAccountOwner:true&sort=username&pageSize=3", "Get user list with all parameters combined", 200, expected_paging=True),

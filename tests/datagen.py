@@ -4,21 +4,19 @@ import uuid
 from datetime import datetime, timedelta
 
 from typing import Dict, Any, List, Tuple
+import utils
 
 import json5
 
-class RandomData():
+class DataGen():
 
-    def __init__(self, metadata: str, entity: str = "user"):
-        all_metadata = json5.loads(metadata)
-        if isinstance(all_metadata, dict):
-            entities = all_metadata.get('entities', {})
-            if isinstance(entities, dict):
-                self.metadata = entities.get(entity.capitalize(), {})
-            else:
-                self.metadata = {}
+    def __init__(self, entity: str = "user", verbose: bool = False):
+        self.metadata: Dict = {}
+        class_model = utils.get_model_class(entity) 
+        self.metadata = class_model.get_metadata()
         
         self.entity = entity.lower()
+        self.verbose = verbose
 
     def generate_records(self, good_count=50, bad_count=20, include_known_test_records=True) -> Tuple[List, List]:
         """Generate a mix of valid and invalid records based on field metadata."""
@@ -34,7 +32,7 @@ class RandomData():
         # Generate additional random valid records
         for i in range(good_count):
             record = {}
-            for field, meta in self.metadata.get('fields', {}).items():
+            for field, meta in self.metadata['fields'].items():
                 record[field] = self.generate_valid_value(field, meta)
             record["id"] = f"generated_valid_{i+1}"
             valid_records.append(record)
@@ -46,6 +44,10 @@ class RandomData():
                 record[field] = self.generate_invalid_value(field, meta)
             record["id"] = f"generated_invalid_{i+1}"
             invalid_records.append(record)
+
+        if self.verbose:
+            print(f"  📝 Generated {len(valid_records)} valid and {len(invalid_records)} invalid records")
+        
 
         return valid_records, invalid_records
     
@@ -156,6 +158,92 @@ class RandomData():
         if t == "ObjectId":
             return "short"
         return None
+    
+    async def save_generated_records_to_database(self, config_file: str, valid_records: List[Dict], invalid_records: List[Dict], verbose: bool = False) -> bool:
+        """Save generated records directly to database using DatabaseFactory"""
+        try:
+            # Import required modules
+            import sys
+            from pathlib import Path
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            
+            from app.config import Config
+            from app.db import DatabaseFactory
+            from datetime import datetime, timezone
+            import uuid
+            
+            # Initialize database connection
+            config = Config.initialize(config_file)
+            db_type: str = config.get('database', '')
+            db_uri: str = config.get('db_uri', '')
+            db_name: str = config.get('db_name', '')
+            
+            await DatabaseFactory.initialize(db_type, db_uri, db_name)
+            
+            saved_valid = 0
+            saved_invalid = 0
+            
+            # Save valid records
+            for i, record in enumerate(valid_records):
+                try:
+                    # Ensure required fields
+                    if 'id' not in record:
+                        record['id'] = f"generated_valid_{i+1}_{uuid.uuid4().hex[:8]}"
+                    if 'createdAt' not in record:
+                        record['createdAt'] = datetime.now(timezone.utc)
+                    if 'updatedAt' not in record:
+                        record['updatedAt'] = datetime.now(timezone.utc)
+                    
+                    # Save to database
+                    result, warnings = await DatabaseFactory.save_document("user", record, [])
+                    if result:
+                        saved_valid += 1
+                        if warnings and verbose:
+                            print(f"  ⚠️ Valid record warnings: {warnings}")
+                            
+                except Exception as e:
+                    if verbose:
+                        print(f"  ⚠️ Failed to save valid record {i+1}: {e}")
+            
+            # Save invalid records
+            for i, record in enumerate(invalid_records):
+                try:
+                    # Ensure required fields
+                    if 'id' not in record:
+                        record['id'] = f"generated_invalid_{i+1}_{uuid.uuid4().hex[:8]}"
+                    if 'createdAt' not in record:
+                        record['createdAt'] = datetime.now(timezone.utc)
+                    if 'updatedAt' not in record:
+                        record['updatedAt'] = datetime.now(timezone.utc)
+                    
+                    # Save to database (these may have validation warnings)
+                    result, warnings = await DatabaseFactory.save_document("user", record, [])
+                    if result:
+                        saved_invalid += 1
+                        if warnings and verbose:
+                            print(f"  ⚠️ Invalid record warnings: {warnings}")
+                            
+                except Exception as e:
+                    if verbose:
+                        print(f"  ⚠️ Failed to save invalid record {i+1}: {e}")
+            
+            # Close database connection
+            await DatabaseFactory.close()
+            
+            if verbose:
+                print(f"  ✅ Saved {saved_valid}/{len(valid_records)} valid records")
+                print(f"  ✅ Saved {saved_invalid}/{len(invalid_records)} invalid records")
+            
+            return True
+            
+        except Exception as e:
+            print(f"  ❌ Failed to save generated records: {e}")
+            # Ensure database connection is closed on error
+            try:
+                await DatabaseFactory.close()
+            except:
+                pass
+            return False
 
 
     # Output to inspect

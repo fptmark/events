@@ -24,14 +24,14 @@ class SortingTester(BaseTestFramework):
         """Return all test cases for this suite - single source of truth"""
         return [
             # Basic sorting tests
-            TestCase("GET", "/api/user?sort=username", "Get user list sorted by username ascending", 200, expected_paging=True),
-            TestCase("GET", "/api/user?sort=-username", "Get user list sorted by username descending", 200, expected_paging=True),
-            TestCase("GET", "/api/user?sort=createdAt", "Get user list sorted by createdAt ascending", 200, expected_paging=True),
-            TestCase("GET", "/api/user?sort=-createdAt", "Get user list sorted by createdAt descending", 200, expected_paging=True),
-            TestCase("GET", "/api/user?sort=firstName", "Get user list sorted by firstName ascending", 200, expected_paging=True),
-            TestCase("GET", "/api/user?sort=-firstName", "Get user list sorted by firstName descending", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=username", "Get user list sorted by username ascending", 200, expected_paging=True, expected_sort=[('username', 'asc')]),
+            TestCase("GET", "/api/user?sort=-username", "Get user list sorted by username descending", 200, expected_paging=True, expected_sort=[('username', 'desc')]),
+            TestCase("GET", "/api/user?sort=createdAt", "Get user list sorted by createdAt ascending", 200, expected_paging=True, expected_sort=[('createdAt', 'asc')]),
+            TestCase("GET", "/api/user?sort=-createdAt", "Get user list sorted by createdAt descending", 200, expected_paging=True, expected_sort=[('createdAt', 'desc')]),
+            TestCase("GET", "/api/user?sort=firstName", "Get user list sorted by firstName ascending", 200, expected_paging=True, expected_sort=[('firstName', 'asc')]),
+            TestCase("GET", "/api/user?sort=-firstName", "Get user list sorted by firstName descending", 200, expected_paging=True, expected_sort=[('firstName', 'desc')]),
             # Multiple field sorting tests
-            TestCase("GET", "/api/user?sort=firstName,username", "Get user list sorted by firstName then username", 200, expected_paging=True),
+            TestCase("GET", "/api/user?sort=firstName,username", "Get user list sorted by firstName then username", 200, expected_paging=True, expected_sort=[('firstName', 'asc'), ('username', 'asc')]),
             TestCase("GET", "/api/user?sort=-firstName,username", "Get user list sorted by firstName desc then username asc", 200, expected_paging=True),
             TestCase("GET", "/api/user?sort=firstName,-username", "Get user list sorted by firstName asc then username desc", 200, expected_paging=True),
             TestCase("GET", "/api/user?sort=-firstName,-username", "Get user list sorted by firstName desc then username desc", 200, expected_paging=True),

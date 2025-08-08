@@ -14,8 +14,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tests.base_test import BaseTestFramework
 from tests.test_case import TestCase
-from tests.fixed_users import TEST_USERS
+from tests.fixed_users import TEST_USERS, FixedUsers
 from tests.fixed_accounts import TEST_ACCOUNTS
+
+# Removed hardcoded helper functions - using runtime data generation from base_test.py
 
 class ViewParameterTester(BaseTestFramework):
     """Test view parameter functionality"""
@@ -23,11 +25,15 @@ class ViewParameterTester(BaseTestFramework):
     def get_test_cases(self) -> List[TestCase]:
         """Return all test cases for this suite - single source of truth"""
         return [
-            # Individual user tests with view parameters
+            # Individual user tests with view parameters - using dynamic generation from fixed_users.py + metadata
             TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get valid user with account ID view", 200, expected_data_len=1),
             TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", "Get valid user with full account view", 200, expected_data_len=1),
-            TestCase("GET", f"/api/user/{TEST_USERS['bad_fk']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with bad FK and account view", 200, expected_data_len=1, expected_notification_len=1),
-            TestCase("GET", f"/api/user/{TEST_USERS['multiple_errors']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with multiple errors and account view", 200, expected_data_len=1, expected_notification_len=4),
+            TestCase("GET", f"/api/user/{TEST_USERS['bad_fk']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with bad FK and account view", 200,
+                expected_response=self.generate_expected_response("User", "bad_fk_user_123456", FixedUsers, 
+                    view_objects={"account": {"exists": False}})),
+            TestCase("GET", f"/api/user/{TEST_USERS['multiple_errors']}?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with multiple errors and account view", 200,
+                expected_response=self.generate_expected_response("User", "multiple_errors_user_123456", FixedUsers,
+                    view_objects={"account": {"exists": False}})),
             TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}?view=%7B%22account%22%3A%5B%22nonexistent_field%22%5D%7D", "Get valid user with invalid view field", 200, expected_data_len=1),
             # User list tests with view parameters
             TestCase("GET", "/api/user?view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user list with account ID view", 200, expected_paging=True),

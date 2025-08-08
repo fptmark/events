@@ -14,7 +14,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tests.base_test import BaseTestFramework
 from tests.test_case import TestCase
-from tests.fixed_users import TEST_USERS
+from tests.fixed_users import TEST_USERS, FixedUsers
+
+# Removed hardcoded helper functions - using runtime data generation from base_test.py
 
 class BasicAPITester(BaseTestFramework):
     """Test basic API functionality"""
@@ -22,50 +24,18 @@ class BasicAPITester(BaseTestFramework):
     def get_test_cases(self) -> List[TestCase]:
         """Return all test cases for this suite - single source of truth"""
         return [
-            # Individual user tests  
-            TestCase("GET", f"/api/user/{TEST_USERS['valid_all']}", "Get valid user", 200, expected_data_len=1,
-                expected_response={
-                    "data": [{
-                        "id": "valid_all_user_123456",
-                        "username": "valid_all_user",
-                        "email": "valid_all@test.com", 
-                        "firstName": "Valid",
-                        "lastName": "User",
-                        "gender": "male",
-                        "netWorth": 50000.0,
-                        "isAccountOwner": True
-                        # Skip createdAt/updatedAt as they're dynamic
-                    }]
-                }),
-            TestCase("GET", f"/api/user/{TEST_USERS['bad_enum']}", "Get user with bad enum", 200, expected_data_len=1, expected_notification_len=1,
-                expected_response={
-                    "data": [{
-                        "id": "bad_enum_user_123456",
-                        "username": "bad_enum_user",
-                        "email": "bad_enum@test.com",
-                        "firstName": "BadEnum", 
-                        "lastName": "User",
-                        "gender": "invalid_gender",  # Invalid enum - should trigger notification
-                        "netWorth": 50000.0,
-                        "isAccountOwner": True
-                    }],
-                    "notifications": {  # Expected validation notification for bad enum
-                        "bad_enum_user_123456": {
-                            "warnings": [{
-                                "type": "validation",
-                                "field": "gender",
-                                "message": "Invalid enum value"
-                            }]
-                        }
-                    }
-                }),
-            TestCase("GET", f"/api/user/{TEST_USERS['bad_currency']}", "Get user with bad currency", 200, expected_data_len=1, expected_notification_len=1),
-            TestCase("GET", f"/api/user/{TEST_USERS['bad_fk']}", "Get user with bad FK", 200, expected_data_len=1),  # FK notifications depend on config
-            TestCase("GET", f"/api/user/{TEST_USERS['multiple_errors']}", "Get user with multiple errors", 200, expected_data_len=1),  # Multiple notifications
-            TestCase("GET", f"/api/user/{TEST_USERS['nonexistent']}", "Get non-existent user", 404),
+            # Individual user tests - using dynamic generation from fixed_users.py + metadata
+            TestCase("GET", "user", TEST_USERS['valid_all'], '', "Get Valid user", 200, FixedUsers),
+            TestCase("GET", "user", TEST_USERS['bad_enum'], '', "Get user with bad enum", 200, FixedUsers),
+            TestCase("GET", "user", TEST_USERS['valid_all'], '', "Get valid user", 200, FixedUsers),
+            TestCase("GET", "user", TEST_USERS['bad_enum'], '', "Get user with bad enum", 200, FixedUsers),
+            TestCase("GET", "user", TEST_USERS['bad_currency'], '', "Get user with bad currency", 200, FixedUsers),
+            TestCase("GET", "user", TEST_USERS['bad_fk'], '', "Get user with bad FK", 200, FixedUsers),
+            TestCase("GET", "user", TEST_USERS['multiple_errors'], '', "Get user with multiple errors", 200, FixedUsers),
+            TestCase("GET", "user", TEST_USERS['nonexistent'], '', "Get non-existent user", 404, FixedUsers),
             # User list tests
-            TestCase("GET", "/api/user", "Get user list", 200, expected_paging=True),
-            TestCase("GET", "/api/user?pageSize=3", "Get user list with page size", 200, expected_paging=True),
+            TestCase("GET", "user", '', '', "Get user list", 200, FixedUsers),
+            TestCase("GET", "user", '', "pageSize=3", "Get user list with page size", 200, FixedUsers)
         ]
 
 async def main():

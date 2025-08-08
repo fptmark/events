@@ -24,13 +24,13 @@ class FilteringTester(BaseTestFramework):
         """Return all test cases for this suite - single source of truth"""
         return [
             # Basic filtering tests
-            TestCase("GET", "/api/user?filter=gender:male", "Get user list filtered by gender male", 200, expected_paging=True),
-            TestCase("GET", "/api/user?filter=isAccountOwner:true", "Get user list filtered by isAccountOwner true", 200, expected_paging=True),
+            TestCase("GET", "/api/user?filter=gender:male", "Get user list filtered by gender male", 200, expected_paging=True, expected_filter={'gender': 'male'}),
+            TestCase("GET", "/api/user?filter=isAccountOwner:true", "Get user list filtered by isAccountOwner true", 200, expected_paging=True, expected_filter={'isAccountOwner': 'true'}),
             TestCase("GET", f"/api/user?filter=username:{TEST_USERS['valid_all']}", "Get user list filtered by specific username", 200, expected_paging=True),
             TestCase("GET", "/api/user?filter=username:nonexistent_user_12345", "Get user list filtered by nonexistent username", 200, expected_paging=True),
             # Multiple filters
-            TestCase("GET", "/api/user?filter=gender:male,isAccountOwner:true", "Get user list with multiple filters", 200, expected_paging=True),
-            TestCase("GET", "/api/user?filter=gender:female,isAccountOwner:false", "Get user list with different filter combination", 200, expected_paging=True),
+            TestCase("GET", "/api/user?filter=gender:male,isAccountOwner:true", "Get user list with multiple filters", 200, expected_paging=True, expected_filter={'gender': 'male', 'isAccountOwner': 'true'}),
+            TestCase("GET", "/api/user?filter=gender:female,isAccountOwner:false", "Get user list with different filter combination", 200, expected_paging=True, expected_filter={'gender': 'female', 'isAccountOwner': 'false'}),
             TestCase("GET", f"/api/user?filter=isAccountOwner:true,username:{TEST_USERS['valid_all']}", "Get user list with mixed field type filters", 200, expected_paging=True),
             # Filtering with pagination
             TestCase("GET", "/api/user?filter=isAccountOwner:true&pageSize=3", "Get filtered user list with pagination", 200, expected_paging=True),

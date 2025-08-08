@@ -98,7 +98,7 @@ execute_url() {
             with open(filename, 'r') as f:
                 content = f.read()
 
-            print("📁 Parsing json - this may be slow...")
+            print("📁 Parsing json - this may take 30 sec...")
             parsed = cast(List[Dict[str, Any]], json5.loads('[' + content + ']'))  # Validate JSON5 format
 
             if parsed:

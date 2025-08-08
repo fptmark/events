@@ -17,16 +17,19 @@ from dataclasses import dataclass
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tests.base_test import BaseTestFramework
+from tests.base_test import TestCounter
 from tests.test_basic import BasicAPITester
 from tests.test_view import ViewParameterTester
 from tests.test_pagination import PaginationTester
 from tests.test_sorting import SortingTester
 from tests.test_filtering import FilteringTester
 from tests.test_combinations import CombinationTester
-from tests.random_data import RandomData
+from tests.datagen import DataGen
 from tests.curl import CurlManager
-from tests.test_case import TestCase
+from tests.base_test import TestCase
+from tests.data_verifier import DataVerifier
+# import tests.utils as utils
+from app.config import Config
 
 
 @dataclass
@@ -52,7 +55,7 @@ class ComprehensiveTestRunner:
                  connection: bool = False, newdata: bool = False, test_cases: Dict[str, Tuple[str, type]] = {}, entity: str = "user",
                  request_delay: float = 0.0, config_file = None):
         self.server_port = 5500
-        self.server_process = None
+        self.server_process: subprocess.Popen[str]
         self.verbose = verbose
         self.config_file = config_file  # Optional config file for curl generation
         
@@ -73,7 +76,7 @@ class ComprehensiveTestRunner:
         except:
             pass
     
-    def start_server(self, config_file: str) -> bool:
+    async def start_server(self, config_file: str, newdata: bool) -> bool:
         """Start server with given config file"""
         self.cleanup_port()
         if self.verbose:
@@ -94,25 +97,48 @@ class ComprehensiveTestRunner:
                 cwd=Path(__file__).parent.parent
             )
             
+            success = False
             # Wait for server to be ready
             for attempt in range(30):
                 try:
                     import requests
                     response = requests.get(f"http://localhost:{self.server_port}/api/metadata", timeout=2)
                     if response.status_code == 200:
+                        success = True
                         if self.verbose:
                             print(f"  ✅ Server ready (attempt {attempt + 1})")
-                        return True
+                        break
                 except:
                     pass
                 time.sleep(1)
             
-            print("  ❌ Server failed to start")
-            return False
+            if not success:
+                print("  ❌ Server failed to start")
+                return False
             
         except Exception as e:
             print(f"  ❌ Server start error: {e}")
             return False
+
+        # Create test data if requested
+        if newdata:
+            await self.create_new_data(config_file)
+        return True
+    
+    async def create_new_data(self, config_file: str) -> bool:
+        if not config_file:
+            print(f"❌ --config <file> is required when using --newdata-only to know the FK validation state")
+            return False
+        success = await self.wipe_all_data(config_file)
+        if not success:
+            print(f"❌ Failed to wipe data for {config_file}")
+            return False
+        success = await self.create_test_data(config_file)
+        if not success:
+            print(f"❌ Failed to create test data for {config_file}")
+            return False
+        return True
+
     
     def stop_server(self):
         """Stop the server"""
@@ -142,25 +168,14 @@ class ComprehensiveTestRunner:
     async def create_test_data(self, config_file: str) -> bool:
         """Create test data using test_data_setup.py"""
         if self.verbose:
-            print("  🧹 Wiping existing data and creating fresh test data...")
+            print("  🧹 Creating fresh test data...")
         
         try:
-            # Get metadata using requests instead of undefined get_curl
-            import requests
-            response = requests.get(f"http://localhost:{self.server_port}/api/metadata", timeout=10)
-            if response.status_code != 200:
-                raise Exception(f"Failed to fetch metadata: {response.status_code}")
-            metadata = response.text
-            
-            create = RandomData(metadata, self.entity)
-            valid, invalid = create.generate_records(good_count=50, bad_count=20)
-            
-            # Save generated records to database
-            if self.verbose:
-                print(f"  📝 Generated {len(valid)} valid and {len(invalid)} invalid records")
+            data_gen = DataGen(self.entity)
+            valid, invalid = data_gen.generate_records(50, 20, self.verbose)
             
             # Save all generated records (includes both random + known test users)
-            success = await self._save_generated_records_to_database(config_file, valid, invalid)
+            success = await data_gen.save_generated_records_to_database(config_file, valid, invalid, self.verbose)
             
             if success:
                 if self.verbose:
@@ -174,87 +189,6 @@ class ComprehensiveTestRunner:
             print(f"  ❌ Test data creation error: {e}")
             return False
     
-    async def _save_generated_records_to_database(self, config_file: str, valid_records: List[Dict], invalid_records: List[Dict]) -> bool:
-        """Save generated records directly to database using DatabaseFactory"""
-        try:
-            # Import required modules
-            from app.config import Config
-            from app.db import DatabaseFactory
-            from datetime import datetime, timezone
-            import uuid
-            
-            # Initialize database connection
-            config = Config.initialize(config_file)
-            db_type: str = config.get('database', '')
-            db_uri: str = config.get('db_uri', '')
-            db_name: str = config.get('db_name', '')
-            
-            await DatabaseFactory.initialize(db_type, db_uri, db_name)
-            
-            saved_valid = 0
-            saved_invalid = 0
-            
-            # Save valid records
-            for i, record in enumerate(valid_records):
-                try:
-                    # Ensure required fields
-                    if 'id' not in record:
-                        record['id'] = f"generated_valid_{i+1}_{uuid.uuid4().hex[:8]}"
-                    if 'createdAt' not in record:
-                        record['createdAt'] = datetime.now(timezone.utc)
-                    if 'updatedAt' not in record:
-                        record['updatedAt'] = datetime.now(timezone.utc)
-                    
-                    # Save to database
-                    result, warnings = await DatabaseFactory.save_document("user", record, [])
-                    if result:
-                        saved_valid += 1
-                        if warnings and self.verbose:
-                            print(f"  ⚠️ Valid record warnings: {warnings}")
-                            
-                except Exception as e:
-                    if self.verbose:
-                        print(f"  ⚠️ Failed to save valid record {i+1}: {e}")
-            
-            # Save invalid records
-            for i, record in enumerate(invalid_records):
-                try:
-                    # Ensure required fields
-                    if 'id' not in record:
-                        record['id'] = f"generated_invalid_{i+1}_{uuid.uuid4().hex[:8]}"
-                    if 'createdAt' not in record:
-                        record['createdAt'] = datetime.now(timezone.utc)
-                    if 'updatedAt' not in record:
-                        record['updatedAt'] = datetime.now(timezone.utc)
-                    
-                    # Save to database (these may have validation warnings)
-                    result, warnings = await DatabaseFactory.save_document("user", record, [])
-                    if result:
-                        saved_invalid += 1
-                        if warnings and self.verbose:
-                            print(f"  ⚠️ Invalid record warnings: {warnings}")
-                            
-                except Exception as e:
-                    if self.verbose:
-                        print(f"  ⚠️ Failed to save invalid record {i+1}: {e}")
-            
-            # Close database connection
-            await DatabaseFactory.close()
-            
-            if self.verbose:
-                print(f"  ✅ Saved {saved_valid}/{len(valid_records)} valid records")
-                print(f"  ✅ Saved {saved_invalid}/{len(invalid_records)} invalid records")
-            
-            return True
-            
-        except Exception as e:
-            print(f"  ❌ Failed to save generated records: {e}")
-            # Ensure database connection is closed on error
-            try:
-                await DatabaseFactory.close()
-            except:
-                pass
-            return False
     
     async def wipe_all_data(self, config_file: str) -> bool:
         """Wipe all data and exit (destructive operation)"""
@@ -280,136 +214,6 @@ class ComprehensiveTestRunner:
             print(f"❌ Data wipe error: {e}")
             return False
     
-    # async def run_test_suite(self, config: TestConfig) -> TestResult:
-    #     """Run test suites for a single database config"""
-    #     start_time = time.time()
-        
-    #     try:
-    #         # Get test suites based on self.test_cases parameter
-    #         # test_suites = get_test_cases(self.test_cases)
-            
-    #         total_passed = 0
-    #         total_failed = 0
-    #         total_tests = 0
-            
-    #         # Handle curl responses if provided
-    #         curl_responses = {}
-    #         if hasattr(self, 'curl_responses') and self.curl_responses:
-    #             # Use pre-loaded responses (for validation mode)
-    #             curl_responses = self.curl_responses
-    #             if self.verbose:
-    #                 print(f"📁 Using {len(curl_responses)} pre-loaded responses")
-    #         elif isinstance(self.curl_mode, str):
-    #             # Load responses from file (main() handles "execute" mode)
-    #             curl_responses = self.load_curl_output_file(self.curl_mode) or {}
-    #             if self.verbose:
-    #                 print(f"📁 Using {len(curl_responses)} responses from {self.curl_mode}")
-            
-    #         print(f"  📊 Progress: Starting {len(self.test_cases)} test suites...")
-            
-    #         # Single loop - mode is determined by curl_file_handle and curl_responses parameters
-    #         for test_name, test in self.test_cases.items():
-    #             test_details, test_class = test  # Get the test class from the tuple
-    #             print(f"  🧪 Running {test_details}...")
-    #             if self.verbose:
-    #                 print(f"  📊 Progress: {total_tests + 1} of {len(self.test_cases)}")
-                
-    #             # Extract FK validation state from config for validation mode
-    #             fk_validation = None
-    #             if curl_responses and hasattr(config, 'config_data') and config.config_data:
-    #                 fk_validation = config.config_data.get('fk_validation', False)
-                
-    #             curl_file_handle = self.curl_manager.get_curl_file_handle() if self.curl_manager else None
-    #             tester = test_class("", f"http://localhost:{self.server_port}", 
-    #                               self.verbose, curl_file_handle=curl_file_handle, mode_name=config.name.replace(" ", "_"),
-    #                               request_delay=self.request_delay, curl_responses=curl_responses, fk_validation=fk_validation)
-                
-    #             try:
-    #                 success = tester.run_all_tests()
-    #                 if success:
-    #                     total_passed += 1
-    #                     result_icon = "✅"
-    #                 else:
-    #                     total_failed += 1
-    #                     result_icon = "❌"
-    #                 total_tests += 1
-                    
-    #                 # Show progress after each test suite
-    #                 print(f"  📊 Progress: {result_icon} {test_name} completed ({total_passed + total_failed}/{len(test_suites)})")
-                    
-    #             except Exception as e:
-    #                 total_failed += 1
-    #                 total_tests += 1
-    #                 print(f"  📊 Progress: ❌ {test_name} failed with exception: {e}")
-    #                 if self.verbose:
-    #                     import traceback
-    #                     traceback.print_exc()
-            
-    #         overall_success = total_failed == 0 and total_tests > 0
-            
-    #         return TestResult(
-    #             config_name=config.name,
-    #             success=overall_success,
-    #             passed=total_passed,
-    #             failed=total_failed,
-    #             total=total_tests,
-    #             duration=time.time() - start_time
-    #         )
-            
-    #     except Exception as e:
-    #         return TestResult(
-    #             config_name=config.name,
-    #             success=False,
-    #             passed=0,
-    #             failed=0,
-    #             total=0,
-    #             duration=time.time() - start_time,
-    #             error=str(e)
-    #         )
-    #     finally:
-    #         self.stop_server()
-    
-    # async def validate_response(self, source, config_file):
-    #     """Unified validation function - handles both file and HTTP sources"""
-    #     # Load config
-    #     with open(config_file, 'r') as f:
-    #         config_data = json.load(f)
-        
-    #     # Create TestConfig
-    #     config = TestConfig(
-    #         name=f"{config_data.get('database', 'unknown')} {'with' if config_data.get('fk_validation') else 'without'} FK validation",
-    #         database=config_data.get('database', 'mongodb'),
-    #         config_data=config_data
-    #     )
-        
-    #     # Load or use responses
-    #     if isinstance(source, str):
-    #         # Source is filename - load responses
-    #         curl_manager = CurlManager(self.verbose)
-    #         responses = curl_manager.load_json_responses_file(source)
-    #     else:
-    #         # execute requests and process responses
-    #         responses = runner.run_test_suite(tests, config_data, self.verbose)
-    #         content = source.read()
-    #         parser = CurlOutputParser(self.verbose)
-    #         passes = parser.parse_curl_output(content)
-    #         responses = passes[0][1] if passes else {}
-        
-    #     # Run validation
-    #     runner = ComprehensiveTestRunner(
-    #         verbose=self.verbose, curl=False, dbs=self.dbs,
-    #         newdata=False, test_cases=self.test_cases, entity=self.entity,
-    #         request_delay=self.request_delay
-    #     )
-        
-    #     result = await runner.run_test_suite(responses, config_data, self.verbose)
-        
-    #     if result.success:
-    #         print(f"✅ Validation: {config.name} - {result.passed}/{result.total} test suites passed")
-    #     else:
-    #         print(f"❌ Validation: {config.name} - FAILED")
-        
-    #     return result.success
 
     async def generate_curl(self):
         """Generate curl.sh only - no server, no data, no validation"""  
@@ -444,7 +248,7 @@ class ComprehensiveTestRunner:
         start_time = time.time()
         for config in self.configurations:
             print(f"  📋 Testing configuration: {config.name}")
-            self.start_server(self.create_config_file(config))
+            await self.start_server(self.create_config_file(config), False)
             try:
                 import requests
                 
@@ -468,29 +272,24 @@ class ComprehensiveTestRunner:
         else:
             results = None
 
-        overall_success = True
-        total_tests = 0
-        total_passed = 0
-        total_failed = 0
+        total_counter = TestCounter()
+
+        config = Config.initialize(config_file)
         
         for test_type, (test_description, test_class) in self.test_cases.items():
             print(f"\n🧪 Running {test_description} tests...")
             test_obj = test_class("", f"http://localhost:{self.server_port}", self.verbose)
             
-            suite_passed = 0
-            suite_failed = 0
-            suite_total = 0
+            suite_counter = TestCounter()
             
             for test in test_obj.get_test_cases():
-                suite_total += 1
-                total_tests += 1
                 if self.verbose:
-                    print(f"  📝 Executing {test.description}...")
+                    print(f"  📝 Processing {test.description}...    {test.url}")
                 
                 try:
                     if results is None:
                         # Live HTTP request - returns (bool, dict)
-                        http_status, result = self._execute_test(test_obj, test)
+                        http_status, result = test_obj.make_api_request(test_obj.method, test_obj.url, expected_status=test_obj.expected_status)
                     else:
                         # Use file results - status is int, need to compare
                         url_key = test.url
@@ -504,120 +303,34 @@ class ComprehensiveTestRunner:
                     status = http_status == test.expected_status
 
                     if status and result:
-                        if self._verify_result(test, result):
+                        verifier = DataVerifier(test, result, config, self.verbose)
+                        if verifier.verify_test_case(): # test_class.generate_expected_response() ):
                             print(f"  ✅ {test.description} passed")
-                            suite_passed += 1
-                            total_passed += 1
+                            suite_counter.pass_test()
                         else:
                             print(f"  ❌ {test.description} failed - validation mismatch")
-                            suite_failed += 1
-                            total_failed += 1
-                            overall_success = False
+                            suite_counter.fail_test()
                     else:
                         print(f"  ❌ {test.description} failed")
-                        suite_failed += 1
-                        total_failed += 1
-                        overall_success = False
+                        suite_counter.fail_test()
                         
                 except Exception as e:
                     print(f"  ❌ {test.description} failed: {e}")
-                    suite_failed += 1
-                    total_failed += 1
-                    overall_success = False
+                    suite_counter.fail_test()
             
+            total_counter.update(suite_counter)
             # Print suite summary
-            print(f"  📊 {test_description}: {suite_passed} passed, {suite_failed} failed, {suite_total} total")
+            print(f"  {suite_counter.summary(test_description)}")
         
         # Print overall summary
-        print(f"\n📊 FINAL SUMMARY: {total_passed} passed, {total_failed} failed, {total_tests} total")
+        print(f"\n{total_counter.summary('FINAL SUMMARY')}")
         
-        return overall_success
+        return total_counter.failed == 0
     
-    def _execute_test(self, test_obj, test_case):
-        """Execute single test case via HTTP"""
-        return test_obj.make_api_request(test_case.method, test_case.url, expected_status=test_case.expected_status)
-    
-    def _verify_result(self, test_case, result):
-        """Verify result matches TestCase expectations"""
-        # Surface-level validation
-        if test_case.expected_data_len is not None:
-            if 'data' not in result:
-                return False
-            # For expected_data_len, data should be an array
-            data = result['data']
-            if not isinstance(data, list):
-                # Convert singleton to array for consistent counting
-                data = [data]
-            if len(data) != test_case.expected_data_len:
-                return False
-        if test_case.expected_notification_len is not None:
-            notifications = result.get('notifications', [])
-            if len(notifications) != test_case.expected_notification_len:
-                return False
-        if test_case.expected_paging and 'pagination' not in result:
-            return False
-            
-        # Deep validation for fixed records
-        if test_case.expected_response is not None:
-            return self._deep_validate(data, test_case.expected_response['data'])
-            
-        return True
-    
-    def _deep_validate(self, actual, expected):
-        """Deep validation - recursively compare actual vs expected response"""
-        if type(actual) != type(expected):
-            return False
-            
-        if isinstance(expected, dict):
-            for key, expected_value in expected.items():
-                if key not in actual:
-                    return False
-                if not self._deep_validate(actual[key], expected_value):
-                    return False
-        elif isinstance(expected, list):
-            if len(actual) != len(expected):
-                return False
-            for i, expected_item in enumerate(expected):
-                if not self._deep_validate(actual[i], expected_item):
-                    return False
-        else:
-            # Primitive values - direct comparison
-            if actual != expected:
-                return False
-                
-        return True
 
 
-
-    def print_summary(self, results: List[TestResult]) -> bool:
-        """Print comprehensive summary"""
-        print(f"\n{'='*80}")
-        print("COMPREHENSIVE TEST SUMMARY")
-        print('='*80)
-        
-        successful_configs = sum(1 for r in results if r.success)
-        total_duration = sum(r.duration for r in results)
-        
-        print(f"Configurations: {successful_configs}/{len(results)} passed")
-        print(f"Total duration: {total_duration:.1f}s")
-        print()
-        
-        for result in results:
-            status = "✅ PASS" if result.success else "❌ FAIL"
-            print(f"{status} {result.config_name}")
-            if result.total > 0:
-                print(f"     {result.passed}/{result.total} test suites passed")
-            if result.error:
-                print(f"     Error: {result.error}")
-        
-        print(f"\n{'='*80}")
-        if successful_configs == len(results):
-            print("🎉 ALL CONFIGURATIONS PASSED!")
-        else:
-            print("💥 SOME CONFIGURATIONS FAILED!")
-        
-        return successful_configs == len(results)
-    
+    def cleanup(self):
+        """Clean up temporary files"""
         try:
             if os.path.exists("tests/temp_test_config.json"):
                 os.remove("tests/temp_test_config.json")
@@ -780,19 +493,7 @@ async def main():
         return 0
 
     if args.newdata_only:
-        if not args.config:
-            print(f"❌ --config <file> is required when using --newdata-only to know the FK validation state")
-            return
-        success = await runner.wipe_all_data(args.config)
-        if not success:
-            print(f"❌ Failed to wipe data for {args.config})")
-            return 1
-        success = await runner.create_test_data(args.config) 
-        if not success:
-            print(f"❌ Failed to create test data for {args.config}")
-            return 1
-        print("✅ Fresh test data created successfully")
-
+        success = await runner.create_new_data(args.config)
 
     # Handle curl modes with clean orchestration
     runner = ComprehensiveTestRunner(verbose=args.verbose, dbs=dbs, connection=True, test_cases=test_cases, entity=args.entity, request_delay=args.delay)
@@ -801,8 +502,7 @@ async def main():
             # Curl Mode 1: Generate curl.sh
             await runner.generate_curl()    # no config file needed
             print("Run script tests/curl.sh > results.json to execute the generated commands")
-            print("Recommend --newdata-only --config <config_file> to wipe and create new before each run")
-            print("Then run --curl results.json --config <config_file> to validate the responses")
+            print("Then run --curl <results.json> --config <config_file> to validate the responses.  This will start the server to get the metadata and reset the database")
             return 0
             
         elif args.curl == "execute" or args.curl is None:
@@ -819,21 +519,10 @@ async def main():
                 config_file = runner.create_config_file(config)
                 
                 try:
-                    if not runner.start_server(config_file):
-                        print(f"❌ Failed to start server for {config.name}")
+                    if not runner.start_server(config_file, args.newdata):
+                    #     print(f"❌ Failed to start server for {config.name}")
                         return 1
                 
-                    # Create test data if requested
-                    if args.newdata:
-                        success = await runner.wipe_all_data(config_file)
-                        if not success:
-                            print(f"❌ Failed to wipe data for {config.name}")
-                            return 1
-                        success = await runner.create_test_data(config_file)
-                        if not success:
-                            print(f"❌ Failed to create test data for {config.name}")
-                            return 1
-
                     if args.curl:
                         # create ouput file with server config and the output of curl.sh
                         # First call: create/truncate the file and write config_file content
@@ -858,6 +547,9 @@ async def main():
         elif isinstance(args.curl, str):
             # Mode 3: Validate from file with specified config
             print(f"📁 Validating responses from file: {args.curl} Using config file: {args.config}")
+            status = await runner.create_new_data(args.config)
+            if not status:
+                return 1
             
             success = await runner.run(args.curl, args.config)
             return 0 if success else 1
