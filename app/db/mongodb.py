@@ -635,9 +635,25 @@ class MongoDatabase(DatabaseInterface):
         
         query = {}
         for field, value in list_params.filters.items():
-            if isinstance(value, dict) and ('$gte' in value or '$lte' in value):
-                # Range filter - use as-is
-                query[field] = value
+            if isinstance(value, dict) and ('$gte' in value or '$lte' in value or '$gt' in value or '$lt' in value):
+                # Comparison filter - add null exclusion and date normalization
+                field_type = self._get_field_type(field, entity_metadata)
+                if field_type in ['Date', 'Datetime', 'Integer', 'Currency', 'Float']:
+                    # For comparison operators on date/numeric fields, exclude null values
+                    enhanced_filter = value.copy()
+                    enhanced_filter['$exists'] = True
+                    enhanced_filter['$ne'] = None
+                    
+                    # Convert date strings to native date objects for proper date comparison
+                    if field_type in ['Date', 'Datetime']:
+                        for op in ['$gte', '$lte', '$gt', '$lt']:
+                            if op in enhanced_filter:
+                                enhanced_filter[op] = self._convert_to_date_object(enhanced_filter[op])
+                    
+                    query[field] = enhanced_filter
+                else:
+                    # For other field types, use as-is
+                    query[field] = value
             else:
                 # Determine matching strategy based on field type
                 field_type = self._get_field_type(field, entity_metadata)
@@ -680,6 +696,7 @@ class MongoDatabase(DatabaseInterface):
         """Escape special regex characters in search text."""
         import re
         return re.escape(text)
+
 
     async def _check_unique_indexes(self, collection: str, unique_constraints: List[List[str]]) -> List[str]:
         """Check if unique indexes exist for the given constraints. Returns list of missing constraint descriptions."""

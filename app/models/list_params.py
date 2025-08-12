@@ -170,32 +170,24 @@ class ListParams:
                 return ListParams._parse_number(value) if ListParams._parse_number(value) is not None else value
                 
             elif operator == "gt":
+                # Try to parse as number first, but allow non-numeric values (like dates)
                 num_val = ListParams._parse_number(value)
-                if num_val is None:
-                    notify_error(f"gt operator requires numeric value for '{field_name}': {value}")
-                    return None
-                return {"$gt": num_val}
+                return {"$gt": num_val if num_val is not None else value}
                 
             elif operator == "gte":
+                # Try to parse as number first, but allow non-numeric values (like dates)
                 num_val = ListParams._parse_number(value)
-                if num_val is None:
-                    notify_error(f"gte operator requires numeric value for '{field_name}': {value}")
-                    return None
-                return {"$gte": num_val}
+                return {"$gte": num_val if num_val is not None else value}
                 
             elif operator == "lt":
+                # Try to parse as number first, but allow non-numeric values (like dates)
                 num_val = ListParams._parse_number(value)
-                if num_val is None:
-                    notify_error(f"lt operator requires numeric value for '{field_name}': {value}")
-                    return None
-                return {"$lt": num_val}
+                return {"$lt": num_val if num_val is not None else value}
                 
             elif operator == "lte":
+                # Try to parse as number first, but allow non-numeric values (like dates)
                 num_val = ListParams._parse_number(value)
-                if num_val is None:
-                    notify_error(f"lte operator requires numeric value for '{field_name}': {value}")
-                    return None
-                return {"$lte": num_val}
+                return {"$lte": num_val if num_val is not None else value}
                 
             elif operator == "range":
                 # Handle range format: [min:max]

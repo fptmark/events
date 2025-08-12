@@ -258,15 +258,41 @@ class ElasticsearchDatabase(DatabaseInterface):
         
         must_clauses = []
         for field, value in list_params.filters.items():
-            if isinstance(value, dict) and ('$gte' in value or '$lte' in value):
-                # Range filter - convert MongoDB-style to Elasticsearch range query
-                # Range queries work on the base field (no .keyword needed for numeric fields)
+            if isinstance(value, dict) and ('$gte' in value or '$lte' in value or '$gt' in value or '$lt' in value):
+                # Comparison filter - convert MongoDB-style to Elasticsearch range query
                 range_query = {}
                 if '$gte' in value:
                     range_query['gte'] = value['$gte']
                 if '$lte' in value:
                     range_query['lte'] = value['$lte']
-                must_clauses.append({"range": {field: range_query}})
+                if '$gt' in value:
+                    range_query['gt'] = value['$gt']
+                if '$lt' in value:
+                    range_query['lt'] = value['$lt']
+                
+                # For date/numeric fields, add null exclusion and date normalization
+                field_type = self._get_field_type(field, entity_metadata)
+                if field_type in ['Date', 'Datetime', 'Integer', 'Currency', 'Float']:
+                    # Convert date strings to proper format for date comparison
+                    if field_type in ['Date', 'Datetime']:
+                        for op in ['gte', 'lte', 'gt', 'lt']:
+                            if op in range_query:
+                                # Elasticsearch handles datetime objects and ISO strings well
+                                # Use normalized strings for consistency
+                                range_query[op] = self._normalize_date_string(range_query[op])
+                    
+                    # Use bool query to combine range and exists clauses
+                    must_clauses.append({
+                        "bool": {
+                            "must": [
+                                {"range": {field: range_query}},
+                                {"exists": {"field": field}}
+                            ]
+                        }
+                    })
+                else:
+                    # For other field types, use range query as-is
+                    must_clauses.append({"range": {field: range_query}})
             else:
                 # Determine matching strategy based on field type
                 field_type = self._get_field_type(field, entity_metadata)
@@ -380,6 +406,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             return 'Enum'  # Use exact matching for enum fields
         
         return field_type
+
 
     async def delete_collection(self, collection: str) -> bool:
         """Delete a collection."""

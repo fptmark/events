@@ -17,34 +17,28 @@ class Config:
         cls._config = cls._load_system_config(config_file)
         return cls._config
 
+
     @staticmethod
     def _load_system_config(config_file: str) -> Dict[str, Any]:
         """
         Load and return the configuration from config.json.
         If the file is not found, return default configuration values.
         """
-        config_path = Path(config_file)
-        if not config_path.exists():
-            print(f'Warning: Configuration file {config_file} not found. Using defaults.')
-            return {
-                'mongo_uri': 'mongodb://localhost:27017',
-                'db_name': 'default_db',
-                'server_port': 8000,
-                'environment': 'production',
-                'log_level': 'info',
-                'fk_validation': ''
-            }
-        return load_settings(config_path)
-
-    # @staticmethod
-    # def validation_type() -> str:
-    #     """Get the current validation type from config"""
-    #     return Config._config.get('get_validation', 'default')
-
-    # @staticmethod
-    # def unique_validation() -> bool:
-    #     """Get the current validation type from config"""
-    #     return Config._config.get('unique_validation', False)
+        if len(config_file) > 0:
+            config_path = Path(config_file)
+            if config_path.exists():
+                return load_settings(config_path)
+        print(f'Warning: Configuration file \"{config_file}\" not found. Using defaults.')
+        return {
+            'server_url' : 'http://localhost:5500',
+            'mongo_uri': 'mongodb://localhost:27017',
+            'db_name': 'default_db',
+            'server_port': 8000,
+            'environment': 'production',
+            'log_level': 'info',
+            'fk_validation': '',
+            'case_sensitive': False
+        }
 
     @staticmethod
     def validations(get_multiple: bool) -> Tuple[bool, bool]:
