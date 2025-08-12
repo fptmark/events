@@ -61,9 +61,10 @@ class TestResult:
 class BaseTestFramework(ABC):
     """Base test framework that can be extended for different entities"""
     
-    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl_file_handle = None, request_delay: float = 0.0, curl_responses: Dict = None):
+    def __init__(self, config_file: str, server_url: str = "http://127.0.0.1:5500", verbose: bool = False, curl_file_handle = None, request_delay: float = 0.0, curl_responses: Optional[Dict] = None):
         self.config_file = config_file
-        self.verbose = verbose
+        # self.server_url = server_url
+        # self.verbose = verbose
         self.curl_file_handle = curl_file_handle
         self.request_delay = request_delay  # Delay between requests to prevent server overload
         self.curl_responses = curl_responses or {}  # Pre-captured curl responses
@@ -72,23 +73,14 @@ class BaseTestFramework(ABC):
         self.results: List[TestResult] = []
         self.config = {}
         
-        # Note: curl file is now managed by ComprehensiveTestRunner
-        
         # Load config and initialize database through existing abstraction
         if config_file and config_file.strip(): 
             self.config = Config.initialize(config_file)
             
-            if self.verbose:
+            if verbose:
                 print(f"✅ Loaded config from {config_file}")
-        else:
-            # No config file provided - use defaults
-            if self.verbose:
-                 print("⚠️  No config file provided - using defaults")
-            self.config['fk_validation'] = ''
-            self.config['db_type'] = 'mongodb'
+        self.config['verbose'] = verbose
 
-        print(f"   Database: {self.config['db_type']}")
-        print(f"   FK Validation: {self.config['fk_validation']}")
 
     @abstractmethod
     def get_test_cases(self) -> List[TestCase]:
@@ -171,137 +163,16 @@ class BaseTestFramework(ABC):
         
         return self.counter.failed == 0
     
-    # def _init_curl_file(self):
-    #     """Initialize curl.sh file in tests directory, overwriting if it exists"""
-    #     try:
-    #         with open('tests/curl.sh', 'w') as f:
-    #             f.write('#!/bin/bash\n')
-    #             f.write('# Generated curl commands from test execution\n')
-    #             f.write('# Run: chmod +x tests/curl.sh && ./tests/curl.sh\n\n')
-    #         print("📁 Initialized tests/curl.sh - API calls will be logged")
-    #     except Exception as e:
-    #         print(f"⚠️ Warning: Could not initialize tests/curl.sh: {e}")
+    @staticmethod
+    def check_server_health(server_url: str, timeout: int = 5) -> bool:
+        """Check if server is responding at the given URL"""
+        try:
+            import requests
+            response = requests.get(f"{server_url}/api/metadata", timeout=timeout)
+            return response.status_code == 200
+        except Exception:
+            return False
     
-    
-    # def _get_decoded_url_comment(self, url: str) -> str:
-    #     """Generate a comment showing decoded URL parameters"""
-    #     from urllib.parse import urlparse, parse_qs, unquote
-        
-    #     parsed = urlparse(url)
-    #     if not parsed.query:
-    #         return ""
-        
-    #     # Parse query parameters
-    #     params = parse_qs(parsed.query, keep_blank_values=True)
-    #     decoded_parts = []
-        
-    #     for key, values in params.items():
-    #         for value in values:
-    #             decoded_value = unquote(value)
-    #             # Only add comment if the value was actually encoded (contains special chars)
-    #             if decoded_value != value and any(char in decoded_value for char in ['{', '}', ':', '"', ' ']):
-    #                 decoded_parts.append(f"{key}={decoded_value}")
-    #             elif decoded_value != value:
-    #                 decoded_parts.append(f"{key}={decoded_value}")
-        
-    #     if decoded_parts:
-    #         return f"Decoded parameters: {', '.join(decoded_parts)}"
-        
-    #     return ""
-    
-    # def _get_decoded_url_for_display(self, url: str) -> str:
-    #     """Return URL with decoded parameters for display in echo statements"""
-    #     from urllib.parse import urlparse, parse_qs, unquote, urlencode
-        
-    #     parsed = urlparse(url)
-    #     if not parsed.query:
-    #         return url
-        
-    #     # Parse and decode all query parameters
-    #     params = parse_qs(parsed.query, keep_blank_values=True)
-    #     decoded_params = {}
-        
-    #     for key, values in params.items():
-    #         decoded_values = []
-    #         for value in values:
-    #             decoded_value = unquote(value)
-    #             decoded_values.append(decoded_value)
-    #         decoded_params[key] = decoded_values
-        
-    #     # Rebuild URL with decoded (readable) parameters for display
-    #     readable_params = []
-    #     for key, values in decoded_params.items():
-    #         for value in values:
-    #             readable_params.append(f"{key}={value}")
-        
-    #     readable_query = "&".join(readable_params)
-    #     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{readable_query}"
-    
-    def validate_pagination(self, response: Dict, endpoint: str = "", expected_page: int = 0, expected_per_page: int = 0) -> bool:
-        """Validate GitHub-style pagination structure and values"""
-        if 'pagination' not in response:
-            if self.verbose:
-                print(f"   ❌ Missing pagination object in response for {endpoint}")
-            return False
-        
-        pagination = response['pagination']
-        required_fields = ['page', 'per_page', 'total', 'total_pages', 'has_next', 'has_prev']
-        
-        for field in required_fields:
-            if field not in pagination:
-                if self.verbose:
-                    print(f"   ❌ Missing pagination field '{field}' for {endpoint}")
-                return False
-        
-        # Validate field types and basic logic
-        if not isinstance(pagination['page'], int) or pagination['page'] < 1:
-            if self.verbose:
-                print(f"   ❌ Invalid page number: {pagination['page']} for {endpoint}")
-            return False
-        
-        if not isinstance(pagination['per_page'], int) or pagination['per_page'] < 1:
-            if self.verbose:
-                print(f"   ❌ Invalid per_page: {pagination['per_page']} for {endpoint}")
-            return False
-        
-        if not isinstance(pagination['total'], int) or pagination['total'] < 0:
-            if self.verbose:
-                print(f"   ❌ Invalid total: {pagination['total']} for {endpoint}")
-            return False
-        
-        # Validate navigation hints make sense
-        current_page = pagination['page']
-        total_pages = pagination['total_pages']
-        
-        expected_has_prev = current_page > 1
-        expected_has_next = current_page < total_pages
-        
-        if pagination['has_prev'] != expected_has_prev:
-            if self.verbose:
-                print(f"   ❌ Incorrect has_prev: {pagination['has_prev']}, expected {expected_has_prev} for {endpoint}")
-            return False
-        
-        if pagination['has_next'] != expected_has_next:
-            if self.verbose:
-                print(f"   ❌ Incorrect has_next: {pagination['has_next']}, expected {expected_has_next} for {endpoint}")
-            return False
-        
-        # Validate expected values if provided
-        if expected_page and pagination['page'] != expected_page:
-            if self.verbose:
-                print(f"   ❌ Expected page {expected_page}, got {pagination['page']} for {endpoint}")
-            return False
-        
-        if expected_per_page and pagination['per_page'] != expected_per_page:
-            if self.verbose:
-                print(f"   ❌ Expected per_page {expected_per_page}, got {pagination['per_page']} for {endpoint}")
-            return False
-        
-        if self.verbose:
-            print(f"   ✅ Pagination valid: page {pagination['page']}/{pagination['total_pages']}, {pagination['per_page']} per page, {pagination['total']} total")
-        
-        return True
-
     def make_api_request(self, method: str, endpoint: str, data: Dict = {}, expected_status: int = 200) -> Tuple[bool, Dict]:
         """Helper method for API requests"""
         url = f"{self.config['server_url']}{endpoint}"
@@ -511,216 +382,3 @@ class BaseTestFramework(ABC):
 """
 TestCase dataclass for unified test definitions.
 """
-
-# from dataclasses import dataclass
-# from typing import Optional, List, Dict
-# from enum import Enum
-
-# from attrs import field
-
-# class ResponseType(Enum):
-#     SINGLE = "single"  # Single object response 
-#     ARRAY = "array"    # Array response
-
-# @dataclass
-# class TestCase:
-#     method: str
-#     entity: str
-#     id: str
-#     params: str
-#     description: str
-#     expected_status: int
-#     fixed_data_class: type
-#     expected_data_len: Optional[int] = None
-#     expected_notification_len: Optional[int] = None
-#     expected_response: Optional[dict] = None  # For deep validation of single-entity responses (presence implies single response)
-#     expected_sort: Optional[list] = None  # List of (field, direction) tuples e.g. [('firstName', 'asc'), ('lastName', 'desc')]
-#     expected_filter: Optional[dict] = None  # Dict of field:value filters e.g. {'gender': 'male', 'isAccountOwner': True}
-#     response_type: Optional[ResponseType] = None  # Single vs array response type (auto-detected from expected_response if not set)
-#     expected_sub_objects: Optional[List[Dict[str, List[str]]]] = None  # Array of {'entity': [<fields>]} for each view param
-#     view_objects: Optional[Dict[str, Any]] = None
-
-#     url: str = field(init=False)
-
-#     def __post_init__(self):
-#         # construct the url
-#         parts = [f"/api/{self.entity}"]
-#         if self.id:
-#             parts.append(f"/{self.id}")
-#         if self.params:
-#             parts.append(f"?{self.params}")
-#         self.url = "".join(parts)
-
-
-#     def is_single(self) -> bool:
-#         return id == '' 
-
-#     def expected_paging(self) -> bool:
-#         return not id 
-
-#     def generate_expected_response(self) -> Dict[str, Any]:
-#         """
-#         Generate expected_response dynamically from test scenarios + metadata
-        
-#         Args:
-#             entity_name: Name of entity (e.g., 'User', 'Account')
-#             entity_id: ID of the test entity
-#             fixed_data_class: Class containing test scenarios (e.g., FixedUsers, FixedAccounts)
-#             view_objects: Optional dict of view objects to include (e.g., {'account': {'exists': False}})
-        
-#         Returns:
-#             Dict containing expected_response with data and warnings
-#         """
-#         if not self.id:
-#             return {}
-
-#         try:
-#             # Get test scenarios from the fixed data class
-#             valid_records, invalid_records = self.fixed_data_class.create_known_test_records()
-#             all_records = valid_records + invalid_records
-            
-#             # Find the specific record
-#             entity_data = None
-#             for record in all_records:
-#                 if record.get('id') == self.id:
-#                     entity_data = record.copy()
-#                     break
-            
-#             if not entity_data:
-#                 raise ValueError(f"Entity {self.id} not found in {self.fixed_data_class.__name__}")
-            
-#             # Get model class dynamically
-#             model_class = utils.get_model_class(self.entity.capitalize())
-#             if not model_class:
-#                 raise ValueError(f"Could not find model class for {self.entity.capitalize()}")
-            
-#             # Generate expected warnings from metadata + entity data
-#             expected_warnings = self._generate_expected_warnings(model_class, entity_data)
-            
-#             # Build ignore fields list from metadata
-#             ignore_fields = self._build_entity_ignore_fields(model_class, entity_data)
-            
-#             # Remove ignored fields from entity data
-#             cleaned_data = entity_data.copy()
-#             for field in ignore_fields:
-#                 cleaned_data.pop(field, None)
-            
-#             # Add view objects if provided
-#             if self.view_objects:
-#                 cleaned_data.update(self.view_objects)
-            
-#             return {
-#                 "data": cleaned_data,
-#                 "warnings": expected_warnings
-#             }
-            
-#         except Exception as e:
-#             if self.verbose:
-#                 print(f"❌ Error generating expected_response for {entity_name}/{entity_id}: {e}")
-#             raise
-    
-#     def _generate_expected_warnings(self, model_class, entity_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-#         """
-#         Generate expected validation warnings by applying model metadata to entity data
-        
-#         Args:
-#             model_class: The model class (e.g., User, Account)
-#             entity_data: The test entity data
-            
-#         Returns:
-#             List of expected warning dictionaries
-#         """
-#         warnings = []
-        
-#         try:
-#             metadata = model_class.get_metadata()
-#             fields = metadata.get('fields', {})
-            
-#             # Check each field for validation issues
-#             for field_name, field_info in fields.items():
-#                 field_value = entity_data.get(field_name)
-                
-#                 # Check required fields
-#                 if field_info.get('required', False) and field_value is None:
-#                     warnings.append({
-#                         "type": "validation",
-#                         "field": field_name,
-#                         "message": "Field required"
-#                     })
-                
-#                 # Check enum values
-#                 if field_value is not None and 'enum' in field_info:
-#                     valid_values = field_info['enum'].get('values', [])
-#                     if valid_values and field_value not in valid_values:
-#                         warnings.append({
-#                             "type": "validation", 
-#                             "field": field_name
-#                         })
-                
-#                 # Check numeric constraints (currency, etc.)
-#                 if field_value is not None and field_info.get('type') == 'Currency':
-#                     if isinstance(field_value, (int, float)) and field_value < 0:
-#                         warnings.append({
-#                             "type": "validation",
-#                             "field": field_name
-#                         })
-                
-#                 # Check email format
-#                 if field_value is not None and field_info.get('type') == 'String' and 'email' in field_name.lower():
-#                     # Basic email validation - if it doesn't look like valid email
-#                     if isinstance(field_value, str) and '@' not in field_value:
-#                         warnings.append({
-#                             "type": "validation",
-#                             "field": field_name
-#                         })
-                
-#                 # Check FK references (ObjectId fields)
-#                 if field_name.endswith('Id') and field_value is not None:
-#                     # For test scenarios, assume FK is invalid if it contains "invalid" or "nonexistent"
-#                     if isinstance(field_value, str) and ("invalid" in field_value or "nonexistent" in field_value):
-#                         warnings.append({
-#                             "type": "validation",
-#                             "field": field_name
-#                         })
-            
-#             # Add password validation warning (always present for User entity)
-#             if hasattr(model_class, '__name__') and model_class.__name__ == 'User':
-#                 # Password field always triggers a validation warning in test scenarios
-#                 warnings.append({
-#                     "type": "validation",
-#                     "field": "password"
-#                 })
-            
-#         except Exception as e:
-#             if self.verbose:
-#                 print(f"❌ Error generating warnings: {e}")
-        
-#         return warnings
-    
-#     def _build_entity_ignore_fields(self, model_class, entity_data: Dict[str, Any]) -> List[str]:
-#         """Build ignore fields list from model metadata + custom ignore_fields"""
-#         ignore_fields = []
-        
-#         try:
-#             metadata = model_class.get_metadata()
-#             fields = metadata.get('fields', {})
-            
-#             # Add autogen and autoupdate fields
-#             for field_name, field_info in fields.items():
-#                 if field_info.get('autoGenerate') or field_info.get('autoUpdate'):
-#                     ignore_fields.append(field_name)
-            
-#             # Add custom ignore_fields from entity data
-#             custom_ignore = entity_data.get('ignore_fields', [])
-#             if custom_ignore:
-#                 ignore_fields.extend(custom_ignore)
-            
-#             # Always ignore ignore_fields itself
-#             if 'ignore_fields' not in ignore_fields:
-#                 ignore_fields.append('ignore_fields')
-                
-#         except Exception as e:
-#             if self.verbose:
-#                 print(f"❌ Error building ignore fields: {e}")
-        
-#         return ignore_fields

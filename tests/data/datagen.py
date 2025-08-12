@@ -4,6 +4,11 @@ import uuid
 from datetime import datetime, timedelta
 
 from typing import Dict, Any, List, Tuple
+import sys
+from pathlib import Path
+
+# Add project paths for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 import utils
 
 import json5
@@ -159,93 +164,4 @@ class DataGen():
             return "short"
         return None
     
-    async def save_generated_records_to_database(self, config_file: str, valid_records: List[Dict], invalid_records: List[Dict], verbose: bool = False) -> bool:
-        """Save generated records directly to database using DatabaseFactory"""
-        try:
-            # Import required modules
-            import sys
-            from pathlib import Path
-            sys.path.insert(0, str(Path(__file__).parent.parent))
-            
-            from app.config import Config
-            from app.db import DatabaseFactory
-            from datetime import datetime, timezone
-            import uuid
-            
-            # Initialize database connection
-            config = Config.initialize(config_file)
-            db_type: str = config.get('database', '')
-            db_uri: str = config.get('db_uri', '')
-            db_name: str = config.get('db_name', '')
-            
-            await DatabaseFactory.initialize(db_type, db_uri, db_name)
-            
-            saved_valid = 0
-            saved_invalid = 0
-            
-            # Save valid records
-            for i, record in enumerate(valid_records):
-                try:
-                    # Ensure required fields
-                    if 'id' not in record:
-                        record['id'] = f"generated_valid_{i+1}_{uuid.uuid4().hex[:8]}"
-                    if 'createdAt' not in record:
-                        record['createdAt'] = datetime.now(timezone.utc)
-                    if 'updatedAt' not in record:
-                        record['updatedAt'] = datetime.now(timezone.utc)
-                    
-                    # Save to database
-                    result, warnings = await DatabaseFactory.save_document("user", record, [])
-                    if result:
-                        saved_valid += 1
-                        if warnings and verbose:
-                            print(f"  ⚠️ Valid record warnings: {warnings}")
-                            
-                except Exception as e:
-                    if verbose:
-                        print(f"  ⚠️ Failed to save valid record {i+1}: {e}")
-            
-            # Save invalid records
-            for i, record in enumerate(invalid_records):
-                try:
-                    # Ensure required fields
-                    if 'id' not in record:
-                        record['id'] = f"generated_invalid_{i+1}_{uuid.uuid4().hex[:8]}"
-                    if 'createdAt' not in record:
-                        record['createdAt'] = datetime.now(timezone.utc)
-                    if 'updatedAt' not in record:
-                        record['updatedAt'] = datetime.now(timezone.utc)
-                    
-                    # Save to database (these may have validation warnings)
-                    result, warnings = await DatabaseFactory.save_document("user", record, [])
-                    if result:
-                        saved_invalid += 1
-                        if warnings and verbose:
-                            print(f"  ⚠️ Invalid record warnings: {warnings}")
-                            
-                except Exception as e:
-                    if verbose:
-                        print(f"  ⚠️ Failed to save invalid record {i+1}: {e}")
-            
-            # Close database connection
-            await DatabaseFactory.close()
-            
-            if verbose:
-                print(f"  ✅ Saved {saved_valid}/{len(valid_records)} valid records")
-                print(f"  ✅ Saved {saved_invalid}/{len(invalid_records)} invalid records")
-            
-            return True
-            
-        except Exception as e:
-            print(f"  ❌ Failed to save generated records: {e}")
-            # Ensure database connection is closed on error
-            try:
-                await DatabaseFactory.close()
-            except:
-                pass
-            return False
-
-
-    # Output to inspect
-    # print("VALID RECORDS (sample):", valid_records[:2])
-    # print("INVALID RECORDS (sample):", invalid_records[:2])
+    # DataGen focuses purely on data generation - database operations handled by orchestrator

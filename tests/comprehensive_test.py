@@ -24,11 +24,9 @@ from tests.test_pagination import PaginationTester
 from tests.test_sorting import SortingTester
 from tests.test_filtering import FilteringTester
 from tests.test_combinations import CombinationTester
-from tests.datagen import DataGen
 from tests.curl import CurlManager
 from tests.base_test import TestCase
-from tests.data_verifier import DataVerifier
-# import tests.utils as utils
+from tests.data.validation import Validator
 from app.config import Config
 
 
@@ -99,17 +97,13 @@ class ComprehensiveTestRunner:
             
             success = False
             # Wait for server to be ready
+            from tests.base_test import BaseTestFramework
             for attempt in range(30):
-                try:
-                    import requests
-                    response = requests.get(f"http://localhost:{self.server_port}/api/metadata", timeout=2)
-                    if response.status_code == 200:
-                        success = True
-                        if self.verbose:
-                            print(f"  ✅ Server ready (attempt {attempt + 1})")
-                        break
-                except:
-                    pass
+                if BaseTestFramework.check_server_health(f"http://localhost:{self.server_port}", timeout=2):
+                    success = True
+                    if self.verbose:
+                        print(f"  ✅ Server ready (attempt {attempt + 1})")
+                    break
                 time.sleep(1)
             
             if not success:
@@ -166,20 +160,16 @@ class ComprehensiveTestRunner:
         return filename
     
     async def create_test_data(self, config_file: str) -> bool:
-        """Create test data using test_data_setup.py"""
-        if self.verbose:
-            print("  🧹 Creating fresh test data...")
-        
+        """Create test data using unified data factory approach"""
         try:
-            data_gen = DataGen(self.entity)
-            valid, invalid = data_gen.generate_records(50, 20, self.verbose)
+            from tests.data.base_data import save_test_data
             
-            # Save all generated records (includes both random + known test users)
-            success = await data_gen.save_generated_records_to_database(config_file, valid, invalid, self.verbose)
+            # Use the new unified approach that handles all entities
+            success = await save_test_data(config_file, self.verbose)
             
             if success:
                 if self.verbose:
-                    print("  ✅ Test data created successfully (random + known test users)")
+                    print("  ✅ Test data created successfully for all entities")
                 return True
             else:
                 print("  ❌ Test data creation failed")
@@ -249,22 +239,15 @@ class ComprehensiveTestRunner:
         for config in self.configurations:
             print(f"  📋 Testing configuration: {config.name}")
             await self.start_server(self.create_config_file(config), False)
-            try:
-                import requests
-                
-                # Test basic endpoint
-                response = requests.get(f"http://localhost:{self.server_port}/api/metadata", timeout=5)
-                if response.status_code != 200:
-                    return False
-                
-            except Exception as e:
+            from tests.base_test import BaseTestFramework
+            if not BaseTestFramework.check_server_health(f"http://localhost:{self.server_port}", timeout=5):
                 return False
         end_time = time.time()
         print(f"  ✅ Connectivity test completed in {end_time - start_time:.1f}s")
         return True
 
 
-    async def run(self, results_file: str, config_file: str) -> bool:
+    async def run(self, results_file: str, config_file: str = '') -> bool:
         """Run tests using either file results or live HTTP requests"""
         if len(results_file) > 0:
             curl = CurlManager(self.verbose)
@@ -278,7 +261,7 @@ class ComprehensiveTestRunner:
         
         for test_type, (test_description, test_class) in self.test_cases.items():
             print(f"\n🧪 Running {test_description} tests...")
-            test_obj = test_class("", f"http://localhost:{self.server_port}", self.verbose)
+            test_obj = test_class(config_file, f"http://localhost:{self.server_port}", self.verbose)
             
             suite_counter = TestCounter()
             
@@ -289,7 +272,7 @@ class ComprehensiveTestRunner:
                 try:
                     if results is None:
                         # Live HTTP request - returns (bool, dict)
-                        http_status, result = test_obj.make_api_request(test_obj.method, test_obj.url, expected_status=test_obj.expected_status)
+                        http_status, result = test_obj.make_api_request(test.method, test.url, expected_status=test.expected_status)
                     else:
                         # Use file results - status is int, need to compare
                         url_key = test.url
@@ -303,8 +286,8 @@ class ComprehensiveTestRunner:
                     status = http_status == test.expected_status
 
                     if status and result:
-                        verifier = DataVerifier(test, result, config, self.verbose)
-                        if verifier.verify_test_case(): # test_class.generate_expected_response() ):
+                        validator = Validator(test, result, config, self.verbose)
+                        if validator.validate_test_case():
                             print(f"  ✅ {test.description} passed")
                             suite_counter.pass_test()
                         else:
@@ -495,6 +478,10 @@ async def main():
     if args.newdata_only:
         success = await runner.create_new_data(args.config)
 
+    # Initialize all test data scenarios and TestCase objects
+    from tests.data import BaseDataFactory
+    BaseDataFactory.initialize_all()
+    
     # Handle curl modes with clean orchestration
     runner = ComprehensiveTestRunner(verbose=args.verbose, dbs=dbs, connection=True, test_cases=test_cases, entity=args.entity, request_delay=args.delay)
     try:

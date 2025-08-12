@@ -1,17 +1,62 @@
-#!/usr/bin/env python3
 """
-Fixed test records for User entity.
-Creates specific known test records that the test framework expects.
+User entity data generation - combines fixed test scenarios with dynamic generation.
 """
 
 from datetime import datetime
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
+import sys
+from pathlib import Path
 
-class FixedUsers:
-    """Creates specific known test records for User entity."""
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from . import BaseDataFactory
+from .datagen import DataGen
+
+
+class UserDataFactory(BaseDataFactory):
+    """Data generation for User entity - combines fixed scenarios with dynamic generation"""
     
     @staticmethod
-    def create_known_test_records() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    def generate_data() -> Tuple[List[Dict], List[Dict]]:
+        """Generate ALL user data (fixed + random) - User factory controls its own counts"""
+        # Get fixed test scenarios
+        fixed_valid, fixed_invalid = UserDataFactory._create_known_test_records()
+        
+        # Generate random records using DataGen - User-specific counts
+        datagen = DataGen(entity="user")
+        random_valid, random_invalid = datagen.generate_records(
+            good_count=50,  # User factory decides its own counts
+            bad_count=20, 
+            include_known_test_records=False  # We already have fixed records
+        )
+        
+        # Combine fixed + random
+        all_valid = fixed_valid + random_valid
+        all_invalid = fixed_invalid + random_invalid
+        
+        return all_valid, all_invalid
+    
+    @staticmethod
+    def get_test_scenarios() -> Dict[str, Dict]:
+        """Get test scenarios for this entity - reuse existing test records"""
+        valid_records, invalid_records = UserDataFactory._create_known_test_records()
+        scenarios = {}
+        
+        # Convert list of records to dict keyed by ID
+        for record in valid_records + invalid_records:
+            scenarios[record['id']] = record
+            
+        return scenarios
+    
+    @staticmethod
+    def get_test_record_by_id(record_id: str) -> Optional[Dict]:
+        """Use base class universal lookup"""
+        return BaseDataFactory.get_test_record_by_id(record_id)
+    
+    @staticmethod
+    def _create_known_test_records() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """Create specific known test users that the test framework expects."""
         valid_records = []
         invalid_records = []
@@ -31,8 +76,6 @@ class FixedUsers:
                 "gender": "male",  # Valid enum
                 "netWorth": 50000.0,  # Valid currency
                 "isAccountOwner": True,
-                "createdAt": base_time.isoformat(),
-                "updatedAt": base_time.isoformat()
             },
             
             "valid_fk_only_user_123456": {
@@ -44,8 +87,6 @@ class FixedUsers:
                 "gender": "female",  # Valid enum
                 "netWorth": 75000.0,  # Valid currency
                 "isAccountOwner": False,
-                "createdAt": base_time.isoformat(),
-                "updatedAt": base_time.isoformat()
             },
             
             # Invalid test users (for validation testing)
@@ -58,8 +99,6 @@ class FixedUsers:
                 "gender": "invalid_gender",  # Invalid enum
                 "netWorth": 50000.0,  # Valid currency
                 "isAccountOwner": True,
-                "createdAt": base_time.isoformat(),
-                "updatedAt": base_time.isoformat()
             },
             
             "bad_currency_user_123456": {
@@ -71,8 +110,6 @@ class FixedUsers:
                 "gender": "male",  # Valid enum
                 "netWorth": -5000.0,  # Invalid currency (negative)
                 "isAccountOwner": True,
-                "createdAt": base_time.isoformat(),
-                "updatedAt": base_time.isoformat()
             },
             
             "bad_fk_user_123456": {
@@ -85,8 +122,6 @@ class FixedUsers:
                 "netWorth": 75000.0,  # Valid currency
                 "accountId": "nonexistent_account_123456",  # Invalid FK
                 "isAccountOwner": False,
-                "createdAt": base_time.isoformat(),
-                "updatedAt": base_time.isoformat()
             },
             
             "multiple_errors_user_123456": {
@@ -99,8 +134,6 @@ class FixedUsers:
                 "netWorth": -10000.0,  # Invalid currency
                 "accountId": "nonexistent_account_456789",  # Invalid FK
                 "isAccountOwner": False,
-                "createdAt": base_time.isoformat(),
-                "updatedAt": base_time.isoformat()
             }
         }
         
@@ -112,14 +145,3 @@ class FixedUsers:
                 valid_records.append(user_data)
         
         return valid_records, invalid_records
-
-# Test user constants for easy reference in test cases
-TEST_USERS = {
-    "valid_all": "valid_all_user_123456",
-    "valid_fk_only": "valid_fk_only_user_123456", 
-    "bad_enum": "bad_enum_user_123456",
-    "bad_currency": "bad_currency_user_123456",
-    "bad_fk": "bad_fk_user_123456",
-    "multiple_errors": "multiple_errors_user_123456",
-    "nonexistent": "nonexistent_user_123456"
-}

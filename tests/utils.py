@@ -28,3 +28,9 @@ def get_model_class(entity_name: str) -> type:
         
     except ImportError as e:
         raise ImportError(f"Could not import module app.models.{module_name} for entity '{entity_name}'") from e 
+
+def get_fk_entity(field_name: str) -> str | None:
+    if len(field_name) > 2 and field_name.endswith("id"):
+        return field_name[2:]
+    else:
+        return None 
