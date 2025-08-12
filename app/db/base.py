@@ -41,6 +41,41 @@ class DatabaseInterface(ABC):
             return doc_id
         return str(doc_id).lower()
     
+    def _normalize_date_string(self, date_str: str) -> str:
+        """Normalize date string to ISO format for consistent date comparison across databases."""
+        if not isinstance(date_str, str):
+            return date_str
+        
+        date_str = date_str.strip()
+        
+        # If already has time component, return as-is
+        if 'T' in date_str or ' ' in date_str:
+            return date_str
+            
+        # If just date (YYYY-MM-DD), add time component for consistency
+        if len(date_str) == 10 and date_str.count('-') == 2:
+            return f"{date_str}T00:00:00"
+            
+        return date_str
+    
+    def _convert_to_date_object(self, date_value: Any) -> Any:
+        """Convert ISO date string to native date object for database operations."""
+        from datetime import datetime
+        
+        if not isinstance(date_value, str):
+            return date_value
+        
+        try:
+            # First normalize the date string format
+            normalized_str = self._normalize_date_string(date_value)
+            
+            # Convert to datetime object for native date comparisons
+            return datetime.fromisoformat(normalized_str.replace('Z', '+00:00'))
+            
+        except (ValueError, AttributeError):
+            # If conversion fails, return original value
+            return date_value
+    
     def _wrap_database_operation(self, operation: str, entity: str):
         """Decorator to wrap database operations with error handling"""
         def decorator(func):
