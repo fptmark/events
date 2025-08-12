@@ -151,7 +151,7 @@ class DataGen():
                 # Generate string that's too long
                 return self.rand_string(max_len + 1, max_len + 10)
         if t == "Boolean":
-            return "not_a_boolean"
+            return None  # Invalid but still sortable (None sorts before boolean values)
         if t == "Date":
             # ES is stricter about invalid dates - use a real but incorrect date format
             return "2023-99-99"  # Invalid month/day but parseable

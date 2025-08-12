@@ -24,9 +24,49 @@ class SortingTester(BaseTestFramework):
         """Create and register TestCase objects for this test suite"""
         from tests.data import BaseDataFactory
         test_cases = [
-            TestCase("GET", "user", "", "sort=username", "Get user list sorted by username ascending", 200, expected_sort=[('username', 'asc')]),
-            TestCase("GET", "user", "", "sort=-username", "Get user list sorted by username descending", 200, expected_sort=[('username', 'desc')]),
-            TestCase("GET", "user", "", "sort=createdAt", "Get user list sorted by createdAt ascending", 200, expected_sort=[('createdAt', 'asc')]),
+            # Single field sorting - String fields
+            TestCase("GET", "user", "", "sort=username", "Sort by username ascending", 200),
+            TestCase("GET", "user", "", "sort=-username", "Sort by username descending", 200),
+            TestCase("GET", "user", "", "sort=firstName", "Sort by firstName ascending", 200),
+            TestCase("GET", "user", "", "sort=-firstName", "Sort by firstName descending", 200),
+            TestCase("GET", "user", "", "sort=lastName", "Sort by lastName ascending", 200),
+            TestCase("GET", "user", "", "sort=-lastName", "Sort by lastName descending", 200),
+            TestCase("GET", "user", "", "sort=email", "Sort by email ascending", 200),
+            TestCase("GET", "user", "", "sort=-email", "Sort by email descending", 200),
+            
+            # Single field sorting - Currency/Numeric fields
+            TestCase("GET", "user", "", "sort=netWorth", "Sort by netWorth ascending", 200),
+            TestCase("GET", "user", "", "sort=-netWorth", "Sort by netWorth descending", 200),
+            
+            # Single field sorting - Date fields
+            TestCase("GET", "user", "", "sort=dob", "Sort by date of birth ascending", 200),
+            TestCase("GET", "user", "", "sort=-dob", "Sort by date of birth descending", 200),
+            TestCase("GET", "user", "", "sort=createdAt", "Sort by createdAt ascending", 200),
+            TestCase("GET", "user", "", "sort=-createdAt", "Sort by createdAt descending", 200),
+            
+            # Single field sorting - Boolean fields
+            TestCase("GET", "user", "", "sort=isAccountOwner", "Sort by isAccountOwner ascending", 200),
+            TestCase("GET", "user", "", "sort=-isAccountOwner", "Sort by isAccountOwner descending", 200),
+            
+            # Single field sorting - Enum fields
+            TestCase("GET", "user", "", "sort=gender", "Sort by gender ascending", 200),
+            TestCase("GET", "user", "", "sort=-gender", "Sort by gender descending", 200),
+            
+            # Multiple field sorting - Mixed data types
+            TestCase("GET", "user", "", "sort=firstName,lastName", "Sort by firstName then lastName (both asc)", 200),
+            TestCase("GET", "user", "", "sort=-firstName,lastName", "Sort by firstName desc then lastName asc", 200),
+            TestCase("GET", "user", "", "sort=firstName,-lastName", "Sort by firstName asc then lastName desc", 200),
+            TestCase("GET", "user", "", "sort=-firstName,-lastName", "Sort by firstName desc then lastName desc", 200),
+            TestCase("GET", "user", "", "sort=dob,netWorth", "Sort by date then currency (both asc)", 200),
+            TestCase("GET", "user", "", "sort=-dob,netWorth", "Sort by date desc then currency asc", 200),
+            TestCase("GET", "user", "", "sort=gender,firstName,netWorth", "Sort by enum, string, then currency", 200),
+            TestCase("GET", "user", "", "sort=isAccountOwner,-dob,firstName", "Sort by boolean, date desc, then string", 200),
+            
+            # Edge cases
+            TestCase("GET", "user", "", "sort=createdAt,updatedAt", "Sort by auto-generated date fields", 200),
+            TestCase("GET", "user", "", "sort=firstName,firstName", "Sort by same field twice (edge case)", 200),
+            
+            # Individual user with sort parameter (should be ignored)
             TestCase("GET", "user", "valid_all_user_123456", "sort=username", "Get individual user with sort parameter", 200),
         ]
         BaseDataFactory.register_test_cases('sort', test_cases)

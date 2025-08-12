@@ -33,9 +33,10 @@ class Validator:
         self.metadata = model_class.get_metadata()
         self.fields = self.metadata.get('fields', {})
         
-        # Determine request type
+        # Determine request type and case sensitivity
         self.is_single_request = bool(test_case.id)
         self.fk_validation_enabled = self.config.get('fk_validation', '') in ['single', 'multiple']
+        self.case_sensitive = self.config.get('case_sensitive', False)  # Default to case-insensitive
         
     def validate_test_case(self) -> bool:
         """Main validation entry point"""
@@ -176,14 +177,16 @@ class Validator:
         if not self._validate_pagination():
             return False
             
-        # Sort validation
-        if self.test_case.expected_sort:
-            if not self._validate_sort_order(data):
+        # Sort validation - parse from URL
+        sort_criteria = self.test_case.get_sort_criteria()
+        if sort_criteria:
+            if not self._validate_sort_order(data, sort_criteria):
                 return False
                 
-        # Filter validation  
-        if self.test_case.expected_filter:
-            if not self._validate_filtering(data):
+        # Filter validation - parse from URL
+        filter_criteria = self.test_case.get_filter_criteria()
+        if filter_criteria:
+            if not self._validate_filtering(data, filter_criteria):
                 return False
                 
         return True
@@ -256,57 +259,214 @@ class Validator:
             
         return True
     
-    def _validate_sort_order(self, data: List[Dict]) -> bool:
-        """Validate data is sorted according to expected_sort"""
+    def _validate_sort_order(self, data: List[Dict], sort_criteria: List[Tuple[str, str]]) -> bool:
+        """Validate data is sorted according to sort criteria with enhanced multiple criteria support"""
+        if not sort_criteria:
+            return True  # No sort criteria to validate
+            
         if len(data) < 2:
             return True  # Can't validate sort with < 2 items
-            
-        expected_sort = self.test_case.expected_sort
         
+        # Enhanced validation with better error reporting
         for i in range(len(data) - 1):
             current = data[i]
             next_item = data[i + 1]
             
-            # Check sort order for each field in sequence
-            for field_name, direction in expected_sort:
-                current_val = current.get(field_name)
-                next_val = next_item.get(field_name)
-                
-                # Compare values using metadata-aware comparison
-                comparison = self._compare_values(current_val, next_val, field_name)
-                
-                if comparison == 0:
-                    continue  # Equal, check next sort field
-                    
-                # Check if order is correct
-                if direction == 'asc' and comparison > 0:
-                    if self.verbose:
-                        print(f"    ❌ Sort order violation: '{current_val}' should come after '{next_val}' for field '{field_name}' (asc)")
-                    return False
-                elif direction == 'desc' and comparison < 0:
-                    if self.verbose:
-                        print(f"    ❌ Sort order violation: '{current_val}' should come before '{next_val}' for field '{field_name}' (desc)")
-                    return False
-                else:
-                    break  # Correct order, move to next pair
+            if not self._validate_sort_pair(current, next_item, sort_criteria, i):
+                return False
                     
         return True
     
-    def _validate_filtering(self, data: List[Dict]) -> bool:
-        """Validate all data items match filter criteria"""
-        expected_filter = self.test_case.expected_filter
-        
-        for i, record in enumerate(data):
-            for field_name, expected_value in expected_filter.items():
-                actual_value = record.get(field_name)
-                expected_typed = self._convert_filter_value(field_name, expected_value)
+    def _validate_sort_pair(self, current: Dict, next_item: Dict, sort_criteria: List[Tuple[str, str]], pair_index: int) -> bool:
+        """Validate sort order between two adjacent records"""
+        # Check sort order for each field in sequence
+        for field_idx, (field_name, direction) in enumerate(sort_criteria):
+            current_val = current.get(field_name)
+            next_val = next_item.get(field_name)
+            
+            # Compare values using metadata-aware comparison
+            comparison = self._compare_values(current_val, next_val, field_name)
+            
+            if comparison == 0:
+                continue  # Equal values, check next sort field for tie-breaking
                 
-                if actual_value != expected_typed:
-                    if self.verbose:
-                        print(f"    ❌ Filter mismatch: Record {i} has {field_name}='{actual_value}', expected '{expected_typed}'")
-                    return False
-                    
+            # Check if order is correct
+            expected_order = comparison <= 0 if direction == 'asc' else comparison >= 0
+            
+            if not expected_order:
+                if self.verbose:
+                    direction_text = "ascending" if direction == 'asc' else "descending"
+                    sort_context = f"sort field {field_idx + 1}/{len(sort_criteria)} ({field_name} {direction_text})"
+                    print(f"    ❌ Sort violation at records {pair_index}-{pair_index + 1}: '{current_val}' vs '{next_val}' for {sort_context}")
+                return False
+            else:
+                # Correct order found, no need to check remaining fields
+                break
+        
         return True
+    
+    def _validate_filtering(self, data: List[Dict], filter_criteria: Dict[str, Any]) -> bool:
+        """Validate all data items match filter criteria with enhanced multiple criteria support"""
+        if not filter_criteria:
+            return True
+            
+        # Group filters by field for better processing of range filters
+        field_filters = {}
+        for filter_key, expected_value in filter_criteria.items():
+            if ':' in filter_key:
+                field_name, operator = filter_key.split(':', 1)
+                if field_name not in field_filters:
+                    field_filters[field_name] = []
+                field_filters[field_name].append((operator, expected_value))
+            else:
+                field_name = filter_key
+                if field_name not in field_filters:
+                    field_filters[field_name] = []
+                field_filters[field_name].append(('eq', expected_value))
+        
+        # Validate each record against all filters
+        for i, record in enumerate(data):
+            if not self._validate_record_filters(record, field_filters, i):
+                return False
+                        
+        return True
+    
+    def _validate_record_filters(self, record: Dict, field_filters: Dict[str, List[Tuple[str, str]]], record_index: int) -> bool:
+        """Validate a single record against all field filters"""
+        for field_name, filters in field_filters.items():
+            actual_value = record.get(field_name)
+            
+            # All filters for this field must pass
+            for operator, expected_value in filters:
+                if operator == 'eq':
+                    # Handle string vs non-string field filtering differently
+                    field_info = self.fields.get(field_name, {})
+                    field_type = field_info.get('type', 'String')
+                    
+                    if field_type == 'String' and 'enum' not in field_info:
+                        # String fields use partial matching (contains) - current server behavior
+                        if actual_value is None:
+                            if self.verbose:
+                                print(f"    ❌ Filter mismatch: Record {record_index} has {field_name}=null, can't contain '{expected_value}'")
+                            return False
+                        
+                        # Case-insensitive partial matching to match server behavior
+                        actual_str = str(actual_value).lower() if not self.case_sensitive else str(actual_value)
+                        expected_str = str(expected_value).lower() if not self.case_sensitive else str(expected_value)
+                        
+                        if expected_str not in actual_str:
+                            if self.verbose:
+                                print(f"    ❌ Filter mismatch: Record {record_index} has {field_name}='{actual_value}', doesn't contain '{expected_value}'")
+                            return False
+                    else:
+                        # Non-string fields (enums, numbers, dates, etc.) use exact matching
+                        expected_typed = self._convert_filter_value(field_name, expected_value)
+                        if actual_value != expected_typed:
+                            if self.verbose:
+                                print(f"    ❌ Filter mismatch: Record {record_index} has {field_name}='{actual_value}', expected '{expected_typed}'")
+                            return False
+                else:
+                    # Comparison filter
+                    if not self._validate_comparison_filter(record, field_name, operator, expected_value, record_index):
+                        return False
+                        
+        return True
+    
+    def _validate_comparison_filter(self, record: Dict, field_name: str, operator: str, expected_value: str, record_index: int) -> bool:
+        """Validate comparison filter (gte, lte, gt, lt) for a single record with enhanced type handling"""
+        actual_value = record.get(field_name)
+        
+        # Handle null values - most comparison operators fail on null
+        if actual_value is None:
+            # Only equality can match null
+            if operator == 'eq' and expected_value.lower() in ['null', 'none', '']:
+                return True
+            else:
+                if self.verbose:
+                    print(f"    ❌ Filter mismatch: Record {record_index} has {field_name}=null, can't apply {operator} '{expected_value}'")
+                return False
+        
+        # Type-aware conversion with enhanced error handling
+        try:
+            actual_typed, expected_typed = self._convert_values_for_comparison(actual_value, expected_value, field_name)
+        except (ValueError, TypeError) as e:
+            if self.verbose:
+                print(f"    ❌ Filter error: Record {record_index} - can't compare {field_name}='{actual_value}' {operator} '{expected_value}': {e}")
+            return False
+        
+        # Perform comparison based on operator with better error handling
+        try:
+            if operator == 'gte':
+                result = actual_typed >= expected_typed
+            elif operator == 'lte':
+                result = actual_typed <= expected_typed
+            elif operator == 'gt':
+                result = actual_typed > expected_typed
+            elif operator == 'lt':
+                result = actual_typed < expected_typed
+            elif operator == 'eq':
+                result = actual_typed == expected_typed
+            elif operator == 'ne':
+                result = actual_typed != expected_typed
+            else:
+                if self.verbose:
+                    print(f"    ❌ Filter error: Unknown operator '{operator}' for {field_name}")
+                return False
+        except TypeError as e:
+            if self.verbose:
+                print(f"    ❌ Filter error: Record {record_index} - incompatible types for {field_name} {operator} comparison: {e}")
+            return False
+            
+        if not result:
+            if self.verbose:
+                print(f"    ❌ Filter mismatch: Record {record_index} has {field_name}='{actual_value}', failed {operator} '{expected_value}'")
+            return False
+            
+        return True
+    
+    def _convert_values_for_comparison(self, actual_value: Any, expected_value: str, field_name: str) -> Tuple[Any, Any]:
+        """Convert actual and expected values to compatible types for comparison"""
+        field_info = self.fields.get(field_name, {})
+        field_type = field_info.get('type', 'String')
+        
+        if field_type in ['Integer', 'Currency', 'Float']:
+            actual_typed = float(actual_value)
+            expected_typed = float(expected_value)
+        elif field_type in ['Date', 'Datetime']:
+            from datetime import datetime
+            
+            # Handle actual value
+            if isinstance(actual_value, str):
+                actual_typed = datetime.fromisoformat(actual_value.replace('Z', '+00:00'))
+            elif hasattr(actual_value, 'year'):  # datetime-like object
+                actual_typed = actual_value
+            else:
+                raise ValueError(f"Cannot convert actual value '{actual_value}' to datetime")
+            
+            # Handle expected value
+            if isinstance(expected_value, str):
+                # Try different date formats
+                try:
+                    expected_typed = datetime.fromisoformat(expected_value.replace('Z', '+00:00'))
+                except ValueError:
+                    # Try date-only format
+                    expected_typed = datetime.fromisoformat(f"{expected_value}T00:00:00+00:00")
+            else:
+                expected_typed = expected_value
+                
+        elif field_type == 'Boolean':
+            actual_typed = bool(actual_value)
+            expected_typed = expected_value.lower() in ['true', '1', 'yes', 'on']
+        else:
+            # String comparison - apply case sensitivity config
+            if self.case_sensitive:
+                actual_typed = str(actual_value)
+                expected_typed = str(expected_value)
+            else:
+                actual_typed = str(actual_value).lower()
+                expected_typed = str(expected_value).lower()
+        
+        return actual_typed, expected_typed
     
     # ==================== HELPER METHODS ====================
     
@@ -443,9 +603,11 @@ class Validator:
             bool1, bool2 = bool(val1), bool(val2)
             return -1 if bool1 < bool2 else (1 if bool1 > bool2 else 0)
             
-        # Default: case-insensitive string comparison
-        str1 = str(val1).lower()
-        str2 = str(val2).lower()
+        # String comparison - respect case sensitivity config
+        if self.case_sensitive:
+            str1, str2 = str(val1), str(val2)
+        else:
+            str1, str2 = str(val1).lower(), str(val2).lower()
         return -1 if str1 < str2 else (1 if str1 > str2 else 0)
     
     def _convert_filter_value(self, field_name: str, filter_value: str) -> Any:

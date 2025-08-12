@@ -76,6 +76,7 @@ class UserDataFactory(BaseDataFactory):
                 "gender": "male",  # Valid enum
                 "netWorth": 50000.0,  # Valid currency
                 "isAccountOwner": True,
+                "dob": "1985-06-15",  # Date for sorting/filtering tests
             },
             
             "valid_fk_only_user_123456": {
@@ -87,6 +88,7 @@ class UserDataFactory(BaseDataFactory):
                 "gender": "female",  # Valid enum
                 "netWorth": 75000.0,  # Valid currency
                 "isAccountOwner": False,
+                "dob": "1992-03-20",  # Different decade for range tests
             },
             
             # Invalid test users (for validation testing)
@@ -99,6 +101,7 @@ class UserDataFactory(BaseDataFactory):
                 "gender": "invalid_gender",  # Invalid enum
                 "netWorth": 50000.0,  # Valid currency
                 "isAccountOwner": True,
+                "dob": "1978-11-08",  # Earlier decade for comprehensive range tests
             },
             
             "bad_currency_user_123456": {
@@ -110,6 +113,7 @@ class UserDataFactory(BaseDataFactory):
                 "gender": "male",  # Valid enum
                 "netWorth": -5000.0,  # Invalid currency (negative)
                 "isAccountOwner": True,
+                "dob": "2001-12-25",  # 2000s for more recent date testing
             },
             
             "bad_fk_user_123456": {
@@ -122,6 +126,7 @@ class UserDataFactory(BaseDataFactory):
                 "netWorth": 75000.0,  # Valid currency
                 "accountId": "nonexistent_account_123456",  # Invalid FK
                 "isAccountOwner": False,
+                "dob": "1995-04-10",  # Mid-90s for good date range coverage
             },
             
             "multiple_errors_user_123456": {
@@ -134,6 +139,7 @@ class UserDataFactory(BaseDataFactory):
                 "netWorth": -10000.0,  # Invalid currency
                 "accountId": "nonexistent_account_456789",  # Invalid FK
                 "isAccountOwner": False,
+                "dob": "1988-09-14",  # Late 80s for comprehensive decade coverage
             }
         }
         
