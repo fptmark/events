@@ -71,7 +71,10 @@ export class RestService {
   private handleError(error: any): Observable<never> {
     // Clear any existing notifications and let NotificationService handle all error details
     this.notificationService.clear()
-    this.notificationService.showError(error)
+    
+    // Extract the response body from HTTP errors
+    const errorResponse = error.error || error;
+    this.notificationService.showError(errorResponse)
     return throwError(() => error)
   }
 

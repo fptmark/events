@@ -67,8 +67,7 @@ export class ValidationService {
         })
         .map((notif: any) => ({
           field: notif.field,
-          constraint: notif.message,
-          value: notif.value
+          constraint: notif.message
         }));
       
       console.log('DEBUG: Extracted ValidationFailures:', validationFailures);
@@ -92,8 +91,7 @@ export class ValidationService {
 
     return {
       field: fieldName,
-      constraint: this.getValidationMessage(entityType, fieldName, errors) || 'Invalid value',
-      value: value
+      constraint: this.getValidationMessage(entityType, fieldName, errors) || 'Invalid value'
     };
   }
 

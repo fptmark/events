@@ -18,7 +18,6 @@ export type NotificationType = typeof NOTIFICATION_SUCCESS | typeof NOTIFICATION
 export interface ValidationFailure {
   field: string;
   constraint: string;
-  value?: any;
 }
 
 export interface ErrorContext {
@@ -45,6 +44,7 @@ export interface Notification {
   expandable?: boolean;
   expanded?: boolean;
   notifications?: any[];
+  responseData?: any[];
 }
 
 @Injectable({
@@ -123,8 +123,7 @@ export class NotificationService {
           if (notif.field && notif.level === 'error') {
             invalid_fields.push({
               field: notif.field,
-              constraint: notif.message,
-              value: notif.value
+              constraint: notif.message
             });
           }
           
@@ -164,7 +163,8 @@ export class NotificationService {
         autoClose: notificationType === NOTIFICATION_SUCCESS,
         expandable: hasDetailedNotifications,
         expanded: false,
-        notifications: response.notifications || []
+        notifications: response.notifications || [],
+        responseData: response.data
       });
       
       if (notificationType === NOTIFICATION_SUCCESS) {
@@ -242,7 +242,8 @@ export class NotificationService {
       autoClose: false, // Don't auto-close when there are issues
       expandable: hasDetailedNotifications,
       expanded: false,
-      notifications: flatNotifications
+      notifications: flatNotifications,
+      responseData: response.data
     });
   }
 

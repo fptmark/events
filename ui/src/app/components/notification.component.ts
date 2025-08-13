@@ -19,6 +19,7 @@ interface NotificationViewModel extends Notification {
   expandable?: boolean
   expanded?: boolean
   notifications?: any[]
+  responseData?: any[]  // Add access to response data for field value lookup
 }
 
 @Component({
@@ -66,8 +67,8 @@ interface NotificationViewModel extends Notification {
                     <span *ngIf="notification.entity_id" class="entity-label">{{ notification.entity_type }} {{ notification.entity_id }}:</span>
                     <span *ngIf="notification.field" class="field-label">{{ getFieldDisplayName(notification.field) }}:</span>
                     {{ notification.message }}
-                    <span *ngIf="notification.value !== undefined && notification.value !== null" class="field-value">
-                      (value: {{ formatValue(notification.value) }})
+                    <span *ngIf="notification.field && getFieldValueFromData(notification)" class="field-value">
+                      (value: {{ formatValue(getFieldValueFromData(notification)) }})
                     </span>
                   </div>
                   
@@ -200,5 +201,24 @@ export class NotificationComponent implements OnInit, OnDestroy {
       case 'success': return 'Success';
       default: return level.charAt(0).toUpperCase() + level.slice(1);
     }
+  }
+
+  getFieldValueFromData(notification: any): any {
+    // Get field value from response data array using entity_id
+    if (!notification.entity_id || !notification.field) {
+      return null;
+    }
+
+    const currentNotification = (this.notificationService.notification$ as any).value;
+    if (!currentNotification?.responseData) {
+      return null;
+    }
+
+    // Find entity in response data by id
+    const entity = currentNotification.responseData.find((item: any) => 
+      item.id === notification.entity_id
+    );
+
+    return entity ? entity[notification.field] : null;
   }
 }

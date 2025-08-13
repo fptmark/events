@@ -393,8 +393,19 @@ export class EntityFormComponent implements OnInit {
   private handleApiFailure(err: any, operation: string): void {
     console.error(`Error ${operation} entity:`, err);
     
-    // Handle form validation state
-    this.handleApiError(err);
+    // For HTTP errors, the REST service already handled notifications
+    // Only handle validation state for form field highlighting
+    if (err.status) {
+      // This is an HTTP error - REST service already showed notification
+      // Only extract validation failures for form field highlighting
+      const validationFailures = this.validationService.convertApiErrorToValidationFailures(err.error);
+      if (validationFailures.length > 0) {
+        this.validationErrors = validationFailures;
+      }
+    } else {
+      // Non-HTTP errors (like network failures) - handle normally
+      this.handleApiError(err);
+    }
     
     // Reset submitting flag
     this.submitting = false;
