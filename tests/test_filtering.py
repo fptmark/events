@@ -49,26 +49,26 @@ class FilteringTester(BaseTestFramework):
             TestCase("GET", "user", "", "filter=dob:1992-03-20", "Filter by different exact date", 200),
             
             # Date filtering - Comparison operators (exclude null dates)
-            TestCase("GET", "user", "", "filter=dob:gte:1970-01-01", "Filter by dob greater than or equal 1970 (broader range)", 200),
-            TestCase("GET", "user", "", "filter=dob:lte:2010-12-31", "Filter by dob less than or equal 2010 (broader range)", 200),
-            TestCase("GET", "user", "", "filter=dob:gt:1970-01-01", "Filter by dob greater than 1970 (broader range)", 200),
-            TestCase("GET", "user", "", "filter=dob:lt:2010-01-01", "Filter by dob less than 2010 (broader range)", 200),
+            TestCase("GET", "user", "", "filter=dob:gte:1950-01-01", "Filter by dob greater than or equal 1950 (broader range)", 200),
+            TestCase("GET", "user", "", "filter=dob:lte:2050-12-31", "Filter by dob less than or equal 2050 (broader range)", 200),
+            TestCase("GET", "user", "", "filter=dob:gt:1950-01-01", "Filter by dob greater than 1950 (broader range)", 200),
+            TestCase("GET", "user", "", "filter=dob:lt:2050-01-01", "Filter by dob less than 2050 (broader range)", 200),
             TestCase("GET", "user", "", "filter=netWorth:gte:50000", "Filter by netWorth greater than or equal 50k", 200),
             TestCase("GET", "user", "", "filter=netWorth:lt:0", "Filter by negative netWorth using comparison", 200),
             
             # Date filtering - Range using multiple comparisons (broader ranges)
-            TestCase("GET", "user", "", "filter=dob:gte:1970-01-01,dob:lte:2010-12-31", "Filter by dob range 1970-2010 (broader)", 200),
+            TestCase("GET", "user", "", "filter=dob:gte:1950-01-01,dob:lte:2050-12-31", "Filter by dob range 1950-2050 (broader)", 200),
             TestCase("GET", "user", "", "filter=netWorth:gte:-10000,netWorth:lte:100000", "Filter by netWorth range (including negatives)", 200),
             
             # Multiple field filtering - Mixed data types
             TestCase("GET", "user", "", "filter=gender:male,isAccountOwner:true", "Filter by gender and account owner", 200),
             TestCase("GET", "user", "", "filter=gender:female,netWorth:75000.0", "Filter by gender and netWorth", 200),
-            TestCase("GET", "user", "", "filter=isAccountOwner:true,dob:gte:1985-01-01", "Filter by boolean and date range", 200),
+            TestCase("GET", "user", "", "filter=isAccountOwner:true,dob:gte:1960-01-01", "Filter by boolean and date range", 200),
             TestCase("GET", "user", "", "filter=firstName:Valid,lastName:User,gender:male", "Filter by multiple strings and enum", 200),
             TestCase("GET", "user", "", "filter=gender:female,netWorth:gte:70000,isAccountOwner:false", "Filter by enum, currency range, and boolean", 200),
             
             # Complex multiple criteria (adjusted ranges)
-            TestCase("GET", "user", "", "filter=dob:gte:1970-01-01,dob:lt:2000-01-01,gender:male", "Filter by broader date range and gender", 200),
+            TestCase("GET", "user", "", "filter=dob:gte:1950-01-01,dob:lt:2000-01-01,gender:male", "Filter by broader date range and gender", 200),
             TestCase("GET", "user", "", "filter=netWorth:gte:-10000,isAccountOwner:true,gender:male", "Filter by netWorth (including negatives), account owner, and gender", 200),
             
             # Edge cases

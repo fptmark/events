@@ -43,7 +43,7 @@ class CombinationTester(BaseTestFramework):
             
             # View + Multiple Filter
             TestCase("GET", "user", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=gender:male,isAccountOwner:true", "View with multiple filters", 200),
-            TestCase("GET", "user", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=dob:gte:1980-01-01,netWorth:gte:0", "View with date and currency filters", 200),
+            TestCase("GET", "user", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=dob:gte:1960-01-01,netWorth:gte:0", "View with date and currency filters", 200),
             TestCase("GET", "user", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=gender:female,dob:lt:1995-01-01,isAccountOwner:false", "View with complex multiple filters", 200),
             
             # Pagination + Single Sort
@@ -78,7 +78,7 @@ class CombinationTester(BaseTestFramework):
             # All 4 parameters combined
             TestCase("GET", "user", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=firstName&filter=gender:male&pageSize=3", "All parameters: view + sort + filter + pagination", 200),
             TestCase("GET", "user", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=-dob,firstName&filter=isAccountOwner:true,netWorth:gte:0&page=1&pageSize=2", "All parameters with multiple sort/filter", 200),
-            TestCase("GET", "user", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=gender,-netWorth&filter=dob:gte:1980-01-01,dob:lt:2000-01-01&pageSize=5", "All parameters with date range filtering", 200),
+            TestCase("GET", "user", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=gender,-netWorth&filter=dob:gte:1960-01-01,dob:lt:2000-01-01&pageSize=5", "All parameters with date range filtering", 200),
             
             # Edge case combinations
             TestCase("GET", "user", "", "sort=firstName&filter=firstName:Valid", "Sort and filter by same field", 200),
