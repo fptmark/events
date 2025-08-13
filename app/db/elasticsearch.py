@@ -21,18 +21,20 @@ class ElasticsearchDatabase(DatabaseInterface):
         if not document:
             return document
         
-        # Known datetime fields that need conversion
-        datetime_fields = {'createdAt', 'updatedAt', 'dob'}
+        # Convert datetime string fields back to datetime objects based on field type
+        # This is metadata-agnostic - we try to convert any string that looks like ISO datetime
         
         doc_copy = document.copy()
         for field_name, value in doc_copy.items():
-            if field_name in datetime_fields and isinstance(value, str):
+            if isinstance(value, str):
                 try:
-                    # Parse ISO format datetime strings back to datetime objects
-                    if value.endswith('Z'):
-                        # Remove Z and add +00:00 for proper parsing
-                        value = value[:-1] + '+00:00'
-                    doc_copy[field_name] = datetime.fromisoformat(value)
+                    # Try to parse any string that looks like ISO datetime
+                    if ('T' in value and (':' in value or 'Z' in value or '+' in value)):
+                        # Parse ISO format datetime strings back to datetime objects
+                        if value.endswith('Z'):
+                            # Remove Z and add +00:00 for proper parsing
+                            value = value[:-1] + '+00:00'
+                        doc_copy[field_name] = datetime.fromisoformat(value)
                 except (ValueError, TypeError):
                     # If parsing fails, leave as string (Pydantic will handle validation)
                     pass
@@ -132,14 +134,15 @@ class ElasticsearchDatabase(DatabaseInterface):
                 return await self.get_all(collection, unique_constraints)
 
             # Build Elasticsearch query using new helper methods
+            query_filter = self._build_query_filter(list_params, entity_metadata)
             query_body = {
                 "from": (list_params.page - 1) * list_params.page_size,
                 "size": list_params.page_size,
-                "query": self._build_query_filter(list_params, entity_metadata)
+                "query": query_filter
             }
             
             # Always add sorting for consistent pagination
-            sort_spec = self._build_sort_spec(list_params)
+            sort_spec = self._build_sort_spec(list_params, entity_metadata)
             query_body["sort"] = sort_spec
 
             res = await es.search(index=collection, body=query_body)
@@ -294,20 +297,21 @@ class ElasticsearchDatabase(DatabaseInterface):
                     # For other field types, use range query as-is
                     must_clauses.append({"range": {field: range_query}})
             else:
-                # Determine matching strategy based on field type
-                field_type = self._get_field_type(field, entity_metadata)
-                if field_type == 'String':
-                    # Text fields: partial match with wildcard on the base text field
-                    # For partial matching, use the analyzed text field (without .keyword)
+                # Determine matching strategy based on metadata
+                if self._should_use_partial_matching(field, entity_metadata):
+                    # String fields without enum: partial match with wildcard
                     must_clauses.append({
                         "wildcard": {
                             field: f"*{value}*"
                         }
                     })
                 else:
-                    # Non-text fields (enums, numbers, dates, etc.): exact match
-                    # For exact matching on text fields, we need to use .keyword
-                    filter_field = self._get_filter_field_name(field)
+                    # Non-string fields, enums, etc.: exact match
+                    # Use .keyword suffix if needed based on metadata
+                    if self._needs_keyword_suffix(field, entity_metadata):
+                        filter_field = f"{field}.keyword"
+                    else:
+                        filter_field = field
                     must_clauses.append({"term": {filter_field: value}})
         
         if must_clauses:
@@ -315,97 +319,51 @@ class ElasticsearchDatabase(DatabaseInterface):
         else:
             return {"match_all": {}}
 
-    def _build_sort_spec(self, list_params) -> List[Dict[str, Any]]:
-        """Build Elasticsearch sort specification from ListParams."""
+    def _build_sort_spec(self, list_params, entity_metadata: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Build Elasticsearch sort specification from ListParams using metadata."""
         if not list_params or not list_params.sort_fields:
-            # Default sort by createdAt for consistent pagination when no sort specified
-            # Note: Never use _id in sort - it requires fielddata which is disabled by default
-            return [{"createdAt": {"order": "asc"}}]
+            # Use metadata-driven default sort field for consistent pagination
+            default_field = self._get_default_sort_field(entity_metadata)
+            return [{default_field: {"order": "asc"}}]
         
         sort_spec = []
         for field, order in list_params.sort_fields:
-            # Map application "id" field to Elasticsearch "_id" field for sorting
-            # But _id requires fielddata, so we fall back to createdAt
+            # Map application "id" field - cannot sort by _id in ES
             if field == "id":
-                # Cannot sort by _id without enabling fielddata, use createdAt instead
-                sort_spec.append({"createdAt": {"order": order}})
+                actual_field = self._get_default_sort_field(entity_metadata)
             else:
-                # For text fields, we need to use the .keyword subfield for sorting
-                # Numeric fields (netWorth, createdAt, updatedAt, etc.) and pure keyword fields (username, email) don't need .keyword
-                sort_field = self._get_sort_field_name(field)
+                actual_field = field
                 
-                # Configure case sensitivity for text fields
-                sort_config = {"order": order}
-                if not self.case_sensitive_sorting and self._is_text_field(field):
-                    # For case-insensitive sorting on text fields, use normalizer or script
-                    # Since we can't easily modify field mappings, use a script for case-insensitive sort
-                    sort_config = {
-                        "_script": {
-                            "type": "string",
-                            "script": {
-                                "lang": "painless",
-                                "source": f"doc['{sort_field}'].value.toLowerCase()"
-                            },
-                            "order": order
-                        }
+            # Determine if field needs .keyword suffix based on metadata
+            if self._needs_keyword_suffix(actual_field, entity_metadata):
+                sort_field = f"{actual_field}.keyword"
+            else:
+                sort_field = actual_field
+                
+            # Configure case sensitivity for text fields
+            sort_config = {"order": order}
+            field_type = self._get_field_type(actual_field, entity_metadata)
+            if (not self.case_sensitive_sorting and 
+                field_type == 'String' and 
+                not self._is_enum_field(actual_field, entity_metadata)):
+                # For case-insensitive sorting on non-enum string fields
+                sort_config = {
+                    "_script": {
+                        "type": "string",
+                        "script": {
+                            "lang": "painless",
+                            "source": f"doc['{sort_field}'].size() == 0 ? '' : doc['{sort_field}'].value.toLowerCase()"
+                        },
+                        "order": order
                     }
-                    sort_spec.append(sort_config)
-                else:
-                    sort_spec.append({sort_field: sort_config})
+                }
+                sort_spec.append(sort_config)
+            else:
+                sort_spec.append({sort_field: sort_config})
         
         return sort_spec
     
-    def _is_text_field(self, field: str) -> bool:
-        """Check if field is a text field that should use case-insensitive sorting."""
-        # These fields are typically stored as text and benefit from case-insensitive sorting
-        text_fields = {'firstName', 'lastName', 'username', 'email', 'gender', 'accountId'}
-        return field in text_fields
-    
-    def _get_sort_field_name(self, field: str) -> str:
-        """Get the correct field name for sorting in Elasticsearch."""
-        # These fields are typically stored as pure keyword type or numeric, no .keyword needed
-        keyword_fields = {'username', 'email', 'netWorth', 'createdAt', 'updatedAt', 'isAccountOwner'}
-        
-        # These fields are typically stored as text with .keyword subfield
-        text_fields = {'firstName', 'lastName', 'gender', 'accountId', 'password'}
-        
-        if field in keyword_fields:
-            return field
-        elif field in text_fields:
-            return f"{field}.keyword"
-        else:
-            # For unknown fields, assume they need .keyword (safer default for text fields)
-            return f"{field}.keyword"
-    
-    def _get_filter_field_name(self, field: str) -> str:
-        """Get the correct field name for exact match filtering in Elasticsearch."""
-        # These fields are typically stored as pure keyword type or numeric, no .keyword needed
-        keyword_fields = {'username', 'email', 'netWorth', 'createdAt', 'updatedAt', 'isAccountOwner'}
-        
-        # These fields are typically stored as text with .keyword subfield for exact matching
-        text_fields = {'firstName', 'lastName', 'gender', 'accountId', 'password'}
-        
-        if field in keyword_fields:
-            return field
-        elif field in text_fields:
-            return f"{field}.keyword"  
-        else:
-            # For unknown fields, assume they need .keyword (safer default for text fields)
-            return f"{field}.keyword"
 
-    def _get_field_type(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
-        """Get field type from entity metadata or default to String."""
-        if not entity_metadata:
-            return 'String'
-        
-        field_info = entity_metadata.get('fields', {}).get(field_name, {})
-        field_type = field_info.get('type', 'String')
-        
-        # Check if field has enum values - treat as exact match even if type is String
-        if 'enum' in field_info:
-            return 'Enum'  # Use exact matching for enum fields
-        
-        return field_type
 
 
     async def delete_collection(self, collection: str) -> bool:

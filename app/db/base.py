@@ -127,7 +127,7 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod  
-    def _build_sort_spec(self, list_params) -> Any:
+    def _build_sort_spec(self, list_params, entity_metadata: Optional[Dict[str, Any]] = None) -> Any:
         """Build database-specific sort specification from ListParams"""
         pass
 
@@ -275,4 +275,98 @@ class DatabaseInterface(ABC):
         """Generate consistent hash for multi-field constraints"""
         combined = "|".join(values)
         return hashlib.sha256(combined.encode()).hexdigest()
+    
+    # Metadata-driven field type helpers
+    def _get_field_type(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
+        """Get field type from entity metadata or default to String."""
+        if not entity_metadata:
+            return 'String'
+        
+        field_info = entity_metadata.get('fields', {}).get(field_name, {})
+        return field_info.get('type', 'String')
+    
+    def _is_enum_field(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> bool:
+        """Check if field has enum values defined in metadata."""
+        if not entity_metadata:
+            return False
+        
+        field_info = entity_metadata.get('fields', {}).get(field_name, {})
+        return 'enum' in field_info
+    
+    def _is_unique_field(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> bool:
+        """Check if field is part of unique constraints in metadata."""
+        if not entity_metadata:
+            return False
+        
+        try:
+            unique_constraints = entity_metadata.get('uniques', [])
+            for constraint in unique_constraints:
+                # Ensure constraint is not None and is iterable
+                if constraint and hasattr(constraint, '__iter__') and field_name in constraint:
+                    return True
+        except (AttributeError, TypeError):
+            pass  # Ignore metadata parsing errors
+        
+        return False
+    
+    def _is_auto_generated_field(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> bool:
+        """Check if field is auto-generated from metadata."""
+        if not entity_metadata:
+            return False
+        
+        field_info = entity_metadata.get('fields', {}).get(field_name, {})
+        return field_info.get('autoGenerate', False) or field_info.get('autoUpdate', False)
+    
+    def _get_default_sort_field(self, entity_metadata: Optional[Dict[str, Any]]) -> str:
+        """Get default sort field from metadata - first auto-generated date field or safe fallback."""
+        if not entity_metadata:
+            return 'createdAt'  # Safe fallback when no metadata
+        
+        try:
+            fields = entity_metadata.get('fields', {})
+            
+            # Find first auto-generated date/datetime field
+            for field_name, field_info in fields.items():
+                if (field_info.get('autoGenerate', False) and 
+                    field_info.get('type') in ['Date', 'Datetime']):
+                    return field_name
+        except (AttributeError, TypeError):
+            pass  # Ignore metadata parsing errors
+        
+        # Safe fallback - every entity should have createdAt
+        return 'createdAt'
+    
+    def _needs_keyword_suffix(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> bool:
+        """Determine if field needs .keyword suffix for Elasticsearch based on metadata."""
+        field_type = self._get_field_type(field_name, entity_metadata)
+        
+        # These field types don't need .keyword suffix
+        if field_type in ['Date', 'Datetime', 'Integer', 'Currency', 'Float', 'Boolean']:
+            return False
+        
+        # Check for id field and ObjectId fields that typically don't need .keyword
+        if field_name == 'id' or field_name.endswith('Id'):
+            return False
+        
+        # Check if field is in unique constraints - these are mapped as pure keyword in ES
+        if self._is_unique_field(field_name, entity_metadata):
+            return False
+        
+        # String fields with enum should use .keyword for exact matching
+        if field_type == 'String' and self._is_enum_field(field_name, entity_metadata):
+            return True
+        
+        # String fields without enum need .keyword for exact operations  
+        if field_type == 'String':
+            return True
+        
+        # Default to needing .keyword for unknown types (safer for text fields)
+        return True
+    
+    def _should_use_partial_matching(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> bool:
+        """Determine if field should use partial matching for filtering based on metadata."""
+        field_type = self._get_field_type(field_name, entity_metadata)
+        
+        # Only String fields without enum use partial matching
+        return field_type == 'String' and not self._is_enum_field(field_name, entity_metadata)
 

@@ -153,7 +153,17 @@ class ListParams:
                 # Parse the filter value
                 parsed_filter = ListParams._parse_filter_value(field_name, operator, value)
                 if parsed_filter is not None:
-                    filters[field_name] = parsed_filter
+                    # Handle multiple conditions on the same field (e.g., dob:gte:X,dob:lt:Y)
+                    if field_name in filters:
+                        existing_filter = filters[field_name]
+                        if isinstance(existing_filter, dict) and isinstance(parsed_filter, dict):
+                            # Merge dictionaries for range conditions like {"$gte": X} + {"$lt": Y}
+                            existing_filter.update(parsed_filter)
+                        else:
+                            # For non-dict filters, overwrite (shouldn't happen with range operators)
+                            filters[field_name] = parsed_filter
+                    else:
+                        filters[field_name] = parsed_filter
                     
         except Exception as e:
             notify_error(f"Error parsing filter parameter: {str(e)}")

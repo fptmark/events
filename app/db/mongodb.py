@@ -132,7 +132,7 @@ class MongoDatabase(DatabaseInterface):
             }
             
             # Add sorting to data pipeline
-            sort_spec = self._build_sort_spec(list_params)
+            sort_spec = self._build_sort_spec(list_params, entity_metadata)
             if sort_spec:
                 facet_pipeline["data"].append({"$sort": sort_spec})
             
@@ -666,10 +666,12 @@ class MongoDatabase(DatabaseInterface):
         
         return query
 
-    def _build_sort_spec(self, list_params) -> Dict[str, int]:
+    def _build_sort_spec(self, list_params, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
         """Build MongoDB sort specification from ListParams.""" 
         if not list_params or not list_params.sort_fields:
-            return {}
+            # Use metadata-driven default sort field for consistent pagination
+            default_field = self._get_default_sort_field(entity_metadata)
+            return {default_field: 1}
         
         # Build sort spec maintaining field order
         sort_spec = {}
