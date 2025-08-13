@@ -103,7 +103,13 @@ class DataGen():
             return url
 
     def rand_date(self, ):
-        return (datetime.now() - timedelta(days=random.randint(1000, 25000))).date().isoformat()
+        # Generate dates across a wide range (1900-2099) for comprehensive testing
+        start_date = datetime(1900, 1, 1)
+        end_date = datetime(2099, 12, 31)
+        time_between = end_date - start_date
+        days_between = time_between.days
+        random_days = random.randint(0, days_between)
+        return (start_date + timedelta(days=random_days)).date().isoformat()
 
     def rand_datetime(self, ):
         return datetime.now().isoformat()
@@ -153,11 +159,11 @@ class DataGen():
         if t == "Boolean":
             return None  # Invalid but still sortable (None sorts before boolean values)
         if t == "Date":
-            # ES is stricter about invalid dates - use a real but incorrect date format
-            return "2023-99-99"  # Invalid month/day but parseable
+            # Use parseable but logically invalid date for ES compatibility
+            return "1800-01-01"  # Very old date - parseable by ES but invalid for modern records
         if t == "Datetime":
-            # ES is stricter about invalid dates - use a real but incorrect datetime format  
-            return "2023-99-99T25:61:61Z"  # Invalid month/day/time but parseable
+            # Use parseable but logically invalid datetime for ES compatibility  
+            return "1800-01-01T00:00:00Z"  # Very old datetime - parseable by ES but invalid for modern records
         if t == "Currency":
             return meta.get("le", 1e6) + random.randint(1, 10000)
         if t == "ObjectId":
