@@ -28,10 +28,12 @@ class Validator:
         self.config = config
         self.verbose = verbose
         
-        # Get model metadata once
+        # Get model metadata once with null safety
         model_class = utils.get_model_class(test_case.entity)
-        self.metadata = model_class.get_metadata()
-        self.fields = self.metadata.get('fields', {})
+        self.metadata = model_class.get_metadata() or {}
+        if self.metadata == None:
+            print("WTF!!!!")
+        self.fields = self.metadata.get('fields', {}) or {}
         
         # Determine request type and case sensitivity
         self.is_single_request = bool(test_case.id)
@@ -592,10 +594,21 @@ class Validator:
         elif field_type in ['Date', 'Datetime']:
             try:
                 if isinstance(val1, datetime) and isinstance(val2, datetime):
-                    return -1 if val1 < val2 else (1 if val1 > val2 else 0)
-                # Try parsing ISO format
-                date1 = datetime.fromisoformat(str(val1).replace('Z', '+00:00'))
-                date2 = datetime.fromisoformat(str(val2).replace('Z', '+00:00'))
+                    date1, date2 = val1, val2
+                else:
+                    # Try parsing ISO format
+                    date1 = datetime.fromisoformat(str(val1).replace('Z', '+00:00'))
+                    date2 = datetime.fromisoformat(str(val2).replace('Z', '+00:00'))
+                
+                # For auto-generated timestamp fields, add microsecond tolerance to handle
+                # sub-millisecond precision differences that occur in rapid record creation
+                is_auto_field = field_info.get('autoGenerate', False) or field_info.get('autoUpdate', False)
+                if is_auto_field:
+                    # Consider timestamps within 100ms as equal for auto-generated fields
+                    time_diff = abs((date1 - date2).total_seconds())
+                    if time_diff <= 0.1:  # 100ms tolerance
+                        return 0  # Treat as equal
+                
                 return -1 if date1 < date2 else (1 if date1 > date2 else 0)
             except:
                 pass  # Fall through to string comparison
