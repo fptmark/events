@@ -13,7 +13,18 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             },
-            "args" : ["mongo.json"]
+            "args" : ["es.json"]
+        },
+         {
+            "name": "CT",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "tests/comprehensive_test.py",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "args" : ["--curl", "results.json", "--config", "es.json", "--url", "/api/user?sort=invalidField"] // validate tests against script output (curl.sh -> results.json)
         },
         {
           "name": "Angular",
