@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Optional
 from pydantic import ValidationError as PydanticValidationError
 import warnings as python_warnings
 from app.config import Config
-from app.notification import notify_warning, NotificationType
+from app.notification import notify_warning, notify_database_error, notify_validation_error
 
 def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], warnings: List[str]) -> List[Dict[str, Any]]:
     """Common processing for raw database results."""
@@ -14,9 +14,7 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
     for doc in raw_docs:
         entities.append(validate_with_notifications(cls, doc, entity_type))  
 
-    # Add database warnings
-    for warning in warnings:
-        notify_warning(warning, NotificationType.DATABASE)
+    # Database warnings are already processed by DatabaseFactory - don't duplicate
 
     # Convert models to dictionaries for FastAPI response validation
     entity_data = []
@@ -30,7 +28,7 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
             if caught_warnings:
                 entity_id = data_dict.get('id')
                 if not entity_id:
-                    notify_warning("Document missing ID field", NotificationType.DATABASE)
+                    notify_database_error("Document missing ID field")
                     entity_id = "missing"
 
                 datetime_field_names = []
@@ -43,11 +41,11 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
                 
                 if datetime_field_names:
                     field_list = ', '.join(datetime_field_names)
-                    notify_warning(f"{field_list} datetime serialization warnings", NotificationType.VALIDATION, entity=entity_type, entity_id=entity_id)
+                    notify_validation_error(f"{field_list} datetime serialization warnings", entity=entity_type, entity_id=entity_id)
                 else:
                     # Fallback for non-datetime warnings
                     warning_count = len(caught_warnings)
-                    notify_warning(f"{entity_type} {entity_id}: {warning_count} serialization warnings", NotificationType.VALIDATION, entity=entity_type)
+                    notify_validation_error(f"{entity_type} {entity_id}: {warning_count} serialization warnings", entity=entity_type, entity_id=entity_id)
 
     return entity_data
 
@@ -114,7 +112,7 @@ async def process_entity_fks(entity_dict: Dict[str, Any], view_spec: Optional[Di
     """
     from app.routers.router_factory import ModelImportCache
     from app.errors import NotFoundError
-    from app.notification import notify_warning, NotificationType
+    from app.notification import notify_warning, notify_database_error, notify_validation_error
     import re
     
     metadata = entity_cls._metadata
@@ -164,13 +162,10 @@ async def process_entity_fks(entity_dict: Dict[str, Any], view_spec: Optional[Di
                 # Add FK validation warning only when view provided or GV enabled
                 # (Model validation is handled separately and always runs)
                 if fk_data.get('exists') is False:
-                    notify_warning(
+                    notify_validation_error(
                         message=message,
-                        type=NotificationType.VALIDATION,
-                        entity=entity_name,
                         field_name=field_name,
-                        value=entity_dict[field_name],
-                        operation="get_data",
+                        entity=entity_name,
                         entity_id=entity_id
                     )
 
@@ -197,13 +192,10 @@ def validate_with_notifications(cls, data: Dict[str, Any], entity_name: str, ope
         entity_id = data.get('id', 'unknown')
         for error in e.errors():
             field_name = str(error['loc'][-1]) if error.get('loc') else 'unknown'
-            notify_warning(
+            notify_validation_error(
                 message=error.get('msg', 'Validation error'),
-                type=NotificationType.VALIDATION,
-                entity=entity_name,
                 field_name=field_name,
-                value=error.get('input'),
-                operation=operation,
+                entity=entity_name,
                 entity_id=entity_id
             )
         # Return unvalidated instance so API can continue

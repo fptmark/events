@@ -112,7 +112,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                 operation="get_all"
             )
 
-    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+    async def _get_list_impl(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count."""
         es = self._get_client()
 
@@ -189,12 +189,16 @@ class ElasticsearchDatabase(DatabaseInterface):
                 
                 for hit in search_res.get("hits", {}).get("hits", []):
                     if self._normalize_id(hit["_id"]) == self._normalize_id(doc_id):
-                        res = {"_source": hit["_source"], "_id": hit["_id"]}
+                        # Handle case where hit _source might be None
+                        hit_source = hit.get("_source") or {}
+                        res = {"_source": hit_source, "_id": hit["_id"]}
                         break
                 else:
                     raise NotFoundError(collection, doc_id)
             
-            result = self._convert_datetime_fields({**res["_source"], "id": self._normalize_id(res["_id"])})
+            # Handle case where _source might be None
+            source_data = res.get("_source") or {}
+            result = self._convert_datetime_fields({**source_data, "id": self._normalize_id(res["_id"])})
             return result, warnings
         except NotFoundError:
             raise
@@ -332,7 +336,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             if field == "id":
                 actual_field = self._get_default_sort_field(entity_metadata)
             else:
-                actual_field = field
+                actual_field = self._map_field_name(field, entity_metadata)
                 
             # Determine if field needs .keyword suffix based on metadata
             if self._needs_keyword_suffix(actual_field, entity_metadata):

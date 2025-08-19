@@ -11,69 +11,44 @@ def _default_timestamp() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class NotificationLevel(Enum):
-    """Notification severity levels"""
-    SUCCESS = "success"
-    INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
-
-
 class NotificationType(Enum):
-    """Types of notifications"""
-    VALIDATION = "validation"
+    """Types of notifications - determines whether it's an error or warning"""
+    # System-level errors (go in errors array)
     DATABASE = "database"
-    BUSINESS = "business"
-    SYSTEM = "system"
+    SYSTEM = "system" 
     SECURITY = "security"
+    APPLICATION = "application"
+    
+    # Entity-level warnings (go in warnings grouped by entity/id)
+    VALIDATION = "validation"
+    BUSINESS = "business"
 
 
 @dataclass
 class NotificationDetail:
-    """Single notification detail with hierarchical support"""
+    """Single notification detail"""
     message: str
-    level: NotificationLevel
     type: NotificationType
     entity: Optional[str] = None
-    operation: Optional[str] = None
+    entity_id: Optional[str] = None
     field_name: Optional[str] = None
-    value: Optional[Any] = None
-    entity_id: Optional[str] = None  # Added for bulk operations
-    timestamp: datetime = dataclass_field(default_factory=_default_timestamp)
-    details: List['NotificationDetail'] = dataclass_field(default_factory=list)
+    details: List[str] = dataclass_field(default_factory=list)  # Flat string array
 
-    def add_detail(self, message: str, level: Optional[NotificationLevel] = None, 
-                   type: Optional[NotificationType] = None, **kwargs) -> None:
-        """Add a child detail to this notification"""
-        detail = NotificationDetail(
-            message=message,
-            level=level or self.level,
-            type=type or self.type,
-            entity=kwargs.get('entity', self.entity),
-            operation=kwargs.get('operation', self.operation),
-            field_name=kwargs.get('field_name'),
-            value=kwargs.get('value'),
-            entity_id=kwargs.get('entity_id')
-        )
-        self.details.append(detail)
+    def add_detail(self, detail_message: str) -> None:
+        """Add a detail message to this notification"""
+        self.details.append(detail_message)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for API responses"""
+        """Convert to dictionary for new API response format"""
         result = {
-            "message": self.message,
-            "level": self.level.value,
             "type": self.type.value,
-            "entity": self.entity,
-            "operation": self.operation,
-            "field": self.field_name,
-            "value": self.value,
-            "timestamp": self.timestamp.isoformat(),
-            "details": [d.to_dict() for d in self.details] if self.details else []
+            "message": self.message,
+            "details": self.details
         }
         
-        # Include entity_id only if it's provided (for bulk operations)
-        if self.entity_id is not None:
-            result["entity_id"] = self.entity_id
+        # Include field if provided (for validation/business warnings)
+        if self.field_name:
+            result["field"] = self.field_name
             
         return result
 
@@ -86,20 +61,16 @@ class SimpleNotificationCollection:
         self.operation = operation
         self.notifications: List[NotificationDetail] = []
         
-    def add(self, message: str, level: NotificationLevel, type: NotificationType, 
-            entity: Optional[str] = None, operation: Optional[str] = None,
-            field_name: Optional[str] = None, value: Optional[Any] = None,
+    def add(self, message: str, type: NotificationType, 
+            entity: Optional[str] = None, field_name: Optional[str] = None,
             entity_id: Optional[str] = None) -> NotificationDetail:
         """Add a notification and return it for potential detail addition"""
         notification = NotificationDetail(
             message=message,
-            level=level,
             type=type,
             entity=entity or self.entity,
-            operation=operation or self.operation,
-            field_name=field_name,
-            value=value,
-            entity_id=entity_id
+            entity_id=entity_id,
+            field_name=field_name
         )
         self.notifications.append(notification)
         
@@ -108,233 +79,113 @@ class SimpleNotificationCollection:
         
         return notification
 
-    def success(self, message: str, type: NotificationType = NotificationType.SYSTEM, **kwargs) -> NotificationDetail:
-        """Add success notification"""
-        return self.add(message, NotificationLevel.SUCCESS, type, **kwargs)
+    def add_error(self, message: str, type: NotificationType = NotificationType.SYSTEM, **kwargs) -> NotificationDetail:
+        """Add system error (database, system, security)"""
+        return self.add(message, type, **kwargs)
 
-    def info(self, message: str, type: NotificationType = NotificationType.SYSTEM, **kwargs) -> NotificationDetail:
-        """Add info notification"""
-        return self.add(message, NotificationLevel.INFO, type, **kwargs)
-
-    def warning(self, message: str, type: NotificationType = NotificationType.SYSTEM, **kwargs) -> NotificationDetail:
-        """Add warning notification"""
-        return self.add(message, NotificationLevel.WARNING, type, **kwargs)
-
-    def error(self, message: str, type: NotificationType = NotificationType.SYSTEM, **kwargs) -> NotificationDetail:
-        """Add error notification"""
-        return self.add(message, NotificationLevel.ERROR, type, **kwargs)
+    def add_warning(self, message: str, type: NotificationType = NotificationType.BUSINESS, **kwargs) -> NotificationDetail:
+        """Add entity warning (business, validation)"""
+        return self.add(message, type, **kwargs)
 
     def validation_error(self, message: str, field_name: Optional[str] = None, 
-                        value: Optional[Any] = None, entity_id: Optional[str] = None, **kwargs) -> NotificationDetail:
-        """Add validation error with field details"""
-        return self.error(message, NotificationType.VALIDATION, 
-                         field_name=field_name, value=value, entity_id=entity_id, **kwargs)
+                        entity_id: Optional[str] = None, **kwargs) -> NotificationDetail:
+        """Add validation warning with field details"""
+        return self.add(message, NotificationType.VALIDATION, 
+                       field_name=field_name, entity_id=entity_id, **kwargs)
+
+    def business_error(self, message: str, field_name: Optional[str] = None,
+                      entity_id: Optional[str] = None, **kwargs) -> NotificationDetail:
+        """Add business logic warning"""
+        return self.add(message, NotificationType.BUSINESS,
+                       field_name=field_name, entity_id=entity_id, **kwargs)
 
     def database_error(self, message: str, **kwargs) -> NotificationDetail:
         """Add database error"""
-        return self.error(message, NotificationType.DATABASE, **kwargs)
+        return self.add(message, NotificationType.DATABASE, **kwargs)
+
+    def system_error(self, message: str, **kwargs) -> NotificationDetail:
+        """Add system error"""
+        return self.add(message, NotificationType.SYSTEM, **kwargs)
+
+    def application_error(self, message: str, **kwargs) -> NotificationDetail:
+        """Add application error (user-caused errors like invalid field names)"""
+        return self.add(message, NotificationType.APPLICATION, **kwargs)
+
+    def security_error(self, message: str, **kwargs) -> NotificationDetail:
+        """Add security error"""
+        return self.add(message, NotificationType.SECURITY, **kwargs)
 
     def has_errors(self) -> bool:
-        """Check if collection contains any errors"""
-        return any(n.level == NotificationLevel.ERROR for n in self.notifications)
+        """Check if collection contains any system errors (database, system, security, application)"""
+        return any(n.type in [NotificationType.DATABASE, NotificationType.SYSTEM, NotificationType.SECURITY, NotificationType.APPLICATION] 
+                  for n in self.notifications)
 
     def has_warnings(self) -> bool:
-        """Check if collection contains any warnings"""
-        return any(n.level == NotificationLevel.WARNING for n in self.notifications)
+        """Check if collection contains any entity warnings (business, validation)"""
+        return any(n.type in [NotificationType.BUSINESS, NotificationType.VALIDATION] 
+                  for n in self.notifications)
 
-    def get_summary(self) -> Dict[str, int]:
-        """Get summary counts by level"""
-        summary = {level.value: 0 for level in NotificationLevel}
+    def to_response(self, data: Any = None) -> Dict[str, Any]:
+        """Convert to new API response format with errors/warnings structure"""
+        # Separate notifications by type
+        errors = []
+        warnings: Dict[str, Any] = {}
+        
         for notification in self.notifications:
-            summary[notification.level.value] += 1
-        return summary
-
-    def get_primary_message(self) -> tuple[Optional[str], Optional[str]]:
-        """Get primary display message prioritizing errors > warnings > success"""
-        errors = [n for n in self.notifications if n.level == NotificationLevel.ERROR]
-        warnings = [n for n in self.notifications if n.level == NotificationLevel.WARNING]
-        successes = [n for n in self.notifications if n.level == NotificationLevel.SUCCESS]
+            if notification.type in [NotificationType.DATABASE, NotificationType.SYSTEM, NotificationType.SECURITY, NotificationType.APPLICATION]:
+                # System errors go in errors array
+                errors.append(notification.to_dict())
+            else:
+                # Business/validation warnings go in warnings grouped by entity/id
+                entity_type = notification.entity or "unknown"
+                entity_id = notification.entity_id or "unknown"
+                
+                if entity_type not in warnings:
+                    warnings[entity_type] = {}
+                if entity_id not in warnings[entity_type]:
+                    warnings[entity_type][entity_id] = []
+                    
+                warnings[entity_type][entity_id].append(notification.to_dict())
         
+        # Determine status
         if errors:
-            return errors[0].message, "error"
+            status = "failed"
         elif warnings:
-            return warnings[0].message, "warning"
-        elif successes:
-            for success in successes:
-                if any(action in success.message.lower() 
-                      for action in ['created', 'updated', 'deleted', 'saved']):
-                    return success.message, "success"
+            status = "warning" 
+        else:
+            status = "success"
         
-        return None, None
-
-    def to_response(self, data: Any = None, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Convert to standard API response format"""
-        message, level = self.get_primary_message()
-        
-        response = {
-            "data": data,
-            "message": message,
-            "level": level
-        }
-        
-        # Add metadata if provided
-        if metadata:
-            response["metadata"] = metadata
-        
-        # Include notifications if there are multiple or if there are details
-        if len(self.notifications) > 1 or any(n.details for n in self.notifications):
-            response["notifications"] = [n.to_dict() for n in self.notifications]
-            response["summary"] = self.get_summary()
-        
-        return response
-
-    def to_entity_grouped_response(self, data: Any = None, is_bulk: bool = False) -> Dict[str, Any]:
-        """Convert to entity-grouped API response format"""
-        
-        # Group notifications by entity_id
-        entity_notifications = self._group_by_entity()
-        
-        # Determine overall status
-        status = self._determine_status(entity_notifications, data, is_bulk)
-        
-        # Only wrap in array for bulk operations
-        if is_bulk and data is not None and not isinstance(data, list):
-            data = [data]
-        
+        # Build response
         response = {
             "status": status,
             "data": data
         }
         
-        # Only include notifications if there are issues
-        if entity_notifications:
-            response["notifications"] = entity_notifications
+        # Add notifications only if there are any
+        if errors or warnings:
+            notifications = {}
+            if errors:
+                notifications["errors"] = errors
+            if warnings:
+                notifications["warnings"] = warnings
+            response["notifications"] = notifications
         
-        # Include summary if there are notifications or it's bulk
-        if entity_notifications or is_bulk:
-            response["summary"] = self._get_entity_summary(entity_notifications, data)
-            
         return response
 
-    def _group_by_entity(self) -> Dict[str, Dict[str, Any]]:
-        """Group notifications by entity_id"""
-        grouped: Dict[str, Dict[str, Any]] = {}
-        
-        for notification in self.notifications:
-            entity_id = notification.entity_id if notification.entity_id is not None else "null"
-            
-            if entity_id not in grouped:
-                grouped[entity_id] = {
-                    "entity_id": notification.entity_id,
-                    "entity_type": notification.entity or "Unknown",
-                    "status": "success",
-                    "errors": [],
-                    "warnings": []
-                }
-            
-            # Convert notification to simplified format
-            notif_dict = {
-                "type": notification.type.value,
-                "severity": notification.level.value,
-                "message": notification.message
-            }
-            if notification.field_name:
-                notif_dict["field"] = notification.field_name
-            if notification.value is not None:
-                notif_dict["value"] = notification.value
-                
-            # Add to appropriate list and update entity status
-            if notification.level == NotificationLevel.ERROR:
-                grouped[entity_id]["errors"].append(notif_dict)
-                grouped[entity_id]["status"] = "failed"
-            elif notification.level == NotificationLevel.WARNING:
-                grouped[entity_id]["warnings"].append(notif_dict)
-                if grouped[entity_id]["status"] == "success":
-                    grouped[entity_id]["status"] = "warning"
-        
-        return grouped
-
-    def _determine_status(self, entity_notifications: Dict[str, Dict], data: Any, is_bulk: bool) -> str:
-        """Determine overall response status based on entity notifications"""
-        
-        if not entity_notifications:
-            return "perfect"
-        
-        has_failures = any(entity["status"] == "failed" for entity in entity_notifications.values())
-        
-        if is_bulk:
-            # For bulk operations, if we have any data, it's completed even with failures
-            if data is not None and (isinstance(data, list) and len(data) > 0 or data):
-                return "completed"
-            else:
-                return "failed"
-        else:
-            # For single entity operations
-            if has_failures:
-                return "failed"
-            else:
-                # Check if we have warnings
-                has_warnings = any(entity["status"] == "warning" for entity in entity_notifications.values())
-                return "warning" if has_warnings else "completed"
-
-    def _get_entity_summary(self, entity_notifications: Dict[str, Dict], data: Any) -> Dict[str, Any]:
-        """Get summary counts based on entity notifications"""
-        
-        # Count individual notifications and entities by status
-        perfect_entities = 0
-        warning_entities = 0
-        error_entities = 0
-        total_warnings = 0
-        total_errors = 0
-        
-        for entity in entity_notifications.values():
-            if entity["status"] == "failed":
-                error_entities += 1
-                total_errors += len(entity["errors"])
-                total_warnings += len(entity["warnings"])
-            elif entity["status"] == "warning":
-                warning_entities += 1
-                total_warnings += len(entity["warnings"])
-            else:
-                perfect_entities += 1
-        
-        # Calculate total entities - distinguish between single entity (dict) and bulk (list)
-        if data is not None:
-            if isinstance(data, list):
-                total_from_data = len(data)  # Bulk operation - count array items
-            else:
-                total_from_data = 1  # Single entity operation - count as 1
-        else:
-            total_from_data = 0
-            
-        # Total is either from data + failed entities, or from notifications
-        total_entities = max(total_from_data + error_entities, len(entity_notifications))
-        
-        # If no notifications, all returned entities are perfect
-        if not entity_notifications:
-            perfect_entities = total_entities
-        
-        # Calculate successfully processed entities (only perfect, no warnings)
-        successful_entities = perfect_entities
-        
-        return {
-            "total_entities": total_entities,
-            "perfect": perfect_entities,
-            "successful": successful_entities,
-            "warnings": total_warnings,
-            "errors": total_errors
-        }
+    def to_entity_grouped_response(self, data: Any = None, is_bulk: bool = False) -> Dict[str, Any]:
+        """Legacy method - use to_response instead"""
+        return self.to_response(data)
 
     def _log_notification(self, notification: NotificationDetail, indent: int = 0) -> None:
         """Log notification and its details to console"""
-        log_level_map = {
-            NotificationLevel.SUCCESS: logging.INFO,
-            NotificationLevel.INFO: logging.INFO,
-            NotificationLevel.WARNING: logging.WARNING,
-            NotificationLevel.ERROR: logging.ERROR
-        }
+        # Determine log level based on type
+        if notification.type in [NotificationType.DATABASE, NotificationType.SYSTEM, NotificationType.SECURITY, NotificationType.APPLICATION]:
+            log_level = logging.ERROR
+            level_name = "ERROR"
+        else:
+            log_level = logging.WARNING
+            level_name = "WARNING"
         
-        # Build unified format: [WARNING] User:687800bc55017d54db8e6042 [validation] password="<current_value>" String should have at least 8 characters
         prefix = "  " * indent
         
         # Entity part with ID
@@ -345,22 +196,20 @@ class SimpleNotificationCollection:
         else:
             entity_part = "System"
         
-        # Field part with value
+        # Field part
         field_part = ""
         if notification.field_name:
-            if notification.value is not None:
-                field_part = f"{notification.field_name}=\"{notification.value}\" "
-            else:
-                field_part = f"{notification.field_name}=\"\" "
+            field_part = f"{notification.field_name} "
         
         # Build final log message
-        log_msg = f"{prefix}[{notification.level.value.upper()}] {entity_part} [{notification.type.value}] {field_part}{notification.message}"
+        log_msg = f"{prefix}[{level_name}] {entity_part} [{notification.type.value}] {field_part}{notification.message}"
         
-        logging.log(log_level_map[notification.level], log_msg)
+        logging.log(log_level, log_msg)
         
         # Log details with increased indentation
         for detail in notification.details:
-            self._log_notification(detail, indent + 1)
+            detail_msg = f"{prefix}  - {detail}"
+            logging.log(log_level, detail_msg)
 
 # Context variable for current notification collection
 _current_notifications: ContextVar[Optional[SimpleNotificationCollection]] = ContextVar(
@@ -391,32 +240,43 @@ def end_notifications() -> SimpleNotificationCollection:
 
 
 # Convenience functions for adding notifications
-def notify_success(message: str, type: NotificationType = NotificationType.SYSTEM, **kwargs) -> NotificationDetail:
-    """Add success notification to current collection"""
-    return get_notifications().success(message, type, **kwargs)
-
-
-def notify_info(message: str, type: NotificationType = NotificationType.SYSTEM, **kwargs) -> NotificationDetail:
-    """Add info notification to current collection"""
-    return get_notifications().info(message, type, **kwargs)
-
-
-def notify_warning(message: str, type: NotificationType = NotificationType.SYSTEM, **kwargs) -> NotificationDetail:
-    """Add warning notification to current collection"""
-    return get_notifications().warning(message, type, **kwargs)
-
-
 def notify_error(message: str, type: NotificationType = NotificationType.SYSTEM, **kwargs) -> NotificationDetail:
-    """Add error notification to current collection"""
-    return get_notifications().error(message, type, **kwargs)
+    """Add system error (database, system, security)"""
+    return get_notifications().add_error(message, type, **kwargs)
+
+
+def notify_warning(message: str, type: NotificationType = NotificationType.BUSINESS, **kwargs) -> NotificationDetail:
+    """Add entity warning (business, validation)"""
+    return get_notifications().add_warning(message, type, **kwargs)
 
 
 def notify_validation_error(message: str, field_name: Optional[str] = None, 
-                          value: Optional[Any] = None, entity_id: Optional[str] = None, **kwargs) -> NotificationDetail:
-    """Add validation error with field details"""
-    return get_notifications().validation_error(message, field_name=field_name, value=value, entity_id=entity_id, **kwargs)
+                          entity_id: Optional[str] = None, **kwargs) -> NotificationDetail:
+    """Add validation warning with field details"""
+    return get_notifications().validation_error(message, field_name=field_name, entity_id=entity_id, **kwargs)
+
+
+def notify_business_error(message: str, field_name: Optional[str] = None, 
+                         entity_id: Optional[str] = None, **kwargs) -> NotificationDetail:
+    """Add business logic warning"""
+    return get_notifications().business_error(message, field_name=field_name, entity_id=entity_id, **kwargs)
 
 
 def notify_database_error(message: str, **kwargs) -> NotificationDetail:
     """Add database error"""
     return get_notifications().database_error(message, **kwargs)
+
+
+def notify_system_error(message: str, **kwargs) -> NotificationDetail:
+    """Add system error"""
+    return get_notifications().system_error(message, **kwargs)
+
+
+def notify_application_error(message: str, **kwargs) -> NotificationDetail:
+    """Add application error (user-caused errors like invalid field names)"""
+    return get_notifications().application_error(message, **kwargs)
+
+
+def notify_security_error(message: str, **kwargs) -> NotificationDetail:
+    """Add security error"""
+    return get_notifications().security_error(message, **kwargs)

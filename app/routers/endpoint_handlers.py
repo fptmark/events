@@ -18,8 +18,7 @@ from app.config import Config
 from app.routers.router_factory import ModelImportCache
 from app.notification import (
     start_notifications, end_notifications,
-    notify_success, notify_error, notify_warning, notify_validation_error,
-    NotificationType
+    notify_error, notify_warning, notify_validation_error
 )
 from app.errors import ValidationError, NotFoundError, DuplicateError
 from pydantic_core import ValidationError as PydanticValidationError
@@ -121,7 +120,7 @@ async def list_entities_handler(entity_cls: Type[EntityModelProtocol], entity_na
         return enhanced_response
         
     except Exception as e:
-        notify_error(f"Failed to retrieve entities: {str(e)}", NotificationType.SYSTEM, entity=entity_name)
+        notify_error(f"Failed to retrieve entities: {str(e)}", entity=entity_name)
         # End notifications and enhance response even for errors
         collection = end_notifications()
         enhanced_response = collection.to_entity_grouped_response(
@@ -155,7 +154,7 @@ async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name:
         
         # Add any warnings as notifications
         for warning in response.get("warnings", []):
-            notify_warning(warning, NotificationType.DATABASE)
+            notify_warning(warning)
         
         # End notifications and enhance response
         collection = end_notifications()
@@ -164,7 +163,7 @@ async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name:
             is_bulk=False
         )
         # Copy all model response data (including pagination) to enhanced response
-        enhanced_response.update(response)
+        # enhanced_response.update(response)
         return enhanced_response
         
     except NotFoundError:
@@ -172,7 +171,7 @@ async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name:
         # which will return a proper 404 response
         raise
     except Exception as e:
-        notify_error(f"Failed to retrieve entity: {str(e)}", NotificationType.SYSTEM, entity=entity_name)
+        notify_error(f"Failed to retrieve entity: {str(e)}", entity=entity_name)
         # End notifications and enhance response even for errors
         collection = end_notifications()
         enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
@@ -191,19 +190,16 @@ async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_na
         result, warnings = await entity.save()
         # Add any warnings from save operation
         for warning in warnings or []:
-            notify_warning(warning, NotificationType.DATABASE)
-        notify_success("Created successfully", NotificationType.BUSINESS, entity=entity_name)
+            notify_warning(warning)
         return {"data": result.model_dump()}
     except PydanticValidationError as e:
         # Convert Pydantic validation errors to notifications for middleware to handle
         for error in e.errors():
             field_name = str(error["loc"][-1]) if error.get("loc") else "unknown"
-            notify_warning(
+            notify_validation_error(
                 message=error.get("msg", "Validation error"),
-                type=NotificationType.VALIDATION,
-                entity=entity_name,
                 field_name=field_name,
-                value=error.get("input"),
+                entity=entity_name,
                 operation="create"
             )
         # Convert to our custom ValidationError so middleware handles it properly
@@ -236,21 +232,18 @@ async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_na
         
         # Add any warnings from save operation
         for warning in save_warnings or []:
-            notify_warning(warning, NotificationType.DATABASE)
-        notify_success("Updated successfully", NotificationType.BUSINESS, entity=entity_name)
+            notify_warning(warning)
         return {"data": result.model_dump()}
     except PydanticValidationError as e:
         # Convert Pydantic validation errors to notifications for middleware to handle
         for error in e.errors():
             field_name = str(error["loc"][-1]) if error.get("loc") else "unknown"
-            notify_warning(
+            notify_validation_error(
                 message=error.get("msg", "Validation error"),
-                type=NotificationType.VALIDATION,
-                entity=entity_name,
                 field_name=field_name,
-                value=error.get("input"),
-                operation="update",
-                entity_id=entity_id
+                entity=entity_name,
+                entity_id=entity_id,
+                operation="update"
             )
         # Convert to our custom ValidationError so middleware handles it properly
         from app.errors import ValidationFailure
@@ -274,10 +267,9 @@ async def delete_entity_handler(entity_cls: Type[EntityModelProtocol], entity_na
     
     try:
         success, warnings = await entity_cls.delete(entity_id)
-        if success:
-            notify_success("Deleted successfully", NotificationType.BUSINESS, entity=entity_name)
+        # Success is indicated by absence of errors/warnings in new notification system
         for warning in warnings or []:
-            notify_warning(warning, NotificationType.DATABASE)
+            notify_warning(warning)
         return {"data": None}
     except NotFoundError:
         # Let NotFoundError bubble up to FastAPI exception handler

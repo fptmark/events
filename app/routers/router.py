@@ -31,7 +31,7 @@ def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[
         # message: Optional[str] = None
         # level: Optional[str] = None
         # metadata: Optional[Dict[str, Any]] = None
-        notifications: Optional[Dict[str, Dict[str, Any]]] = None
+        notifications: Optional[Dict[str, Any]] = None
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
     
@@ -40,7 +40,7 @@ def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[
         # message: Optional[str] = None
         # level: Optional[str] = None
         # metadata: Optional[Dict[str, Any]] = None
-        notifications: Optional[Dict[str, Dict[str, Any]]] = None
+        notifications: Optional[Dict[str, Any]] = None
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
         pagination: Optional[Dict[str, Any]] = None

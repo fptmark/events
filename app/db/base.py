@@ -95,6 +95,29 @@ class DatabaseInterface(ABC):
             return wrapper
         return decorator
     
+    def _validate_list_params(self, list_params):
+        """Validate and sanitize list_params to prevent None errors"""
+        if not list_params:
+            return list_params
+            
+        # Ensure filters is never None
+        if list_params.filters is None:
+            list_params.filters = {}
+            
+        # Ensure sort_fields is never None
+        if list_params.sort_fields is None:
+            list_params.sort_fields = []
+            
+        return list_params
+    
+    def _validate_document_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate and sanitize document data to prevent None errors"""
+        if data is None:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return data
+    
     @property
     @abstractmethod
     def id_field(self) -> str:
@@ -117,7 +140,7 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+    async def _get_list_impl(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count"""
         pass
 
@@ -202,6 +225,15 @@ class DatabaseInterface(ABC):
         """Check if a document exists with the given field value (excluding optionally specified ID)"""
         pass
     
+    # Public wrapper methods with validation
+    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+        """Get paginated/filtered list of documents from a collection with count - with parameter validation"""
+        # Validate and sanitize list_params
+        validated_params = self._validate_list_params(list_params)
+        
+        # Call the implementation
+        return await self._get_list_impl(collection, unique_constraints, validated_params, entity_metadata)
+    
     # Optional method for databases that support single field index creation
     async def create_single_field_index(self, collection: str, field: str, index_name: str) -> None:
         """Create a single field index (optional - for synthetic index support)"""
@@ -277,12 +309,53 @@ class DatabaseInterface(ABC):
         return hashlib.sha256(combined.encode()).hexdigest()
     
     # Metadata-driven field type helpers
+    def _get_field_name_mapping(self, entity_metadata: Optional[Dict[str, Any]]) -> Dict[str, str]:
+        """Create cached bidirectional field name mapping (lowercase -> actual, actual -> actual)."""
+        if not entity_metadata or 'fields' not in entity_metadata:
+            return {}
+            
+        mapping = {}
+        fields = entity_metadata.get('fields', {})
+        
+        for actual_field_name in fields.keys():
+            # Map actual name to itself
+            mapping[actual_field_name] = actual_field_name
+            # Map lowercase to actual
+            lowercase_name = actual_field_name.lower()
+            if lowercase_name != actual_field_name:
+                mapping[lowercase_name] = actual_field_name
+                
+        return mapping
+    
+    def _map_field_name(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
+        """Map field name using cached lookup and notify about invalid fields."""
+        if not hasattr(self, '_field_mapping_cache'):
+            self._field_mapping_cache = {}
+            
+        # Use metadata hash as cache key
+        cache_key = id(entity_metadata) if entity_metadata else 'none'
+        
+        if cache_key not in self._field_mapping_cache:
+            self._field_mapping_cache[cache_key] = self._get_field_name_mapping(entity_metadata)
+            
+        mapping = self._field_mapping_cache[cache_key]
+        mapped_field = mapping.get(field_name)
+        
+        # If field not found in mapping and we have metadata, notify about invalid field
+        if mapped_field is None and entity_metadata and 'fields' in entity_metadata:
+            from app.notification import notify_application_error
+            notify_application_error(f"Invalid field '{field_name}' does not exist in entity")
+            
+        return mapped_field if mapped_field is not None else field_name
+    
     def _get_field_type(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
         """Get field type from entity metadata or default to String."""
         if not entity_metadata:
             return 'String'
         
-        field_info = entity_metadata.get('fields', {}).get(field_name, {})
+        # Map lowercase field name to actual metadata field name
+        actual_field_name = self._map_field_name(field_name, entity_metadata)
+        field_info = entity_metadata.get('fields', {}).get(actual_field_name, {})
         return field_info.get('type', 'String')
     
     def _is_enum_field(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> bool:
@@ -290,8 +363,10 @@ class DatabaseInterface(ABC):
         if not entity_metadata:
             return False
         
-        field_info = entity_metadata.get('fields', {}).get(field_name, {})
-        return 'enum' in field_info
+        # Map lowercase field name to actual metadata field name
+        actual_field_name = self._map_field_name(field_name, entity_metadata)
+        field_info = entity_metadata.get('fields', {}).get(actual_field_name, {})
+        return 'enum' in (field_info or {})
     
     def _is_unique_field(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> bool:
         """Check if field is part of unique constraints in metadata."""
@@ -314,7 +389,9 @@ class DatabaseInterface(ABC):
         if not entity_metadata:
             return False
         
-        field_info = entity_metadata.get('fields', {}).get(field_name, {})
+        # Map lowercase field name to actual metadata field name
+        actual_field_name = self._map_field_name(field_name, entity_metadata)
+        field_info = entity_metadata.get('fields', {}).get(actual_field_name, {})
         return field_info.get('autoGenerate', False) or field_info.get('autoUpdate', False)
     
     def _get_default_sort_field(self, entity_metadata: Optional[Dict[str, Any]]) -> str:

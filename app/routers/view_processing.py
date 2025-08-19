@@ -17,7 +17,7 @@ from urllib.parse import unquote
 
 from app.config import Config
 from app.routers.router_factory import ModelImportCache
-from app.notification import notify_warning, NotificationType
+from app.notification import notify_warning, notify_validation_error
 from app.errors import NotFoundError
 
 if TYPE_CHECKING:
@@ -138,13 +138,10 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Optional[Dict[st
                     
                     # Add warning notification instead of raising ValidationError
                     # This allows data to be returned with FK validation warnings
-                    notify_warning(
+                    notify_validation_error(
                         message=f"Id {missing_value} does not exist",
-                        type=NotificationType.VALIDATION,
-                        entity=entity_name,
                         field_name=fk_id_field,
-                        value=missing_value,
-                        operation="get_data",
+                        entity=entity_name,
                         entity_id=entity_id
                     )
                     
@@ -153,7 +150,7 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Optional[Dict[st
     
     except Exception as view_error:
         # Log view parsing error but continue without FK data
-        notify_warning(f"Failed to parse view parameter: {str(view_error)}", NotificationType.VALIDATION, entity=entity_name)
+        notify_validation_error(f"Failed to parse view parameter: {str(view_error)}", entity=entity_name)
 
 
 async def auto_validate_fk_fields(entity_dict: Dict[str, Any], entity_name: str, entity_cls: Type['EntityModelProtocol']) -> None:
@@ -170,13 +167,10 @@ async def auto_validate_fk_fields(entity_dict: Dict[str, Any], entity_name: str,
             except NotFoundError:
                 # Add warning notification instead of raising ValidationError
                 # This allows data to be returned with FK validation warnings
-                notify_warning(
+                notify_validation_error(
                     message=f"Id {entity_dict[field_name]} does not exist",
-                    type=NotificationType.VALIDATION,
-                    entity=entity_name,
                     field_name=field_name,
-                    value=entity_dict[field_name],
-                    operation="get_data",
+                    entity=entity_name,
                     entity_id=entity_id
                 )
             except ImportError:

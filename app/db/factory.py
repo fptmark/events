@@ -6,7 +6,7 @@ from .base import DatabaseInterface, T
 from .elasticsearch import ElasticsearchDatabase
 from .mongodb import MongoDatabase
 from ..errors import DatabaseError
-from ..notification import notify_warning, notify_error, notify_database_error, NotificationType
+from ..notification import notify_warning, notify_error, notify_database_error
 
 class DatabaseFactory:
     """
@@ -160,10 +160,6 @@ class DatabaseFactory:
     @classmethod
     def _notify_database_message(cls, message: str, collection: str, operation: str) -> None:
         """Send appropriate notification based on message content"""
-        # Missing unique constraints/indexes are errors, not warnings
-        if ("Missing unique" in message or "run with --initdb" in message or 
-            "doesn't support unique" in message):
-            notify_error(message, NotificationType.DATABASE, entity=collection, operation=operation)
-        else:
-            notify_warning(message, NotificationType.DATABASE, entity=collection, operation=operation)
+        # ALL database messages are database errors - no warnings
+        notify_database_error(message, entity=collection)
 

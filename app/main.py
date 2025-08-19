@@ -151,6 +151,29 @@ app = FastAPI(
     exception_handlers={}
 )
 
+# FORCE LOWERCASE URL MIDDLEWARE - Convert entire URL to lowercase BEFORE any processing
+@app.middleware("http")
+async def force_lowercase_url_middleware(request: Request, call_next):
+    """Convert the entire URL (path + query string) to lowercase before any processing"""
+    # Get the original scope
+    scope = request.scope
+    
+    # Convert path to lowercase 
+    scope["path"] = scope["path"].lower()
+    
+    # Convert query string to lowercase
+    if scope.get("query_string"):
+        original_query = scope["query_string"].decode('utf-8')
+        lowercase_query = original_query.lower()
+        scope["query_string"] = lowercase_query.encode('utf-8')
+    
+    # Create new request with lowercase URL
+    new_request = Request(scope, request.receive)
+    
+    # Continue with processing
+    response = await call_next(new_request)
+    return response
+
 # Store FastAPI's original openapi method before we override it
 _original_openapi = app.openapi
 
@@ -196,9 +219,9 @@ async def custom_swagger_ui_html():
 ui_port = config.get('ui_port', 4200)
 server_port = config.get('server_port', 5500)
 cors_origins = [
-    f"http://localhost:{ui_port}",  # Angular dev server
-    f"http://localhost:{server_port}"  # Backend API server
-]
+        f"http://localhost:{ui_port}",  # Angular dev server
+        f"http://localhost:{server_port}"  # Backend API server
+    ]
 
 app.add_middleware(
     CORSMiddleware,
@@ -256,15 +279,15 @@ async def handle_exception_with_notifications(
 
 def handle_database_error_notifications(exc: DatabaseError, entity: str, operation: str):
     """Handle database error notifications"""
-    from app.notification import notify_error, NotificationType
-    notify_error(exc.message, NotificationType.SYSTEM, entity=entity, operation=operation)
+    from app.notification import notify_database_error
+    notify_database_error(exc.message, entity=entity)
 
 def handle_validation_error_notifications(exc: ValidationError, entity: str, operation: str):
     """Handle validation error notifications"""
-    from app.notification import notify_error, NotificationType
+    from app.notification import notify_validation_error
     for field_error in exc.invalid_fields:
-        notify_error(field_error.message, NotificationType.VALIDATION, 
-                    entity=entity, field_name=field_error.field_name, value=field_error.value)
+        notify_validation_error(field_error.message, 
+                              field_name=field_error.field_name, entity=entity)
 
 def handle_request_validation_error_notifications(exc: RequestValidationError, entity: str, operation: str):
     """Handle FastAPI request validation error notifications"""
@@ -272,24 +295,23 @@ def handle_request_validation_error_notifications(exc: RequestValidationError, e
     for error in exc.errors():
         field = str(error['loc'][-1]) if error['loc'] else 'unknown'
         message = error['msg']
-        value = error.get('input')
         notify_validation_error(f"Invalid {field}: {message}", 
-                              field_name=field, value=value, entity=entity)
+                              field_name=field, entity=entity)
 
 def handle_not_found_error_notifications(exc: NotFoundError, entity: str, operation: str):
     """Handle not found error notifications"""
-    from app.notification import notify_error, NotificationType
-    notify_error(exc.message, NotificationType.BUSINESS, entity=entity)
+    from app.notification import notify_business_error
+    notify_business_error(exc.message, entity=entity)
 
 def handle_duplicate_error_notifications(exc: DuplicateError, entity: str, operation: str):
     """Handle duplicate error notifications"""
     from app.notification import notify_validation_error
-    notify_validation_error(exc.message, field_name=exc.field, value=exc.value, entity=entity)
+    notify_validation_error(exc.message, field_name=exc.field, entity=entity)
 
 def handle_generic_error_notifications(exc: Exception, entity: str, operation: str):
     """Handle generic error notifications"""
-    from app.notification import notify_error, NotificationType
-    notify_error(f"An unexpected error occurred: {str(exc)}", NotificationType.SYSTEM, entity=entity)
+    from app.notification import notify_system_error
+    notify_system_error(f"An unexpected error occurred: {str(exc)}", entity=entity)
 
 @app.exception_handler(DatabaseError)
 async def database_error_handler(request: Request, exc: DatabaseError):

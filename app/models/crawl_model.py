@@ -9,7 +9,7 @@ from app.db import DatabaseFactory
 import app.utils as helpers
 from app.config import Config
 from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
-from app.notification import notify_warning, NotificationType
+from app.notification import notify_database_error, notify_validation_error
 from app.models.list_params import ListParams
 import app.models.utils as utils
 
@@ -144,8 +144,9 @@ class Crawl(BaseModel):
 
     async def save(self, entity_id: str = '') -> tuple[Self, List[str]]:
         try:
-            _, unique_validations = Config.validations(True)
-            unique_constraints = self._metadata.get('uniques', []) if unique_validations else []
+            # ALWAYS enforce unique constraints on save operations (database integrity)
+            # Config only affects GET operations (warnings about existing bad data)
+            unique_constraints = self._metadata.get('uniques', [])
 
             # update uses the id
             if len(entity_id) > 0:
@@ -165,17 +166,15 @@ class Crawl(BaseModel):
             except PydanticValidationError as e:
                 # Convert to notifications and ValidationError format
                 if len(entity_id) == 0:
-                    notify_warning("Crawl instance missing ID during save", NotificationType.DATABASE)
+                    notify_database_error("Crawl instance missing ID during save")
                     entity_id = "missing"
 
                 for error in e.errors():
                     field_name = str(error["loc"][-1])
-                    notify_warning(
+                    notify_validation_error(
                         message=error['msg'],
-                        type=NotificationType.VALIDATION,
-                        entity="Crawl",
                         field_name=field_name,
-                        value=error.get("input"),
+                        entity="Crawl",
                         operation="save"
                     )
                 failures = [ValidationFailure(field_name=str(error["loc"][-1]), message=error["msg"], value=error.get("input")) for error in e.errors()]
@@ -192,6 +191,9 @@ class Crawl(BaseModel):
 
             return self, warnings
         except ValidationError:
+            # Re-raise validation errors directly
+            raise
+        except DuplicateError:
             # Re-raise validation errors directly
             raise
         except Exception as e:
