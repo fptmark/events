@@ -3,7 +3,8 @@ TestCase dataclass for unified test definitions.
 """
 
 from dataclasses import dataclass, field
-from tests.utils import get_fk_entity
+from tests.utils import get_fk_entity, get_url_fields
+from tests.data.base_data import DataFactory
 import utils
 
 from typing import Any, Optional, List, Dict, Tuple
@@ -112,7 +113,8 @@ class TestCase:
                     field, value = parts
                     filter_conditions[field] = value
                     
-        return filter_conditions 
+        return filter_conditions
+
 
     def _generate_expected_response(self) -> Dict[str, Any]:
         """Generate expected_response dynamically from test scenarios + metadata"""
@@ -120,42 +122,38 @@ class TestCase:
             return {}
         
         try:
-            # Import here to avoid circular dependencies
-            from tests.data.user_data import UserDataFactory
-            from tests.data.account_data import AccountDataFactory
+            # Get entity metadata (initialized at framework startup)
+            from app.metadata import get_entity_metadata
+            entity_metadata = get_entity_metadata(self.entity)
             
-            # Universal lookup - works for any entity
-            if self.entity.lower() == 'user':
-                entity_data = UserDataFactory.get_test_record_by_id(self.id)
-            elif self.entity.lower() == 'account':
-                entity_data = AccountDataFactory.get_test_record_by_id(self.id)
-            else:
-                entity_data = None
+            # Generate expected errors - detect bad fields
+            expected_errors = []
             
-            if not entity_data:
-                return {}  # Gracefully handle missing test data
-            
-            # Get model class dynamically
-            entity_type = self.entity.capitalize()
-            model_class = utils.get_model_class(entity_type)
-            
+            if self.expected_status in [200, 201]:
+                for field in get_url_fields(self.url):
+                    if not entity_metadata.is_valid_field(field): # type: ignore
+                        expected_errors.append({'type': 'application', 'message': f'Invalid field \'{field}\' does not exist in entity'})
+
+            entity_data = DataFactory.get_data_record(self.entity, self.id)
+
             # Generate expected warnings using entity data and metadata
-            expected_warnings = self._generate_expected_warnings(entity_data, model_class)
-            
-            # Remove ignored fields from entity data
-            cleaned_data = entity_data.copy()
+            if self.expected_status in [200, 201]:      # Todo: Merge with above????
+                expected_warnings = self._generate_expected_warnings(entity_data, entity_metadata)
             
             # Add view objects if provided
             if self.view_objects:
-                cleaned_data.update(self.view_objects)
+                entity_data.update(self.view_objects)
             
             # Use new notification structure - warnings grouped by entity/id
-            response = {"data": cleaned_data}
+            response = {"data": entity_data}
             
+            if expected_errors:
+                response['notifications'] = {'errors': expected_errors}
+
             if expected_warnings:
                 response["notifications"] = {
                     "warnings": {
-                        entity_type: {
+                        self.entity: {
                             self.id: expected_warnings
                         }
                     }
@@ -167,45 +165,20 @@ class TestCase:
             # Gracefully handle any errors during generation
             return {}
     
-    def _build_entity_ignore_fields(self, model_class, entity_data: Dict[str, Any]) -> List[str]:
-        """Build ignore fields list from model metadata + custom ignore_fields"""
-        ignore_fields = []
-        
-        try:
-            metadata = model_class.get_metadata()
-            fields = metadata.get('fields', {})
-            
-            # Add autogen and autoupdate fields
-            for field_name, field_info in fields.items():
-                if field_info.get('autoGenerate') or field_info.get('autoUpdate'):
-                    ignore_fields.append(field_name)
-            
-            # Add custom ignore_fields from entity data
-            custom_ignore = entity_data.get('ignore_fields', [])
-            if custom_ignore:
-                ignore_fields.extend(custom_ignore)
-            
-            # Always ignore ignore_fields itself
-            if 'ignore_fields' not in ignore_fields:
-                ignore_fields.append('ignore_fields')
-                
-        except Exception:
-            pass  # Gracefully handle metadata errors
-        
-        return ignore_fields
     
-    def _generate_expected_warnings(self, entity_data: Dict[str, Any], model_class) -> List[Dict[str, Any]]:
-        """Generate expected validation warnings using model metadata"""
+    def _generate_expected_warnings(self, entity_data: Dict[str, Any], entity_metadata) -> List[Dict[str, Any]]:
+        """Generate expected validation warnings using cached entity metadata"""
         try:
-            metadata = model_class.get_metadata()
-            fields = metadata.get('fields', {})
             warnings = []
             
-            for field_name, field_info in fields.items():
+            if not entity_metadata:
+                return warnings
+            
+            for field_name, field_info in entity_metadata.fields.items():
                 field_value = entity_data.get(field_name)
                 
                 # Required field validation
-                if field_info.get('required', False) and field_value is None:
+                if field_info.required and field_value is None:
                     warnings.append({
                         "type": "validation",
                         "field": field_name,
@@ -213,16 +186,15 @@ class TestCase:
                     })
                 
                 # Enum validation
-                if field_value is not None and 'enum' in field_info:
-                    valid_values = field_info['enum'].get('values', [])
-                    if valid_values and field_value not in valid_values:
+                if field_value is not None and field_info.enum_values:
+                    if field_value not in field_info.enum_values:
                         warnings.append({
                             "type": "validation",
                             "field": field_name
                         })
                 
                 # Currency validation
-                if field_value is not None and field_info.get('type') == 'Currency':
+                if field_value is not None and field_info.type == 'Currency':
                     if isinstance(field_value, (int, float)) and field_value < 0:
                         warnings.append({
                             "type": "validation",
@@ -230,7 +202,7 @@ class TestCase:
                         })
                 
                 # Email validation
-                if field_value is not None and field_info.get('type') == 'String' and 'email' in field_name.lower():
+                if field_value is not None and field_info.type == 'String' and 'email' in field_name.lower():
                     if isinstance(field_value, str) and '@' not in field_value:
                         warnings.append({
                             "type": "validation",
