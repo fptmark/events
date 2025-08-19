@@ -245,7 +245,7 @@ class ComprehensiveTestRunner:
         return True
 
 
-    async def run(self, results_file: str, config_file: str = '') -> bool:
+    async def run(self, results_file: str, url: str, config_file: str = '') -> bool:
         """Run tests using either file results or live HTTP requests"""
         if len(results_file) > 0:
             curl = CurlManager(self.verbose)
@@ -266,6 +266,8 @@ class ComprehensiveTestRunner:
             suite_counter = TestCounter()
             
             for test in test_cases:
+                if url and url != test.url:
+                    continue
                 if self.verbose:
                     print(f"  📝 Processing {test.description}...    {test.url}")
                 
@@ -273,7 +275,7 @@ class ComprehensiveTestRunner:
                     if results is None:
                         # Live HTTP request - returns (status_code, dict)
                         full_url = f"http://localhost:{self.server_port}{test.url}"
-                        http_status, result = CurlManager.make_api_request(test.method, full_url, test.expected_status)
+                        http_status, result = CurlManager.make_api_request(test.method, full_url)
                     else:
                         # Use file results - status is int, need to compare
                         url_key = test.url
@@ -282,7 +284,7 @@ class ComprehensiveTestRunner:
                             http_status = results[url_key]['status']
                         else:
                             print(f"  ❌ {test.description} - URL not found in results")
-                            status, result = False, None
+                            http_status, result = -1, None
                     
                     status = http_status == test.expected_status
 
@@ -427,6 +429,8 @@ async def main():
                        help='Entity to test (default: user)')
     parser.add_argument('--delay', type=float, default=0.0,
                        help='Delay between requests in seconds (default: 0.0 - no delay)')
+    parser.add_argument('--url', default=None,
+                       help='specify single url to test')
     parser.add_argument('--config', 
                        help='Config file to use for validation (required when using --curl <file>)')
     args = parser.parse_args()
@@ -507,7 +511,7 @@ async def main():
                                     print(f"   Error: {result.stderr}")
                                 return 1
 
-                    status = await runner.run(file_name if args.curl else '', config_file)
+                    status = await runner.run(file_name if args.curl else '', args.url, config_file)
                     success += status != 0
 
                 finally:
@@ -522,7 +526,7 @@ async def main():
             if not status:
                 return 1
             
-            success = await runner.run(args.curl, args.config)
+            success = await runner.run(args.curl, args.url, args.config)
             return 0 if success else 1
             
         

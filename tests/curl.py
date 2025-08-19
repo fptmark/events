@@ -148,7 +148,7 @@ execute_url() {
             return {}
     
     @staticmethod
-    def make_api_request(method: str, url: str, expected_status: int = 200, data: Dict = {}) -> Tuple[int, Dict]:
+    def make_api_request(method: str, url: str, data: Dict = {}) -> Tuple[int, Dict]:
         """Simple HTTP request - returns (status_code, response_dict)"""
         try:
             if method.upper() == "GET":
