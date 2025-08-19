@@ -28,7 +28,7 @@ class FieldInfo:
             required=field_data.get('required', False),
             auto_generate=field_data.get('autoGenerate', False),
             auto_update=field_data.get('autoUpdate', False),
-            enum_values=set(field_data.get('enum', [])) if 'enum' in field_data else None
+            enum_values=set(field_data.get('enum', {}).get('values', [])) if 'enum' in field_data else None
         )
 
 
