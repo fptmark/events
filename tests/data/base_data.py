@@ -12,7 +12,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import utils
-from . import get_data_factory, DATA_FACTORIES
+from .user_data import UserDataFactory
+from .account_data import AccountDataFactory
+
+# Registry for factory discovery
+DATA_FACTORIES = {
+    'user': UserDataFactory,
+    'account': AccountDataFactory,
+}
 
 
 async def save_test_data(config_file: str, verbose: bool = False) -> bool:
@@ -37,8 +44,11 @@ async def save_test_data(config_file: str, verbose: bool = False) -> bool:
                 print(f"  📝 Generating data for {entity_name}...")
             
             # Factory generates its own data with its own good/bad counts
-            factory = factory_class()
-            valid_records, invalid_records = factory.generate_data()
+            factory_class.generate_data()
+            # Get all records from static test_scenarios
+            all_scenarios = factory_class.test_scenarios
+            valid_records = [record for record_id, record in all_scenarios.items() if not ("bad_" in record_id or "expired_" in record_id or "multiple_errors" in record_id)]
+            invalid_records = [record for record_id, record in all_scenarios.items() if ("bad_" in record_id or "expired_" in record_id or "multiple_errors" in record_id)]
             all_records = valid_records + invalid_records
             
             if verbose:

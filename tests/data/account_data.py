@@ -11,49 +11,42 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from . import BaseDataFactory
 from .datagen import DataGen
 
 
-class AccountDataFactory(BaseDataFactory):
+class AccountDataFactory:
     """Data generation for Account entity - combines fixed scenarios with dynamic generation"""
     
-    @staticmethod
-    def generate_data() -> Tuple[List[Dict], List[Dict]]:
-        """Generate ALL account data (fixed + random) - Account factory controls its own counts"""
-        # Get fixed test scenarios
-        fixed_valid, fixed_invalid = AccountDataFactory._create_known_test_records()
-        
-        # Generate random records using DataGen - Account-specific counts (fewer than users)
-        datagen = DataGen(entity="account")
-        random_valid, random_invalid = datagen.generate_records(
-            good_count=10,  # Account factory decides fewer accounts than users
-            bad_count=5, 
-            include_known_test_records=False  # We already have fixed records
-        )
-        
-        # Combine fixed + random
-        all_valid = fixed_valid + random_valid
-        all_invalid = fixed_invalid + random_invalid
-        
-        return all_valid, all_invalid
-    
-    @staticmethod
-    def get_test_scenarios() -> Dict[str, Dict]:
-        """Get test scenarios for this entity - reuse existing test records"""
-        valid_records, invalid_records = AccountDataFactory._create_known_test_records()
-        scenarios = {}
-        
-        # Convert list of records to dict keyed by ID
-        for record in valid_records + invalid_records:
-            scenarios[record['id']] = record
-            
-        return scenarios
+    # Static test scenarios
+    test_scenarios = {
+        "507f1f77bcf86cd799439011": {
+            "id": "507f1f77bcf86cd799439011",
+            "name": "Test Account",
+            "createdAt": "2023-01-01T00:00:00Z",
+            "expiredAt": "2025-12-31T23:59:59Z"
+        }
+    }
     
     @staticmethod
     def get_test_record_by_id(record_id: str) -> Optional[Dict]:
-        """Use base class universal lookup"""
-        return BaseDataFactory.get_test_record_by_id(record_id)
+        """Get test record by ID"""
+        return AccountDataFactory.test_scenarios.get(record_id)
+    
+    @staticmethod
+    def generate_data():
+        """Generate random account data and add to test scenarios"""
+        datagen = DataGen(entity="account")
+        random_valid, random_invalid = datagen.generate_records(
+            good_count=10,
+            bad_count=5, 
+            include_known_test_records=False
+        )
+        
+        # Add random records to test scenarios
+        for record in random_valid + random_invalid:
+            AccountDataFactory.test_scenarios[record['id']] = record
+    
+    
     
     @staticmethod
     def _create_known_test_records() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:

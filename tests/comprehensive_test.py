@@ -18,17 +18,16 @@ from dataclasses import dataclass
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tests.base_test import TestCounter
-from tests.test_basic import BasicAPITester
-from tests.test_view import ViewParameterTester
-from tests.test_pagination import PaginationTester
-from tests.test_sorting import SortingTester
-from tests.test_filtering import FilteringTester
-from tests.test_combinations import CombinationTester
+from tests.suites.test_basic import BasicAPITester
+from tests.suites.test_view import ViewParameterTester
+from tests.suites.test_pagination import PaginationTester
+from tests.suites.test_sorting import SortingTester
+from tests.suites.test_filtering import FilteringTester
+from tests.suites.test_combinations import CombinationTester
+from tests.suites.test_lowercase_params import LowercaseParamTester
 from tests.curl import CurlManager
-from tests.base_test import TestCase
 from tests.data.validation import Validator
 from app.config import Config
-
 
 @dataclass
 class TestConfig:
@@ -215,9 +214,8 @@ class ComprehensiveTestRunner:
             if self.verbose:
                 print(f"  📝 Generating {test_description}...")
             
-            # Create test instance and get test cases array
-            test_instance = test_class("", "", self.verbose)
-            test_cases = test_instance.get_test_cases()
+            # Get test cases from static method
+            test_cases = test_class.get_test_cases()
             
             # Write each test case directly to curl file
             curl_file = curl.get_curl_file_handle()
@@ -261,18 +259,21 @@ class ComprehensiveTestRunner:
         
         for test_type, (test_description, test_class) in self.test_cases.items():
             print(f"\n🧪 Running {test_description} tests...")
-            test_obj = test_class(config_file, f"http://localhost:{self.server_port}", self.verbose)
+            
+            # Get test cases from static method
+            test_cases = test_class.get_test_cases()
             
             suite_counter = TestCounter()
             
-            for test in test_obj.get_test_cases():
+            for test in test_cases:
                 if self.verbose:
                     print(f"  📝 Processing {test.description}...    {test.url}")
                 
                 try:
                     if results is None:
-                        # Live HTTP request - returns (bool, dict)
-                        http_status, result = test_obj.make_api_request(test.method, test.url, expected_status=test.expected_status)
+                        # Live HTTP request - returns (status_code, dict)
+                        full_url = f"http://localhost:{self.server_port}{test.url}"
+                        http_status, result = CurlManager.make_api_request(test.method, full_url, test.expected_status)
                     else:
                         # Use file results - status is int, need to compare
                         url_key = test.url
@@ -338,28 +339,6 @@ def get_dbs(args):
         dbs.append("elasticsearch")
     return dbs if dbs else ["mongodb", "elasticsearch"]  # Default to both if none specified
 
-def get_test_cases(requested_tests: List[str]) -> Dict[str, Tuple[str, type]]:
-    """Convert test case names to {display_name: test_class} dict"""
-    available_tests: Dict[str, Tuple[str, type]] = {
-        'basic': ("Basic API Tests", BasicAPITester),
-        'view': ("View Parameter Tests", ViewParameterTester),
-        'page': ("Pagination Tests", PaginationTester),
-        'sort': ("Sorting Tests", SortingTester),
-        'filter': ("Filtering Tests", FilteringTester),
-        'combo': ("Combination Tests", CombinationTester),
-    }
-
-    if requested_tests is None:
-        # If no specific test cases provided, return all available tests
-        return available_tests
-
-    test_suites: Dict[str, Tuple[str, type]] = {}
-    for test in requested_tests:
-        if test in available_tests:
-            test_suites[test] = available_tests[test]
-        else:
-            print(f"⚠️ Warning: Unknown test case '{test}' ignored")
-    return test_suites
 
 def get_configs(args, dbs):
     # Define test configurations
@@ -440,8 +419,8 @@ async def main():
     parser.add_argument('--newdata-only', action='store_true',
                        help='Only Wipe all data and create fresh test data with known validation issues')
     parser.add_argument('--tests', nargs='+', 
-                       choices=['basic', 'view', 'page', 'filter', 'sort'],
-                       help='Test cases to run (choices: basic, view, page, filter, sort). Can specify multiple: --tests basic sort')
+                       choices=['basic', 'view', 'page', 'filter', 'sort', 'lowercase'],
+                       help='Test cases to run (choices: basic, view, page, filter, sort, lowercase). Can specify multiple: --tests basic sort')
     parser.add_argument('--wipe', action='store_true',
                        help='DESTRUCTIVE: Wipe all data and exit (must be the only argument)')
     parser.add_argument('--entity', default="user",
@@ -457,9 +436,14 @@ async def main():
         if not hasattr(args, 'config') or not args.config:
             parser.error("--config <file> is required when using --curl <file> to know the FK validation state")
     
+    # Initialize test system before any real work
+    from tests.init import initialize_all
+    initialize_all()
+    
     dbs = get_dbs(args)
     configs = get_configs(args, dbs)
-    test_cases: Dict[str, Tuple[str, type]] = get_test_cases(args.tests)
+    from tests.suites.test_case import get_test_suites
+    test_cases: Dict[str, Tuple[str, type]] = get_test_suites(args.tests)
 
     runner = ComprehensiveTestRunner(verbose=args.verbose, dbs=dbs, configurations=configs)
     # Handle special modes first
@@ -479,8 +463,8 @@ async def main():
         success = await runner.create_new_data(args.config)
 
     # Initialize all test data scenarios and TestCase objects
-    from tests.data import BaseDataFactory
-    BaseDataFactory.initialize_all()
+    # from tests.data import BaseDataFactory
+    # BaseDataFactory.initialize_all()
     
     # Handle curl modes with clean orchestration
     runner = ComprehensiveTestRunner(verbose=args.verbose, dbs=dbs, connection=True, test_cases=test_cases, entity=args.entity, request_delay=args.delay)

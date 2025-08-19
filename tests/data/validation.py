@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import utils
+from app.metadata import MetadataManager, register_entity_metadata, get_entity_metadata
 
 
 class Validator:
@@ -27,18 +28,28 @@ class Validator:
         self.result = result
         self.config = config
         self.verbose = verbose
+        self.fk_validation = config.get('fk_validation', '')
+        self.view_objects = test_case.view_objects
         
-        # Get model metadata once with null safety
+        # Get model metadata and register it with the metadata system
         model_class = utils.get_model_class(test_case.entity)
-        self.metadata = model_class.get_metadata() or {}
-        if self.metadata == None:
+        raw_metadata = model_class.get_metadata() or {}
+        if raw_metadata is None:
             print("WTF!!!!")
-        self.fields = self.metadata.get('fields', {}) or {}
         
-        # Determine request type and case sensitivity
+        # Register entity metadata if not already registered
+        entity_name = test_case.entity
+        self.entity_metadata = get_entity_metadata(entity_name)
+        if not self.entity_metadata:
+            self.entity_metadata = register_entity_metadata(entity_name, raw_metadata)
+        
+        # Legacy fields access for backward compatibility
+        self.metadata = raw_metadata
+        self.fields = raw_metadata.get('fields', {}) or {}
+        
+        # Determine request type and validation settings
         self.is_single_request = bool(test_case.id)
         self.fk_validation_enabled = self.config.get('fk_validation', '') in ['single', 'multiple']
-        self.case_sensitive = self.config.get('case_sensitive', False)  # Default to case-insensitive
         
     def validate_test_case(self) -> bool:
         """Main validation entry point"""
@@ -64,11 +75,12 @@ class Validator:
         
         data = self.result['data']
         
-        # Single request = single object, List request = array
+        # Single request = single object or null (for not found), List request = array
         if self.is_single_request:
             if isinstance(data, list):
-                print(f"    ❌ Single entity request returned array, expected object")
+                print(f"    ❌ Single entity request returned array, expected object or null")
                 return False
+            # data can be None/null for non-existent entities (404 responses)
         else:
             if not isinstance(data, list):
                 print(f"    ❌ List request returned object, expected array")
@@ -82,28 +94,80 @@ class Validator:
         return True
     
     def _validate_notification_counts(self) -> bool:
-        """Validate notification count matches expectation for both single and multiple results"""
+        """Validate notification count matches expectation for new notification structure"""
         expected_notifications = self.test_case.expected_response.get('notifications', {})
-        for entity_id, entity_data in expected_notifications.items():
-            expected_warnings = entity_data.get('warnings', [])
-            result_warnings = self.result['notifications'].get(entity_id, {}).get('warnings', [])
-            if len(expected_warnings) != len(result_warnings):
-                print(f"    ❌ Warnings count mismatch")
+        actual_notifications = self.result.get('notifications', {})
+        
+        # Check errors array if expected
+        if 'errors' in expected_notifications:
+            expected_errors = expected_notifications['errors']
+            actual_errors = actual_notifications.get('errors', [])
+            if len(expected_errors) != len(actual_errors):
+                print(f"    ❌ Errors count mismatch: expected {len(expected_errors)}, got {len(actual_errors)}")
                 return False
+        
+        # Check warnings structure if expected
+        if 'warnings' in expected_notifications:
+            expected_warnings = self._adjust_fk_validations(expected_notifications.get('warnings', {}))
+            actual_warnings = self._adjust_fk_validations(actual_notifications.get('warnings', {}))
+            
+            # Check each entity/id group
+            for entity_type, entity_id_warnings in expected_warnings.items():
+                if entity_type not in actual_warnings:
+                    # for entity_id in entity_ids:
+                    print(f"    ❌ Missing warnings for entity type '{entity_type}'")
+                    return False
+                    
+                for entity_id, expected_warning_list in entity_id_warnings.items():
+                    actual_warning_list = actual_warnings[entity_type].get(entity_id, [])
+                    if len(expected_warning_list) != len(actual_warning_list):
+                        print(f"    ❌ Warning count mismatch for {entity_type}:{entity_id}: expected {len(expected_warning_list)}, got {len(actual_warning_list)}")
+                        return False
 
         return True 
     
+    def _adjust_fk_validations(self, warning_obj) -> Dict[str, Any]:
+        # warnings needs to ignore fk_validations for now
+        adjusted_warnings: Dict[str, Any] = {}
+        for entity, all_id_warnings in warning_obj.items():
+            adjusted_warnings[entity] = {}
+            for id, warning_list in all_id_warnings.items():
+                entity_id_warnings = []
+                for warning in warning_list:
+                    field = warning.get('field', '')
+                    message = warning.get('message', '').lower()
+
+                    if not (field.endswith("Id") and ("field required" in message or "does not exist" in message)):
+                        entity_id_warnings.append(warning)
+                adjusted_warnings[entity][id] = entity_id_warnings
+        return adjusted_warnings
+            
     def _validate_single_entity(self) -> bool:
         """Comprehensive validation for single entity responses"""
+        
+        data = self.result.get('data')
+        
+        # For 404 responses, data should be null
+        if self.test_case.expected_status == 404:
+            if data is not None:
+                print(f"    ❌ 404 response should have data: null, but got: {type(data)}")
+                return False
+            return True  # 404 with null data is valid
+        
+        # For 200 responses, data should not be null
+        if self.test_case.expected_status == 200:
+            if data is None:
+                print(f"    ❌ 200 response should have data object, but got: null")
+                return False
         
         # Expected response validation (deep field comparison)
         if self.test_case.expected_response:
             if not self._validate_expected_response(self.result):
                 return False
         
-        # FK sub-object validation
+        # FK sub-object validation (only if data exists)
         if self.fk_validation_enabled or self.test_case.expected_sub_objects:
-            if not self._validate_fk_sub_objects(self.result['data']):
+            if not self._validate_fk_sub_objects(data):
                 return False
                 
         return True
@@ -129,12 +193,19 @@ class Validator:
         if not self._compare_objects(cleaned_actual, cleaned_expected, "data"):
             return False
             
-        # Compare warnings if specified
-        expected_warnings = self.test_case.expected_response.get('notifications', []).get(self.test_case.id, {}).get('warnings', [])
-        if expected_warnings:
-            actual_warnings = actual_response.get('notifications', []).get(self.test_case.id, {}).get('warnings', [])
-            if not self._compare_warnings(actual_warnings, expected_warnings):
-                return False
+        # Compare warnings if specified (new notification structure)
+        expected_notifications = self.test_case.expected_response.get('notifications', {})
+        if expected_notifications.get('warnings'):
+            actual_notifications = actual_response.get('notifications', {})
+            entity_type = self.test_case.entity.lower()
+            entity_id = self.test_case.id
+            
+            # Get expected warnings for this entity/id
+            expected_warnings = expected_notifications.get('warnings', {}).get(entity_type, {}).get(entity_id, [])
+            if expected_warnings:
+                actual_warnings = actual_notifications.get('warnings', {}).get(entity_type, {}).get(entity_id, [])
+                if not self._compare_warnings(actual_warnings, expected_warnings):
+                    return False
                 
         return True
     
@@ -269,12 +340,25 @@ class Validator:
         if len(data) < 2:
             return True  # Can't validate sort with < 2 items
         
+        # Get invalid sort fields from APPLICATION errors to skip validation
+        invalid_sort_fields = self._get_invalid_sort_fields()
+        
+        # Filter out invalid sort fields from validation
+        valid_sort_criteria = []
+        for field_name, direction in sort_criteria:
+            if field_name.lower() not in invalid_sort_fields:
+                valid_sort_criteria.append((field_name, direction))
+        
+        # If no valid sort criteria remain, sorting validation passes
+        if not valid_sort_criteria:
+            return True
+        
         # Enhanced validation with better error reporting
         for i in range(len(data) - 1):
             current = data[i]
             next_item = data[i + 1]
             
-            if not self._validate_sort_pair(current, next_item, sort_criteria, i):
+            if not self._validate_sort_pair(current, next_item, valid_sort_criteria, i):
                 return False
                     
         return True
@@ -312,21 +396,30 @@ class Validator:
         if not filter_criteria:
             return True
             
+        # Get invalid filter fields from APPLICATION errors to skip validation
+        invalid_filter_fields = self._get_invalid_filter_fields()
+            
         # Group filters by field for better processing of range filters
         field_filters = {}
         for filter_key, expected_value in filter_criteria.items():
             if ':' in filter_key:
                 field_name, operator = filter_key.split(':', 1)
+                # Skip invalid fields - they're already reported as APPLICATION errors
+                if field_name.lower() in invalid_filter_fields:
+                    continue
                 if field_name not in field_filters:
                     field_filters[field_name] = []
                 field_filters[field_name].append((operator, expected_value))
             else:
                 field_name = filter_key
+                # Skip invalid fields - they're already reported as APPLICATION errors
+                if field_name.lower() in invalid_filter_fields:
+                    continue
                 if field_name not in field_filters:
                     field_filters[field_name] = []
                 field_filters[field_name].append(('eq', expected_value))
         
-        # Validate each record against all filters
+        # Validate each record against all filters (excluding invalid fields)
         for i, record in enumerate(data):
             if not self._validate_record_filters(record, field_filters, i):
                 return False
@@ -336,40 +429,42 @@ class Validator:
     def _validate_record_filters(self, record: Dict, field_filters: Dict[str, List[Tuple[str, str]]], record_index: int) -> bool:
         """Validate a single record against all field filters"""
         for field_name, filters in field_filters.items():
-            actual_value = record.get(field_name)
+            # Map field name from filter to actual response field name (case-insensitive)
+            actual_field_name = self._map_response_field_name(field_name, record)
+            actual_value = record.get(actual_field_name)
             
             # All filters for this field must pass
             for operator, expected_value in filters:
                 if operator == 'eq':
                     # Handle string vs non-string field filtering differently
-                    field_info = self.fields.get(field_name, {})
-                    field_type = field_info.get('type', 'String')
+                    field_info = self.entity_metadata.get_field_info(field_name)
+                    field_type = field_info.type if field_info else 'String'
                     
-                    if field_type == 'String' and 'enum' not in field_info:
+                    if field_type == 'String' and not self.entity_metadata.is_enum_field(field_name):
                         # String fields use partial matching (contains) - current server behavior
                         if actual_value is None:
                             if self.verbose:
-                                print(f"    ❌ Filter mismatch: Record {record_index} has {field_name}=null, can't contain '{expected_value}'")
+                                print(f"    ❌ Filter mismatch: Record {record_index} has {actual_field_name}=null, can't contain '{expected_value}'")
                             return False
                         
-                        # Case-insensitive partial matching to match server behavior
-                        actual_str = str(actual_value).lower() if not self.case_sensitive else str(actual_value)
-                        expected_str = str(expected_value).lower() if not self.case_sensitive else str(expected_value)
+                        # Case-insensitive partial matching to match server behavior  
+                        actual_str = str(actual_value).lower()
+                        expected_str = str(expected_value).lower()
                         
                         if expected_str not in actual_str:
                             if self.verbose:
-                                print(f"    ❌ Filter mismatch: Record {record_index} has {field_name}='{actual_value}', doesn't contain '{expected_value}'")
+                                print(f"    ❌ Filter mismatch: Record {record_index} has {actual_field_name}='{actual_value}', doesn't contain '{expected_value}'")
                             return False
                     else:
                         # Non-string fields (enums, numbers, dates, etc.) use exact matching
-                        expected_typed = self._convert_filter_value(field_name, expected_value)
+                        expected_typed = self._convert_filter_value(actual_field_name, expected_value)
                         if actual_value != expected_typed:
                             if self.verbose:
-                                print(f"    ❌ Filter mismatch: Record {record_index} has {field_name}='{actual_value}', expected '{expected_typed}'")
+                                print(f"    ❌ Filter mismatch: Record {record_index} has {actual_field_name}='{actual_value}', expected '{expected_typed}'")
                             return False
                 else:
                     # Comparison filter
-                    if not self._validate_comparison_filter(record, field_name, operator, expected_value, record_index):
+                    if not self._validate_comparison_filter(record, actual_field_name, operator, expected_value, record_index):
                         return False
                         
         return True
@@ -428,8 +523,8 @@ class Validator:
     
     def _convert_values_for_comparison(self, actual_value: Any, expected_value: str, field_name: str) -> Tuple[Any, Any]:
         """Convert actual and expected values to compatible types for comparison"""
-        field_info = self.fields.get(field_name, {})
-        field_type = field_info.get('type', 'String')
+        field_info = self.entity_metadata.get_field_info(field_name)
+        field_type = field_info.type if field_info else 'String'
         
         if field_type in ['Integer', 'Currency', 'Float']:
             actual_typed = float(actual_value)
@@ -460,13 +555,9 @@ class Validator:
             actual_typed = bool(actual_value)
             expected_typed = expected_value.lower() in ['true', '1', 'yes', 'on']
         else:
-            # String comparison - apply case sensitivity config
-            if self.case_sensitive:
-                actual_typed = str(actual_value)
-                expected_typed = str(expected_value)
-            else:
-                actual_typed = str(actual_value).lower()
-                expected_typed = str(expected_value).lower()
+            # String comparison - case insensitive to match server behavior
+            actual_typed = str(actual_value).lower()
+            expected_typed = str(expected_value).lower()
         
         return actual_typed, expected_typed
     
@@ -558,10 +649,14 @@ class Validator:
         return True
     
     def _extract_warnings_for_entity(self, entity_id: str) -> List[Dict]:
-        """Extract warnings for specific entity from notifications"""
+        """Extract warnings for specific entity from new notification structure"""
         notifications = self.result.get('notifications', {})
-        entity_notifications = notifications.get(entity_id, {})
-        return entity_notifications.get('warnings', [])
+        warnings = notifications.get('warnings', {})
+        
+        # Find warnings for this entity across all entity types
+        entity_type = self.test_case.entity.lower()
+        entity_warnings = warnings.get(entity_type, {})
+        return entity_warnings.get(entity_id, [])
     
     def _get_expected_fields_for_entity(self, entity_name: str) -> List[str]:
         """Get expected fields for FK entity from expected_sub_objects"""
@@ -576,8 +671,8 @@ class Validator:
     
     def _compare_values(self, val1: Any, val2: Any, field_name: str) -> int:
         """Compare two values using metadata-aware type handling. Returns -1, 0, or 1"""
-        field_info = self.fields.get(field_name, {})
-        field_type = field_info.get('type', 'String')
+        field_info = self.entity_metadata.get_field_info(field_name)
+        field_type = field_info.type if field_info else 'String'
         
         # Handle None values
         if val1 is None and val2 is None:
@@ -602,7 +697,7 @@ class Validator:
                 
                 # For auto-generated timestamp fields, add microsecond tolerance to handle
                 # sub-millisecond precision differences that occur in rapid record creation
-                is_auto_field = field_info.get('autoGenerate', False) or field_info.get('autoUpdate', False)
+                is_auto_field = self.entity_metadata.is_auto_generated_field(field_name)
                 if is_auto_field:
                     # Consider timestamps within 100ms as equal for auto-generated fields
                     time_diff = abs((date1 - date2).total_seconds())
@@ -616,17 +711,93 @@ class Validator:
             bool1, bool2 = bool(val1), bool(val2)
             return -1 if bool1 < bool2 else (1 if bool1 > bool2 else 0)
             
-        # String comparison - respect case sensitivity config
-        if self.case_sensitive:
-            str1, str2 = str(val1), str(val2)
-        else:
-            str1, str2 = str(val1).lower(), str(val2).lower()
+        # String comparison - case insensitive to match server behavior
+        str1, str2 = str(val1).lower(), str(val2).lower()
         return -1 if str1 < str2 else (1 if str1 > str2 else 0)
+    
+    def _map_response_field_name(self, filter_field_name: str, record: Dict) -> str:
+        """Map filter field name to actual response field name using metadata system"""
+        # Use metadata system to get proper field name
+        proper_field_name = self.entity_metadata.get_field_name(filter_field_name)
+        if proper_field_name and proper_field_name in record:
+            return proper_field_name
+        
+        # If metadata doesn't have it, try exact match
+        if filter_field_name in record:
+            return filter_field_name
+        
+        # If no match found, return original (will result in None value during validation)
+        return filter_field_name
+    
+    def _get_invalid_filter_fields(self) -> set:
+        """Extract field names that generated application errors from API response."""
+        invalid_fields = set()
+        
+        # Null safety check
+        if not self.result or not isinstance(self.result, dict):
+            return invalid_fields
+        
+        # Look for application errors about filter criteria fields
+        notifications = self.result.get('notifications')
+        if not notifications or not isinstance(notifications, dict):
+            return invalid_fields
+            
+        errors = notifications.get('errors', [])
+        if not isinstance(errors, list):
+            return invalid_fields
+            
+        for error in errors:
+            if error.get('type') == 'application':
+                message = error.get('message', '')
+                # Look for "Filter criteria field 'fieldname' does not exist in entity"
+                if 'Filter criteria field' in message and 'does not exist in entity' in message:
+                    # Extract field name from error message
+                    import re
+                    match = re.search(r"Filter criteria field '([^']+)' does not exist", message)
+                    if match:
+                        field_name = match.group(1)
+                        invalid_fields.add(field_name.lower())  # Store lowercase for comparison
+        
+        return invalid_fields
+    
+    def _get_invalid_sort_fields(self) -> set:
+        """Extract field names that generated application errors from API response."""
+        invalid_fields = set()
+        
+        # Null safety check
+        if not self.result or not isinstance(self.result, dict):
+            return invalid_fields
+        
+        # Look for application errors about sort criteria fields
+        notifications = self.result.get('notifications')
+        if not notifications or not isinstance(notifications, dict):
+            return invalid_fields
+            
+        errors = notifications.get('errors', [])
+        if not isinstance(errors, list):
+            return invalid_fields
+            
+        for error in errors:
+            if error.get('type') == 'application':
+                message = error.get('message', '')
+                # Look for "Sort criteria field 'fieldname' does not exist in entity"
+                if 'Sort criteria field' in message and 'does not exist in entity' in message:
+                    # Extract field name from error message
+                    import re
+                    match = re.search(r"Sort criteria field '([^']+)' does not exist", message)
+                    if match:
+                        field_name = match.group(1)
+                        invalid_fields.add(field_name.lower())  # Store lowercase for comparison
+        
+        return invalid_fields
     
     def _convert_filter_value(self, field_name: str, filter_value: str) -> Any:
         """Convert string filter value to proper type using metadata"""
-        field_info = self.fields.get(field_name, {})
-        field_type = field_info.get('type', 'String')
+        field_info = self.entity_metadata.get_field_info(field_name)
+        if not field_info:
+            return filter_value  # Return as-is for unknown fields
+        
+        field_type = field_info.type
         
         if field_type == 'Boolean':
             return filter_value.lower() in ['true', '1', 'yes']

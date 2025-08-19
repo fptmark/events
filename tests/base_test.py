@@ -21,8 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.config import Config
 from app.db import DatabaseFactory
-import utils
-from test_case import TestCase
+from tests.suites.test_case import TestCase
 
 @dataclass
 class TestCounter:
@@ -72,6 +71,7 @@ class BaseTestFramework(ABC):
         self.counter = TestCounter()
         self.results: List[TestResult] = []
         self.config = {}
+        self.verbose = verbose
         
         # Load config and initialize database through existing abstraction
         if config_file and config_file.strip(): 

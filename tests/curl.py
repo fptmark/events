@@ -6,6 +6,9 @@ Curl functionality for test framework - handles all curl operations
 from io import TextIOWrapper
 import json
 import subprocess
+import requests
+import time
+from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any, cast
 from pathlib import Path
 
@@ -126,7 +129,7 @@ execute_url() {
         # Format: CURL_RESULT|STATUS:200|TIME:0.004|URL:http://...
         try:
             parts = line.split('|')[1:]  # Skip CURL_RESULT prefix
-            result = {}
+            result: Dict[str, Any] = {}
             
             for part in parts:
                 if ':' in part:
@@ -143,3 +146,26 @@ execute_url() {
             if self.verbose:
                 print(f"⚠️ Warning: Could not parse result line: {line} - {e}")
             return {}
+    
+    @staticmethod
+    def make_api_request(method: str, url: str, expected_status: int = 200, data: Dict = {}) -> Tuple[int, Dict]:
+        """Simple HTTP request - returns (status_code, response_dict)"""
+        try:
+            if method.upper() == "GET":
+                response = requests.get(url, timeout=30)
+            elif method.upper() == "POST":
+                response = requests.post(url, json=data, timeout=30)
+            elif method.upper() == "PUT":
+                response = requests.put(url, json=data, timeout=30)
+            elif method.upper() == "DELETE":
+                response = requests.delete(url, timeout=30)
+            else:
+                raise ValueError(f"Unsupported HTTP method: {method}")
+            
+            try:
+                return response.status_code, response.json()
+            except:
+                return response.status_code, {"raw_response": response.text}
+                
+        except Exception as e:
+            return 500, {"error": str(e)}
