@@ -29,6 +29,10 @@ from tests.curl import CurlManager
 from tests.data.validation import Validator
 from app.config import Config
 
+# Initialize metadata cache at module import time
+from tests.data.base_data import initialize_metadata_cache
+initialize_metadata_cache()
+
 @dataclass
 class TestConfig:
     name: str
@@ -258,7 +262,8 @@ class ComprehensiveTestRunner:
         config = Config.initialize(config_file)
         
         for test_type, (test_description, test_class) in self.test_cases.items():
-            print(f"\n🧪 Running {test_description} tests...")
+            if url is None:
+                print(f"\n🧪 Running {test_description} tests...")
             
             # Get test cases from static method
             test_cases = test_class.get_test_cases()
@@ -268,7 +273,7 @@ class ComprehensiveTestRunner:
             for test in test_cases:
                 if url and url != test.url:
                     continue
-                if self.verbose:
+                if self.verbose or url:
                     print(f"  📝 Processing {test.description}...    {test.url}")
                 
                 try:
@@ -290,7 +295,7 @@ class ComprehensiveTestRunner:
 
                     if status and result:
                         validator = Validator(test, result, config, self.verbose)
-                        if validator.validate_test_case():
+                        if validator.validate_test_case(http_status):
                             print(f"  ✅ {test.description} passed")
                             suite_counter.pass_test()
                         else:
@@ -306,7 +311,8 @@ class ComprehensiveTestRunner:
             
             total_counter.update(suite_counter)
             # Print suite summary
-            print(f"  {suite_counter.summary(test_description)}")
+            if url is None:
+                print(f"  {suite_counter.summary(test_description)}")
         
         # Print overall summary
         print(f"\n{total_counter.summary('FINAL SUMMARY')}")

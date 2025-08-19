@@ -22,6 +22,54 @@ DATA_FACTORIES = {
 }
 
 
+class DataFactory:
+    """Static factory interface for getting test data records"""
+    
+    @staticmethod
+    def get_data_record(entity_type: str, record_id: str) -> Dict[str, Any]:
+        """Get test data record by entity type and ID.
+        
+        Args:
+            entity_type: Entity type (e.g. 'user', 'account')
+            record_id: Record ID to retrieve
+            
+        Returns:
+            Dictionary containing the test data record, or empty dict if not found
+        """
+        entity_lower = entity_type.lower()
+        
+        # if entity_lower not in DATA_FACTORIES:
+        #     return {}
+            
+        factory_class = DATA_FACTORIES[entity_lower]
+        
+        # Call the factory's get_test_record_by_id method
+        if hasattr(factory_class, 'get_test_record_by_id'):
+            return factory_class.get_test_record_by_id(record_id) or {}
+        
+        return {}
+
+
+def initialize_metadata_cache(verbose: bool = False) -> None:
+    """Initialize entity metadata cache exactly once for all entities."""
+    from app.metadata import register_entity_metadata, get_entity_metadata
+    
+    for entity_name in DATA_FACTORIES.keys():
+        # Check if already initialized
+        if get_entity_metadata(entity_name):
+            continue
+            
+        if verbose:
+            print(f"🔧 Initializing metadata for {entity_name}...")
+            
+        model_class = utils.get_model_class(entity_name.capitalize())
+        raw_metadata = model_class.get_metadata() or {}
+        register_entity_metadata(entity_name, raw_metadata)
+        
+        if verbose:
+            print(f"✅ Registered metadata for {entity_name}")
+
+
 async def save_test_data(config_file: str, verbose: bool = False) -> bool:
     """
     Save test data for all entities using proper SOC.
@@ -56,12 +104,23 @@ async def save_test_data(config_file: str, verbose: bool = False) -> bool:
             
             all_entity_data[entity_name] = all_records
         
-        # Step 2: Apply metadata-driven field management to each entity's data
+        # Step 2: Initialize metadata cache and apply metadata-driven field management
+        from app.metadata import register_entity_metadata, get_entity_metadata
+        
         for entity_name, records in all_entity_data.items():
             if verbose:
-                print(f"  🔧 Applying metadata field management for {entity_name}...")
+                print(f"  🔧 Initializing metadata and applying field management for {entity_name}...")
             
             model_class = utils.get_model_class(entity_name.capitalize())
+            
+            # Initialize metadata cache exactly once per entity
+            entity_metadata = get_entity_metadata(entity_name)
+            if not entity_metadata:
+                raw_metadata = model_class.get_metadata() or {}
+                register_entity_metadata(entity_name, raw_metadata)
+                if verbose:
+                    print(f"    ✅ Registered metadata for {entity_name}")
+            
             for record in records:
                 apply_metadata_fields(record, model_class, verbose)
         

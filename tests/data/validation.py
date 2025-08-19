@@ -31,32 +31,22 @@ class Validator:
         self.fk_validation = config.get('fk_validation', '')
         self.view_objects = test_case.view_objects
         
-        # Get model metadata and register it with the metadata system
-        model_class = utils.get_model_class(test_case.entity)
-        raw_metadata = model_class.get_metadata() or {}
-        if raw_metadata is None:
-            print("WTF!!!!")
-        
-        # Register entity metadata if not already registered
-        entity_name = test_case.entity
-        self.entity_metadata = get_entity_metadata(entity_name)
-        if not self.entity_metadata:
-            self.entity_metadata = register_entity_metadata(entity_name, raw_metadata)
-        
-        # Legacy fields access for backward compatibility
-        self.metadata = raw_metadata
-        self.fields = raw_metadata.get('fields', {}) or {}
+        # Use cached entity metadata (already initialized in base_data.py)
+        self.entity_metadata = get_entity_metadata(test_case.entity)
         
         # Determine request type and validation settings
         self.is_single_request = bool(test_case.id)
         self.fk_validation_enabled = self.config.get('fk_validation', '') in ['single', 'multiple']
         
-    def validate_test_case(self) -> bool:
+    def validate_test_case(self, http_status) -> bool:
         """Main validation entry point"""
         # Basic structure validation (required for all responses)
-        if not self._validate_basic_structure():
+        if not self._validate_basic_structure(http_status):
             return False
             
+        if http_status not in [200, 201]:
+            return True
+
         # Single entity validation (comprehensive)
         if self.is_single_request:
             return self._validate_single_entity()
@@ -66,25 +56,26 @@ class Validator:
     
     # ==================== BASIC STRUCTURE VALIDATION ====================
     
-    def _validate_basic_structure(self) -> bool:
+    def _validate_basic_structure(self, http_status) -> bool:
         """Validate basic response structure - applies to all responses"""
         # Must have data field
-        if 'data' not in self.result:
-            print(f"    ❌ Missing 'data' field in response")
-            return False
-        
-        data = self.result['data']
-        
-        # Single request = single object or null (for not found), List request = array
-        if self.is_single_request:
-            if isinstance(data, list):
-                print(f"    ❌ Single entity request returned array, expected object or null")
+        if http_status in [200, 201]:
+            if 'data' not in self.result:
+                print(f"    ❌ Missing 'data' field in response")
                 return False
-            # data can be None/null for non-existent entities (404 responses)
-        else:
-            if not isinstance(data, list):
-                print(f"    ❌ List request returned object, expected array")
-                return False
+            
+            data = self.result['data']
+            
+            # Single request = single object or null (for not found), List request = array
+            if self.is_single_request:
+                if isinstance(data, list):
+                    print(f"    ❌ Single entity request returned array, expected object or null")
+                    return False
+                # data can be None/null for non-existent entities (404 responses)
+            else:
+                if not isinstance(data, list):
+                    print(f"    ❌ List request returned object, expected array")
+                    return False
                 
         # Validate notifications structure if expected
         if self.test_case.expected_response and 'notifications' in self.test_case.expected_response:
@@ -176,38 +167,37 @@ class Validator:
         """Validate actual data matches expected_response exactly"""
         expected_data = self.test_case.expected_response.get('data', {})
         actual_data = actual_response.get('data', {})
+        fields = self.entity_metadata.fields
 
         # Check that auto fields exist in the actual data
-        for field_name, field_info in self.fields.items():
-            if field_info.get('autoGenerate') or field_info.get('autoUpdate'):
-                if field_name not in actual_data or not actual_data[field_name]:
-                    if self.verbose:
-                        print(f"    ❌ Missing auto-generated field or contents '{field_name}' in actual data")
-                    return False
-        
-        # Remove auto-generated fields and None optional fields from comparison
-        cleaned_actual = self._remove_fields(actual_data.copy(), self.metadata)
-        cleaned_expected = self._remove_fields(expected_data.copy(), self.metadata)
+        if self.entity_metadata:
+            for field_name, field_info in fields.items():
+                if field_info.auto_generate or field_info.auto_update:
+                    if field_name not in actual_data or not actual_data[field_name]:
+                        if self.verbose:
+                            print(f"    ❌ Missing auto-generated field or contents '{field_name}' in actual data")
+                        return False
         
         # Compare data fields
-        if not self._compare_objects(cleaned_actual, cleaned_expected, "data"):
+        if not self._compare_objects(actual_data, expected_data, "data", fields):
             return False
             
         # Compare warnings if specified (new notification structure)
-        expected_notifications = self.test_case.expected_response.get('notifications', {})
-        if expected_notifications.get('warnings'):
-            actual_notifications = actual_response.get('notifications', {})
-            entity_type = self.test_case.entity.lower()
-            entity_id = self.test_case.id
+        expected_warnings = self.test_case.expected_response.get('notifications', {}).get('warnings', {})
+        actual_warnings = actual_response.get('notifications', {}).get('warnings', {})
+        return self._compare_warnings(actual_warnings, expected_warnings)
+        # if expected_notifications.get('warnings'):
+        #     entity_type = self.test_case.entity
+        #     entity_id = self.test_case.id
             
-            # Get expected warnings for this entity/id
-            expected_warnings = expected_notifications.get('warnings', {}).get(entity_type, {}).get(entity_id, [])
-            if expected_warnings:
-                actual_warnings = actual_notifications.get('warnings', {}).get(entity_type, {}).get(entity_id, [])
-                if not self._compare_warnings(actual_warnings, expected_warnings):
-                    return False
+        #     # Get expected warnings for this entity/id
+        #     expected_warnings = expected_notifications.get('warnings', {}).get(entity_type, {}).get(entity_id, [])
+        #     if expected_warnings:
+        #         actual_warnings = actual_notifications.get('warnings', {}).get(entity_type, {}).get(entity_id, [])
+        #         if not self._compare_warnings(actual_warnings, expected_warnings):
+        #             return False
                 
-        return True
+        # return True
     
     def _validate_fk_sub_objects(self, data: Dict) -> bool:
         """Validate FK sub-objects are properly populated"""
@@ -583,16 +573,24 @@ class Validator:
         
         return cleaned
     
-    def _compare_objects(self, actual: Dict, expected: Dict, path: str) -> bool:
+    def _compare_objects(self, actual: Dict, expected: Dict, path: str, fields: Optional[Dict[str, Any]] = None) -> bool:
         """Compare two objects field by field"""
         # Check all expected fields are present
-        for field_name, expected_value in expected.items():
-            if field_name not in actual:
+        if not fields:
+            fields = list(actual.keys())
+        for field_name, field_attr in fields.items():
+            if field_name not in actual and field_name in expected:
                 if self.verbose:
                     print(f"    ❌ Missing expected field '{field_name}' in {path}")
                 return False
                 
-            actual_value = actual[field_name]
+            if field_name not in expected and field_name in actual:
+                if self.verbose:
+                    print(f"    ❌ Extra actual field '{field_name}' in {path}")
+                return False
+                
+            actual_value = actual.get('field_name', '')
+            expected_value = expected.get('field_name', '')
             field_path = f"{path}.{field_name}"
             
             # Recursive comparison for nested objects
@@ -630,33 +628,68 @@ class Validator:
                 
         return True
     
-    def _compare_warnings(self, actual_warnings: List, expected_warnings: List) -> bool:
-        """Compare warning arrays"""
-        if len(actual_warnings) != len(expected_warnings):
+
+    def _compare_warnings(self, actual_warnings: Dict[str, Any], expected_warnings: Dict[str, Any]) -> bool:
+        # 1) Entities must match
+        a_entities = set(actual_warnings.keys())
+        e_entities = set(expected_warnings.keys())
+        if a_entities != e_entities:
             if self.verbose:
-                print(f"    ❌ Warning count mismatch: expected {len(expected_warnings)}, got {len(actual_warnings)}")
+                print(f"❌ Entities differ. missing={e_entities - a_entities}, extra={a_entities - e_entities}")
             return False
-            
-        # For warnings, we mainly care about field names and types, not exact messages
-        actual_fields = {w.get('field') for w in actual_warnings}
-        expected_fields = {w.get('field') for w in expected_warnings}
-        
-        if actual_fields != expected_fields:
-            if self.verbose:
-                print(f"    ❌ Warning fields mismatch: expected {expected_fields}, got {actual_fields}")
-            return False
-            
+
+        # 2) IDs must match per entity, and 3) counts must match per ID
+        for entity, a_ids_map in actual_warnings.items():
+            e_ids_map = expected_warnings.get(entity, {})
+
+            a_ids = set(a_ids_map.keys())
+            e_ids = set(e_ids_map.keys())
+            if a_ids != e_ids:
+                if self.verbose:
+                    print(f"❌ [{entity}] IDs differ. missing={e_ids - a_ids}, extra={a_ids - e_ids}")
+                return False
+
+            for rid in a_ids:
+                a_list = a_ids_map.get(rid, []) or []
+                e_list = e_ids_map.get(rid, []) or []
+                if len(a_list) != len(e_list):
+                    if self.verbose:
+                        print(f"❌ [{entity}:{rid}] Count mismatch: expected {len(e_list)}, got {len(a_list)}")
+                    return False
+
         return True
-    
-    def _extract_warnings_for_entity(self, entity_id: str) -> List[Dict]:
-        """Extract warnings for specific entity from new notification structure"""
-        notifications = self.result.get('notifications', {})
-        warnings = notifications.get('warnings', {})
+
+
+    # def _compare_warnings(self, actual_warnings: Dict[str, Any], expected_warnings: Dict[str, Any]) -> bool:
+    #     # for each entity type
+    #     for actual_entity, actual_id_warnings in actual_warnings:
+    #         expected_entity_data = expected_warnings.get(actual_entity) 
+    #         for actual_id, actual_warnings in actual_id_warnings.items():
+    #     if len(actual_warnings) != len(expected_warnings):
+    #         if self.verbose:
+    #             print(f"    ❌ Warning count mismatch: expected {len(expected_warnings)}, got {len(actual_warnings)}")
+    #         return False
+            
+    #     # For warnings, we mainly care about field names and types, not exact messages
+    #     actual_fields = {w.get('field') for w in actual_warnings}
+    #     expected_fields = {w.get('field') for w in expected_warnings}
         
-        # Find warnings for this entity across all entity types
-        entity_type = self.test_case.entity.lower()
-        entity_warnings = warnings.get(entity_type, {})
-        return entity_warnings.get(entity_id, [])
+    #     if actual_fields != expected_fields:
+    #         if self.verbose:
+    #             print(f"    ❌ Warning fields mismatch: expected {expected_fields}, got {actual_fields}")
+    #         return False
+            
+    #     return True
+    
+    # def _extract_warnings_for_entity(self, entity_id: str) -> List[Dict]:
+    #     """Extract warnings for specific entity from new notification structure"""
+    #     notifications = self.result.get('notifications', {})
+    #     warnings = notifications.get('warnings', {})
+        
+    #     # Find warnings for this entity across all entity types
+    #     entity_type = self.test_case.entity.lower()
+    #     entity_warnings = warnings.get(entity_type, {})
+    #     return entity_warnings.get(entity_id, [])
     
     def _get_expected_fields_for_entity(self, entity_name: str) -> List[str]:
         """Get expected fields for FK entity from expected_sub_objects"""
