@@ -365,7 +365,7 @@ class DatabaseInterface(ABC):
         
         # Map lowercase field name to actual metadata field name
         actual_field_name = self._map_field_name(field_name, entity_metadata)
-        field_info = entity_metadata.get('fields', {}).get(actual_field_name, {})
+        field_info = entity_metadata['fields'].get(actual_field_name, {})
         return 'enum' in (field_info or {})
     
     def _is_unique_field(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> bool:

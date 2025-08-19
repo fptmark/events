@@ -338,31 +338,31 @@ class ElasticsearchDatabase(DatabaseInterface):
             else:
                 actual_field = self._map_field_name(field, entity_metadata)
                 
-            # Determine if field needs .keyword suffix based on metadata
-            if self._needs_keyword_suffix(actual_field, entity_metadata):
-                sort_field = f"{actual_field}.keyword"
-            else:
-                sort_field = actual_field
-                
             # Configure case sensitivity for text fields
             sort_config = {"order": order}
             field_type = self._get_field_type(actual_field, entity_metadata)
             if (not self.case_sensitive_sorting and 
                 field_type == 'String' and 
                 not self._is_enum_field(actual_field, entity_metadata)):
-                # For case-insensitive sorting on non-enum string fields
+                # For case-insensitive sorting on non-enum string fields, always use .keyword for scripts
+                script_field = f"{actual_field}.keyword"
                 sort_config = {
                     "_script": {
                         "type": "string",
                         "script": {
                             "lang": "painless",
-                            "source": f"doc['{sort_field}'].size() == 0 ? '' : doc['{sort_field}'].value.toLowerCase()"
+                            "source": f"doc.containsKey('{script_field}') && doc['{script_field}'].size() > 0 ? doc['{script_field}'].value.toLowerCase() : ''"
                         },
                         "order": order
                     }
                 }
                 sort_spec.append(sort_config)
             else:
+                # For non-scripted sorting, determine if field needs .keyword suffix
+                if self._needs_keyword_suffix(actual_field, entity_metadata):
+                    sort_field = f"{actual_field}.keyword"
+                else:
+                    sort_field = actual_field
                 sort_spec.append({sort_field: sort_config})
         
         return sort_spec
