@@ -31,19 +31,32 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
                     notify_database_error("Document missing ID field")
                     entity_id = "missing"
 
-                datetime_field_names = []
+                # Extract field names from warning messages  
+                warning_field_names = set()
+                for warning in caught_warnings:
+                    warning_msg = str(warning.message)
+                    
+                    # Look for various Pydantic warning patterns
+                    # Pattern 1: "Field 'fieldname' has invalid value" 
+                    if "field" in warning_msg.lower() and "'" in warning_msg:
+                        parts = warning_msg.split("'")
+                        if len(parts) >= 2:
+                            potential_field = parts[1]
+                            if cls._metadata and potential_field in cls._metadata.get('fields', {}):
+                                warning_field_names.add(potential_field)
+                    
+                    # Pattern 2: Check if warning is related to datetime fields based on message content
+                    elif any(keyword in warning_msg.lower() for keyword in ['datetime', 'date', 'time', 'iso']):
+                        # For datetime-related warnings, check all datetime fields in the data
+                        for field_name, field_meta in cls._metadata.get('fields', {}).items():
+                            if field_meta.get('type') in ['Date', 'Datetime', 'ISODate'] and field_name in data_dict:
+                                warning_field_names.add(field_name)
                 
-                # Use the model's metadata to find datetime fields
-                for field_name, field_meta in cls._metadata.get('fields', {}).items():
-                    if field_meta.get('type') == 'ISODate':
-                        if field_name in data_dict and isinstance(data_dict[field_name], str):
-                            datetime_field_names.append(field_name)
-                
-                if datetime_field_names:
-                    field_list = ', '.join(datetime_field_names)
-                    notify_validation_error(f"{field_list} datetime serialization warnings", entity=entity_type, entity_id=entity_id)
+                if warning_field_names:
+                    field_list = ', '.join(sorted(warning_field_names))
+                    notify_validation_error(f"Serialization warnings for fields: {field_list}", entity=entity_type, entity_id=entity_id)
                 else:
-                    # Fallback for non-datetime warnings
+                    # Fallback for warnings without extractable field names
                     warning_count = len(caught_warnings)
                     notify_validation_error(f"{entity_type} {entity_id}: {warning_count} serialization warnings", entity=entity_type, entity_id=entity_id)
 

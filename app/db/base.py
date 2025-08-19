@@ -331,6 +331,8 @@ class DatabaseInterface(ABC):
         """Map field name using cached lookup and notify about invalid fields."""
         if not hasattr(self, '_field_mapping_cache'):
             self._field_mapping_cache = {}
+        if not hasattr(self, '_notified_invalid_fields'):
+            self._notified_invalid_fields = set()
             
         # Use metadata hash as cache key
         cache_key = id(entity_metadata) if entity_metadata else 'none'
@@ -341,10 +343,12 @@ class DatabaseInterface(ABC):
         mapping = self._field_mapping_cache[cache_key]
         mapped_field = mapping.get(field_name)
         
-        # If field not found in mapping and we have metadata, notify about invalid field
+        # If field not found in mapping and we have metadata, notify about invalid field (only once per field)
         if mapped_field is None and entity_metadata and 'fields' in entity_metadata:
-            from app.notification import notify_application_error
-            notify_application_error(f"Invalid field '{field_name}' does not exist in entity")
+            if field_name not in self._notified_invalid_fields:
+                from app.notification import notify_application_error
+                notify_application_error(f"Invalid field '{field_name}' does not exist in entity")
+                self._notified_invalid_fields.add(field_name)
             
         return mapped_field if mapped_field is not None else field_name
     
