@@ -361,10 +361,14 @@ class ElasticsearchDatabase(DatabaseInterface):
                     # Convert date strings to proper format for date comparison
                     if field_type in ['Date', 'Datetime']:
                         for op in ['gte', 'lte', 'gt', 'lt']:
-                            if op in range_query:
-                                # Elasticsearch handles datetime objects and ISO strings well
-                                # Use normalized strings for consistency
-                                range_query[op] = self._normalize_date_string(range_query[op])
+                            if op in range_query and isinstance(range_query[op], str):
+                                # Normalize date string format for ES
+                                date_str = range_query[op].strip()
+                                if 'T' not in date_str and ' ' not in date_str:
+                                    # Add time component if just date (YYYY-MM-DD)
+                                    if len(date_str) == 10 and date_str.count('-') == 2:
+                                        date_str = f"{date_str}T00:00:00"
+                                range_query[op] = date_str
                     
                     # Use bool query to combine range and exists clauses
                     must_clauses.append({
@@ -452,6 +456,13 @@ class ElasticsearchDatabase(DatabaseInterface):
             else:
                 # For non-scripted sorting, use .raw for string fields only
                 sort_field = self._get_internal_field_name(actual_field, collection)
+                
+                # For date fields, add missing value handling to prevent epoch dates
+                if entity_meta:
+                    field_info = entity_meta.get_field_info(actual_field)
+                    if field_info and field_info.type in ['Date', 'Datetime']:
+                        sort_config["missing"] = "_last"  # Put missing dates at end
+                
                 sort_spec.append({sort_field: sort_config})
         
         return sort_spec
@@ -810,7 +821,7 @@ class ElasticsearchDatabase(DatabaseInterface):
         """Prepare document for save by converting datetime fields and adding synthetic hash fields"""
         
         # Step 1: Convert datetime fields based on metadata
-        processed_data = self._prepare_datetime_fields_for_save(data, entity_metadata)
+        processed_data = self._process_datetime_fields_for_save(data, entity_metadata)
         
         # Step 2: Add synthetic hash fields for unique constraints (ES always needs them)
         if unique_constraints:

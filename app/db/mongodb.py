@@ -661,8 +661,16 @@ class MongoDatabase(DatabaseInterface):
                     # Convert date strings to native date objects for proper date comparison
                     if field_type in ['Date', 'Datetime']:
                         for op in ['$gte', '$lte', '$gt', '$lt']:
-                            if op in enhanced_filter:
-                                enhanced_filter[op] = self._convert_to_date_object(enhanced_filter[op])
+                            if op in enhanced_filter and isinstance(enhanced_filter[op], str):
+                                try:
+                                    # Convert ISO date string to datetime object
+                                    date_str = enhanced_filter[op].strip()
+                                    if date_str.endswith('Z'):
+                                        date_str = date_str[:-1] + '+00:00'
+                                    enhanced_filter[op] = datetime.fromisoformat(date_str)
+                                except (ValueError, AttributeError):
+                                    # Leave as-is if conversion fails
+                                    pass
                     
                     query[field] = enhanced_filter
                 else:
@@ -748,7 +756,7 @@ class MongoDatabase(DatabaseInterface):
     async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Prepare document for save by converting datetime fields (MongoDB has native unique indexes)"""
         # Only convert datetime fields - MongoDB handles uniqueness natively
-        return self._prepare_datetime_fields_for_save(data, entity_metadata)
+        return self._process_datetime_fields_for_save(data, entity_metadata)
     
     async def validate_unique_constraints_before_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> None:
         """MongoDB handles unique constraints natively - no validation needed"""

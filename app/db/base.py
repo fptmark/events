@@ -42,40 +42,6 @@ class DatabaseInterface(ABC):
             return doc_id
         return str(doc_id).lower()
     
-    def _normalize_date_string(self, date_str: str) -> str:
-        """Normalize date string to ISO format for consistent date comparison across databases."""
-        if not isinstance(date_str, str):
-            return date_str
-        
-        date_str = date_str.strip()
-        
-        # If already has time component, return as-is
-        if 'T' in date_str or ' ' in date_str:
-            return date_str
-            
-        # If just date (YYYY-MM-DD), add time component for consistency
-        if len(date_str) == 10 and date_str.count('-') == 2:
-            return f"{date_str}T00:00:00"
-            
-        return date_str
-    
-    def _convert_to_date_object(self, date_value: Any) -> Any:
-        """Convert ISO date string to native date object for database operations."""
-        from datetime import datetime
-        
-        if not isinstance(date_value, str):
-            return date_value
-        
-        try:
-            # First normalize the date string format
-            normalized_str = self._normalize_date_string(date_value)
-            
-            # Convert to datetime object for native date comparisons
-            return datetime.fromisoformat(normalized_str.replace('Z', '+00:00'))
-            
-        except (ValueError, AttributeError):
-            # If conversion fails, return original value
-            return date_value
     
     def _wrap_database_operation(self, operation: str, entity: str):
         """Decorator to wrap database operations with error handling"""
@@ -246,13 +212,8 @@ class DatabaseInterface(ABC):
         pass
     
     # Datetime conversion methods (implemented in base class)
-    def _prepare_datetime_fields_for_save(self, data: Dict[str, Any], entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Convert datetime fields based on metadata before saving to database.
-        
-        - 'Date' type fields: Ensure they are datetime objects (for consistent storage)
-        - 'Datetime' type fields: Keep as datetime objects
-        Both will be stored as database's native datetime/timestamp type
-        """
+    def _process_datetime_fields_for_save(self, data: Dict[str, Any], entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Convert datetime fields based on metadata before saving to database."""
         if not entity_metadata or 'fields' not in entity_metadata:
             return data
             
@@ -266,27 +227,34 @@ class DatabaseInterface(ABC):
                 if field_type in ['Date', 'Datetime']:
                     value = data_copy[field_name]
                     
-                    # Ensure we have a datetime object
+                    # Convert strings to datetime objects
                     if isinstance(value, str):
                         try:
-                            # Handle ISO string parsing
-                            if value.endswith('Z'):
-                                value = value[:-1] + '+00:00'
-                            data_copy[field_name] = datetime.fromisoformat(value)
+                            # Normalize date string format
+                            normalized_str = value.strip()
+                            if 'T' not in normalized_str and ' ' not in normalized_str:
+                                # Add time component if just date (YYYY-MM-DD)
+                                if len(normalized_str) == 10 and normalized_str.count('-') == 2:
+                                    normalized_str = f"{normalized_str}T00:00:00"
+                            
+                            # Handle timezone indicators
+                            if normalized_str.endswith('Z'):
+                                normalized_str = normalized_str[:-1] + '+00:00'
+                                
+                            data_copy[field_name] = datetime.fromisoformat(normalized_str)
                         except (ValueError, TypeError):
                             # Leave as-is if parsing fails
                             pass
                     elif isinstance(value, datetime):
                         # For 'Date' fields, normalize to start of day in UTC for consistency
                         if field_type == 'Date':
-                            # Keep the date part, but ensure it's at midnight UTC
                             date_part = value.date()
                             data_copy[field_name] = datetime.combine(date_part, datetime.min.time(), timezone.utc)
                         # For 'Datetime' fields, keep as-is
         
         return data_copy
     
-    def _prepare_datetime_fields_for_retrieval(self, data: Dict[str, Any], entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _process_datetime_fields_for_retrieval(self, data: Dict[str, Any], entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Ensure datetime fields are proper Python datetime objects after retrieval from database."""
         if not entity_metadata or 'fields' not in entity_metadata:
             return data
@@ -304,7 +272,7 @@ class DatabaseInterface(ABC):
                     # Ensure we return Python datetime objects
                     if isinstance(value, str):
                         try:
-                            # Handle ISO string parsing
+                            # Handle timezone indicators
                             if value.endswith('Z'):
                                 value = value[:-1] + '+00:00'
                             data_copy[field_name] = datetime.fromisoformat(value)
