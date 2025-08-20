@@ -743,4 +743,13 @@ class MongoDatabase(DatabaseInterface):
             
         except Exception as e:
             # Return empty list on error - Factory layer will handle notification
-            return [] 
+            return []
+    
+    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Prepare document for save by converting datetime fields (MongoDB has native unique indexes)"""
+        # Only convert datetime fields - MongoDB handles uniqueness natively
+        return self._prepare_datetime_fields_for_save(data, entity_metadata)
+    
+    async def validate_unique_constraints_before_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> None:
+        """MongoDB handles unique constraints natively - no validation needed"""
+        pass 

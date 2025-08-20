@@ -759,6 +759,70 @@ class ElasticsearchDatabase(DatabaseInterface):
             # Log warning but don't fail - index creation is optional for performance
             logging.warning(f"Failed to create synthetic index '{index_name}' on field '{field}': {str(e)}")
     
+    # ES-specific synthetic index methods
+    def _add_synthetic_hash_fields(self, data: Dict[str, Any], unique_constraints: List[List[str]]) -> Dict[str, Any]:
+        """Add synthetic hash fields for multi-field unique constraints"""
+        result = data.copy()
+        
+        for constraint_fields in unique_constraints:
+            if len(constraint_fields) > 1:
+                # Multi-field constraint - add hash field
+                hash_field_name = self._get_hash_field_name(constraint_fields)
+                values = [str(data.get(field, "")) for field in constraint_fields]
+                hash_value = self._generate_constraint_hash(values)
+                result[hash_field_name] = hash_value
+        
+        return result
+    
+    async def _validate_synthetic_constraints(self, collection: str, data: Dict[str, Any], unique_constraints: List[List[str]]) -> None:
+        """Validate synthetic unique constraints"""
+        document_id = data.get('id')
+        
+        for constraint_fields in unique_constraints:
+            if len(constraint_fields) == 1:
+                # Single field constraint
+                field = constraint_fields[0]
+                value = data.get(field)
+                if value is not None and await self.document_exists_with_field_value(collection, field, value, document_id):
+                    raise SyntheticDuplicateError(collection, field, value)
+            else:
+                # Multi-field constraint - check hash field
+                hash_field_name = self._get_hash_field_name(constraint_fields)
+                hash_value = data.get(hash_field_name)
+                if hash_value and await self.document_exists_with_field_value(collection, hash_field_name, hash_value, document_id):
+                    # Create user-friendly error message
+                    field_desc = " + ".join(constraint_fields)
+                    values = [str(data.get(field, "")) for field in constraint_fields]
+                    value_desc = " + ".join(values)
+                    raise SyntheticDuplicateError(collection, field_desc, value_desc)
+    
+    def _get_hash_field_name(self, fields: List[str]) -> str:
+        """Generate consistent hash field name for multi-field constraints"""
+        return "_".join(sorted(fields)) + "_hash"
+    
+    def _generate_constraint_hash(self, values: List[str]) -> str:
+        """Generate consistent hash for multi-field constraints"""
+        import hashlib
+        combined = "|".join(values)
+        return hashlib.sha256(combined.encode()).hexdigest()
+    
+    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Prepare document for save by converting datetime fields and adding synthetic hash fields"""
+        
+        # Step 1: Convert datetime fields based on metadata
+        processed_data = self._prepare_datetime_fields_for_save(data, entity_metadata)
+        
+        # Step 2: Add synthetic hash fields for unique constraints (ES always needs them)
+        if unique_constraints:
+            processed_data = self._add_synthetic_hash_fields(processed_data, unique_constraints)
+            
+        return processed_data
+    
+    async def validate_unique_constraints_before_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> None:
+        """Validate unique constraints before saving using synthetic indexes"""
+        if unique_constraints:
+            await self._validate_synthetic_constraints(collection, data, unique_constraints)
+
     async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save a document to the database with synthetic index support."""
         self._ensure_initialized()
