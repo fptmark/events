@@ -161,6 +161,20 @@ class DatabaseFactory:
     async def remove_entity(cls, collection: str) -> bool:
         """Remove/drop entire entity collection"""
         return await cls.get_instance().remove_entity(collection)
+
+    @classmethod
+    async def wipe_all_index_templates(cls) -> None:
+        """Remove all ES index templates (ES-specific operation, no-op for MongoDB)"""
+        instance = cls.get_instance()
+        if hasattr(instance, 'wipe_all_index_templates'):
+            await instance.wipe_all_index_templates()
+
+    @classmethod
+    async def wipe_all_indices(cls) -> None:
+        """Delete all ES indices (ES-specific operation, no-op for MongoDB)"""
+        instance = cls.get_instance()
+        if hasattr(instance, 'wipe_all_indices'):
+            await instance.wipe_all_indices()
     
     @classmethod
     def _notify_database_message(cls, message: str, collection: str, operation: str) -> None:

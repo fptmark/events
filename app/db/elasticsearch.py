@@ -49,6 +49,9 @@ class ElasticsearchDatabase(DatabaseInterface):
             self._initialized = True
             self._client = client
             logging.info("Connected to Elasticsearch %s", info["version"]["number"])
+            
+            # Create index template for .raw subfields on all new indices
+            await self._ensure_index_template()
         except Exception as e:
             self._handle_connection_error(e, database_name)
 
@@ -57,6 +60,112 @@ class ElasticsearchDatabase(DatabaseInterface):
         self._ensure_initialized()
         assert self._client is not None, "Client should be initialized after _ensure_initialized()"
         return self._client
+    
+    def _get_internal_field_name(self, field_name: str, collection: str) -> str:
+        """Get the internal ES field name - adds .raw suffix for string fields."""
+        from app.metadata import get_entity_metadata, get_proper_entity_name
+        entity_name = get_proper_entity_name(collection)
+        entity_meta = get_entity_metadata(entity_name)
+        
+        if entity_meta:
+            field_info = entity_meta.get_field_info(field_name)
+            if field_info and field_info.type == 'String':
+                return f"{field_name}.raw"
+        
+        return field_name
+    
+    async def wipe_all_index_templates(self) -> None:
+        """Remove all existing index templates to avoid conflicts."""
+        es = self._get_client()
+        
+        try:
+            # Get all index templates
+            templates = await es.indices.get_index_template()
+            
+            for template_info in templates.get('index_templates', []):
+                template_name = template_info['name']
+                try:
+                    await es.indices.delete_index_template(name=template_name)
+                    logging.info(f"Deleted index template: {template_name}")
+                except Exception as e:
+                    logging.warning(f"Failed to delete template {template_name}: {e}")
+                    
+        except Exception as e:
+            logging.warning(f"Failed to wipe index templates: {e}")
+
+    async def wipe_all_indices(self) -> None:
+        """Delete application indices to force recreation with new templates."""
+        from app.metadata import get_all_entity_names
+        es = self._get_client()
+        
+        try:
+            # Get entity names from metadata
+            entity_names = get_all_entity_names()
+            if not entity_names:
+                # Fallback to known entities if metadata not loaded
+                entity_names = ["User", "Account", "Profile", "TagAffinity", "Event", "UserEvent", "Url", "Crawl"]
+            
+            for entity_name in entity_names:
+                index_name = entity_name.lower()
+                try:
+                    if await es.indices.exists(index=index_name):
+                        await es.indices.delete(index=index_name)
+                        logging.info(f"Deleted index: {index_name}")
+                except Exception as e:
+                    logging.warning(f"Failed to delete index {index_name}: {e}")
+                        
+        except Exception as e:
+            logging.warning(f"Failed to wipe indices: {e}")
+
+    async def _ensure_index_template(self) -> None:
+        """Create composable index template for .raw subfields with high priority."""
+        es = self._get_client()
+        
+        template_name = "app-text-raw-template"
+        template_body = {
+            "index_patterns": ["user", "account", "profile", "event*", "tag*", "url", "crawl"],  # Target our app indices only
+            "priority": 1000,  # Higher priority than existing templates (beats 500)
+            "template": {
+                "settings": {
+                    "analysis": {
+                        "normalizer": {
+                            "lc": {
+                                "type": "custom",
+                                "char_filter": [],
+                                "filter": ["lowercase"]
+                            }
+                        }
+                    }
+                },
+                "mappings": {
+                    "dynamic_templates": [
+                        {
+                            "strings_as_text_with_raw": {
+                                "match_mapping_type": "string",
+                                "unmatch": "id",  # Don't apply to id fields  
+                                "mapping": {
+                                    "type": "text",
+                                    "fields": {
+                                        "raw": {
+                                            "type": "keyword",
+                                            "normalizer": "lc", 
+                                            "ignore_above": 1024
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+        
+        try:
+            await es.indices.put_index_template(name=template_name, body=template_body)
+            logging.info(f"Created index template: {template_name}")
+        except Exception as e:
+            logging.warning(f"Failed to create index template: {e}")
+            # Don't fail initialization if template creation fails
 
     async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get all documents from a collection with count."""
@@ -118,7 +227,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             }
             
             # Always add sorting for consistent pagination
-            sort_spec = self._build_sort_spec(list_params, entity_metadata)
+            sort_spec = self._build_sort_spec(list_params, collection, entity_metadata)
             query_body["sort"] = sort_spec
 
             res = await es.search(index=collection, body=query_body)
@@ -206,26 +315,19 @@ class ElasticsearchDatabase(DatabaseInterface):
             )
 
     async def create_collection(self, collection: str, indexes: List[Dict[str, Any]]) -> bool:
-        """Create a collection with indexes."""
+        """Create a collection - relies on index template for proper mapping."""
         es = self._get_client()
         try:
-            # Create index with mappings
-            mappings: Dict[str, Any] = {
-                "mappings": {
-                    "properties": {}
-                }
-            }
+            # Check if index already exists
+            if await es.indices.exists(index=collection):
+                return True
+                
+            # Don't create empty index - let template apply on first document write
+            # This ensures our cluster-level template with .raw subfields takes effect
+            # 
+            # If there are unique constraint indexes to create, we'll handle them 
+            # when the first document is written and the template auto-creates the index
             
-            # Add fields from indexes
-            for index in indexes:
-                for field in index['fields']:
-                    mappings["mappings"]["properties"][field] = {
-                        "type": "keyword",
-                        "index": True
-                    }
-            
-            # Create index with mappings
-            await es.indices.create(index=collection, body=mappings)
             return True
         except Exception as e:
             raise DatabaseError(
@@ -277,8 +379,18 @@ class ElasticsearchDatabase(DatabaseInterface):
                     # For other field types, use range query as-is
                     must_clauses.append({"range": {field: range_query}})
             else:
-                # Determine matching strategy based on metadata
-                if self._should_use_partial_matching(field, entity_metadata):
+                # Determine matching strategy using metadata service
+                from app.metadata import get_entity_metadata, get_proper_entity_name
+                entity_name = get_proper_entity_name(collection)
+                entity_meta = get_entity_metadata(entity_name) 
+                
+                use_partial = False
+                if entity_meta:
+                    field_info = entity_meta.get_field_info(field)
+                    if field_info and field_info.type == 'String' and not entity_meta.is_enum_field(field):
+                        use_partial = True
+                
+                if use_partial:
                     # String fields without enum: partial match with wildcard
                     must_clauses.append({
                         "wildcard": {
@@ -287,11 +399,8 @@ class ElasticsearchDatabase(DatabaseInterface):
                     })
                 else:
                     # Non-string fields, enums, etc.: exact match
-                    # Use .keyword suffix if needed based on metadata
-                    if self._needs_keyword_suffix(field, entity_metadata):
-                        filter_field = f"{field}.keyword"
-                    else:
-                        filter_field = field
+                    # Use .raw for string fields only
+                    filter_field = self._get_internal_field_name(field, collection)
                     must_clauses.append({"term": {filter_field: value}})
         
         if must_clauses:
@@ -299,7 +408,7 @@ class ElasticsearchDatabase(DatabaseInterface):
         else:
             return {"match_all": {}}
 
-    def _build_sort_spec(self, list_params, entity_metadata: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    def _build_sort_spec(self, list_params, collection: str, entity_metadata: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Build Elasticsearch sort specification from ListParams using metadata."""
         if not list_params or not list_params.sort_fields:
             # Use metadata-driven default sort field for consistent pagination
@@ -316,12 +425,19 @@ class ElasticsearchDatabase(DatabaseInterface):
                 
             # Configure case sensitivity for text fields
             sort_config = {"order": order}
-            field_type = self._get_field_type(actual_field, entity_metadata)
-            if (not self.case_sensitive_sorting and 
-                field_type == 'String' and 
-                not self._is_enum_field(actual_field, entity_metadata)):
-                # For case-insensitive sorting on non-enum string fields, always use .keyword for scripts
-                script_field = f"{actual_field}.keyword"
+            from app.metadata import get_entity_metadata, get_proper_entity_name
+            entity_name = get_proper_entity_name(collection)
+            entity_meta = get_entity_metadata(entity_name)
+            
+            is_string_non_enum = False
+            if entity_meta:
+                field_info = entity_meta.get_field_info(actual_field)
+                if field_info and field_info.type == 'String' and not entity_meta.is_enum_field(actual_field):
+                    is_string_non_enum = True
+                    
+            if not self.case_sensitive_sorting and is_string_non_enum:
+                # For case-insensitive sorting on non-enum string fields, always use .raw for scripts
+                script_field = self._get_internal_field_name(actual_field, collection)
                 sort_config = {
                     "_script": {
                         "type": "string",
@@ -334,11 +450,8 @@ class ElasticsearchDatabase(DatabaseInterface):
                 }
                 sort_spec.append(sort_config)
             else:
-                # For non-scripted sorting, determine if field needs .keyword suffix
-                if self._needs_keyword_suffix(actual_field, entity_metadata):
-                    sort_field = f"{actual_field}.keyword"
-                else:
-                    sort_field = actual_field
+                # For non-scripted sorting, use .raw for string fields only
+                sort_field = self._get_internal_field_name(actual_field, collection)
                 sort_spec.append({sort_field: sort_config})
         
         return sort_spec
@@ -540,11 +653,11 @@ class ElasticsearchDatabase(DatabaseInterface):
                 if field in existing_properties:
                     field_type = existing_properties[field].get('type', 'text')
                     if field_type == 'text':
-                        # For text fields, we need to use the .keyword subfield for exact matching
-                        if 'fields' in existing_properties[field] and 'keyword' in existing_properties[field]['fields']:
-                            query_field = f"{field}.keyword"
+                        # For text fields, we need to use the .raw subfield for exact matching
+                        if 'fields' in existing_properties[field] and 'raw' in existing_properties[field]['fields']:
+                            query_field = f"{field}.raw"
                         else:
-                            # Fall back to match query for text fields without keyword subfield
+                            # Fall back to match query for text fields without raw subfield
                             query = {"match": {field: value}}
                             if exclude_id:
                                 query = {
@@ -606,15 +719,15 @@ class ElasticsearchDatabase(DatabaseInterface):
                     # Field already exists - check if it's suitable for exact matching
                     existing_type = existing_properties[field].get('type', 'text')
                     if existing_type == 'text':
-                        # For text fields, we need to use the .keyword subfield if it exists
+                        # For text fields, we need to use the .raw subfield if it exists
                         # or create a multi-field mapping
                         if 'fields' not in existing_properties[field]:
-                            # Add keyword subfield to existing text field
+                            # Add raw subfield to existing text field
                             properties = {
                                 field: {
                                     "type": "text",
                                     "fields": {
-                                        "keyword": {
+                                        "raw": {
                                             "type": "keyword",
                                             "ignore_above": 256
                                         }
@@ -663,9 +776,8 @@ class ElasticsearchDatabase(DatabaseInterface):
             es = self._get_client()
             doc_id = prepared_data.get('id')
             
-            # Create the collection if it doesn't exist
-            if not await es.indices.exists(index=collection):
-                await self.create_collection(collection, [])
+            # Let ES auto-create the index on first write - template will apply automatically
+            # No need to pre-create empty collections
             
             # Handle new documents vs updates
             if not doc_id or (isinstance(doc_id, str) and doc_id.strip() == ""):
