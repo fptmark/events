@@ -271,7 +271,7 @@ class ComprehensiveTestRunner:
             suite_counter = TestCounter()
             
             for test in test_cases:
-                if url and url != test.url:
+                if url and url.lower() != test.url.lower():
                     continue
                 if self.verbose or url:
                     print(f"  📝 Processing {test.description}...    {test.url}")

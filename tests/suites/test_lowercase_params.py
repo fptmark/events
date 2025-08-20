@@ -70,7 +70,7 @@ class LowercaseParamTester:
             TestCase("GET", "User", "", "Page=1&Page_Size=5", "Mixed case Page and Page_Size", 200),
             TestCase("GET", "User", "", "PAGE=2&page_SIZE=10", "Uppercase PAGE and mixed page_SIZE", 200),
             TestCase("GET", "User", "", "Sort=firstName&Filter=gender:female", "Mixed case Sort and Filter", 200),
-            TestCase("GET", "User", "", "SORT=lastName,-createdAt&FILTER=networth:gte:1000", "Uppercase SORT and FILTER", 200),
+            TestCase("GET", "User", "", "SORT=lastName,-dob&FILTER=networth:gte:1000", "Uppercase SORT and FILTER", 200),
             TestCase("GET", "User", "", "Page=1&Page_Size=3&Sort=netWorth&Filter=gender:female", "All mixed case parameters", 200),
             
             # Test complex combinations

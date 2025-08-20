@@ -68,7 +68,7 @@ class SortingTester:
             TestCase("GET", "User", "", "sort=isAccountOwner,-dob,firstName", "Sort by boolean, date desc, then string", 200),
             
             # Edge cases
-            TestCase("GET", "User", "", "sort=createdAt,updatedAt", "Sort by auto-generated date fields", 200),
+            TestCase("GET", "User", "", "sort=dob,updatedAt", "Sort by dob + auto date fields", 200),
             TestCase("GET", "User", "", "sort=firstName,firstName", "Sort by same field twice (edge case)", 200),
             
             # Individual user with sort parameter (should be ignored)
