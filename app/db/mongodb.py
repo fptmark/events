@@ -220,7 +220,7 @@ class MongoDatabase(DatabaseInterface):
                 operation="get_by_id"
             )
 
-    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save a document to the database."""
         self._ensure_initialized()
             
@@ -233,7 +233,7 @@ class MongoDatabase(DatabaseInterface):
                     warnings.extend(missing_indexes)
             
             # Prepare document with synthetic hash fields if needed (no-op for MongoDB)
-            prepared_data = await self.prepare_document_for_save(collection, data, unique_constraints)
+            prepared_data = await self.prepare_document_for_save(collection, data, unique_constraints, entity_metadata)
             
             # Validate unique constraints before save (no-op for MongoDB)
             await self.validate_unique_constraints_before_save(collection, prepared_data, unique_constraints)
@@ -438,6 +438,20 @@ class MongoDatabase(DatabaseInterface):
                 message=str(e),
                 entity=collection,
                 operation="delete_document"
+            )
+
+    async def remove_entity(self, collection: str) -> bool:
+        """Remove/drop entire entity collection."""
+        self._ensure_initialized()
+            
+        try:
+            await self._get_db().drop_collection(collection)
+            return True
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=collection,
+                operation="remove_entity"
             )
 
     async def list_collections(self) -> List[str]:

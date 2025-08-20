@@ -30,11 +30,7 @@ class Url(BaseModel):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    model_config = ConfigDict(
-        json_encoders={
-            datetime: lambda v: v.isoformat() + 'Z' if v else None  # Always UTC with Z suffix
-        }
-    )
+    model_config = ConfigDict()
 
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'url': {   'type': 'String',
                              'required': True,
@@ -125,7 +121,7 @@ class Url(BaseModel):
             url_instance = utils.validate_with_notifications(cls, raw_doc, "Url")
             
             # Step 2: Get validated dict and process FK fields if needed
-            url_dict = url_instance.model_dump()
+            url_dict = url_instance.model_dump(mode='python')
             if view_spec or fk_validations:
                 await utils.process_entity_fks(url_dict, view_spec, "Url", cls, fk_validations)
             
@@ -157,7 +153,7 @@ class Url(BaseModel):
                 # This validates all fields and raises PydanticValidationError if invalid
                 validated_instance = self.__class__.model_validate(self.model_dump())
                 # Use the validated data for save
-                data = validated_instance.model_dump()
+                data = validated_instance.model_dump(mode='python')
                                 
                 # Validate ObjectId references exist
                 await utils.validate_objectid_references("Url", data, self._metadata)
@@ -179,7 +175,7 @@ class Url(BaseModel):
                 raise ValidationError(message=error['msg'], entity="Url", invalid_fields=failures)
             
             # Save document with unique constraints - pass complete data
-            result, warnings = await DatabaseFactory.save_document("url", data, unique_constraints)
+            result, warnings = await DatabaseFactory.save_document("url", data, unique_constraints, self._metadata)
 
             # Update ID from result
             if not self.id and result and isinstance(result, dict):

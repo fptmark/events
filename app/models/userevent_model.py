@@ -33,11 +33,7 @@ class UserEvent(BaseModel):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    model_config = ConfigDict(
-        json_encoders={
-            datetime: lambda v: v.isoformat() + 'Z' if v else None  # Always UTC with Z suffix
-        }
-    )
+    model_config = ConfigDict()
 
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'attended': {'type': 'Boolean', 'required': False},
                   'rating': {   'type': 'Integer',
@@ -132,7 +128,7 @@ class UserEvent(BaseModel):
             userevent_instance = utils.validate_with_notifications(cls, raw_doc, "UserEvent")
             
             # Step 2: Get validated dict and process FK fields if needed
-            userevent_dict = userevent_instance.model_dump()
+            userevent_dict = userevent_instance.model_dump(mode='python')
             if view_spec or fk_validations:
                 await utils.process_entity_fks(userevent_dict, view_spec, "UserEvent", cls, fk_validations)
             
@@ -164,7 +160,7 @@ class UserEvent(BaseModel):
                 # This validates all fields and raises PydanticValidationError if invalid
                 validated_instance = self.__class__.model_validate(self.model_dump())
                 # Use the validated data for save
-                data = validated_instance.model_dump()
+                data = validated_instance.model_dump(mode='python')
                                 
                 # Validate ObjectId references exist
                 await utils.validate_objectid_references("UserEvent", data, self._metadata)
@@ -186,7 +182,7 @@ class UserEvent(BaseModel):
                 raise ValidationError(message=error['msg'], entity="UserEvent", invalid_fields=failures)
             
             # Save document with unique constraints - pass complete data
-            result, warnings = await DatabaseFactory.save_document("userevent", data, unique_constraints)
+            result, warnings = await DatabaseFactory.save_document("userevent", data, unique_constraints, self._metadata)
 
             # Update ID from result
             if not self.id and result and isinstance(result, dict):

@@ -16,30 +16,6 @@ class ElasticsearchDatabase(DatabaseInterface):
         self._client: Optional[AsyncElasticsearch] = None
         self._url: str = ""
     
-    def _convert_datetime_fields(self, document: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert datetime string fields back to datetime objects for Pydantic compatibility."""
-        if not document:
-            return document
-        
-        # Convert datetime string fields back to datetime objects based on field type
-        # This is metadata-agnostic - we try to convert any string that looks like ISO datetime
-        
-        doc_copy = document.copy()
-        for field_name, value in doc_copy.items():
-            if isinstance(value, str):
-                try:
-                    # Try to parse any string that looks like ISO datetime
-                    if ('T' in value and (':' in value or 'Z' in value or '+' in value)):
-                        # Parse ISO format datetime strings back to datetime objects
-                        if value.endswith('Z'):
-                            # Remove Z and add +00:00 for proper parsing
-                            value = value[:-1] + '+00:00'
-                        doc_copy[field_name] = datetime.fromisoformat(value)
-                except (ValueError, TypeError):
-                    # If parsing fails, leave as string (Pydantic will handle validation)
-                    pass
-        
-        return doc_copy
 
     @property
     def id_field(self) -> str:
@@ -99,7 +75,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             
             res = await es.search(index=collection, query={"match_all": {}}, size=1000)
             hits = res.get("hits", {}).get("hits", [])
-            results = [self._convert_datetime_fields({**hit["_source"], "id": self._normalize_id(hit["_id"])}) for hit in hits]
+            results = [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
             
             # Extract total count from search response
             total_count = res.get("hits", {}).get("total", {}).get("value", 0)
@@ -147,7 +123,7 @@ class ElasticsearchDatabase(DatabaseInterface):
 
             res = await es.search(index=collection, body=query_body)
             hits = res.get("hits", {}).get("hits", [])
-            results = [self._convert_datetime_fields({**hit["_source"], "id": self._normalize_id(hit["_id"])}) for hit in hits]
+            results = [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
             
             # Extract total count from search response
             total_count = res.get("hits", {}).get("total", {}).get("value", 0)
@@ -198,7 +174,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             
             # Handle case where _source might be None
             source_data = res.get("_source") or {}
-            result = self._convert_datetime_fields({**source_data, "id": self._normalize_id(res["_id"])})
+            result = {**source_data, "id": self._normalize_id(res["_id"])}
             return result, warnings
         except NotFoundError:
             raise
@@ -399,6 +375,21 @@ class ElasticsearchDatabase(DatabaseInterface):
                 operation="delete_document"
             )
 
+    async def remove_entity(self, collection: str) -> bool:
+        """Remove/drop entire entity index."""
+        es = self._get_client()
+        try:
+            if not await es.indices.exists(index=collection):
+                return True  # Already doesn't exist
+            await es.indices.delete(index=collection)
+            return True
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=collection,
+                operation="remove_entity"
+            )
+
     async def list_collections(self) -> List[str]:
         """List all collections."""
         es = self._get_client()
@@ -452,7 +443,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                 
             res = await es.search(index=collection, query={"match_all": {}})
             hits = res.get("hits", {}).get("hits", [])
-            return [self._convert_datetime_fields({**hit["_source"], "id": self._normalize_id(hit["_id"])}) for hit in hits]
+            return [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
@@ -655,7 +646,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             # Log warning but don't fail - index creation is optional for performance
             logging.warning(f"Failed to create synthetic index '{index_name}' on field '{field}': {str(e)}")
     
-    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save a document to the database with synthetic index support."""
         self._ensure_initialized()
         
@@ -663,7 +654,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             warnings = []
             
             # Prepare document with synthetic hash fields
-            prepared_data = await self.prepare_document_for_save(collection, data, unique_constraints)
+            prepared_data = await self.prepare_document_for_save(collection, data, unique_constraints, entity_metadata)
             
             # Validate unique constraints before save
             await self.validate_unique_constraints_before_save(collection, prepared_data, unique_constraints)

@@ -142,9 +142,9 @@ class DatabaseFactory:
         return data, warnings
 
     @classmethod
-    async def save_document(cls, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    async def save_document(cls, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save document to collection"""
-        data_result, warnings = await cls.get_instance().save_document(collection, data, unique_constraints)
+        data_result, warnings = await cls.get_instance().save_document(collection, data, unique_constraints, entity_metadata)
         
         # Convert database warnings to appropriate notifications
         for warning in warnings:
@@ -156,6 +156,11 @@ class DatabaseFactory:
     async def delete_document(cls, collection: str, doc_id: str) -> bool:
         """Delete document from collection"""
         return await cls.get_instance().delete_document(collection, doc_id)
+
+    @classmethod
+    async def remove_entity(cls, collection: str) -> bool:
+        """Remove/drop entire entity collection"""
+        return await cls.get_instance().remove_entity(collection)
     
     @classmethod
     def _notify_database_message(cls, message: str, collection: str, operation: str) -> None:

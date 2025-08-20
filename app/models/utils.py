@@ -21,7 +21,7 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
     for entity in entities:
         with python_warnings.catch_warnings(record=True) as caught_warnings:
             python_warnings.simplefilter("always")
-            data_dict = entity.model_dump()
+            data_dict = entity.model_dump(mode='python')
             entity_data.append(data_dict)
             
             # Add any serialization warnings as notifications

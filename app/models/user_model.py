@@ -43,11 +43,7 @@ class User(BaseModel):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    model_config = ConfigDict(
-        json_encoders={
-            datetime: lambda v: v.isoformat() + 'Z' if v else None  # Always UTC with Z suffix
-        }
-    )
+    model_config = ConfigDict()
 
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'username': {   'type': 'String',
                                   'required': True,
@@ -181,7 +177,7 @@ class User(BaseModel):
             user_instance = utils.validate_with_notifications(cls, raw_doc, "User")
             
             # Step 2: Get validated dict and process FK fields if needed
-            user_dict = user_instance.model_dump()
+            user_dict = user_instance.model_dump(mode='python')
             if view_spec or fk_validations:
                 await utils.process_entity_fks(user_dict, view_spec, "User", cls, fk_validations)
             
@@ -213,7 +209,7 @@ class User(BaseModel):
                 # This validates all fields and raises PydanticValidationError if invalid
                 validated_instance = self.__class__.model_validate(self.model_dump())
                 # Use the validated data for save
-                data = validated_instance.model_dump()
+                data = validated_instance.model_dump(mode='python')
                                 
                 # Validate ObjectId references exist
                 await utils.validate_objectid_references("User", data, self._metadata)
@@ -235,7 +231,7 @@ class User(BaseModel):
                 raise ValidationError(message=error['msg'], entity="User", invalid_fields=failures)
             
             # Save document with unique constraints - pass complete data
-            result, warnings = await DatabaseFactory.save_document("user", data, unique_constraints)
+            result, warnings = await DatabaseFactory.save_document("user", data, unique_constraints, self._metadata)
 
             # Update ID from result
             if not self.id and result and isinstance(result, dict):

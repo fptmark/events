@@ -3,6 +3,7 @@ from typing import Any, Dict, List, TypeVar, Type, Optional, Tuple, Callable
 from pydantic import BaseModel
 from functools import wraps
 import hashlib
+from datetime import datetime, timezone
 from ..errors import DatabaseError
 
 T = TypeVar('T', bound=BaseModel)
@@ -160,7 +161,7 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
-    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save a document to the database"""
         pass
 
@@ -187,6 +188,11 @@ class DatabaseInterface(ABC):
     @abstractmethod
     async def delete_document(self, collection: str, doc_id: str) -> bool:
         """Delete a document"""
+        pass
+
+    @abstractmethod
+    async def remove_entity(self, collection: str) -> bool:
+        """Remove/drop entire entity collection"""
         pass
 
     @abstractmethod
@@ -239,17 +245,92 @@ class DatabaseInterface(ABC):
         """Create a single field index (optional - for synthetic index support)"""
         pass
     
-    # Generic synthetic index methods (implemented in base class)
-    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Dict[str, Any]:
-        """Prepare document for save by adding synthetic hash fields if needed"""
-        if not unique_constraints:
+    # Datetime conversion methods (implemented in base class)
+    def _prepare_datetime_fields_for_save(self, data: Dict[str, Any], entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Convert datetime fields based on metadata before saving to database.
+        
+        - 'Date' type fields: Ensure they are datetime objects (for consistent storage)
+        - 'Datetime' type fields: Keep as datetime objects
+        Both will be stored as database's native datetime/timestamp type
+        """
+        if not entity_metadata or 'fields' not in entity_metadata:
             return data
+            
+        data_copy = data.copy()
+        fields_metadata = entity_metadata['fields']
+        
+        for field_name, field_meta in fields_metadata.items():
+            if field_name in data_copy and data_copy[field_name] is not None:
+                field_type = field_meta.get('type')
+                
+                if field_type in ['Date', 'Datetime']:
+                    value = data_copy[field_name]
+                    
+                    # Ensure we have a datetime object
+                    if isinstance(value, str):
+                        try:
+                            # Handle ISO string parsing
+                            if value.endswith('Z'):
+                                value = value[:-1] + '+00:00'
+                            data_copy[field_name] = datetime.fromisoformat(value)
+                        except (ValueError, TypeError):
+                            # Leave as-is if parsing fails
+                            pass
+                    elif isinstance(value, datetime):
+                        # For 'Date' fields, normalize to start of day in UTC for consistency
+                        if field_type == 'Date':
+                            # Keep the date part, but ensure it's at midnight UTC
+                            date_part = value.date()
+                            data_copy[field_name] = datetime.combine(date_part, datetime.min.time(), timezone.utc)
+                        # For 'Datetime' fields, keep as-is
+        
+        return data_copy
+    
+    def _prepare_datetime_fields_for_retrieval(self, data: Dict[str, Any], entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Ensure datetime fields are proper Python datetime objects after retrieval from database."""
+        if not entity_metadata or 'fields' not in entity_metadata:
+            return data
+            
+        data_copy = data.copy()
+        fields_metadata = entity_metadata['fields']
+        
+        for field_name, field_meta in fields_metadata.items():
+            if field_name in data_copy and data_copy[field_name] is not None:
+                field_type = field_meta.get('type')
+                
+                if field_type in ['Date', 'Datetime']:
+                    value = data_copy[field_name]
+                    
+                    # Ensure we return Python datetime objects
+                    if isinstance(value, str):
+                        try:
+                            # Handle ISO string parsing
+                            if value.endswith('Z'):
+                                value = value[:-1] + '+00:00'
+                            data_copy[field_name] = datetime.fromisoformat(value)
+                        except (ValueError, TypeError):
+                            # Leave as-is if parsing fails
+                            pass
+                    # If it's already a datetime object, keep as-is
+        
+        return data_copy
+
+    # Generic synthetic index methods (implemented in base class)
+    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Prepare document for save by converting datetime fields and adding synthetic hash fields if needed"""
+        
+        # Step 1: Convert datetime fields based on metadata
+        processed_data = self._prepare_datetime_fields_for_save(data, entity_metadata)
+        
+        # Step 2: Handle unique constraints if needed
+        if not unique_constraints:
+            return processed_data
             
         # Check if database supports native indexes
         if await self.supports_native_indexes():
-            return data  # Native indexes handle uniqueness
+            return processed_data  # Native indexes handle uniqueness
             
-        return self._add_synthetic_hash_fields(data, unique_constraints)
+        return self._add_synthetic_hash_fields(processed_data, unique_constraints)
     
     async def validate_unique_constraints_before_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> None:
         """Validate unique constraints before saving (works for both native and synthetic)"""
