@@ -239,121 +239,113 @@ app.add_middleware(
     max_age=3600,             # cache preflight for 1 hour
 )
 
-async def handle_exception_with_notifications(
-    request: Request, 
-    exc: Exception, 
-    status_code: int,
-    entity: str = '',
-    operation: str = '',
-    notification_handler = None
-) -> JSONResponse:
-    """Generic exception handler using notification system"""
-    
-    # Extract entity from URL if not provided
-    if entity is None:
-        path_parts = str(request.url.path).strip('/').split('/')
-        entity = path_parts[-1] if len(path_parts) > 1 else "unknown"
-    
-    # Default operation if not provided
-    if operation is None:
-        operation = "system"
-    
-    logger.error(f"Exception in {entity}.{operation}: {exc}")
-    start_notifications(entity=entity, operation=operation)
-    
-    try:
-        # Call the specific notification handler
-        if notification_handler:
-            notification_handler(exc, entity, operation)
-        
-        # End notifications and format response
-        collection = end_notifications()
-        enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
-        return JSONResponse(
-            status_code=status_code,
-            content=enhanced_response
-        )
-    except Exception:
-        end_notifications()
-        raise
 
-def handle_database_error_notifications(exc: DatabaseError, entity: str, operation: str):
-    """Handle database error notifications"""
-    from app.notification import notify_database_error
-    notify_database_error(exc.message, entity=entity)
-
-def handle_validation_error_notifications(exc: ValidationError, entity: str, operation: str):
-    """Handle validation error notifications - notifications now sent directly by validation functions"""
-    # Notifications are now handled directly by the validation functions that create the errors
-    # This prevents duplicate notifications and maintains consistency with other patterns
-    pass
-
-def handle_request_validation_error_notifications(exc: RequestValidationError, entity: str, operation: str):
-    """Handle FastAPI request validation error notifications"""
-    from app.notification import notify_validation_error
-    for error in exc.errors():
-        field = str(error['loc'][-1]) if error['loc'] else 'unknown'
-        message = error['msg']
-        notify_validation_error(f"Invalid {field}: {message}", 
-                              field_name=field, entity=entity)
-
-def handle_not_found_error_notifications(exc: NotFoundError, entity: str, operation: str):
-    """Handle not found error notifications"""
-    from app.notification import notify_business_error
-    notify_business_error(exc.message, entity=entity)
-
-def handle_duplicate_error_notifications(exc: DuplicateError, entity: str, operation: str):
-    """Handle duplicate error notifications"""
-    from app.notification import notify_validation_error
-    notify_validation_error(exc.message, field_name=exc.field, entity=entity)
-
-def handle_generic_error_notifications(exc: Exception, entity: str, operation: str):
-    """Handle generic error notifications"""
-    from app.notification import notify_system_error
-    notify_system_error(f"An unexpected error occurred: {str(exc)}", entity=entity)
 
 @app.exception_handler(DatabaseError)
 async def database_error_handler(request: Request, exc: DatabaseError):
     """Handle database errors"""
-    return await handle_exception_with_notifications(
-        request, exc, 500, exc.entity, exc.operation, handle_database_error_notifications
+    from app.notification import end_notifications, notify_database_error
+    
+    logger.error(f"Database error in {exc.entity}.{exc.operation}: {exc}")
+    
+    # Add notification to existing collection (started by endpoint handler)
+    notify_database_error(exc.message, entity=exc.entity)
+    
+    collection = end_notifications()
+    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
+    return JSONResponse(
+        status_code=500,
+        content=enhanced_response
     )
 
 @app.exception_handler(ValidationError)
 async def validation_error_handler(request: Request, exc: ValidationError):
     """Handle validation errors"""
-    return await handle_exception_with_notifications(
-        request, exc, 422, exc.entity, "validation", handle_validation_error_notifications
+    from app.notification import end_notifications
+    
+    logger.error(f"Validation error in {exc.entity}: {exc}")
+    
+    # Notifications already sent directly by validation functions before raising ValidationError
+    # Just collect the existing notifications and format response
+    collection = end_notifications()
+    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
+    return JSONResponse(
+        status_code=422,
+        content=enhanced_response
     )
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle FastAPI request validation errors"""
-    return await handle_exception_with_notifications(
-        request, exc, 422, operation="request_validation", 
-        notification_handler=handle_request_validation_error_notifications
+    from app.notification import end_notifications, notify_validation_error, get_notifications
+    
+    logger.error(f"Request validation error: {exc}")
+    
+    # Add notifications to existing collection (started by endpoint handler)
+    for error in exc.errors():
+        field = str(error['loc'][-1]) if error['loc'] else 'unknown'
+        message = error['msg']
+        notify_validation_error(f"Invalid {field}: {message}", 
+                              field_name=field)
+    
+    collection = end_notifications()
+    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
+    return JSONResponse(
+        status_code=422,
+        content=enhanced_response
     )
 
 @app.exception_handler(NotFoundError)
 async def not_found_error_handler(request: Request, exc: NotFoundError):
     """Handle not found errors"""
-    return await handle_exception_with_notifications(
-        request, exc, 404, exc.entity, "lookup", handle_not_found_error_notifications
+    from app.notification import end_notifications, notify_business_error
+    
+    logger.error(f"Not found error in {exc.entity}: {exc}")
+    
+    # Add notification to existing collection (started by endpoint handler)
+    notify_business_error(exc.message, entity=exc.entity)
+    
+    collection = end_notifications()
+    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
+    return JSONResponse(
+        status_code=404,
+        content=enhanced_response
     )
 
 @app.exception_handler(DuplicateError)
 async def duplicate_error_handler(request: Request, exc: DuplicateError):
     """Handle duplicate errors"""
-    return await handle_exception_with_notifications(
-        request, exc, 409, exc.entity, "validation", handle_duplicate_error_notifications
+    from app.notification import end_notifications, notify_business_error
+    
+    logger.error(f"Duplicate error in {exc.entity}: {exc}")
+    
+    # Add notification to existing collection (started by endpoint handler)
+    # Duplicate errors are business errors, not validation errors
+    notify_business_error(exc.message, field_name=exc.field, entity=exc.entity)
+    
+    collection = end_notifications()
+    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
+    return JSONResponse(
+        status_code=409,
+        content=enhanced_response
     )
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     """Handle any unhandled exceptions"""
+    from app.notification import end_notifications, notify_system_error
+    
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
-    return await handle_exception_with_notifications(
-        request, exc, 500, operation="system", notification_handler=handle_generic_error_notifications)
+    
+    # Add notification to existing collection (started by endpoint handler)
+    notify_system_error(f"An unexpected error occurred: {str(exc)}")
+    
+    collection = end_notifications()
+    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
+    return JSONResponse(
+        status_code=500,
+        content=enhanced_response
+    )
  
 @app.get('')
 def read_root():
