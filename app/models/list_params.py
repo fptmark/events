@@ -27,6 +27,13 @@ class ListParams:
         """Create ListParams from URL query parameters."""
         params = cls()
         
+        # Check for common invalid parameter names before normalization
+        for key in query_params.keys():
+            if key == 'page_size':
+                notify_error(f"Invalid parameter '{key}'. Use 'pageSize' instead.")
+            elif key == 'per_page':
+                notify_error(f"Invalid parameter '{key}'. Use 'pageSize' instead.")
+        
         # Normalize all query parameter keys to lowercase for case-insensitive handling
         normalized_params = {key.lower(): value for key, value in query_params.items()}
         
@@ -51,13 +58,6 @@ class ListParams:
                         params.page_size = size_val
                 elif key == 'sort':
                     params.sort_fields = cls._parse_sort_parameter(value)
-                elif key == 'order':
-                    # Legacy support: if only one sort field and no explicit order in sort param
-                    if len(params.sort_fields) == 1 and params.sort_fields[0][1] == 'asc':
-                        if value not in ['asc', 'desc']:
-                            notify_error(f"Sort order must be 'asc' or 'desc', got: {value}")
-                        else:
-                            params.sort_fields[0] = (params.sort_fields[0][0], value)
                 elif key == 'view':
                     # Skip view parameter - it's handled separately by the router
                     continue
@@ -65,8 +65,9 @@ class ListParams:
                     # Parse filter parameter: field:value,field2:value2,field3:gt:value3
                     params.filters = cls._parse_filter_parameter(value)
                 else:
-                    # Unknown parameter - ignore with warning
-                    notify_error(f"Unknown query parameter '{key}' ignored. Use 'filter=' for field filtering.")
+                    # Unknown parameter - report as application error
+                    valid_params = ['page', 'pageSize', 'sort', 'filter', 'view']
+                    notify_error(f"Invalid query parameter '{key}'. Valid parameters: {', '.join(valid_params)}")
             except ValueError as e:
                 notify_error(f"Invalid parameter '{key}={value}': {str(e)}")
                 continue
