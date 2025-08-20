@@ -691,14 +691,15 @@ class MongoDatabase(DatabaseInterface):
     def _build_sort_spec(self, list_params, collection: str, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
         """Build MongoDB sort specification from ListParams.""" 
         if not list_params or not list_params.sort_fields:
-            # Use metadata-driven default sort field for consistent pagination
+            # Default sort by database's native ID field
             default_field = self._get_default_sort_field(entity_metadata)
             return {default_field: 1}
         
         # Build sort spec maintaining field order
         sort_spec = {}
         for field, order in list_params.sort_fields:
-            sort_spec[field] = 1 if order == "asc" else -1
+            actual_field = self._map_sort_field(field, entity_metadata)
+            sort_spec[actual_field] = 1 if order == "asc" else -1
         
         return sort_spec
 

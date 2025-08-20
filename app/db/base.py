@@ -349,23 +349,18 @@ class DatabaseInterface(ABC):
         return field_info.get('autoGenerate', False) or field_info.get('autoUpdate', False)
     
     def _get_default_sort_field(self, entity_metadata: Optional[Dict[str, Any]]) -> str:
-        """Get default sort field from metadata - first auto-generated date field or safe fallback."""
-        if not entity_metadata:
-            return 'createdAt'  # Safe fallback when no metadata
-        
-        try:
-            fields = entity_metadata.get('fields', {})
-            
-            # Find first auto-generated date/datetime field
-            for field_name, field_info in fields.items():
-                if (field_info.get('autoGenerate', False) and 
-                    field_info.get('type') in ['Date', 'Datetime']):
-                    return field_name
-        except (AttributeError, TypeError):
-            pass  # Ignore metadata parsing errors
-        
-        # Safe fallback - every entity should have createdAt
-        return 'createdAt'
+        """Get default sort field - first field from metadata."""
+        fields = entity_metadata['fields']
+        # Get first field (fields dict maintains order in Python 3.7+)
+        first_field = next(iter(fields.keys()))
+        return first_field
+    
+    def _map_sort_field(self, field: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
+        """Map sort field names consistently across all drivers."""
+        if field == "id":
+            return self._get_default_sort_field(entity_metadata)
+        else:
+            return self._map_field_name(field, entity_metadata)
     
     
 

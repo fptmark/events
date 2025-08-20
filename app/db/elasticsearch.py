@@ -415,17 +415,13 @@ class ElasticsearchDatabase(DatabaseInterface):
     def _build_sort_spec(self, list_params, collection: str, entity_metadata: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Build Elasticsearch sort specification from ListParams using metadata."""
         if not list_params or not list_params.sort_fields:
-            # Use metadata-driven default sort field for consistent pagination
+            # Default sort by id field
             default_field = self._get_default_sort_field(entity_metadata)
             return [{default_field: {"order": "asc"}}]
         
         sort_spec = []
         for field, order in list_params.sort_fields:
-            # Map application "id" field - cannot sort by _id in ES
-            if field == "id":
-                actual_field = self._get_default_sort_field(entity_metadata)
-            else:
-                actual_field = self._map_field_name(field, entity_metadata)
+            actual_field = self._map_sort_field(field, entity_metadata)
                 
             # Configure case sensitivity for text fields
             sort_config = {"order": order}
