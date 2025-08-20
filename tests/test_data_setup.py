@@ -36,7 +36,7 @@ class TestDataCreator:
             await DatabaseFactory.initialize(db_type, db_uri, db_name)
             print("✅ Database connection established")
         else:
-            print("x Bad database config")
+            print("❌ Bad database config ... quitting")
     
     async def cleanup_database(self):
         """Close database connection"""
@@ -209,28 +209,45 @@ class TestDataCreator:
         """Remove ALL data from database - use with caution!"""
         from app.metadata import get_all_entity_names
         
-        print("💥 WIPING ALL DATA - This will remove ALL collections!")
+        print("💥 WIPING ALL DATA - This will remove ALL data from all collections!")
         
         try:
+            # First, wipe all ES index templates to avoid conflicts
+            await DatabaseFactory.wipe_all_index_templates()
+            print("   🗑️ Wiped all ES index templates")
+            
+            # Then delete all application indices to force recreation with new templates
+            await DatabaseFactory.wipe_all_indices()
+            print("   🗑️ Deleted all application indices")
+            
             # Get all registered entity names from metadata
             entity_names = get_all_entity_names()
             if not entity_names:
                 # Fallback to known entities if metadata not loaded
                 entity_names = ["User", "Account", "Profile", "TagAffinity", "Event", "UserEvent", "Url", "Crawl"]
             
-            total_wiped = []
+            total_deleted = {}
             
-            # Remove entire collections for each entity
+            # Wipe ALL records from each entity collection
             for entity_name in entity_names:
                 collection_name = entity_name.lower()
                 
-                success = await DatabaseFactory.remove_entity(collection_name)
-                if success:
-                    total_wiped.append(entity_name)
-                    print(f"   🗑️ Wiped entire {entity_name} collection")
+                all_docs, warnings, count = await DatabaseFactory.get_all(collection_name, [])
+                deleted_count = 0
+                
+                for doc in all_docs:
+                    doc_id = doc.get('id')
+                    if doc_id:
+                        success = await DatabaseFactory.delete_document(collection_name, doc_id)
+                        if success:
+                            deleted_count += 1
+                
+                if deleted_count > 0:
+                    total_deleted[entity_name] = deleted_count
+                    print(f"   🗑️ Deleted {deleted_count} {entity_name} records")
             
-            wiped_summary = ', '.join(total_wiped) if total_wiped else 'No collections found'
-            print(f"✅ Database wipe complete: {wiped_summary}")
+            deleted_summary = ', '.join([f"{count} {entity}" for entity, count in total_deleted.items()])
+            print(f"✅ Database wipe complete: {deleted_summary}")
             
         except Exception as e:
             print(f"❌ Database wipe failed: {e}")
