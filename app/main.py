@@ -283,11 +283,10 @@ def handle_database_error_notifications(exc: DatabaseError, entity: str, operati
     notify_database_error(exc.message, entity=entity)
 
 def handle_validation_error_notifications(exc: ValidationError, entity: str, operation: str):
-    """Handle validation error notifications"""
-    from app.notification import notify_validation_error
-    for field_error in exc.invalid_fields:
-        notify_validation_error(field_error.message, 
-                              field_name=field_error.field_name, entity=entity)
+    """Handle validation error notifications - notifications now sent directly by validation functions"""
+    # Notifications are now handled directly by the validation functions that create the errors
+    # This prevents duplicate notifications and maintains consistency with other patterns
+    pass
 
 def handle_request_validation_error_notifications(exc: RequestValidationError, entity: str, operation: str):
     """Handle FastAPI request validation error notifications"""

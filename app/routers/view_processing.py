@@ -17,7 +17,7 @@ from urllib.parse import unquote
 
 from app.config import Config
 from app.routers.router_factory import ModelImportCache
-from app.notification import notify_warning, notify_validation_error
+from app.notification import notify_business_error, notify_validation_error
 from app.errors import NotFoundError
 
 if TYPE_CHECKING:
@@ -138,7 +138,7 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Optional[Dict[st
                     
                     # Add warning notification instead of raising ValidationError
                     # This allows data to be returned with FK validation warnings
-                    notify_validation_error(
+                    notify_business_error(
                         message=f"Id {missing_value} does not exist",
                         field_name=fk_id_field,
                         entity=entity_name,
@@ -167,7 +167,7 @@ async def auto_validate_fk_fields(entity_dict: Dict[str, Any], entity_name: str,
             except NotFoundError:
                 # Add warning notification instead of raising ValidationError
                 # This allows data to be returned with FK validation warnings
-                notify_validation_error(
+                notify_business_error(
                     message=f"Id {entity_dict[field_name]} does not exist",
                     field_name=field_name,
                     entity=entity_name,

@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Optional
 from pydantic import ValidationError as PydanticValidationError
 import warnings as python_warnings
 from app.config import Config
-from app.notification import notify_warning, notify_database_error, notify_validation_error
+from app.notification import notify_business_error, notify_database_error, notify_validation_error
 
 def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], warnings: List[str]) -> List[Dict[str, Any]]:
     """Common processing for raw database results."""
@@ -78,7 +78,8 @@ async def validate_objectid_references(entity_name: str, data: Dict[str, Any], m
     from app.errors import ValidationError, ValidationFailure, NotFoundError
     from app.routers.router_factory import ModelImportCache
     
-    validation_failures = []
+    business_failures = []
+    entity_id = data.get('id', 'unknown')
     
     # Check all ObjectId fields in the entity metadata
     for field_name, field_meta in metadata.get('fields', {}).items():
@@ -89,7 +90,14 @@ async def validate_objectid_references(entity_name: str, data: Dict[str, Any], m
                 fk_entity_cls = ModelImportCache.get_model_class(fk_entity_name)
                 await fk_entity_cls.get(data[field_name])
             except NotFoundError:
-                validation_failures.append(ValidationFailure(
+                # Call notify_business_error directly (consistent with other patterns)
+                notify_business_error(
+                    message=f"Id {data[field_name]} does not exist",
+                    field_name=field_name,
+                    entity=entity_name,
+                    entity_id=entity_id
+                )
+                business_failures.append(ValidationFailure(
                     field_name=field_name,
                     message=f"Id {data[field_name]} does not exist",
                     value=data[field_name]
@@ -99,11 +107,12 @@ async def validate_objectid_references(entity_name: str, data: Dict[str, Any], m
                 pass
     
     # Raise ValidationError if any ObjectId references are invalid
-    if validation_failures:
+    # Notifications already sent above - exception just prevents save operation
+    if business_failures:
         raise ValidationError(
             message="Invalid ObjectId references",
             entity=entity_name,
-            invalid_fields=validation_failures
+            invalid_fields=business_failures
         )
 
 
@@ -175,7 +184,7 @@ async def process_entity_fks(entity_dict: Dict[str, Any], view_spec: Optional[Di
                 # Add FK validation warning only when view provided or GV enabled
                 # (Model validation is handled separately and always runs)
                 if fk_data.get('exists') is False:
-                    notify_validation_error(
+                    notify_business_error(
                         message=message,
                         field_name=field_name,
                         entity=entity_name,
