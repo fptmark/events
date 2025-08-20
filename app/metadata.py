@@ -180,6 +180,11 @@ class MetadataManager:
         return cls._entity_name_registry.get(cache_key, entity_name.capitalize())
     
     @classmethod
+    def get_all_entity_names(cls) -> list[str]:
+        """Get all registered entity names (properly cased)"""
+        return list(cls._entity_name_registry.values())
+    
+    @classmethod
     def clear_cache(cls) -> None:
         """Clear metadata cache (useful for testing)"""
         cls._cache.clear()
@@ -199,6 +204,11 @@ def get_entity_metadata(entity_name: str) -> Optional[EntityMetadata]:
 def get_proper_entity_name(entity_name: str) -> str:
     """Get properly cased entity name from global registry"""
     return MetadataManager.get_proper_entity_name(entity_name)
+
+
+def get_all_entity_names() -> list[str]:
+    """Get all registered entity names"""
+    return MetadataManager.get_all_entity_names()
 
 
 def clear_metadata_cache() -> None:

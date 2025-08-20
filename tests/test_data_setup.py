@@ -31,9 +31,12 @@ class TestDataCreator:
         db_uri = config.get('db_uri')
         db_name = config.get('db_name')
         
-        print(f"📂 Connecting to {db_type} at {db_uri}/{db_name}")
-        await DatabaseFactory.initialize(db_type, db_uri, db_name)
-        print("✅ Database connection established")
+        if db_type and db_uri and db_name:
+            print(f"📂 Connecting to {db_type} at {db_uri}/{db_name}")
+            await DatabaseFactory.initialize(db_type, db_uri, db_name)
+            print("✅ Database connection established")
+        else:
+            print("x Bad database config")
     
     async def cleanup_database(self):
         """Close database connection"""
@@ -203,52 +206,31 @@ class TestDataCreator:
         print("✅ Test data cleanup complete")
     
     async def wipe_all_test_data(self):
-        """Remove ALL test data from database - use with caution!"""
-        print("💥 WIPING ALL TEST DATA - This will remove all test users and accounts!")
+        """Remove ALL data from database - use with caution!"""
+        from app.metadata import get_all_entity_names
+        
+        print("💥 WIPING ALL DATA - This will remove ALL collections!")
         
         try:
-            # Get all users with test usernames
-            all_users, warnings, count = await DatabaseFactory.get_all("user", [])
-            deleted_users = 0
+            # Get all registered entity names from metadata
+            entity_names = get_all_entity_names()
+            if not entity_names:
+                # Fallback to known entities if metadata not loaded
+                entity_names = ["User", "Account", "Profile", "TagAffinity", "Event", "UserEvent", "Url", "Crawl"]
             
-            for user in all_users:
-                username = user.get('username', '')
-                email = user.get('email', '')
-                # Delete users that look like test data
-                if (username.startswith('testuser_') or 
-                    email.startswith('test_') or 
-                    'test' in username.lower()):
-                    user_id = user.get('id')
-                    if user_id:
-                        try:
-                            success = await DatabaseFactory.delete_document("user", user_id)
-                            if success:
-                                deleted_users += 1
-                                print(f"   🗑️ Deleted test user: {username} ({user_id})")
-                        except Exception as e:
-                            # Ignore delete errors (document may not exist)
-                            print(f"   ⚠️ Could not delete user {username}: {e}")
+            total_wiped = []
             
-            # Get all accounts with test names
-            all_accounts, warnings, count = await DatabaseFactory.get_all("account", [])
-            deleted_accounts = 0
+            # Remove entire collections for each entity
+            for entity_name in entity_names:
+                collection_name = entity_name.lower()
+                
+                success = await DatabaseFactory.remove_entity(collection_name)
+                if success:
+                    total_wiped.append(entity_name)
+                    print(f"   🗑️ Wiped entire {entity_name} collection")
             
-            for account in all_accounts:
-                name = account.get('name', '')
-                # Delete accounts that look like test data
-                if name.startswith('Test Account'):
-                    account_id = account.get('id')
-                    if account_id:
-                        try:
-                            success = await DatabaseFactory.delete_document("account", account_id)
-                            if success:
-                                deleted_accounts += 1
-                                print(f"   🗑️ Deleted test account: {name} ({account_id})")
-                        except Exception as e:
-                            # Ignore delete errors (document may not exist)
-                            print(f"   ⚠️ Could not delete account {name}: {e}")
-            
-            print(f"✅ Database wipe complete: {deleted_users} users, {deleted_accounts} accounts removed")
+            wiped_summary = ', '.join(total_wiped) if total_wiped else 'No collections found'
+            print(f"✅ Database wipe complete: {wiped_summary}")
             
         except Exception as e:
             print(f"❌ Database wipe failed: {e}")
