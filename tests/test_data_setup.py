@@ -178,33 +178,33 @@ class TestDataCreator:
             **test_users
         }
     
-    async def cleanup_test_data(self):
-        """Remove all created test data"""
-        print("🧹 Cleaning up test data...")
+    # async def cleanup_test_data(self):
+    #     """Remove all created test data"""
+    #     print("🧹 Cleaning up test data...")
         
-        # Delete test users
-        for user_id in self.test_user_ids:
-            try:
-                success = await DatabaseFactory.delete_document("user", user_id)
-                if success:
-                    print(f"   ✅ Deleted user: {user_id}")
-                else:
-                    print(f"   ⚠️ Failed to delete user: {user_id}")
-            except Exception as e:
-                print(f"   ❌ Error deleting user {user_id}: {e}")
+    #     # Delete test users
+    #     for user_id in self.test_user_ids:
+    #         try:
+    #             success = await DatabaseFactory.delete_document("user", user_id)
+    #             if success:
+    #                 print(f"   ✅ Deleted user: {user_id}")
+    #             else:
+    #                 print(f"   ⚠️ Failed to delete user: {user_id}")
+    #         except Exception as e:
+    #             print(f"   ❌ Error deleting user {user_id}: {e}")
         
-        # Delete test accounts
-        for account_id in self.test_account_ids:
-            try:
-                success = await DatabaseFactory.delete_document("account", account_id)
-                if success:
-                    print(f"   ✅ Deleted account: {account_id}")
-                else:
-                    print(f"   ⚠️ Failed to delete account: {account_id}")
-            except Exception as e:
-                print(f"   ❌ Error deleting account {account_id}: {e}")
+    #     # Delete test accounts
+    #     for account_id in self.test_account_ids:
+    #         try:
+    #             success = await DatabaseFactory.delete_document("account", account_id)
+    #             if success:
+    #                 print(f"   ✅ Deleted account: {account_id}")
+    #             else:
+    #                 print(f"   ⚠️ Failed to delete account: {account_id}")
+    #         except Exception as e:
+    #             print(f"   ❌ Error deleting account {account_id}: {e}")
         
-        print("✅ Test data cleanup complete")
+    #     print("✅ Test data cleanup complete")
     
     async def wipe_all_test_data(self):
         """Remove ALL data from database - use with caution!"""
