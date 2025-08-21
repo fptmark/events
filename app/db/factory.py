@@ -115,14 +115,14 @@ class DatabaseFactory:
         return data, warnings, total_count
 
     @classmethod
-    async def get_list(cls, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+    async def get_list(cls, collection: str, entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count"""
         # Default to safe pagination if no params provided
         if list_params is None:
             from app.models.list_params import ListParams
             list_params = ListParams(page=1, page_size=100)
             
-        data, warnings, total_count = await cls.get_instance().get_list(collection, unique_constraints, list_params, entity_metadata)
+        data, warnings, total_count = await cls.get_instance().get_list(collection, entity_metadata, unique_constraints, list_params)
         
         # Convert database warnings to appropriate notifications
         for warning in warnings:
@@ -142,9 +142,9 @@ class DatabaseFactory:
         return data, warnings
 
     @classmethod
-    async def save_document(cls, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    async def save_document(cls, collection: str, data: Dict[str, Any], entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save document to collection"""
-        data_result, warnings = await cls.get_instance().save_document(collection, data, unique_constraints, entity_metadata)
+        data_result, warnings = await cls.get_instance().save_document(collection, data, entity_metadata, unique_constraints)
         
         # Convert database warnings to appropriate notifications
         for warning in warnings:

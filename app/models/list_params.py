@@ -73,11 +73,13 @@ class ListParams:
         Parse sort parameter into list of (field, order) tuples.
         Field names are kept as-is - field mapping happens at the database layer.
         
+        Format: "field:direction" where direction is "asc" or "desc"
+        
         Examples:
-        - "username" -> [("username", "asc")]
-        - "-username" -> [("username", "desc")]
-        - "firstName,lastName" -> [("firstName", "asc"), ("lastName", "asc")]
-        - "firstName,-createdAt" -> [("firstName", "asc"), ("createdAt", "desc")]
+        - "username:asc" -> [("username", "asc")]
+        - "username:desc" -> [("username", "desc")]
+        - "firstName:asc,lastName:desc" -> [("firstName", "asc"), ("lastName", "desc")]
+        - "username" -> [("username", "asc")] (defaults to asc if no direction)
         """
         if not sort_str or sort_str.strip() == "":
             return []
@@ -87,15 +89,25 @@ class ListParams:
             field_spec = field_spec.strip()
             if not field_spec:
                 continue
+            
+            # Check for field:direction format
+            if ':' in field_spec:
+                parts = field_spec.split(':', 1)
+                field_name = parts[0].strip()
+                direction = parts[1].strip().lower()
                 
-            if field_spec.startswith('-'):
-                # Descending order
-                field_name = field_spec[1:].strip()
-                if field_name:  # Make sure there's a field name after the '-'
-                    sort_fields.append((field_name, 'desc'))
-                # If field_spec is just "-", ignore it
+                if not field_name:
+                    notify_error(f"Empty field name in sort: '{field_spec}'")
+                    continue
+                
+                if direction not in ['asc', 'desc']:
+                    notify_error(f"Invalid sort direction '{direction}' for field '{field_name}'. Use 'asc' or 'desc'")
+                    continue
+                
+                sort_fields.append((field_name, direction))
+                
             else:
-                # Ascending order (default)
+                # No direction specified - default to ascending
                 sort_fields.append((field_spec, 'asc'))
         
         return sort_fields

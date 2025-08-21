@@ -103,17 +103,17 @@ class DatabaseInterface(ABC):
 
 
     @abstractmethod
-    async def _get_list_impl(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+    async def _get_list_impl(self, collection: str, entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count"""
         pass
 
     @abstractmethod
-    def _build_query_filter(self, list_params, entity_metadata: Optional[Dict[str, Any]] = None) -> Any:
+    def _build_query_filter(self, list_params, entity_metadata: Dict[str, Any]) -> Any:
         """Build database-specific query filter from ListParams"""
         pass
 
     @abstractmethod  
-    def _build_sort_spec(self, list_params, collection: str, entity_metadata: Optional[Dict[str, Any]] = None) -> Any:
+    def _build_sort_spec(self, list_params, collection: str, entity_metadata: Dict[str, Any]) -> Any:
         """Build database-specific sort specification from ListParams"""
         pass
 
@@ -123,7 +123,7 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
-    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    async def save_document(self, collection: str, data: Dict[str, Any], entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save a document to the database"""
         pass
 
@@ -194,13 +194,13 @@ class DatabaseInterface(ABC):
         pass
     
     # Public wrapper methods with validation
-    async def get_list(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+    async def get_list(self, collection: str, entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count - with parameter validation"""
         # Validate and sanitize list_params
         validated_params = self._validate_list_params(list_params)
         
         # Call the implementation
-        return await self._get_list_impl(collection, unique_constraints, validated_params, entity_metadata)
+        return await self._get_list_impl(collection, entity_metadata, unique_constraints, validated_params)
     
     # Optional method for databases that support single field index creation
     async def create_single_field_index(self, collection: str, field: str, index_name: str) -> None:
@@ -208,7 +208,7 @@ class DatabaseInterface(ABC):
         pass
     
     # Datetime conversion methods (implemented in base class)
-    def _process_datetime_fields_for_save(self, data: Dict[str, Any], entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _process_datetime_fields_for_save(self, data: Dict[str, Any], entity_metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Convert datetime fields based on metadata before saving to database."""
         if not entity_metadata or 'fields' not in entity_metadata:
             return data
@@ -250,7 +250,7 @@ class DatabaseInterface(ABC):
         
         return data_copy
     
-    def _process_datetime_fields_for_retrieval(self, data: Dict[str, Any], entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _process_datetime_fields_for_retrieval(self, data: Dict[str, Any], entity_metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Ensure datetime fields are proper Python datetime objects after retrieval from database."""
         if not entity_metadata or 'fields' not in entity_metadata:
             return data
@@ -280,7 +280,7 @@ class DatabaseInterface(ABC):
         return data_copy
 
     @abstractmethod
-    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Dict[str, Any]:
         """Prepare document for save (datetime conversion, synthetic indexes for ES, etc.)"""
         pass
     
@@ -290,7 +290,7 @@ class DatabaseInterface(ABC):
         pass
     
     # Metadata-driven field type helpers
-    def _get_field_name_mapping(self, entity_metadata: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    def _get_field_name_mapping(self, entity_metadata: Dict[str, Any]) -> Dict[str, str]:
         """Create cached bidirectional field name mapping (lowercase -> actual, actual -> actual)."""
         if not entity_metadata or 'fields' not in entity_metadata:
             return {}
@@ -308,7 +308,7 @@ class DatabaseInterface(ABC):
                 
         return mapping
     
-    def _map_field_name(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
+    def _map_field_name(self, field_name: str, entity_metadata: Dict[str, Any]) -> str:
         """Map field name using cached lookup and notify about invalid fields."""
         if not hasattr(self, '_field_mapping_cache'):
             self._field_mapping_cache = {}
@@ -334,7 +334,7 @@ class DatabaseInterface(ABC):
         return mapped_field if mapped_field is not None else field_name
     
     
-    def _is_auto_generated_field(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> bool:
+    def _is_auto_generated_field(self, field_name: str, entity_metadata: Dict[str, Any]) -> bool:
         """Check if field is auto-generated from metadata."""
         if not entity_metadata:
             return False
@@ -351,7 +351,19 @@ class DatabaseInterface(ABC):
         first_field = next(iter(fields.keys()))
         return first_field
     
-    def _map_sort_field(self, field: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
+    def _get_default_sort_direction(self, field_name: str, entity_metadata: Dict[str, Any]) -> str:
+        """Get default sort direction based on field type for intuitive UX."""
+        field_info = entity_metadata['fields'].get(field_name, {})
+        field_type = field_info.get('type', 'String')
+        
+        if field_type in ['Date', 'Datetime']:
+            return 'desc'  # Newest first - most intuitive for dates
+        elif field_type in ['Integer', 'Currency', 'Float']:
+            return 'asc'   # Smallest first - most intuitive for numbers
+        else:
+            return 'asc'   # Default for strings and other types
+    
+    def _map_sort_field(self, field: str, entity_metadata: Dict[str, Any]) -> str:
         """Map sort field names consistently across all drivers."""
         if field == "id":
             return self._get_default_sort_field(entity_metadata)

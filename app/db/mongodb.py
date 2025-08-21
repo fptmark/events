@@ -68,7 +68,7 @@ class MongoDatabase(DatabaseInterface):
         return self._db
 
 
-    async def _get_list_impl(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+    async def _get_list_impl(self, collection: str, entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count."""
         self._ensure_initialized()
         
@@ -190,7 +190,7 @@ class MongoDatabase(DatabaseInterface):
                 operation="get_by_id"
             )
 
-    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    async def save_document(self, collection: str, data: Dict[str, Any], entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save a document to the database."""
         self._ensure_initialized()
             
@@ -612,7 +612,7 @@ class MongoDatabase(DatabaseInterface):
                 operation="exists"
             )
     
-    def _build_query_filter(self, list_params, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _build_query_filter(self, list_params, entity_metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Build MongoDB query from ListParams with field-type awareness."""
         if not list_params or not list_params.filters:
             return {}
@@ -662,12 +662,13 @@ class MongoDatabase(DatabaseInterface):
         """Get MongoDB field name - just maps field name (no special suffixes needed)."""
         return self._map_field_name(field_name, entity_metadata)
 
-    def _build_sort_spec(self, list_params, collection: str, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
+    def _build_sort_spec(self, list_params, collection: str, entity_metadata: Dict[str, Any]) -> Dict[str, int]:
         """Build MongoDB sort specification from ListParams.""" 
         if not list_params or not list_params.sort_fields:
-            # Default sort by database's native ID field
+            # Default sort with intelligent direction based on field type
             default_field = self._get_default_sort_field(entity_metadata)
-            return {default_field: 1}
+            default_direction = self._get_default_sort_direction(default_field, entity_metadata)
+            return {default_field: 1 if default_direction == "asc" else -1}
         
         # Build sort spec maintaining field order
         sort_spec = {}
@@ -677,7 +678,7 @@ class MongoDatabase(DatabaseInterface):
         
         return sort_spec
 
-    def _get_field_type(self, field_name: str, entity_metadata: Optional[Dict[str, Any]]) -> str:
+    def _get_field_type(self, field_name: str, entity_metadata: Dict[str, Any]) -> str:
         """Get field type from entity metadata or default to String."""
         if not entity_metadata or 'fields' not in entity_metadata:
             return 'String'  # Default to string for partial matching
@@ -728,7 +729,7 @@ class MongoDatabase(DatabaseInterface):
             # Return empty list on error - Factory layer will handle notification
             return []
     
-    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Dict[str, Any]:
         """Prepare document for save by converting datetime fields (MongoDB has native unique indexes)"""
         # Only convert datetime fields - MongoDB handles uniqueness natively
         return self._process_datetime_fields_for_save(data, entity_metadata)

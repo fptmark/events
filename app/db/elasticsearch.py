@@ -167,7 +167,7 @@ class ElasticsearchDatabase(DatabaseInterface):
             # Don't fail initialization if template creation fails
 
 
-    async def _get_list_impl(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+    async def _get_list_impl(self, collection: str, entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count."""
         es = self._get_client()
 
@@ -307,7 +307,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                 operation="create_collection"
             )
 
-    def _build_query_filter(self, list_params, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _build_query_filter(self, list_params, entity_metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Build Elasticsearch query from ListParams with field-type awareness."""
         if not list_params or not list_params.filters:
             return {"match_all": {}}
@@ -383,13 +383,14 @@ class ElasticsearchDatabase(DatabaseInterface):
         else:
             return {"match_all": {}}
 
-    def _build_sort_spec(self, list_params, collection: str, entity_metadata: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    def _build_sort_spec(self, list_params, collection: str, entity_metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Build Elasticsearch sort specification from ListParams using metadata."""
         if not list_params or not list_params.sort_fields:
-            # Default sort by first field, using proper ES field name
+            # Default sort with intelligent direction based on field type
             default_field = self._get_default_sort_field(entity_metadata)
+            default_direction = self._get_default_sort_direction(default_field, entity_metadata)
             sort_field = self._get_database_field_name(default_field, entity_metadata)
-            return [{sort_field: {"order": "asc"}}]
+            return [{sort_field: {"order": default_direction}}]
         
         sort_spec = []
         for field, order in list_params.sort_fields:
@@ -785,7 +786,7 @@ class ElasticsearchDatabase(DatabaseInterface):
         combined = "|".join(values)
         return hashlib.sha256(combined.encode()).hexdigest()
     
-    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Dict[str, Any]:
         """Prepare document for save by converting datetime fields and adding synthetic hash fields"""
         
         # Step 1: Convert datetime fields based on metadata
@@ -802,7 +803,7 @@ class ElasticsearchDatabase(DatabaseInterface):
         if unique_constraints:
             await self._validate_synthetic_constraints(collection, data, unique_constraints)
 
-    async def save_document(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    async def save_document(self, collection: str, data: Dict[str, Any], entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
         """Save a document to the database with synthetic index support."""
         self._ensure_initialized()
         
