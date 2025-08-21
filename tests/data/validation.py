@@ -286,46 +286,41 @@ class SortValidator:
             if not valid_criteria:
                 return True  # No valid criteria to check
             
-            # Validate each adjacent pair
+            # Walk through list and validate sort order
             for i in range(len(data) - 1):
-                if not self._validate_sort_pair(data[i], data[i + 1], valid_criteria, i):
-                    return False
+                current_record = data[i]
+                next_record = data[i + 1]
+                
+                # Check each sort field in order
+                for field_idx, (field_name, direction) in enumerate(valid_criteria):
+                    current_val = current_record.get(field_name)
+                    next_val = next_record.get(field_name)
+                    
+                    # Get field info for proper type-aware comparison
+                    field_info = self.entity_metadata.get_field_info(field_name) if self.entity_metadata else None
+                    comparison = FieldTypeConverter.compare_values(current_val, next_val, field_info)
+                    
+                    if comparison == 0:
+                        continue  # Equal values, check next sort field
+                    
+                    # For ascending: current should be <= next (comparison <= 0)
+                    # For descending: current should be >= next (comparison >= 0)
+                    is_valid_order = (comparison <= 0) if direction == 'asc' else (comparison >= 0)
+                    
+                    if not is_valid_order:
+                        direction_text = "ascending" if direction == 'asc' else "descending"
+                        sort_context = f"sort field {field_idx + 1}/{len(valid_criteria)} ({field_name} {direction_text})"
+                        ValidationReporter.report_error(f"Sort Order at records {i}-{i + 1}", 
+                                                      f"'{current_val}' vs '{next_val}' for {sort_context}", self.verbose)
+                        return False
+                    else:
+                        break  # Correct order found, no need to check remaining fields
             
             return True
         except Exception as e:
             print(f"    ❌ ERROR in SortValidator.validate_sort_order: {e}")
             sys.exit(1)
     
-    def _validate_sort_pair(self, current: Dict, next_item: Dict, sort_criteria: List[Tuple[str, str]], pair_index: int) -> bool:
-        """Validate sort order between two adjacent records."""
-        try:
-            for field_idx, (field_name, direction) in enumerate(sort_criteria):
-                current_val = current.get(field_name)
-                next_val = next_item.get(field_name)
-                
-                # Get field info for type-aware comparison
-                field_info = self.entity_metadata.get_field_info(field_name) if self.entity_metadata else None
-                comparison = FieldTypeConverter.compare_values(current_val, next_val, field_info)
-                
-                if comparison == 0:
-                    continue  # Equal values, check next sort field
-                
-                # Check if order is correct
-                expected_order = comparison <= 0 if direction == 'asc' else comparison >= 0
-                
-                if not expected_order:
-                    direction_text = "ascending" if direction == 'asc' else "descending"
-                    sort_context = f"sort field {field_idx + 1}/{len(sort_criteria)} ({field_name} {direction_text})"
-                    ValidationReporter.report_error(f"Sort Order at records {pair_index}-{pair_index + 1}", 
-                                                  f"'{current_val}' vs '{next_val}' for {sort_context}", self.verbose)
-                    return False
-                else:
-                    break  # Correct order found, no need to check remaining fields
-            
-            return True
-        except Exception as e:
-            print(f"    ❌ ERROR in SortValidator._validate_sort_pair: {e}")
-            sys.exit(1)
 
 
 class FilterValidator:
