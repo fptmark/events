@@ -27,13 +27,6 @@ class ListParams:
         """Create ListParams from URL query parameters."""
         params = cls()
         
-        # Check for common invalid parameter names before normalization
-        for key in query_params.keys():
-            if key == 'page_size':
-                notify_error(f"Invalid parameter '{key}'. Use 'pageSize' instead.")
-            elif key == 'per_page':
-                notify_error(f"Invalid parameter '{key}'. Use 'pageSize' instead.")
-        
         # Normalize all query parameter keys to lowercase for case-insensitive handling
         normalized_params = {key.lower(): value for key, value in query_params.items()}
         

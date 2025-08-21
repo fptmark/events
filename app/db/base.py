@@ -101,10 +101,6 @@ class DatabaseInterface(ABC):
         """Initialize the database connection"""
         pass
 
-    @abstractmethod
-    async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
-        """Get all documents from a collection with count"""
-        pass
 
     @abstractmethod
     async def _get_list_impl(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
@@ -348,7 +344,7 @@ class DatabaseInterface(ABC):
         field_info = entity_metadata.get('fields', {}).get(actual_field_name, {})
         return field_info.get('autoGenerate', False) or field_info.get('autoUpdate', False)
     
-    def _get_default_sort_field(self, entity_metadata: Optional[Dict[str, Any]]) -> str:
+    def _get_default_sort_field(self, entity_metadata: Dict[str, Any]) -> str:
         """Get default sort field - first field from metadata."""
         fields = entity_metadata['fields']
         # Get first field (fields dict maintains order in Python 3.7+)
@@ -361,6 +357,10 @@ class DatabaseInterface(ABC):
             return self._get_default_sort_field(entity_metadata)
         else:
             return self._map_field_name(field, entity_metadata)
+    
+    def _get_database_field_name(self, field_name: str, entity_metadata: Dict[str, Any]) -> str:
+        """Get database-specific field name - base implementation just maps field name."""
+        return self._map_field_name(field_name, entity_metadata)
     
     
 

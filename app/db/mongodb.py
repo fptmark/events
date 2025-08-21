@@ -67,37 +67,6 @@ class MongoDatabase(DatabaseInterface):
             )
         return self._db
 
-    async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
-        """Get all documents from a collection with count."""
-        self._ensure_initialized()
-            
-        try:
-            warnings = []
-            # Check unique constraints if provided
-            if unique_constraints:
-                missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
-                if missing_indexes:
-                    warnings.extend(missing_indexes)
-            
-            # Get total count
-            total_count = await self._get_db()[collection].count_documents({})
-            
-            cursor = self._get_db()[collection].find()
-            results = []
-            async for doc in cursor:
-                # Convert ObjectId to string and normalize to 'id' field
-                if self.id_field in doc:
-                    doc['id'] = str(doc[self.id_field])
-                    del doc[self.id_field]  # Remove _id, replace with id
-                results.append(cast(Dict[str, Any], doc))
-            
-            return results, warnings, total_count
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="get_all"
-            )
 
     async def _get_list_impl(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count."""
@@ -113,9 +82,10 @@ class MongoDatabase(DatabaseInterface):
                 if missing_indexes:
                     warnings.extend(missing_indexes)
             
-            # If no list_params provided, fall back to get_all behavior
+            # If no list_params provided, use default pagination (page_size=100, no sorting/filtering)
             if not list_params:
-                return await self.get_all(collection, unique_constraints)
+                from app.models.list_params import ListParams
+                list_params = ListParams(page=1, page_size=100)
             
             # Build MongoDB aggregation pipeline
             pipeline = []
@@ -687,6 +657,10 @@ class MongoDatabase(DatabaseInterface):
                     query[field] = value
         
         return query
+
+    def _get_database_field_name(self, field_name: str, entity_metadata: Dict[str, Any]) -> str:
+        """Get MongoDB field name - just maps field name (no special suffixes needed)."""
+        return self._map_field_name(field_name, entity_metadata)
 
     def _build_sort_spec(self, list_params, collection: str, entity_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
         """Build MongoDB sort specification from ListParams.""" 

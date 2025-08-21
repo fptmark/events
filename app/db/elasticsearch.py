@@ -61,18 +61,17 @@ class ElasticsearchDatabase(DatabaseInterface):
         assert self._client is not None, "Client should be initialized after _ensure_initialized()"
         return self._client
     
-    def _get_internal_field_name(self, field_name: str, collection: str) -> str:
-        """Get the internal ES field name - adds .raw suffix for string fields."""
-        from app.metadata import get_entity_metadata, get_proper_entity_name
-        entity_name = get_proper_entity_name(collection)
-        entity_meta = get_entity_metadata(entity_name)
+    def _get_database_field_name(self, field_name: str, entity_metadata: Dict[str, Any]) -> str:
+        """Get ES field name - maps field and adds .raw for string fields."""
+        # First map the field name using base class mapper
+        mapped_field = self._map_field_name(field_name, entity_metadata)
         
-        if entity_meta:
-            field_info = entity_meta.get_field_info(field_name)
-            if field_info and field_info.type == 'String':
-                return f"{field_name}.raw"
+        # Add .raw suffix for string fields
+        field_info = entity_metadata['fields'].get(mapped_field, {})
+        if field_info.get('type') == 'String':
+            return f"{mapped_field}.raw"
         
-        return field_name
+        return mapped_field
     
     async def wipe_all_index_templates(self) -> None:
         """Remove all existing index templates to avoid conflicts."""
@@ -167,35 +166,6 @@ class ElasticsearchDatabase(DatabaseInterface):
             logging.warning(f"Failed to create index template: {e}")
             # Don't fail initialization if template creation fails
 
-    async def get_all(self, collection: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
-        """Get all documents from a collection with count."""
-        es = self._get_client()
-
-        if not await es.indices.exists(index=collection):
-            return [], [], 0
-
-        try:
-            warnings = []
-            # Check unique constraints if provided
-            if unique_constraints:
-                missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
-                if missing_indexes:
-                    warnings.extend(missing_indexes)
-            
-            res = await es.search(index=collection, query={"match_all": {}}, size=1000)
-            hits = res.get("hits", {}).get("hits", [])
-            results = [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
-            
-            # Extract total count from search response
-            total_count = res.get("hits", {}).get("total", {}).get("value", 0)
-            
-            return results, warnings, total_count
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="get_all"
-            )
 
     async def _get_list_impl(self, collection: str, unique_constraints: Optional[List[List[str]]] = None, list_params=None, entity_metadata: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
         """Get paginated/filtered list of documents from a collection with count."""
@@ -214,9 +184,10 @@ class ElasticsearchDatabase(DatabaseInterface):
                 if missing_indexes:
                     warnings.extend(missing_indexes)
             
-            # If no list_params provided, fall back to get_all behavior
+            # If no list_params provided, use default pagination (page_size=100, no sorting/filtering)
             if not list_params:
-                return await self.get_all(collection, unique_constraints)
+                from app.models.list_params import ListParams
+                list_params = ListParams(page=1, page_size=100)
 
             # Build Elasticsearch query using new helper methods
             query_filter = self._build_query_filter(list_params, entity_metadata)
@@ -404,7 +375,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                 else:
                     # Non-string fields, enums, etc.: exact match
                     # Use .raw for string fields only
-                    filter_field = self._get_internal_field_name(field, collection)
+                    filter_field = self._get_database_field_name(field, entity_metadata)
                     must_clauses.append({"term": {filter_field: value}})
         
         if must_clauses:
@@ -415,9 +386,10 @@ class ElasticsearchDatabase(DatabaseInterface):
     def _build_sort_spec(self, list_params, collection: str, entity_metadata: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Build Elasticsearch sort specification from ListParams using metadata."""
         if not list_params or not list_params.sort_fields:
-            # Default sort by id field
+            # Default sort by first field, using proper ES field name
             default_field = self._get_default_sort_field(entity_metadata)
-            return [{default_field: {"order": "asc"}}]
+            sort_field = self._get_database_field_name(default_field, entity_metadata)
+            return [{sort_field: {"order": "asc"}}]
         
         sort_spec = []
         for field, order in list_params.sort_fields:
@@ -437,7 +409,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                     
             if not self.case_sensitive_sorting and is_string_non_enum:
                 # For case-insensitive sorting on non-enum string fields, always use .raw for scripts
-                script_field = self._get_internal_field_name(actual_field, collection)
+                script_field = self._get_database_field_name(actual_field, entity_metadata)
                 sort_config = {
                     "_script": {
                         "type": "string",
@@ -451,7 +423,7 @@ class ElasticsearchDatabase(DatabaseInterface):
                 sort_spec.append(sort_config)
             else:
                 # For non-scripted sorting, use .raw for string fields only
-                sort_field = self._get_internal_field_name(actual_field, collection)
+                sort_field = self._get_database_field_name(actual_field, entity_metadata)
                 
                 # For date fields, add missing value handling to prevent epoch dates
                 if entity_meta:
