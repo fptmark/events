@@ -79,6 +79,7 @@ class TestDataCreator:
             "firstName": "Test",
             "lastName": "User",
             "isAccountOwner": True,
+            "dob": datetime(1990, 5, 15, tzinfo=timezone.utc),  # Set a valid DOB
             "createdAt": base_time,
             "updatedAt": base_time
         }
@@ -209,45 +210,28 @@ class TestDataCreator:
         """Remove ALL data from database - use with caution!"""
         from app.metadata import get_all_entity_names
         
-        print("💥 WIPING ALL DATA - This will remove ALL data from all collections!")
+        print("💥 WIPING ALL DATA - This will remove ALL collections/indices!")
         
         try:
-            # First, wipe all ES index templates to avoid conflicts
-            await DatabaseFactory.wipe_all_index_templates()
-            print("   🗑️ Wiped all ES index templates")
+            # Hard-coded entities for now (User and Account only)
+            entity_names = ["User", "Account"]
             
-            # Then delete all application indices to force recreation with new templates
-            await DatabaseFactory.wipe_all_indices()
-            print("   🗑️ Deleted all application indices")
+            wiped_entities = []
             
-            # Get all registered entity names from metadata
-            entity_names = get_all_entity_names()
-            if not entity_names:
-                # Fallback to known entities if metadata not loaded
-                entity_names = ["User", "Account", "Profile", "TagAffinity", "Event", "UserEvent", "Url", "Crawl"]
-            
-            total_deleted = {}
-            
-            # Wipe ALL records from each entity collection
+            # Remove entire collection/index for each entity (database-agnostic)
             for entity_name in entity_names:
                 collection_name = entity_name.lower()
                 
-                all_docs, warnings, count = await DatabaseFactory.get_all(collection_name, [])
-                deleted_count = 0
-                
-                for doc in all_docs:
-                    doc_id = doc.get('id')
-                    if doc_id:
-                        success = await DatabaseFactory.delete_document(collection_name, doc_id)
-                        if success:
-                            deleted_count += 1
-                
-                if deleted_count > 0:
-                    total_deleted[entity_name] = deleted_count
-                    print(f"   🗑️ Deleted {deleted_count} {entity_name} records")
+                # Use remove_entity() - works for both ES (deletes index) and MongoDB (drops collection)
+                success = await DatabaseFactory.remove_entity(collection_name)
+                if success:
+                    wiped_entities.append(entity_name)
+                    print(f"   🗑️ Removed {entity_name} collection/index")
             
-            deleted_summary = ', '.join([f"{count} {entity}" for entity, count in total_deleted.items()])
-            print(f"✅ Database wipe complete: {deleted_summary}")
+            if wiped_entities:
+                print(f"✅ Database wipe complete: {', '.join(wiped_entities)}")
+            else:
+                print("✅ Database wipe complete: no entities to remove")
             
         except Exception as e:
             print(f"❌ Database wipe failed: {e}")
