@@ -1,16 +1,12 @@
-from collections.abc import Sequence
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Self, ClassVar, Union, Annotated, Literal
+from typing import Optional, List, Dict, Any, Self, ClassVar
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
-from pydantic_core import core_schema
-import warnings as python_warnings
 from app.db import DatabaseFactory
-import app.utils as helpers
 from app.config import Config
-from app.errors import ValidationError, ValidationFailure, NotFoundError, DuplicateError, DatabaseError
-from app.notification import notify_database_error, notify_validation_error
-from app.models.list_params import ListParams
+from app.services.notification import validation_warning
+from app.services.request_context import RequestContext
+from app.services.metadata import MetadataService
 import app.models.utils as utils
 
 class GenderEnum(str, Enum):
@@ -18,14 +14,6 @@ class GenderEnum(str, Enum):
     FEMALE = 'female'
     OTHER = 'other'
  
-
-class UniqueValidationError(Exception):
-    def __init__(self, fields, query):
-        self.fields = fields
-        self.query = query
-
-    def __str__(self):
-        return f"Unique constraint violation for fields {self.fields}: {self.query}"
 
 
 class User(BaseModel):
@@ -116,94 +104,40 @@ class User(BaseModel):
 
     @classmethod
     def get_metadata(cls) -> Dict[str, Any]:
-        return helpers.get_metadata("User", cls._metadata)
+        return MetadataService.get("User")
 
 
     @classmethod
-    async def get_list(cls, list_params: Optional[ListParams] = None, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def get_all(cls) -> Dict[str, Any]:
         """Get paginated, sorted, and filtered list of entity."""
-        try:
-            fk_validations, unique_validations = Config.validations(True)
-            unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
-            
-            # Use default pagination if none provided (same as DatabaseFactory does)
-            if list_params is None:
-                list_params = ListParams(page=1, page_size=100)
-            
-            # Get filtered data from database
-            raw_docs, warnings, total_count = await DatabaseFactory.get_list("user", unique_constraints, list_params, cls._metadata)
-            
-            # Use common processing
-            user_data = utils.process_raw_results(cls, "User", raw_docs, warnings)
-            
-            # Process FK fields if needed
-            if view_spec or fk_validations:
-                for user_dict in user_data:
-                    await utils.process_entity_fks(user_dict, view_spec, "User", cls, fk_validations)
-
-            return {
-                "data": user_data,
-                "page_size": list_params.page_size,
-                "total_count": total_count,
-                "page": list_params.page,
-                "total_pages": (total_count + list_params.page_size - 1) // list_params.page_size,
-                "pagination": {
-                    "page": list_params.page,
-                    "per_page": list_params.page_size,
-                    "total": total_count,
-                    "total_pages": (total_count + list_params.page_size - 1) // list_params.page_size,
-                    "has_next": list_params.page < (total_count + list_params.page_size - 1) // list_params.page_size,
-                    "has_prev": list_params.page > 1
-                }
-            }
-            
-        except Exception as e:
-            raise DatabaseError(str(e), "User", "get_list")
+        validation = Config.validation(True)
+        
+        # Get filtered data from database - RequestContext provides the parameters
+        response = await DatabaseFactory.get_all()
+        
+        if response["data"] and validation:
+            for user_dict in response["data"]:
+                fk_success = await utils.process_entity_fks(user_dict, None, "User", cls, validation)
+                # For get operations, continue regardless of FK validation results
+        
+        return response
 
 
     @classmethod
-    async def get(cls, id: str, view_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        try:
-            fk_validations, unique_validations = Config.validations(False)
-            unique_constraints = cls._metadata.get('uniques', []) if unique_validations else []
+    async def get(cls, id: str) -> Dict[str, Any]:
+        validation = Config.validation(False)
+        
+        response = await DatabaseFactory.get_by_id(str(id))
+        if response["data"] and (RequestContext.view_spec or validation):
+            fk_success = await utils.process_entity_fks(response["data"], RequestContext.view_spec, "User", cls, validation)
+                # For get operations, continue regardless of FK validation results
             
-            raw_doc, warnings = await DatabaseFactory.get_by_id("user", str(id), unique_constraints)
-            if not raw_doc:
-                raise NotFoundError("User", id)
-            
-            # Database warnings are now handled by DatabaseFactory
-            
-            # Step 1: Use Pydantic validation with notification conversion
-            user_instance = utils.validate_with_notifications(cls, raw_doc, "User")
-            
-            # Step 2: Get validated dict and process FK fields if needed
-            user_dict = user_instance.model_dump(mode='python')
-            if view_spec or fk_validations:
-                await utils.process_entity_fks(user_dict, view_spec, "User", cls, fk_validations)
-            
-            return {
-                "data": user_dict,
-                "warnings": warnings
-            }
-        except NotFoundError:
-            raise
-        except DatabaseError:
-            raise
-        except Exception as e:
-            raise DatabaseError(str(e), "User", "get") 
+        return response
 
-    async def save(self, entity_id: str = '') -> tuple[Self, List[str]]:
-        try:
-            # ALWAYS enforce unique constraints on save operations (database integrity)
-            # Config only affects GET operations (warnings about existing bad data)
-            unique_constraints = self._metadata.get('uniques', [])
+    async def save(self, entity_id: str = '', validate: bool = True) -> tuple[Self, List[str]]:
+        self.updatedAt = datetime.now(timezone.utc)
 
-            # update uses the id
-            if len(entity_id) > 0:
-                self.id = entity_id
-            
-            self.updatedAt = datetime.now(timezone.utc)
-            
+        if validate:
             # VALIDATE the instance BEFORE saving to prevent bad data in DB
             try:
                 # This validates all fields and raises PydanticValidationError if invalid
@@ -212,54 +146,45 @@ class User(BaseModel):
                 data = validated_instance.model_dump(mode='python')
                                 
                 # Validate ObjectId references exist
-                await utils.validate_objectid_references("User", data, self._metadata)
+                await utils.validate_objectid_references("User", data, MetadataService.get("User"))
             except PydanticValidationError as e:
-                # Convert to notifications and ValidationError format
-                if len(entity_id) == 0:
-                    notify_database_error("User instance missing ID during save")
-                    entity_id = "missing"
-
+                # Convert to notifications
                 for error in e.errors():
                     field_name = str(error["loc"][-1])
-                    notify_validation_error(
+                    validation_warning(
                         message=error['msg'],
-                        field_name=field_name,
                         entity="User",
-                        operation="save"
+                        entity_id=entity_id or "new",
+                        field=field_name
                     )
-                failures = [ValidationFailure(field_name=str(error["loc"][-1]), message=error["msg"], value=error.get("input")) for error in e.errors()]
-                raise ValidationError(message=error['msg'], entity="User", invalid_fields=failures)
-            
-            # Save document with unique constraints - pass complete data
-            result, warnings = await DatabaseFactory.save_document("user", data, unique_constraints, self._metadata)
+                # Return failure with empty warnings list since warnings are in notification system
+                return self, []
+        else:
+            data = self.model_dump(mode='python')
 
-            # Update ID from result
-            if not self.id and result and isinstance(result, dict):
-                extracted_id = result.get('id')
-                if extracted_id:
-                    self.id = extracted_id
+        # Save document - RequestContext provides entity context
+        response = await DatabaseFactory.save(data, entity_id)
+        result = response["data"]
+        warnings = response.get("warnings", [])
 
+        # Check if save was successful based on response content
+        if not result:
+            # Save failed - warnings already in notification system
             return self, warnings
-        except ValidationError:
-            # Re-raise validation errors directly
-            raise
-        except DuplicateError:
-            # Re-raise validation errors directly
-            raise
-        except Exception as e:
-            raise DatabaseError(str(e), "User", "save")
+
+        # Update ID from result
+        if not self.id and result and isinstance(result, dict):
+            extracted_id = result.get('id')
+            if extracted_id:
+                self.id = extracted_id
+
+        return self, warnings
  
     @classmethod
     async def delete(cls, user_id: str) -> tuple[bool, List[str]]:
-        try:
-            result = await DatabaseFactory.delete_document("user", user_id)
-            if not result:
-                raise NotFoundError("User", user_id)
-            return True, []
-        except NotFoundError:
-            raise
-        except Exception as e:
-            raise DatabaseError(str(e), "User", "delete")
+        result = await DatabaseFactory.delete(user_id)
+        # Database layer handles not found warnings automatically
+        return result, []
 
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
