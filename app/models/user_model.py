@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Self, ClassVar
+from typing import Optional, List, Dict, Any, Self, ClassVar, Tuple
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
 from app.db import DatabaseFactory
@@ -14,7 +14,6 @@ class GenderEnum(str, Enum):
     FEMALE = 'female'
     OTHER = 'other'
  
-
 
 class User(BaseModel):
     id: str | None = Field(default=None)
@@ -108,68 +107,77 @@ class User(BaseModel):
 
 
     @classmethod
-    async def get_all(cls) -> Dict[str, Any]:
-        """Get paginated, sorted, and filtered list of entity."""
+    async def get_all(cls,
+                      sort: List[Tuple[str, str]], 
+                      filter: Optional[Dict[str, Any]], 
+                      page: int, 
+                      pageSize: int, 
+                      view_spec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        "Get paginated, sorted, and filtered list of entity." 
         validation = Config.validation(True)
         
         # Get filtered data from database - RequestContext provides the parameters
-        response = await DatabaseFactory.get_all()
+        response = await DatabaseFactory.get_all("User", sort, filter, page, pageSize)
         
-        if response["data"] and validation:
+        if response["data"]:
             for user_dict in response["data"]:
-                fk_success = await utils.process_entity_fks(user_dict, None, "User", cls, validation)
-                # For get operations, continue regardless of FK validation results
+                # Process Pydantic and FK validation if enabled
+                if validation:
+                    utils.validate_model(cls, user_dict, "User")
+                    await utils.validate_fks("User", user_dict, cls._metadata)
+                
+                # Populate view data if requested
+                if view_spec:
+                    await utils.populate_view(user_dict, view_spec, "User")
         
         return response
 
 
     @classmethod
-    async def get(cls, id: str) -> Dict[str, Any]:
+    async def get(cls, id: str, view_spec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         validation = Config.validation(False)
         
-        response = await DatabaseFactory.get_by_id(str(id))
-        if response["data"] and (RequestContext.view_spec or validation):
-            fk_success = await utils.process_entity_fks(response["data"], RequestContext.view_spec, "User", cls, validation)
-                # For get operations, continue regardless of FK validation results
+        response = await DatabaseFactory.get_by_id(str(id), "User")
+        if response["data"]:
+            user_dict = response["data"]
             
+            # Process Pydantic and FK validation if enabled
+            if validation:
+                utils.validate_model(cls, user_dict, "User")
+                await utils.validate_fks("User", user_dict, cls._metadata)
+            
+            # Populate view data if requested
+            if view_spec:
+                await utils.populate_view(user_dict, view_spec, "User")
+        
         return response
+
 
     async def save(self, entity_id: str = '', validate: bool = True) -> tuple[Self, List[str]]:
         self.updatedAt = datetime.now(timezone.utc)
 
-        if validate:
-            # VALIDATE the instance BEFORE saving to prevent bad data in DB
-            try:
-                # This validates all fields and raises PydanticValidationError if invalid
-                validated_instance = self.__class__.model_validate(self.model_dump())
-                # Use the validated data for save
-                data = validated_instance.model_dump(mode='python')
-                                
-                # Validate ObjectId references exist
-                await utils.validate_objectid_references("User", data, MetadataService.get("User"))
-            except PydanticValidationError as e:
-                # Convert to notifications
-                for error in e.errors():
-                    field_name = str(error["loc"][-1])
-                    validation_warning(
-                        message=error['msg'],
-                        entity="User",
-                        entity_id=entity_id or "new",
-                        field=field_name
-                    )
-                # Return failure with empty warnings list since warnings are in notification system
-                return self, []
-        else:
-            data = self.model_dump(mode='python')
+        data = self.model_dump(mode='python')
 
-        # Save document - RequestContext provides entity context
-        response = await DatabaseFactory.save(data, entity_id)
+        if validate:
+            # Pydantic validation
+            validated_instance = utils.validate_model(self.__class__, data, "User")
+            data = validated_instance.model_dump(mode='python')
+            
+            # FK validation (sends notifications, doesn't throw)
+            await utils.validate_fks("User", data, self._metadata)
+        
+        # Unique validation (always enforced)
+        unique_constraints = self._metadata.get('uniques', [])
+        if unique_constraints:
+            await utils.validate_uniques("User", data, unique_constraints, entity_id if entity_id.strip() else None)
+
+        # Save document
+        response = await DatabaseFactory.save("User", data, entity_id)
         result = response["data"]
         warnings = response.get("warnings", [])
 
         # Check if save was successful based on response content
         if not result:
-            # Save failed - warnings already in notification system
             return self, warnings
 
         # Update ID from result
@@ -179,12 +187,11 @@ class User(BaseModel):
                 self.id = extracted_id
 
         return self, warnings
+
  
     @classmethod
-    async def delete(cls, user_id: str) -> tuple[bool, List[str]]:
-        result = await DatabaseFactory.delete(user_id)
-        # Database layer handles not found warnings automatically
-        return result, []
+    async def delete(cls, user_id: str) -> bool:
+        return await DatabaseFactory.delete("User", user_id)
 
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)

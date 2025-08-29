@@ -2,17 +2,18 @@ from typing import List, Dict, Any, Optional
 from pydantic import ValidationError as PydanticValidationError
 import warnings as python_warnings
 from app.config import Config
-from app.notification import notify_business_error, notify_database_error, notify_validation_error
+from app.services.notification import validation_warning, system_error
+from app.services.metadata import MetadataService
 
 def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], warnings: List[str]) -> List[Dict[str, Any]]:
     """Common processing for raw database results."""
-    get_validations, _ = Config.validations(True)
+    validations = Config.validation(True)
     entities = []
 
     # ALWAYS validate model data against Pydantic schema (enum, range, string validation, etc.)
     # This is independent of GV settings which only control FK validation
     for doc in raw_docs:
-        entities.append(validate_with_notifications(cls, doc, entity_type))  
+        entities.append(validate_model(cls, doc, entity_type))  
 
     # Database warnings are already processed by DatabaseFactory - don't duplicate
 
@@ -28,7 +29,7 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
             if caught_warnings:
                 entity_id = data_dict.get('id')
                 if not entity_id:
-                    notify_database_error("Document missing ID field")
+                    system_error("Document missing ID field")
                     entity_id = "missing"
 
                 # Extract field names from warning messages  
@@ -54,18 +55,18 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
                 
                 if warning_field_names:
                     field_list = ', '.join(sorted(warning_field_names))
-                    notify_validation_error(f"Serialization warnings for fields: {field_list}", entity=entity_type, entity_id=entity_id)
+                    validation_warning(f"Serialization warnings for fields: {field_list}", entity=entity_type, entity_id=entity_id)
                 else:
                     # Fallback for warnings without extractable field names
                     warning_count = len(caught_warnings)
-                    notify_validation_error(f"{entity_type} {entity_id}: {warning_count} serialization warnings", entity=entity_type, entity_id=entity_id)
+                    validation_warning(f"{entity_type} {entity_id}: {warning_count} serialization warnings", entity=entity_type, entity_id=entity_id)
 
     return entity_data
 
 
-async def validate_objectid_references(entity_name: str, data: Dict[str, Any], metadata: Dict[str, Any]) -> None:
+async def validate_fks(entity_name: str, data: Dict[str, Any], metadata: Dict[str, Any]) -> None:
     """
-    Generic ObjectId reference validation for any entity.
+    Worker function: Generic ObjectId reference validation for any entity.
     
     Args:
         entity_name: Name of the entity being validated (e.g., "User")
@@ -75,129 +76,133 @@ async def validate_objectid_references(entity_name: str, data: Dict[str, Any], m
     Raises:
         ValidationError: If any ObjectId references don't exist
     """
-    from app.errors import ValidationError, ValidationFailure, NotFoundError
+    from app.services.notification import validation_warning
     from app.routers.router_factory import ModelImportCache
-    
-    business_failures = []
     entity_id = data.get('id', 'unknown')
     
     # Check all ObjectId fields in the entity metadata
     for field_name, field_meta in metadata.get('fields', {}).items():
         if field_meta.get('type') == 'ObjectId' and data.get(field_name):
+            fk_entity_name = MetadataService.get_proper_name(field_name[:-2])
+            subobj = {'exists': False}
             try:
                 # Derive FK entity name from field name (e.g., accountId -> Account)
-                fk_entity_name = field_name[:-2].capitalize()  # Remove 'Id' suffix and capitalize
                 fk_entity_cls = ModelImportCache.get_model_class(fk_entity_name)
-                await fk_entity_cls.get(data[field_name])
-            except NotFoundError:
-                # Call notify_business_error directly (consistent with other patterns)
-                notify_business_error(
-                    message=f"Id {data[field_name]} does not exist",
-                    field_name=field_name,
+                response = await fk_entity_cls.get(data[field_name], None)
+                
+                # Check if FK exists - if not, send validation warning
+                if not response.get('data'):
+                    validation_warning(
+                        message="Referenced ID does not exist",
+                        entity=entity_name,
+                        entity_id=entity_id,
+                        field=field_name
+                    )
+                else:
+                    subobj = {'exists': True}
+            except Exception:
+                # Handle import errors or other failures
+                validation_warning(
+                    message="internal error - model lookup failed during FK validation",
                     entity=entity_name,
-                    entity_id=entity_id
+                    entity_id=entity_id,
+                    field=field_name
                 )
-                business_failures.append(ValidationFailure(
-                    field_name=field_name,
-                    message=f"Id {data[field_name]} does not exist",
-                    value=data[field_name]
-                ))
-            except ImportError:
-                # FK entity class doesn't exist - skip validation
-                pass
+            data[field_name[:-2]] = subobj  # Add FK field without 'Id' suffix
     
-    # Raise ValidationError if any ObjectId references are invalid
-    # Notifications already sent above - exception just prevents save operation
-    if business_failures:
-        raise ValidationError(
-            message="Invalid ObjectId references",
-            entity=entity_name,
-            invalid_fields=business_failures
-        )
-
-
-# should_process_fk_fields function removed - logic moved directly to models
+    # Note: FK validation failures are now handled through notification system
 
 
 
 
-async def process_entity_fks(entity_dict: Dict[str, Any], view_spec: Optional[Dict[str, Any]], 
-                           entity_name: str, entity_cls, fk_validations: bool) -> None:
+async def validate_uniques(entity_type: str, data: Dict[str, Any], unique_constraints: List[List[str]], exclude_id: Optional[str] = None) -> None:
     """
-    Process FK fields for an entity - called exactly once per entity.
+    Worker function: Validate unique constraints using database-specific implementation.
+    Always enforced regardless of validation settings - unique constraints are business rules.
     
     Args:
-        entity_dict: Entity data dictionary
-        view_spec: Dict of FK fields to populate, or None for exists flags only
-        entity_name: Name of the entity type
-        entity_cls: Entity model class
-    """
-    from app.routers.router_factory import ModelImportCache
-    from app.errors import NotFoundError
-    from app.notification import notify_warning, notify_database_error, notify_validation_error
-    import re
+        entity_type: Entity type to validate
+        data: Entity data dictionary
+        unique_constraints: List of unique constraint field groups
+        exclude_id: ID to exclude from validation (for updates)
     
-    metadata = entity_cls._metadata
+    Raises:
+        ValidationError: If any unique constraints are violated
+    """
+    from app.db.factory import DatabaseFactory
+    
+    db = DatabaseFactory.get_instance()
+    constraint_success = await db.documents._validate_unique_constraints(
+        entity_type=entity_type,
+        data=data,
+        unique_constraints=unique_constraints,
+        exclude_id=exclude_id
+    )
+    
+    # For MongoDB, this will always be True (relies on native database constraints)
+    # For Elasticsearch, this returns False if synthetic validation finds duplicates
+    if not constraint_success:
+        from app.services.notification import system_error
+        system_error(f"Unique constraint violation for {entity_type}")
+        # Note: MongoDB will throw DuplicateKeyError, Elasticsearch handles in _validate_unique_constraints
+
+
+async def populate_view(entity_dict: Dict[str, Any], view_spec: Optional[Dict[str, Any]], entity_name: str) -> None:
+    """
+    Worker function: Populate FK view data in entity dictionary.
+    
+    Args:
+        entity_dict: Entity data dictionary to populate
+        view_spec: Dict of FK fields to populate with requested fields
+        entity_name: Name of the entity type
+    """
+    if not view_spec:
+        return
+        
+    from app.routers.router_factory import ModelImportCache
+    
+    metadata = MetadataService.get(entity_name)
     entity_id = entity_dict.get('id', 'unknown')
     
     for field_name, field_meta in metadata.get('fields', {}).items():
         if field_meta.get('type') == 'ObjectId' and entity_dict.get(field_name):
             fk_name = field_name[:-2]  # Remove 'Id' suffix
-            if fk_validations or (view_spec and fk_name in view_spec):
-            
+            if view_spec and fk_name in view_spec:
                 fk_data = {"exists": False}
                 try:
-                    fk_entity_cls = ModelImportCache.get_model_class(fk_name.capitalize())
-                    related_entity_object: Dict[str, Any] = await fk_entity_cls.get(entity_dict[field_name])
+                    fk_entity_cls = ModelImportCache.get_model_class(MetadataService.get_proper_name(fk_name))
+                    related_entity_object: Dict[str, Any] = await fk_entity_cls.get(entity_dict[field_name], None)
                     related_data = related_entity_object.get('data', {})
-                    # related_data = related_entity.model_dump()
                 
                     fk_data = {"exists": True}
-                    if view_spec and fk_name in view_spec:
-                        requested_fields = view_spec[fk_name]
+                    requested_fields = view_spec[fk_name]
+                
+                    # Handle case-insensitive field matching for URL parameter issues
+                    field_map = {k.lower(): k for k in related_data.keys()}
                     
-                        # Handle case-insensitive field matching for URL parameter issues
-                        field_map = {k.lower(): k for k in related_data.keys()}
-                        
-                        for field in requested_fields or []:
-                            # Try exact match first, then case-insensitive fallback
-                            if field in related_data:
-                                fk_data[field] = related_data[field]
-                            elif field.lower() in field_map:
-                                actual_field = field_map[field.lower()]
-                                fk_data[actual_field] = related_data[actual_field]
-                        
-                    
-                except ImportError:
-                    # FK entity class doesn't exist - skip validation
-                    message = f"{fk_name} entity type does not exist"
-
-                except NotFoundError:
-                    # FK doesn't exist - always just set exists=False regardless of view
-                    message = f"{fk_name}.id {entity_dict[field_name]} does not exist"
-
+                    for field in requested_fields or []:
+                        # Try exact match first, then case-insensitive fallback
+                        if field in related_data:
+                            fk_data[field] = related_data[field]
+                        elif field.lower() in field_map:
+                            actual_field = field_map[field.lower()]
+                            fk_data[actual_field] = related_data[actual_field]
+                
                 except Exception as e:
-                    message = f"Error processing {fk_name} for {entity_name} {entity_id}: {str(e)}"
+                    # FK lookup failed - set exists=False and continue
+                    validation_warning(
+                        message=f"Failed to populate {fk_name}: {str(e)}",
+                        entity=entity_name,
+                        entity_id=entity_id,
+                        field=field_name
+                    )
                 
                 entity_dict[fk_name] = fk_data
 
-                # Add FK validation warning only when view provided or GV enabled
-                # (Model validation is handled separately and always runs)
-                if fk_data.get('exists') is False:
-                    notify_business_error(
-                        message=message,
-                        field_name=field_name,
-                        entity=entity_name,
-                        entity_id=entity_id
-                    )
 
-
-# Obsolete functions removed - FK processing now handled directly in models
-
-
-def validate_with_notifications(cls, data: Dict[str, Any], entity_name: str, operation: str = "get_data"):
+def validate_model(cls, data: Dict[str, Any], entity_name: str):
     """
-    Validate data with Pydantic and convert errors to notifications.
+    Worker function: Validate data with Pydantic and convert errors to notifications.
     Returns the validated instance or unvalidated instance if validation fails.
     
     This handles basic model validation:
@@ -214,14 +219,16 @@ def validate_with_notifications(cls, data: Dict[str, Any], entity_name: str, ope
         entity_id = data.get('id', 'unknown')
         for error in e.errors():
             field_name = str(error['loc'][-1]) if error.get('loc') else 'unknown'
-            notify_validation_error(
+            validation_warning(
                 message=error.get('msg', 'Validation error'),
-                field_name=field_name,
                 entity=entity_name,
-                entity_id=entity_id
+                entity_id=entity_id,
+                field=field_name
             )
         # Return unvalidated instance so API can continue
         return cls.model_construct(**data)
+
+
 
 
 # get_entity_with_fk function removed - models now handle FK processing directly
