@@ -7,30 +7,28 @@ from fastapi.exceptions import RequestValidationError
 import app.utils as utils
 from app.config import Config
 from app.db import DatabaseFactory
-from app.db.initializer import DatabaseInitializer
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.errors import (
-    DatabaseError, 
-    ValidationError, 
-    NotFoundError, 
-    DuplicateError 
-)
-from app.notification import start_notifications, end_notifications
+from app.errors import DatabaseError
+# Note: ValidationError, NotFoundError, DuplicateError removed - using notification system
 
 from app.routers.router import get_all_dynamic_routers
 
 from app.services.auth.cookies.redis_provider import CookiesAuth as Auth
+from app.services.metadata import MetadataService
 
-from app.models.account_model import Account
-from app.models.user_model import User
-from app.models.profile_model import Profile
-from app.models.tagaffinity_model import TagAffinity
-from app.models.event_model import Event
-from app.models.userevent_model import UserEvent
-from app.models.url_model import Url
-from app.models.crawl_model import Crawl
+# from app.models.account_model import Account
+# from app.models.user_model import User
+# from app.models.profile_model import Profile
+# from app.models.tagaffinity_model import TagAffinity
+# from app.models.event_model import Event
+# from app.models.userevent_model import UserEvent
+# from app.models.url_model import Url
+# from app.models.crawl_model import Crawl
+
+# Initialize metadata service with entity list
+ENTITIES = ['Account', 'User', 'Profile', 'TagAffinity', 'Event', 'UserEvent', 'Url', 'Crawl']
 
 import logging
 
@@ -81,8 +79,8 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 db_type: str = config.get('database', '')
 db_uri: str = config.get('db_uri', '')
 db_name: str = config.get('db_name', '')
-validations = Config.validations(False)
-print(f"Database validations : get/get-all {validations[0]}.  Unique validation: {validations[1]}")
+validation = Config.validation(False)
+print(f"validation : get = {validation}.")
 
 if (db_uri == '' or db_name == '' or db_type == ''):
     logger.error("Missing required database configuration")
@@ -104,6 +102,11 @@ async def lifespan(app: FastAPI):
     logger.info(f"Running in {'development' if config.get('environment', 'production') == 'development' else 'production'} mode")
     logger.info(f"Connecting to {db_type} datastore at {db_uri} with db {db_name}")
     
+    # Initialize metadata service
+    logger.info("Initializing metadata service...")
+    MetadataService.initialize(ENTITIES)
+    logger.info("Metadata service initialized successfully")
+    
     logger.info(f"Registing routers")
     setup_routers(args.yaml)
 
@@ -116,10 +119,12 @@ async def lifespan(app: FastAPI):
         # Auto-run database initialization unless --noinitdb flag is set
         if not args.noinitdb:
             logger.info("Running automatic database initialization...")
-            initializer = DatabaseInitializer(db_instance)
             try:
-                await initializer.initialize_database()
-                logger.info("Automatic database initialization completed successfully")
+                success = await db_instance.indexes.initialize()
+                if not success:
+                    logger.warning("Database initialization returned failure (continuing anyway)")
+                else:
+                    logger.info("Automatic database initialization completed successfully")
             except Exception as init_error:
                 logger.warning(f"Database initialization failed (continuing anyway): {str(init_error)}")
         else:
@@ -158,14 +163,7 @@ async def force_lowercase_url_middleware(request: Request, call_next):
     # Get the original scope
     scope = request.scope
     
-    # Convert path to lowercase 
-    scope["path"] = scope["path"].lower()
-    
-    # Convert query string to lowercase
-    if scope.get("query_string"):
-        original_query = scope["query_string"].decode('utf-8')
-        lowercase_query = original_query.lower()
-        scope["query_string"] = lowercase_query.encode('utf-8')
+    # URL normalization now handled by RequestContext
     
     # Create new request with lowercase URL
     new_request = Request(scope, request.receive)
@@ -244,107 +242,68 @@ app.add_middleware(
 @app.exception_handler(DatabaseError)
 async def database_error_handler(request: Request, exc: DatabaseError):
     """Handle database errors"""
-    from app.notification import end_notifications, notify_database_error
+    from app.services.notification import Notification, ErrorType
     
     logger.error(f"Database error in {exc.entity}.{exc.operation}: {exc}")
     
-    # Add notification to existing collection (started by endpoint handler)
-    notify_database_error(exc.message, entity=exc.entity)
+    # Add error to notification system (notification collection should already be started by endpoint handler)
+    Notification.error(ErrorType.DATABASE, exc.message)
     
-    collection = end_notifications()
-    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
+    notification_response = Notification.end()
     return JSONResponse(
         status_code=500,
-        content=enhanced_response
+        content={
+            "data": None,
+            "notifications": notification_response.get("notifications", {}),
+            "status": notification_response.get("status", "failed")
+        }
     )
 
-@app.exception_handler(ValidationError)
-async def validation_error_handler(request: Request, exc: ValidationError):
-    """Handle validation errors"""
-    from app.notification import end_notifications
-    
-    logger.error(f"Validation error in {exc.entity}: {exc}")
-    
-    # Notifications already sent directly by validation functions before raising ValidationError
-    # Just collect the existing notifications and format response
-    collection = end_notifications()
-    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
-    return JSONResponse(
-        status_code=422,
-        content=enhanced_response
-    )
+# ValidationError handler removed - validation errors now handled by notification system
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle FastAPI request validation errors"""
-    from app.notification import end_notifications, notify_validation_error, get_notifications
+    from app.services.notification import Notification, WarningType
     
     logger.error(f"Request validation error: {exc}")
     
-    # Add notifications to existing collection (started by endpoint handler)
+    # Add validation warnings to notification system
     for error in exc.errors():
         field = str(error['loc'][-1]) if error['loc'] else 'unknown'
         message = error['msg']
-        notify_validation_error(f"Invalid {field}: {message}", 
-                              field_name=field)
+        Notification.warning(WarningType.VALIDATION, f"Invalid {field}: {message}", field=field)
     
-    collection = end_notifications()
-    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
+    notification_response = Notification.end()
     return JSONResponse(
         status_code=422,
-        content=enhanced_response
+        content={
+            "data": None,
+            "notifications": notification_response.get("notifications", {}),
+            "status": notification_response.get("status", "failed")
+        }
     )
 
-@app.exception_handler(NotFoundError)
-async def not_found_error_handler(request: Request, exc: NotFoundError):
-    """Handle not found errors"""
-    from app.notification import end_notifications, notify_business_error
-    
-    logger.error(f"Not found error in {exc.entity}: {exc}")
-    
-    # Add notification to existing collection (started by endpoint handler)
-    notify_business_error(exc.message, entity=exc.entity)
-    
-    collection = end_notifications()
-    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
-    return JSONResponse(
-        status_code=404,
-        content=enhanced_response
-    )
-
-@app.exception_handler(DuplicateError)
-async def duplicate_error_handler(request: Request, exc: DuplicateError):
-    """Handle duplicate errors"""
-    from app.notification import end_notifications, notify_business_error
-    
-    logger.error(f"Duplicate error in {exc.entity}: {exc}")
-    
-    # Add notification to existing collection (started by endpoint handler)
-    # Duplicate errors are business errors, not validation errors
-    notify_business_error(exc.message, field_name=exc.field, entity=exc.entity)
-    
-    collection = end_notifications()
-    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
-    return JSONResponse(
-        status_code=409,
-        content=enhanced_response
-    )
+# NotFoundError and DuplicateError handlers removed - these errors now handled by notification system
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     """Handle any unhandled exceptions"""
-    from app.notification import end_notifications, notify_system_error
+    from app.services.notification import Notification, ErrorType
     
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
     
-    # Add notification to existing collection (started by endpoint handler)
-    notify_system_error(f"An unexpected error occurred: {str(exc)}")
+    # Add system error to notification system
+    Notification.error(ErrorType.SYSTEM, f"An unexpected error occurred: {str(exc)}")
     
-    collection = end_notifications()
-    enhanced_response = collection.to_entity_grouped_response(data=None, is_bulk=False)
+    notification_response = Notification.end()
     return JSONResponse(
         status_code=500,
-        content=enhanced_response
+        content={
+            "data": None,
+            "notifications": notification_response.get("notifications", {}),
+            "status": notification_response.get("status", "failed")
+        }
     )
  
 @app.get('')
@@ -353,19 +312,15 @@ def read_root():
 
 @app.get('/api/metadata')
 def get_entities_metadata():
-    return  {
+    entities = {}
+    
+    for entity in ENTITIES:
+        entities[entity] = MetadataService.get(entity)
+    
+    return {
         "projectName": project,
         "database": db_type,
-        "entities": {
-            "Account": Account.get_metadata(),
-            "User": User.get_metadata(),
-            "Profile": Profile.get_metadata(),
-            "TagAffinity": TagAffinity.get_metadata(),
-            "Event": Event.get_metadata(),
-            "UserEvent": UserEvent.get_metadata(),
-            "Url": Url.get_metadata(),
-            "Crawl": Crawl.get_metadata(),
-        }
+        "entities": entities
     }
 
 def main():
