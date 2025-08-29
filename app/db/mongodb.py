@@ -1,41 +1,39 @@
+"""
+MongoDB implementation of the database interface.
+Each manager is implemented as a separate class for clean separation.
+"""
+
 import logging
-from typing import Any, Dict, List, Optional, Type, Union, cast, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from bson import ObjectId
-from pydantic import ValidationError as PydanticValidationError
 from pymongo.errors import DuplicateKeyError
 
-from .base import DatabaseInterface, T, SyntheticDuplicateError
-from ..errors import DatabaseError, ValidationError, ValidationFailure, DuplicateError, NotFoundError
+from .base import DatabaseInterface
+from .core_manager import CoreManager
+from .document_manager import DocumentManager
+from .entity_manager import EntityManager
+from .index_manager import IndexManager
+from ..errors import DatabaseError
+from app.services.notification import duplicate_warning, validation_warning, not_found_warning
+from app.services.metadata import MetadataService
 
-class MongoDatabase(DatabaseInterface):
-    def __init__(self, case_sensitive_sorting: bool = False):
-        super().__init__(case_sensitive_sorting)
+
+class MongoCore(CoreManager):
+    """MongoDB implementation of core operations"""
+    
+    def __init__(self, parent: 'MongoDatabase'):
+        self.parent = parent
         self._client: Optional[AsyncIOMotorClient] = None
         self._db: Optional[AsyncIOMotorDatabase] = None
-
+    
     @property
     def id_field(self) -> str:
         return "_id"
-
-    def get_id(self, document: Dict[str, Any]) -> Optional[str]:
-        """Extract and normalize the ID from a MongoDB document"""
-        if not document:
-            return None
-        
-        # MongoDB uses _id field
-        id_value = document.get(self.id_field)
-        if id_value is None:
-            return None
-            
-        # Convert ObjectId to string if needed
-        if isinstance(id_value, ObjectId):
-            return str(id_value)
-        
-        return str(id_value) if id_value else None
-
+    
     async def init(self, connection_str: str, database_name: str) -> None:
-        """Initialize MongoDB connection."""
+        """Initialize MongoDB connection"""
         if self._client is not None:
             logging.info("MongoDatabase: Already initialized")
             return
@@ -46,694 +44,522 @@ class MongoDatabase(DatabaseInterface):
             
             # Test connection
             await self._client.admin.command('ping')
-            self._initialized = True
+            self.parent._initialized = True
             logging.info(f"MongoDatabase: Connected to {database_name}")
+            
         except Exception as e:
-            # Cleanup on failure
-            if self._client:
-                self._client.close()
-                self._client = None
-                self._db = None
-            self._handle_connection_error(e, database_name)
-
-    def _get_db(self) -> AsyncIOMotorDatabase:
-        """Get the database instance with proper type checking."""
-        self._ensure_initialized()
-        if self._db is None:
             raise DatabaseError(
-                message="Database not initialized",
-                entity="database",
-                operation="get_db"
+                message=f"Failed to connect to MongoDB: {str(e)}",
+                entity="connection",
+                operation="init"
             )
+    
+    async def close(self) -> None:
+        """Close MongoDB connection"""
+        if self._client:
+            self._client.close()
+            self._client = None
+            self._db = None
+            self.parent._initialized = False
+            logging.info("MongoDatabase: Connection closed")
+    
+    def get_id(self, document: Dict[str, Any]) -> Optional[str]:
+        """Extract and normalize ID from MongoDB document"""
+        if not document:
+            return None
+            
+        id_value = document.get(self.id_field)
+        if id_value is None:
+            return None
+            
+        # Convert ObjectId to string
+        if isinstance(id_value, ObjectId):
+            return str(id_value)
+        
+        return str(id_value) if id_value else None
+    
+    def get_connection(self) -> AsyncIOMotorDatabase:
+        """Get MongoDB database instance"""
+        if self._db is None:
+            raise RuntimeError("MongoDB not initialized")
         return self._db
 
 
-    async def _get_list_impl(self, collection: str, entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
-        """Get paginated/filtered list of documents from a collection with count."""
-        self._ensure_initialized()
+class MongoDocuments(DocumentManager):
+    """MongoDB implementation of document operations"""
+    
+    def __init__(self, parent: 'MongoDatabase'):
+        self.parent = parent
+    
+    async def get_all(
+        self, 
+        entity_type: str,
+        sort: Optional[List[Tuple[str, str]]] = None,
+        filter: Optional[Dict[str, Any]] = None,
+        page: int = 1,
+        pageSize: int = 25,
+        process_fks: bool = True
+    ) -> Tuple[List[Dict[str, Any]], bool, int]:
+        """Get paginated list of documents"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
         
         try:
-            from app.models.list_params import ListParams
-            warnings = []
+            collection = entity_type
             
-            # Check unique constraints if provided
-            if unique_constraints:
-                missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
-                if missing_indexes:
-                    warnings.extend(missing_indexes)
-            
-            # If no list_params provided, use default pagination (page_size=100, no sorting/filtering)
-            if not list_params:
-                from app.models.list_params import ListParams
-                list_params = ListParams(page=1, page_size=100)
-            
-            # Build MongoDB aggregation pipeline
+            # Build aggregation pipeline
             pipeline = []
             
-            # Build match stage for filtering
-            match_query = self._build_query_filter(list_params, entity_metadata)
-            if match_query:
-                pipeline.append({"$match": match_query})
+            # 1. Filter stage
+            if filter:
+                pipeline.append({"$match": self._build_query_filter(filter, entity_type)})
             
-            # Use facet to get both data and count in one query
-            facet_pipeline = {
+            # Use facet to get both data and count
+            facet_pipeline: Dict[str, Any] = {
                 "data": [],
                 "count": [{"$count": "total"}]
             }
             
-            # Add sorting to data pipeline
-            sort_spec = self._build_sort_spec(list_params, collection, entity_metadata)
+            # 2. Sort stage - get from metadata if not provided
+            sort_spec = self._build_sort_spec(sort, entity_type)
             if sort_spec:
                 facet_pipeline["data"].append({"$sort": sort_spec})
             
-            # Add pagination to data pipeline
+            # 3. Pagination stage
+            skip_count = (page - 1) * pageSize
             facet_pipeline["data"].extend([
-                {"$skip": list_params.skip},
-                {"$limit": list_params.page_size}
+                {"$skip": skip_count},
+                {"$limit": pageSize}
             ])
             
             pipeline.append({"$facet": facet_pipeline})
             
-            # Execute aggregation with collation for case-insensitive sorting
+            # Execute query with case-insensitive collation if configured
             collation = None
-            if not self.case_sensitive_sorting:
-                # Use case-insensitive collation
-                collation = {"locale": "en", "strength": 2}  # strength 2 = case insensitive
-            
-            cursor = self._get_db()[collection].aggregate(pipeline, collation=collation)
+            if not self.parent.case_sensitive_sorting:
+                collation = {"locale": "en", "strength": 2}
+                
+            cursor = db[collection].aggregate(pipeline, collation=collation)
             result = await cursor.to_list(1)
             
             if not result:
-                return [], warnings, 0
+                return [], False, 0
             
             facet_result = result[0]
             raw_data = facet_result.get("data", [])
             count_result = facet_result.get("count", [])
             total_count = count_result[0]["total"] if count_result else 0
             
-            # Process results (normalize IDs)
-            results = []
+            # Normalize IDs and prepare documents
+            documents = []
             for doc in raw_data:
-                if self.id_field in doc:
-                    doc['id'] = str(doc[self.id_field])
-                    del doc[self.id_field]  # Remove _id, replace with id
-                results.append(cast(Dict[str, Any], doc))
+                doc = self._normalize_document(doc)
+                documents.append(doc)
             
-            return results, warnings, total_count
+            # Note: FK processing handled in model layer based on config/view specs
+            # Database returns raw documents only
+            
+            return documents, True, total_count
             
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
-                entity=collection,
-                operation="get_list"
+                entity=entity_type,
+                operation="get_all"
             )
-
-    async def get_by_id(self, collection: str, doc_id: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
-        """Get a document by ID."""
-        self._ensure_initialized()
-            
-        try:
-            warnings = []
-            # Check unique constraints if provided
-            if unique_constraints:
-                missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
-                if missing_indexes:
-                    warnings.extend(missing_indexes)
-            
-            # Convert string ID to ObjectId if it's a valid ObjectId string
-            query_id: Union[str, ObjectId] = doc_id
-            if isinstance(doc_id, str) and ObjectId.is_valid(doc_id):
-                query_id = ObjectId(doc_id)
-                
-            # Get document
-            doc = await self._get_db()[collection].find_one({self.id_field: query_id})
-            if doc is None:
-                raise NotFoundError(collection, doc_id)
-                
-            # Convert ObjectId to string and normalize to 'id' field
-            if self.id_field in doc:
-                doc['id'] = str(doc[self.id_field])
-                del doc[self.id_field]  # Remove _id, replace with id
-                
-            return cast(Dict[str, Any], doc), warnings
-                
-        except NotFoundError:
-            # Re-raise NotFoundError so it can be handled by FastAPI
-            raise
-        except DatabaseError:
-            # Re-raise database errors
-            raise
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="get_by_id"
-            )
-
-    async def save_document(self, collection: str, data: Dict[str, Any], entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
-        """Save a document to the database."""
-        self._ensure_initialized()
-            
-        try:
-            warnings = []
-            # Check unique constraints if provided
-            if unique_constraints:
-                missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
-                if missing_indexes:
-                    warnings.extend(missing_indexes)
-            
-            # Prepare document with synthetic hash fields if needed (no-op for MongoDB)
-            prepared_data = await self.prepare_document_for_save(collection, data, unique_constraints, entity_metadata)
-            
-            # Validate unique constraints before save (no-op for MongoDB)
-            await self.validate_unique_constraints_before_save(collection, prepared_data, unique_constraints)
-            
-            # Extract ID from data 
-            doc_id = prepared_data.get('id')
-            
-            # Create a copy of data for the actual save operation
-            save_data = prepared_data.copy()
-            
-            # Handle new documents (no ID) vs updates (existing ID)
-            if not doc_id or (isinstance(doc_id, str) and doc_id.strip() == ""):
-                # New document: let MongoDB auto-generate _id
-                # Remove any empty ID fields from save data
-                save_data.pop('id', None)
-                result = await self._get_db()[collection].insert_one(save_data)
-                doc_id_str = str(result.inserted_id)
-            else:
-                # Existing document: update with specific ID
-                query_id: Union[str, ObjectId] = doc_id
-                if isinstance(doc_id, str) and ObjectId.is_valid(doc_id):
-                    query_id = ObjectId(doc_id)
-                
-                # Remove ID from save data since it's used in query
-                save_data.pop('id', None) 
-                    
-                # Update existing document
-                result = await self._get_db()[collection].replace_one({self.id_field: query_id}, save_data, upsert=True)
-                doc_id_str = str(query_id) if isinstance(query_id, ObjectId) else query_id
-                
-            # Get the saved document (this will return tuple, so unpack)
-            saved_doc, get_warnings = await self.get_by_id(collection, doc_id_str)
-            warnings.extend(get_warnings)
-            return saved_doc, warnings
-            
-        except DuplicateKeyError as e:
-            # Parse MongoDB duplicate key error to get field and value
-            field_name, field_value = self._parse_duplicate_key_error(e)
-            raise DuplicateError(
-                entity=collection,
-                field=field_name,
-                value=field_value
-            )
-        except SyntheticDuplicateError as e:
-            # Convert synthetic duplicate error to standard DuplicateError
-            raise DuplicateError(
-                entity=e.collection,
-                field=e.field,
-                value=e.value
-            )
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="save_document"
-            )
-
-    def _parse_duplicate_key_error(self, error: DuplicateKeyError) -> Tuple[str, str]:
-        """
-        Parse MongoDB duplicate key error to extract field name and value.
+    
+    async def get(
+        self,
+        id: str,
+        entity_type: str,
+        # process_fks: bool = True,
+        # view_spec: Optional[Dict[str, Any]] = None
+    ) -> Tuple[Dict[str, Any], bool]:
+        """Get single document by ID"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
         
-        Args:
-            error: The DuplicateKeyError from MongoDB
-            
-        Returns:
-            Tuple of (field_name, field_value)
-        """
         try:
-            # Get the details from the error
-            if hasattr(error, 'details') and error.details:
-                key_value = error.details.get('keyValue', {})
-                if key_value:
-                    # Get the first field name and value from the key
-                    field_name = next(iter(key_value.keys()))
-                    field_value = str(key_value[field_name])
-                    return field_name, field_value
+            collection = entity_type
             
-            # Fallback: parse from error message
-            error_str = str(error)
-            if 'dup key:' in error_str:
-                # Extract field name from index name (e.g. "username_1" -> "username")
-                if 'index:' in error_str:
-                    index_part = error_str.split('index:')[1].split('dup key:')[0].strip()
-                    field_name = index_part.split('_')[0]  # Remove _1 suffix
-                else:
-                    field_name = 'unknown'
-                
-                # Extract value from dup key part
-                if '{ ' in error_str and ' }' in error_str:
-                    dup_key_part = error_str.split('dup key:')[1].split('}')[0] + '}'
-                    # Simple parsing to get the value
-                    if '"' in dup_key_part:
-                        field_value = dup_key_part.split('"')[1]
-                    else:
-                        field_value = 'unknown'
-                else:
-                    field_value = 'unknown'
-                
-                return field_name, field_value
-            
-            return 'unknown', 'unknown'
-            
-        except Exception:
-            # If parsing fails, return generic info
-            return 'unknown', 'unknown'
-
-    async def supports_native_indexes(self) -> bool:
-        """MongoDB supports native unique indexes"""
-        return True
-    
-    async def document_exists_with_field_value(self, collection: str, field: str, value: Any, exclude_id: Optional[str] = None) -> bool:
-        """Check if document exists with field value (not needed for MongoDB - native indexes handle this)"""
-        return False
-
-    async def close(self) -> None:
-        """Close the database connection."""
-        if self._client:
-            self._client.close()
-            self._client = None
-            self._db = None
-            logging.info("MongoDatabase: Connection closed")
-
-    async def collection_exists(self, collection: str) -> bool:
-        """Check if a collection exists."""
-        self._ensure_initialized()
-            
-        try:
-            collections = await self._get_db().list_collection_names()
-            return collection in collections
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="collection_exists"
-            )
-
-    async def create_collection(self, collection: str, indexes: List[Dict[str, Any]]) -> bool:
-        """Create a collection with indexes."""
-        self._ensure_initialized()
-            
-        try:
-            # Create collection
-            await self._get_db().create_collection(collection)
-            
-            # Create indexes
-            await self._create_required_indexes(collection, indexes)
-                
-            return True
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="create_collection"
-            )
-
-    async def _create_required_indexes(self, collection: str, indexes: List[Dict[str, Any]]) -> None:
-        """Create required indexes for a collection."""
-        self._ensure_initialized()
-            
-        for index in indexes:
+            # Convert string ID to ObjectId for MongoDB
             try:
-                await self._get_db()[collection].create_index(
-                    index['fields'],
-                    unique=index.get('unique', False),
-                    name=index.get('name')
-                )
-            except Exception as e:
-                raise DatabaseError(
-                    message=str(e),
-                    entity=collection,
-                    operation="create_index"
-                )
-
-    async def delete_collection(self, collection: str) -> bool:
-        """Delete a collection."""
-        self._ensure_initialized()
+                object_id = ObjectId(id) if ObjectId.is_valid(id) else id
+            except:
+                object_id = id
             
-        try:
-            await self._get_db().drop_collection(collection)
-            return True
+            doc = await db[collection].find_one({"_id": object_id})
+            
+            if not doc:
+                not_found_warning(f"Document not found", entity=entity_type, entity_id=id)
+                return {}, False
+            
+            # Normalize ID
+            doc = self._normalize_document(doc)
+            
+            # Note: FK processing and view_spec handling done in model layer
+            # Database returns raw document data only
+            
+            return doc, True
+            
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
-                entity=collection,
-                operation="delete_collection"
-            )
-
-    async def delete_document(self, collection: str, doc_id: str) -> bool:
-        """Delete a document."""
-        self._ensure_initialized()
-            
-        try:
-            # Convert string ID to ObjectId if it's a valid ObjectId string
-            query_id: Union[str, ObjectId] = doc_id
-            if isinstance(doc_id, str) and ObjectId.is_valid(doc_id):
-                query_id = ObjectId(doc_id)
-                
-            result = await self._get_db()[collection].delete_one({self.id_field: query_id})
-            return result.deleted_count > 0
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="delete_document"
-            )
-
-    async def remove_entity(self, collection: str) -> bool:
-        """Remove/drop entire entity collection."""
-        self._ensure_initialized()
-            
-        try:
-            await self._get_db().drop_collection(collection)
-            return True
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="remove_entity"
-            )
-
-    async def list_collections(self) -> List[str]:
-        """List all collections."""
-        self._ensure_initialized()
-            
-        try:
-            return await self._get_db().list_collection_names()
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity="collections",
-                operation="list_collections"
-            )
-
-    async def list_indexes(self, collection: str) -> List[Dict[str, Any]]:
-        """List all indexes for a collection."""
-        self._ensure_initialized()
-            
-        try:
-            raw_indexes = await self._get_db()[collection].list_indexes().to_list(None)
-            standardized_indexes = []
-            
-            for raw_idx in raw_indexes:
-                # Extract field names from MongoDB key structure
-                fields = []
-                if 'key' in raw_idx:
-                    fields = list(raw_idx['key'].keys())
-                
-                # Determine if it's a system index
-                name = raw_idx.get('name', '')
-                is_system = name == '_id_' or name.startswith('_')
-                
-                # Determine if it's unique
-                is_unique = raw_idx.get('unique', False)
-                
-                standardized_indexes.append({
-                    'name': name,
-                    'fields': fields,
-                    'unique': is_unique,
-                    'system': is_system
-                })
-            
-            return standardized_indexes
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="list_indexes"
-            )
-
-    async def find_all(self, collection: str, model_cls: Type[T]) -> List[T]:
-        """Get all documents from a collection and validate them against a model class."""
-        self._ensure_initialized()
-            
-        try:
-            cursor = self._get_db()[collection].find()
-            results = []
-            async for doc in cursor:
-                try:
-                    # Convert ObjectId to string for consistency
-                    if self.id_field in doc and isinstance(doc[self.id_field], ObjectId):
-                        doc[self.id_field] = str(doc[self.id_field])
-                    results.append(model_cls.model_validate(doc))
-                except PydanticValidationError as e:
-                    # Convert Pydantic validation error to our standard format
-                    failures = [
-                        ValidationFailure(
-                            field=str(err["loc"][-1]),
-                            message=err["msg"],
-                            value=err.get("input")
-                        ) for err in e.errors()
-                    ]
-                    raise ValidationError(
-                        message=f"Validation failed for document {doc.get('_id')}",
-                        entity=model_cls.__name__,
-                        invalid_fields=failures
-                    )
-            return results
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="find_all"
-            )
-
-    def validate_document(self, doc_data: Dict[str, Any], model_cls: Type[T]) -> T:
-        """Validate a document against a model class."""
-        try:
-            # Convert ObjectId to string for consistency
-            if self.id_field in doc_data and isinstance(doc_data[self.id_field], ObjectId):
-                doc_data[self.id_field] = str(doc_data[self.id_field])
-            return model_cls.model_validate(doc_data)
-        except PydanticValidationError as e:
-            # Convert Pydantic validation error to our standard format
-            failures = [
-                ValidationFailure(
-                    field=str(err["loc"][-1]),
-                    message=err["msg"],
-                    value=err.get("input")
-                ) for err in e.errors()
-            ]
-            raise ValidationError(
-                message="Validation failed",
-                entity=model_cls.__name__,
-                invalid_fields=failures
-            )
-
-    async def _ensure_collection_exists(self, collection: str, indexes: List[Dict[str, Any]]) -> None:
-        """Ensure a collection exists with required indexes."""
-        if not await self.collection_exists(collection):
-            await self.create_collection(collection, indexes)
-
-    async def check_unique_constraints(self, collection: str, constraints: List[List[str]], 
-                                     data: Dict[str, Any], exclude_id: Optional[str] = None) -> List[str]:
-        """Check unique constraints on a document."""
-        self._ensure_initialized()
-            
-        try:
-            violations = []
-            for fields in constraints:
-                # Build query for unique constraint
-                query = {field: data[field] for field in fields if field in data}
-                if not query:
-                    continue
-                    
-                # Exclude current document if updating
-                if exclude_id:
-                    query[self.id_field] = {"$ne": exclude_id}
-                    
-                # Check if any document matches
-                if await self._get_db()[collection].find_one(query):
-                    violations.append(f"Unique constraint violation on fields: {', '.join(fields)}")
-                    
-            return violations
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="check_unique_constraints"
-            )
-
-    async def create_index(self, collection: str, fields: List[str], unique: bool = False) -> None:
-        """Create an index on a collection."""
-        self._ensure_initialized()
-            
-        try:
-            await self._get_db()[collection].create_index(
-                [(field, 1) for field in fields],
-                unique=unique
-            )
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="create_index"
-            )
-
-    async def delete_index(self, collection: str, fields: List[str]) -> None:
-        """Delete an index from a collection."""
-        self._ensure_initialized()
-            
-        try:
-            await self._get_db()[collection].drop_index([(field, 1) for field in fields])
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="delete_index"
-            )
-
-    async def exists(self, collection: str, doc_id: str) -> bool:
-        """Check if a document exists."""
-        self._ensure_initialized()
-            
-        try:
-            # Convert string ID to ObjectId if it's a valid ObjectId string
-            query_id: Union[str, ObjectId] = doc_id
-            if isinstance(doc_id, str) and ObjectId.is_valid(doc_id):
-                query_id = ObjectId(doc_id)
-                
-            result = await self._get_db()[collection].count_documents({self.id_field: query_id})
-            return result > 0
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="exists"
+                entity=entity_type,
+                operation="get"
             )
     
-    def _build_query_filter(self, list_params, entity_metadata: Dict[str, Any]) -> Dict[str, Any]:
-        """Build MongoDB query from ListParams with field-type awareness."""
-        if not list_params or not list_params.filters:
+    async def _validate_document_exists_for_update(self, entity_type: str, id: str) -> bool:
+        """Validate that document exists for update operations"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
+        
+        try:
+            collection = entity_type
+            mongo_id = ObjectId(id) if ObjectId.is_valid(id) else id
+            existing_doc = await db[collection].find_one({"_id": mongo_id})
+            
+            if not existing_doc:
+                from app.services.notification import not_found_warning
+                not_found_warning(f"Document not found for update", entity=entity_type, entity_id=id)
+                return False
+            
+            return True
+        except Exception:
+            from app.services.notification import not_found_warning
+            not_found_warning(f"Document not found for update", entity=entity_type, entity_id=id)
+            return False
+    
+    async def _save_to_database(self, entity_type: str, data: Dict[str, Any], id: str) -> Dict[str, Any]:
+        """Save document to MongoDB database"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
+        
+        try:
+            collection = entity_type
+            is_update = bool(id.strip())
+            
+            if is_update:
+                # Update existing document
+                mongo_id = ObjectId(id) if ObjectId.is_valid(id) else id
+                data_with_id = data.copy()
+                data_with_id["_id"] = mongo_id
+                
+                await db[collection].replace_one(
+                    {"_id": mongo_id}, 
+                    data_with_id,
+                    upsert=False
+                )
+                return data_with_id
+            else:
+                # Create new document (MongoDB auto-generates _id)
+                result = await db[collection].insert_one(data)
+                saved_doc = data.copy()
+                saved_doc["_id"] = result.inserted_id
+                return saved_doc
+                
+        except DuplicateKeyError as e:
+            # Convert MongoDB duplicate key error to warning
+            field, value = self._parse_duplicate_key_error(e)
+            from app.services.notification import duplicate_warning
+            duplicate_warning(f"Duplicate value for field '{field}'", entity=entity_type, entity_id=id or "new", field=field)
+            raise
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="save"
+            )
+    
+    def _get_core_manager(self) -> CoreManager:
+        """Get the core manager instance"""
+        return self.parent.core
+    
+    async def delete(self, id: str, entity_type: str) -> bool:
+        """Delete document by ID"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
+        
+        try:
+            collection = entity_type
+            
+            # Convert string ID to ObjectId for MongoDB
+            try:
+                object_id = ObjectId(id) if ObjectId.is_valid(id) else id
+            except:
+                object_id = id
+            
+            result = await db[collection].delete_one({"_id": object_id})
+            return result.deleted_count > 0
+            
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="delete"
+            )
+    
+    # Database-specific implementation methods
+    def _prepare_datetime_fields(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert datetime fields for MongoDB storage (string -> datetime objects)"""
+        
+        fields_meta = MetadataService.fields(entity_type)
+        prepared_data = data.copy()
+        
+        for field_name, value in prepared_data.items():
+            if value is None:
+                continue
+                
+            field_meta = fields_meta.get(field_name, {})
+            field_type = field_meta.get('type')
+            
+            if field_type in ['Date', 'Datetime'] and isinstance(value, str):
+                try:
+                    # Convert ISO string to datetime object for MongoDB
+                    date_str = value.strip()
+                    if date_str.endswith('Z'):
+                        date_str = date_str[:-1] + '+00:00'
+                    prepared_data[field_name] = datetime.fromisoformat(date_str)
+                except (ValueError, TypeError):
+                    # Leave as-is if conversion fails
+                    pass
+        
+        return prepared_data
+    
+    async def _validate_unique_constraints(
+        self, 
+        entity_type: str, 
+        data: Dict[str, Any], 
+        unique_constraints: List[List[str]], 
+        exclude_id: Optional[str] = None
+    ) -> bool:
+        """Validate unique constraints for MongoDB (uses native indexes)"""
+        # MongoDB handles unique constraints natively through indexes
+        # The database will throw DuplicateKeyError on save if constraints are violated
+        # We could do pre-validation here, but it's not necessary since MongoDB handles it
+        # and adds a race condition. Let MongoDB handle it natively.
+        return True  # Always return success, let native constraints handle violations
+    
+    def _build_query_filter(self, filters: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
+        """Build MongoDB query from filter conditions"""
+        if not filters:
             return {}
         
-        query = {}
-        for field, value in list_params.filters.items():
-            if isinstance(value, dict) and ('$gte' in value or '$lte' in value or '$gt' in value or '$lt' in value):
-                # Comparison filter - add null exclusion and date normalization
-                field_type = self._get_field_type(field, entity_metadata)
+        fields_meta = MetadataService.fields(entity_type)
+
+        query: Dict[str, Any] = {}
+        for field, value in filters.items():
+            
+            if isinstance(value, dict) and any(op in value for op in ['$gte', '$lte', '$gt', '$lt']):
+                # Range query - add null exclusion for numeric/date fields
+                field_type = fields_meta.get(field, {}).get('type', 'String')
                 if field_type in ['Date', 'Datetime', 'Integer', 'Currency', 'Float']:
-                    # For comparison operators on date/numeric fields, exclude null values
                     enhanced_filter = value.copy()
                     enhanced_filter['$exists'] = True
                     enhanced_filter['$ne'] = None
-                    
-                    # Convert date strings to native date objects for proper date comparison
-                    if field_type in ['Date', 'Datetime']:
-                        for op in ['$gte', '$lte', '$gt', '$lt']:
-                            if op in enhanced_filter and isinstance(enhanced_filter[op], str):
-                                try:
-                                    # Convert ISO date string to datetime object
-                                    date_str = enhanced_filter[op].strip()
-                                    if date_str.endswith('Z'):
-                                        date_str = date_str[:-1] + '+00:00'
-                                    enhanced_filter[op] = datetime.fromisoformat(date_str)
-                                except (ValueError, AttributeError):
-                                    # Leave as-is if conversion fails
-                                    pass
-                    
                     query[field] = enhanced_filter
                 else:
-                    # For other field types, use as-is
                     query[field] = value
             else:
                 # Determine matching strategy based on field type
-                field_type = self._get_field_type(field, entity_metadata)
+                field_type = fields_meta.get(field, {}).get('type', 'String')
                 if field_type == 'String':
-                    # Text fields: partial match with regex
+                    # Text fields: partial match with regex (case-insensitive)
                     query[field] = {"$regex": f".*{self._escape_regex(str(value))}.*", "$options": "i"}
                 else:
-                    # Non-text fields (enums, numbers, dates, etc.): exact match
-                    query[field] = value
+                    # Non-text fields: exact match
+                    if isinstance(value, str) and ObjectId.is_valid(value):
+                        query[field] = ObjectId(value)
+                    else:
+                        query[field] = value
         
         return query
-
-    def _get_database_field_name(self, field_name: str, entity_metadata: Dict[str, Any]) -> str:
-        """Get MongoDB field name - just maps field name (no special suffixes needed)."""
-        return self._map_field_name(field_name, entity_metadata)
-
-    def _build_sort_spec(self, list_params, collection: str, entity_metadata: Dict[str, Any]) -> Dict[str, int]:
-        """Build MongoDB sort specification from ListParams.""" 
-        if not list_params or not list_params.sort_fields:
-            # Default sort with intelligent direction based on field type
-            default_field = self._get_default_sort_field(entity_metadata)
-            default_direction = self._get_default_sort_direction(default_field, entity_metadata)
-            return {default_field: 1 if default_direction == "asc" else -1}
+    
+    def _build_sort_spec(self, sort_fields: Optional[List[Tuple[str, str]]], entity_type: str) -> Dict[str, int]:
+        """Build MongoDB sort specification"""
+        if sort_fields:
+            sort_spec = {}
+            for field, direction in sort_fields:
+                sort_spec[field] = 1 if direction == "asc" else -1
+            return sort_spec
+        else:
+            return {self.parent.core._get_default_sort_field(entity_type): 1}  # Fallback to ID ascending
+    
+    def _parse_duplicate_key_error(self, error: DuplicateKeyError) -> Tuple[str, str]:
+        """Parse MongoDB duplicate key error to extract field and value"""
+        # Simplified parsing - could be improved with better error message parsing
+        error_msg = str(error)
+        # Try to extract field name from error message
+        if "index:" in error_msg:
+            # Example: "E11000 duplicate key error collection: db.users index: email_1"
+            parts = error_msg.split("index:")
+            if len(parts) > 1:
+                index_info = parts[1].strip()
+                field_name = index_info.split("_")[0]  # Extract field before _1
+                return field_name, "unknown_value"
         
-        # Build sort spec maintaining field order
-        sort_spec = {}
-        for field, order in list_params.sort_fields:
-            actual_field = self._map_sort_field(field, entity_metadata)
-            sort_spec[actual_field] = 1 if order == "asc" else -1
-        
-        return sort_spec
-
-    def _get_field_type(self, field_name: str, entity_metadata: Dict[str, Any]) -> str:
-        """Get field type from entity metadata or default to String."""
-        if not entity_metadata or 'fields' not in entity_metadata:
-            return 'String'  # Default to string for partial matching
-        
-        field_info = entity_metadata.get('fields', {}).get(field_name, {})
-        field_type = field_info.get('type', 'String')
-        
-        # Check if field has enum values - treat as exact match even if type is String
-        if 'enum' in field_info:
-            return 'Enum'  # Use exact matching for enum fields
-        
-        return field_type
-
+        return "unknown_field", "unknown_value"
+    
     def _escape_regex(self, text: str) -> str:
-        """Escape special regex characters in search text."""
+        """Escape special regex characters"""
         import re
         return re.escape(text)
 
 
-    async def _check_unique_indexes(self, collection: str, unique_constraints: List[List[str]]) -> List[str]:
-        """Check if unique indexes exist for the given constraints. Returns list of missing constraint descriptions."""
-        if not unique_constraints:
-            return []
-            
+class MongoEntities(EntityManager):
+    """MongoDB implementation of entity operations"""
+    
+    def __init__(self, parent: 'MongoDatabase'):
+        self.parent = parent
+    
+    async def exists(self, entity_type: str) -> bool:
+        """Check if collection exists"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
+        
+        collection_names = await db.list_collection_names()
+        return entity_type in collection_names
+    
+    async def create(self, entity_type: str, unique_constraints: List[List[str]]) -> bool:
+        """Create collection with unique indexes"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
+        
         try:
-            # Get existing indexes using our standardized format
-            existing_indexes = await self.list_indexes(collection)
-            existing_unique_indexes = [idx for idx in existing_indexes if idx.get('unique', False)]
-            
-            missing_constraints = []
+            # MongoDB creates collections implicitly, but we can create indexes
             for constraint_fields in unique_constraints:
-                # Check if this constraint has a corresponding unique index
-                constraint_exists = False
-                for idx in existing_unique_indexes:
-                    idx_fields = idx.get('fields', [])
-                    # Check if the index fields match the constraint fields (order doesn't matter)
-                    if set(idx_fields) == set(constraint_fields):
-                        constraint_exists = True
-                        break
-                
-                if not constraint_exists:
-                    constraint_desc = " + ".join(constraint_fields) if len(constraint_fields) > 1 else constraint_fields[0]
-                    missing_constraints.append(f"Missing unique index for {constraint_desc} - run with --initdb to create indexes")
+                index_spec = [(field, 1) for field in constraint_fields]
+                await db[entity_type].create_index(index_spec, unique=True)
             
-            return missing_constraints
-            
+            return True
         except Exception as e:
-            # Return empty list on error - Factory layer will handle notification
-            return []
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="create"
+            )
     
-    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Dict[str, Any]:
-        """Prepare document for save by converting datetime fields (MongoDB has native unique indexes)"""
-        # Only convert datetime fields - MongoDB handles uniqueness natively
-        return self._process_datetime_fields_for_save(data, entity_metadata)
+    async def delete(self, entity_type: str) -> bool:
+        """Drop collection"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
+        
+        try:
+            await db[entity_type].drop()
+            return True
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="delete"
+            )
     
-    async def validate_unique_constraints_before_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> None:
-        """MongoDB handles unique constraints natively - no validation needed"""
-        pass 
+    async def get_all(self) -> List[str]:
+        """Get all collection names"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
+        
+        return await db.list_collection_names()
+
+
+class MongoIndexes(IndexManager):
+    """MongoDB implementation of index operations"""
+    
+    def __init__(self, parent: 'MongoDatabase'):
+        self.parent = parent
+    
+    async def create(
+        self, 
+        entity_type: str, 
+        fields: List[str],
+        unique: bool = False,
+        name: Optional[str] = None
+    ) -> None:
+        """Create index on collection"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
+        
+        try:
+            index_spec = [(field, 1) for field in fields]
+            kwargs: Dict[str, Any] = {"unique": unique}
+            if name:
+                kwargs["name"] = name
+                
+            await db[entity_type].create_index(index_spec, **kwargs)
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="create_index"
+            )
+    
+    async def get_all(self, entity_type: str) -> List[List[str]]:
+        """Get all unique indexes for collection as field lists"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
+        
+        try:
+            field_lists = []
+            cursor = db[entity_type].list_indexes()
+            
+            async for index_info in cursor:
+                # Skip system indexes like _id_
+                if index_info.get("name") == "_id_":
+                    continue
+                    
+                # Only include unique indexes
+                if not index_info.get("unique", False):
+                    continue
+                
+                # Extract field names from MongoDB key structure
+                fields = []
+                for field_spec in index_info.get("key", {}).items():
+                    fields.append(field_spec[0])
+                
+                if fields:  # Only add if we have fields
+                    field_lists.append(fields)
+            
+            return field_lists
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="list_indexes"
+            )
+    
+    async def delete(self, entity_type: str, fields: List[str]) -> None:
+        """Delete index by field names"""
+        self.parent._ensure_initialized()
+        db = self.parent.core.get_connection()
+        
+        try:
+            # Use MongoDB's drop_index with field specification
+            # MongoDB can drop index by field specification: [(field, direction), ...]
+            index_spec = [(field, 1) for field in fields]
+            await db[entity_type].drop_index(index_spec)
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="delete_index"
+            )
+
+
+class MongoDatabase(DatabaseInterface):
+    """MongoDB implementation of DatabaseInterface"""
+    
+    def _create_core_manager(self) -> CoreManager:
+        return MongoCore(self)
+    
+    def _create_document_manager(self) -> DocumentManager:
+        return MongoDocuments(self)
+    
+    def _create_entity_manager(self) -> EntityManager:
+        return MongoEntities(self)
+    
+    def _create_index_manager(self) -> IndexManager:
+        return MongoIndexes(self)
+    
+    async def supports_native_indexes(self) -> bool:
+        """MongoDB supports native unique indexes"""
+        return True

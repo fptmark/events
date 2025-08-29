@@ -1,881 +1,623 @@
+"""
+Elasticsearch implementation of the database interface.
+Each manager is implemented as a separate class for clean separation.
+"""
+
 import logging
-import json
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
-from elasticsearch import AsyncElasticsearch, NotFoundError as ESNotFoundError
-from bson import ObjectId
+from elasticsearch import AsyncElasticsearch
 
-from .base import DatabaseInterface, SyntheticDuplicateError
-from ..errors import DatabaseError, DuplicateError, NotFoundError
+from .base import DatabaseInterface
+from .core_manager import CoreManager
+from .document_manager import DocumentManager
+from .entity_manager import EntityManager
+from .index_manager import IndexManager
+from ..errors import DatabaseError
+from app.services.notification import duplicate_warning, validation_warning, not_found_warning
+from app.services.metadata import MetadataService
 
-class ElasticsearchDatabase(DatabaseInterface):
-    """Elasticsearch implementation of DatabaseInterface."""
 
-    def __init__(self, case_sensitive_sorting: bool = False):
-        super().__init__(case_sensitive_sorting)
-        self._client: Optional[AsyncElasticsearch] = None
-        self._url: str = ""
+class ElasticsearchCore(CoreManager):
+    """Elasticsearch implementation of core operations"""
     
-
+    def __init__(self, parent: 'ElasticsearchDatabase'):
+        self.parent = parent
+        self._client: Optional[AsyncElasticsearch] = None
+        self._database_name: str = ""
+    
     @property
     def id_field(self) -> str:
-        """Elasticsearch uses '_id' as the internal document ID field"""
         return "_id"
-
-    def get_id(self, document: Dict[str, Any]) -> Optional[str]:
-        """Extract and normalize the ID from an Elasticsearch document"""
-        if not document:
-            return None
-        
-        # Elasticsearch uses '_id' as the internal document identifier
-        # This is always present and unique within the index
-        id_value = document.get('_id')
-        if id_value is None:
-            return None
-            
-        return str(id_value) if id_value else None
-
+    
     async def init(self, connection_str: str, database_name: str) -> None:
-        """Initialize Elasticsearch connection."""
+        """Initialize Elasticsearch connection"""
         if self._client is not None:
-            logging.info("Elasticsearch already initialised – re‑using client")
+            logging.info("ElasticsearchDatabase: Already initialized")
             return
 
-        self._url, self._dbname = connection_str, database_name
-        client = AsyncElasticsearch(hosts=[connection_str])
-
         try:
-            info = await client.info()
-            self._initialized = True
-            self._client = client
-            logging.info("Connected to Elasticsearch %s", info["version"]["number"])
+            self._client = AsyncElasticsearch([connection_str])
+            self._database_name = database_name
+            
+            # Test connection
+            await self._client.ping()
+            self.parent._initialized = True
+            logging.info(f"ElasticsearchDatabase: Connected to {database_name}")
             
             # Create index template for .raw subfields on all new indices
             await self._ensure_index_template()
+            
         except Exception as e:
-            self._handle_connection_error(e, database_name)
-
-    def _get_client(self) -> AsyncElasticsearch:
-        """Get the AsyncElasticsearch client instance."""
-        self._ensure_initialized()
-        assert self._client is not None, "Client should be initialized after _ensure_initialized()"
+            raise DatabaseError(
+                message=f"Failed to connect to Elasticsearch: {str(e)}",
+                entity="connection",
+                operation="init"
+            )
+    
+    async def close(self) -> None:
+        """Close Elasticsearch connection"""
+        if self._client:
+            await self._client.close()
+            self._client = None
+            self.parent._initialized = False
+            logging.info("ElasticsearchDatabase: Connection closed")
+    
+    def get_id(self, document: Dict[str, Any]) -> Optional[str]:
+        """Extract and normalize ID from Elasticsearch document"""
+        if not document:
+            return None
+        
+        id_value = document.get(self.id_field)
+        if id_value is None:
+            return None
+            
+        # Elasticsearch _id is already a string, just return it
+        return str(id_value) if id_value else None
+    
+    def get_connection(self) -> AsyncElasticsearch:
+        """Get Elasticsearch client instance"""
+        if not self._client:
+            raise RuntimeError("Elasticsearch not initialized")
         return self._client
     
-    def _get_database_field_name(self, field_name: str, entity_metadata: Dict[str, Any]) -> str:
-        """Get ES field name - maps field and adds .raw for string fields."""
-        # First map the field name using base class mapper
-        mapped_field = self._map_field_name(field_name, entity_metadata)
-        
-        # Add .raw suffix for string fields
-        field_info = entity_metadata['fields'].get(mapped_field, {})
-        if field_info.get('type') == 'String':
-            return f"{mapped_field}.raw"
-        
-        return mapped_field
-    
-    async def wipe_all_index_templates(self) -> None:
-        """Remove all existing index templates to avoid conflicts."""
-        es = self._get_client()
-        
-        try:
-            # Get all index templates
-            templates = await es.indices.get_index_template()
-            
-            for template_info in templates.get('index_templates', []):
-                template_name = template_info['name']
-                try:
-                    await es.indices.delete_index_template(name=template_name)
-                    logging.info(f"Deleted index template: {template_name}")
-                except Exception as e:
-                    logging.warning(f"Failed to delete template {template_name}: {e}")
-                    
-        except Exception as e:
-            logging.warning(f"Failed to wipe index templates: {e}")
-
-    async def wipe_all_indices(self) -> None:
-        """Delete application indices to force recreation with new templates."""
-        from app.metadata import get_all_entity_names
-        es = self._get_client()
-        
-        try:
-            # Get entity names from metadata
-            entity_names = get_all_entity_names()
-            if not entity_names:
-                # Fallback to known entities if metadata not loaded
-                entity_names = ["User", "Account", "Profile", "TagAffinity", "Event", "UserEvent", "Url", "Crawl"]
-            
-            for entity_name in entity_names:
-                index_name = entity_name.lower()
-                try:
-                    if await es.indices.exists(index=index_name):
-                        await es.indices.delete(index=index_name)
-                        logging.info(f"Deleted index: {index_name}")
-                except Exception as e:
-                    logging.warning(f"Failed to delete index {index_name}: {e}")
-                        
-        except Exception as e:
-            logging.warning(f"Failed to wipe indices: {e}")
-
     async def _ensure_index_template(self) -> None:
         """Create composable index template for .raw subfields with high priority."""
-        es = self._get_client()
-        
-        template_name = "app-text-raw-template"
-        template_body = {
-            "index_patterns": ["user", "account", "profile", "event*", "tag*", "url", "crawl"],  # Target our app indices only
-            "priority": 1000,  # Higher priority than existing templates (beats 500)
-            "template": {
-                "settings": {
-                    "analysis": {
-                        "normalizer": {
-                            "lc": {
-                                "type": "custom",
-                                "char_filter": [],
-                                "filter": ["lowercase"]
+        try:
+            # Get entity names from metadata service to determine index patterns
+            entities = MetadataService.list_entities()
+            index_patterns = [entity.lower() for entity in entities] if entities else ["*"]
+            
+            template_name = "app-text-raw-template"
+            template_body = {
+                "index_patterns": index_patterns,
+                "priority": 1000,  # Higher priority than default templates
+                "template": {
+                    "settings": {
+                        "analysis": {
+                            "normalizer": {
+                                "lc": {
+                                    "type": "custom",
+                                    "char_filter": [],
+                                    "filter": ["lowercase"]
+                                }
                             }
                         }
-                    }
-                },
-                "mappings": {
-                    "dynamic_templates": [
-                        {
-                            "strings_as_text_with_raw": {
-                                "match_mapping_type": "string",
-                                "unmatch": "id",  # Don't apply to id fields  
-                                "mapping": {
-                                    "type": "text",
-                                    "fields": {
-                                        "raw": {
-                                            "type": "keyword",
-                                            "normalizer": "lc", 
-                                            "ignore_above": 1024
+                    },
+                    "mappings": {
+                        "dynamic_templates": [
+                            {
+                                "strings_as_text_with_raw": {
+                                    "match_mapping_type": "string",
+                                    "unmatch": "id",  # Don't apply to id fields  
+                                    "mapping": {
+                                        "type": "text",
+                                        "fields": {
+                                            "raw": {
+                                                "type": "keyword",
+                                                "normalizer": "lc", 
+                                                "ignore_above": 1024
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                    ]
+                        ]
+                    }
                 }
             }
-        }
-        
-        try:
-            await es.indices.put_index_template(name=template_name, body=template_body)
+            
+            await self._client.indices.put_index_template(name=template_name, body=template_body) # type: ignore
             logging.info(f"Created index template: {template_name}")
         except Exception as e:
             logging.warning(f"Failed to create index template: {e}")
             # Don't fail initialization if template creation fails
 
 
-    async def _get_list_impl(self, collection: str, entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None, list_params=None) -> Tuple[List[Dict[str, Any]], List[str], int]:
-        """Get paginated/filtered list of documents from a collection with count."""
-        es = self._get_client()
-
-        if not await es.indices.exists(index=collection):
-            return [], [], 0
-
+class ElasticsearchDocuments(DocumentManager):
+    """Elasticsearch implementation of document operations"""
+    
+    def __init__(self, parent: 'ElasticsearchDatabase'):
+        self.parent = parent
+    
+    
+    async def get_all(
+        self, 
+        entity_type: str,
+        sort: Optional[List[Tuple[str, str]]] = None,
+        filter: Optional[Dict[str, Any]] = None,
+        page: int = 1,
+        pageSize: int = 25,
+        process_fks: bool = True
+    ) -> Tuple[List[Dict[str, Any]], bool, int]:
+        """Get paginated list of documents"""
+        self.parent._ensure_initialized()
+        es = self.parent.core.get_connection()
+        
         try:
-            from app.models.list_params import ListParams
-            warnings = []
+            if not await es.indices.exists(index=entity_type):
+                return [], True, 0
             
-            # Check unique constraints if provided
-            if unique_constraints:
-                missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
-                if missing_indexes:
-                    warnings.extend(missing_indexes)
-            
-            # If no list_params provided, use default pagination (page_size=100, no sorting/filtering)
-            if not list_params:
-                from app.models.list_params import ListParams
-                list_params = ListParams(page=1, page_size=100)
-
-            # Build Elasticsearch query using new helper methods
-            query_filter = self._build_query_filter(list_params, entity_metadata)
+            # Build query
             query_body = {
-                "from": (list_params.page - 1) * list_params.page_size,
-                "size": list_params.page_size,
-                "query": query_filter
+                "from": (page - 1) * pageSize,
+                "size": pageSize,
+                "query": self._build_query_filter(filter, entity_type)
             }
             
-            # Always add sorting for consistent pagination
-            sort_spec = self._build_sort_spec(list_params, collection, entity_metadata)
-            query_body["sort"] = sort_spec
-
-            res = await es.search(index=collection, body=query_body)
-            hits = res.get("hits", {}).get("hits", [])
-            results = [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
+            # Add sorting
+            sort_spec = self._build_sort_spec(sort, entity_type)
+            if sort_spec:
+                query_body["sort"] = sort_spec
             
-            # Extract total count from search response
-            total_count = res.get("hits", {}).get("total", {}).get("value", 0)
+            # Execute query
+            response = await es.search(index=entity_type, body=query_body)
+            hits = response.get("hits", {}).get("hits", [])
             
-            return results, warnings, total_count
+            documents = []
+            for hit in hits:
+                doc = self._normalize_document(hit["_source"])
+                documents.append(doc)
+            
+            total_count = response.get("hits", {}).get("total", {}).get("value", 0)
+            
+            return documents, True, total_count
             
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
-                entity=collection,
-                operation="get_list"
+                entity=entity_type,
+                operation="get_all"
             )
-
-
-    async def get_by_id(self, collection: str, doc_id: str, unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
-        """Get a document by ID."""
-        es = self._get_client()
+    
+    async def get(
+        self, 
+        id: str,
+        entity_type: str
+    ) -> Tuple[Dict[str, Any], bool]:
+        """Get single document by ID"""
+        self.parent._ensure_initialized()
+        es = self.parent.core.get_connection()
+        
         try:
-            warnings = []
-            # Check unique constraints if provided
-            if unique_constraints:
-                missing_indexes = await self._check_unique_indexes(collection, unique_constraints)
-                if missing_indexes:
-                    warnings.extend(missing_indexes)
+            index = entity_type
             
-            # Try the ID as-is first, then try to find by normalized ID if that fails
-            try:
-                res = await es.get(index=collection, id=doc_id)
-            except ESNotFoundError:
-                # If direct lookup fails, try to find document by searching for normalized ID
-                # This handles case where we receive lowercase ID but ES has mixed case
-                search_res = await es.search(
-                    index=collection,
-                    body={
-                        "query": {"match_all": {}},
-                        "size": 10000  # Get all documents to search through
-                    }
-                )
-                
-                for hit in search_res.get("hits", {}).get("hits", []):
-                    if self._normalize_id(hit["_id"]) == self._normalize_id(doc_id):
-                        # Handle case where hit _source might be None
-                        hit_source = hit.get("_source") or {}
-                        res = {"_source": hit_source, "_id": hit["_id"]}
-                        break
-                else:
-                    raise NotFoundError(collection, doc_id)
+            if not await es.indices.exists(index=index):
+                not_found_warning(f"Index does not exist", entity=entity_type, entity_id=id)
+                return {}, False
             
-            # Handle case where _source might be None
-            source_data = res.get("_source") or {}
-            result = {**source_data, "id": self._normalize_id(res["_id"])}
-            return result, warnings
-        except NotFoundError:
-            raise
+            response = await es.get(index=index, id=id)
+            doc = self._normalize_document(response["_source"])
+            
+            # Note: FK processing and view_spec handling done in model layer
+            # Database returns raw document data only
+            return doc, True
+            
         except Exception as e:
+            if "not found" in str(e).lower():
+                not_found_warning(f"Document not found", entity=entity_type, entity_id=id)
+                return {}, False
             raise DatabaseError(
                 message=str(e),
-                entity=collection,
-                operation="get_by_id"
+                entity=entity_type,
+                operation="get"
             )
-
-
-    async def close(self) -> None:
-        """Close the database connection."""
-        if self._client:
-            await self._client.close()
-            self._client = None
-            logging.info("Elasticsearch: Connection closed")
-
-    async def collection_exists(self, collection: str) -> bool:
-        """Check if a collection exists."""
-        es = self._get_client()
+    
+    async def _validate_document_exists_for_update(self, entity_type: str, id: str) -> bool:
+        """Validate that document exists for update operations"""
+        self.parent._ensure_initialized()
+        es = self.parent.core.get_connection()
+        
         try:
-            return bool(await es.indices.exists(index=collection))
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="collection_exists"
-            )
-
-    async def create_collection(self, collection: str, indexes: List[Dict[str, Any]]) -> bool:
-        """Create a collection - relies on index template for proper mapping."""
-        es = self._get_client()
-        try:
-            # Check if index already exists
-            if await es.indices.exists(index=collection):
-                return True
-                
-            # Don't create empty index - let template apply on first document write
-            # This ensures our cluster-level template with .raw subfields takes effect
-            # 
-            # If there are unique constraint indexes to create, we'll handle them 
-            # when the first document is written and the template auto-creates the index
+            index = entity_type
             
+            if not await es.indices.exists(index=index):
+                from app.services.notification import not_found_warning
+                not_found_warning(f"Index does not exist", entity=entity_type, entity_id=id)
+                return False
+            
+            await es.get(index=index, id=id)
             return True
+            
+        except Exception:
+            from app.services.notification import not_found_warning
+            not_found_warning(f"Document not found for update", entity=entity_type, entity_id=id)
+            return False
+    
+    async def _save_to_database(self, entity_type: str, data: Dict[str, Any], id: str) -> Dict[str, Any]:
+        """Save document to Elasticsearch database"""
+        self.parent._ensure_initialized()
+        es = self.parent.core.get_connection()
+        
+        try:
+            index = entity_type
+            is_update = bool(id.strip())
+            
+            if is_update:
+                # Update existing document
+                await es.index(index=index, id=id, body=data)
+                saved_doc = data.copy()
+                saved_doc["_id"] = id
+            else:
+                # Create new document
+                response = await es.index(index=index, body=data)
+                saved_doc = data.copy()
+                saved_doc["_id"] = response["_id"]
+            
+            return saved_doc
+            
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
-                entity=collection,
-                operation="create_collection"
+                entity=entity_type,
+                operation="save"
             )
-
-    def _build_query_filter(self, list_params, entity_metadata: Dict[str, Any]) -> Dict[str, Any]:
-        """Build Elasticsearch query from ListParams with field-type awareness."""
-        if not list_params or not list_params.filters:
+    
+    def _get_core_manager(self) -> CoreManager:
+        """Get the core manager instance"""
+        return self.parent.core
+    
+    async def delete(self, id: str, entity_type: str) -> bool:
+        """Delete document by ID"""
+        self.parent._ensure_initialized()
+        es = self.parent.core.get_connection()
+        
+        try:
+            index = entity_type
+            
+            if not await es.indices.exists(index=index):
+                return False
+                
+            response = await es.delete(index=index, id=id)
+            return response.get("result") == "deleted"
+            
+        except Exception as e:
+            if "not found" in str(e).lower():
+                return False
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="delete"
+            )
+    
+    def _build_query_filter(self, filters: Optional[Dict[str, Any]], entity_type: str) -> Dict[str, Any]:
+        """Build Elasticsearch query from filter conditions"""
+        if not filters:
             return {"match_all": {}}
         
         must_clauses = []
-        for field, value in list_params.filters.items():
-            if isinstance(value, dict) and ('$gte' in value or '$lte' in value or '$gt' in value or '$lt' in value):
-                # Comparison filter - convert MongoDB-style to Elasticsearch range query
+        for field, value in filters.items():
+            if isinstance(value, dict) and any(op in value for op in ['$gte', '$lte', '$gt', '$lt']):
+                # Range query
                 range_query = {}
-                if '$gte' in value:
-                    range_query['gte'] = value['$gte']
-                if '$lte' in value:
-                    range_query['lte'] = value['$lte']
-                if '$gt' in value:
-                    range_query['gt'] = value['$gt']
-                if '$lt' in value:
-                    range_query['lt'] = value['$lt']
-                
-                # For date/numeric fields, add null exclusion and date normalization
-                field_type = self._get_field_type(field, entity_metadata)
-                if field_type in ['Date', 'Datetime', 'Integer', 'Currency', 'Float']:
-                    # Convert date strings to proper format for date comparison
-                    if field_type in ['Date', 'Datetime']:
-                        for op in ['gte', 'lte', 'gt', 'lt']:
-                            if op in range_query and isinstance(range_query[op], str):
-                                # Normalize date string format for ES
-                                date_str = range_query[op].strip()
-                                if 'T' not in date_str and ' ' not in date_str:
-                                    # Add time component if just date (YYYY-MM-DD)
-                                    if len(date_str) == 10 and date_str.count('-') == 2:
-                                        date_str = f"{date_str}T00:00:00"
-                                range_query[op] = date_str
-                    
-                    # Use bool query to combine range and exists clauses
-                    must_clauses.append({
-                        "bool": {
-                            "must": [
-                                {"range": {field: range_query}},
-                                {"exists": {"field": field}}
-                            ]
-                        }
-                    })
-                else:
-                    # For other field types, use range query as-is
-                    must_clauses.append({"range": {field: range_query}})
+                for op, val in value.items():
+                    es_op = op.replace('$', '')  # $gte -> gte
+                    range_query[es_op] = val
+                must_clauses.append({"range": {field: range_query}})
             else:
-                # Determine matching strategy using metadata service
-                from app.metadata import get_entity_metadata, get_proper_entity_name
-                entity_name = get_proper_entity_name(collection)
-                entity_meta = get_entity_metadata(entity_name) 
-                
-                use_partial = False
-                if entity_meta:
-                    field_info = entity_meta.get_field_info(field)
-                    if field_info and field_info.type == 'String' and not entity_meta.is_enum_field(field):
-                        use_partial = True
-                
-                if use_partial:
-                    # String fields without enum: partial match with wildcard
-                    must_clauses.append({
-                        "wildcard": {
-                            field: f"*{value}*"
-                        }
-                    })
-                else:
-                    # Non-string fields, enums, etc.: exact match
-                    # Use .raw for string fields only
-                    filter_field = self._get_database_field_name(field, entity_metadata)
-                    must_clauses.append({"term": {filter_field: value}})
+                # Exact match
+                must_clauses.append({"term": {field: value}})
         
-        if must_clauses:
-            return {"bool": {"must": must_clauses}}
-        else:
-            return {"match_all": {}}
-
-    def _build_sort_spec(self, list_params, collection: str, entity_metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Build Elasticsearch sort specification from ListParams using metadata."""
-        if not list_params or not list_params.sort_fields:
-            # Default sort with intelligent direction based on field type
-            default_field = self._get_default_sort_field(entity_metadata)
-            default_direction = self._get_default_sort_direction(default_field, entity_metadata)
-            sort_field = self._get_database_field_name(default_field, entity_metadata)
-            return [{sort_field: {"order": default_direction}}]
+        return {"bool": {"must": must_clauses}} if must_clauses else {"match_all": {}}
+    
+    def _build_sort_spec(self, sort_fields: Optional[List[Tuple[str, str]]], entity_type: str) -> List[Dict[str, Any]]:
+        """Build Elasticsearch sort specification"""
+        if not sort_fields:
+            default_sort_field = self.parent.core._get_default_sort_field(entity_type)
+            return [{default_sort_field: {"order": "asc"}}]  
         
         sort_spec = []
-        for field, order in list_params.sort_fields:
-            actual_field = self._map_sort_field(field, entity_metadata)
-                
-            # Configure case sensitivity for text fields
-            sort_config = {"order": order}
-            from app.metadata import get_entity_metadata, get_proper_entity_name
-            entity_name = get_proper_entity_name(collection)
-            entity_meta = get_entity_metadata(entity_name)
-            
-            is_string_non_enum = False
-            if entity_meta:
-                field_info = entity_meta.get_field_info(actual_field)
-                if field_info and field_info.type == 'String' and not entity_meta.is_enum_field(actual_field):
-                    is_string_non_enum = True
-                    
-            if not self.case_sensitive_sorting and is_string_non_enum:
-                # For case-insensitive sorting on non-enum string fields, always use .raw for scripts
-                script_field = self._get_database_field_name(actual_field, entity_metadata)
-                sort_config = {
-                    "_script": {
-                        "type": "string",
-                        "script": {
-                            "lang": "painless",
-                            "source": f"doc.containsKey('{script_field}') && doc['{script_field}'].size() > 0 ? doc['{script_field}'].value.toLowerCase() : ''"
-                        },
-                        "order": order
-                    }
-                }
-                sort_spec.append(sort_config)
-            else:
-                # For non-scripted sorting, use .raw for string fields only
-                sort_field = self._get_database_field_name(actual_field, entity_metadata)
-                
-                # For date fields, add missing value handling to prevent epoch dates
-                if entity_meta:
-                    field_info = entity_meta.get_field_info(actual_field)
-                    if field_info and field_info.type in ['Date', 'Datetime']:
-                        sort_config["missing"] = "_last"  # Put missing dates at end
-                
-                sort_spec.append({sort_field: sort_config})
+        for field, direction in sort_fields:
+            sort_spec.append({field: {"order": direction}})
         
         return sort_spec
     
-
-
-
-    async def delete_collection(self, collection: str) -> bool:
-        """Delete a collection."""
-        es = self._get_client()
-        try:
-            if await es.indices.exists(index=collection):
-                await es.indices.delete(index=collection)
-            return True
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="delete_collection"
-            )
-
-    async def delete_document(self, collection: str, doc_id: str) -> bool:
-        """Delete a document."""
-        es = self._get_client()
-        try:
-            if not await es.indices.exists(index=collection):
-                return False
-            await es.delete(index=collection, id=doc_id)
-            return True
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="delete_document"
-            )
-
-    async def remove_entity(self, collection: str) -> bool:
-        """Remove/drop entire entity index."""
-        es = self._get_client()
-        try:
-            if not await es.indices.exists(index=collection):
-                return True  # Already doesn't exist
-            await es.indices.delete(index=collection)
-            return True
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="remove_entity"
-            )
-
-    async def list_collections(self) -> List[str]:
-        """List all collections."""
-        es = self._get_client()
-        try:
-            indices = await es.indices.get_alias()
-            return list(indices.keys())
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity="collections",
-                operation="list_collections"
-            )
-
-    async def list_indexes(self, collection: str) -> List[Dict[str, Any]]:
-        """List all indexes for a collection."""
-        es = self._get_client()
-        try:
-            if not await es.indices.exists(index=collection):
-                return []
-            
-            mapping = await es.indices.get_mapping(index=collection)
-            properties = mapping[collection]['mappings'].get('properties', {})
-            standardized_indexes = []
-            
-            for field_name in properties.keys():
-                # In Elasticsearch, each field is essentially an index
-                # System fields typically start with underscore
-                is_system = field_name.startswith('_')
-                
-                standardized_indexes.append({
-                    'name': field_name,
-                    'fields': [field_name],
-                    'unique': False,  # Elasticsearch doesn't have unique constraints like MongoDB
-                    'system': is_system
-                })
-            
-            return standardized_indexes
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="list_indexes"
-            )
-
-    async def find_all(self, collection: str) -> List[Dict[str, Any]]:
-        """Get all documents from a collection."""
-        es = self._get_client()
-        try:
-            if not await es.indices.exists(index=collection):
-                return []
-                
-            res = await es.search(index=collection, query={"match_all": {}})
-            hits = res.get("hits", {}).get("hits", [])
-            return [{**hit["_source"], "id": self._normalize_id(hit["_id"])} for hit in hits]
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="find_all"
-            )
-
-    async def _ensure_collection_exists(self, collection: str, indexes: List[Dict[str, Any]]) -> None:
-        """Ensure a collection exists with required indexes."""
-        if not await self.collection_exists(collection):
-            await self.create_collection(collection, indexes)
-
-    async def create_index(self, collection: str, fields: List[str], unique: bool = False) -> None:
-        """Create an index on a collection."""
-        es = self._get_client()
-        try:
-            if not await es.indices.exists(index=collection):
-                await self.create_collection(collection, [{"fields": fields, "unique": unique}])
-                return
-                
-            # Update mappings for existing index
-            properties = {field: {"type": "keyword", "index": True} for field in fields}
-            await es.indices.put_mapping(
-                index=collection,
-                properties=properties
-            )
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="create_index"
-            )
-
-    async def delete_index(self, collection: str, fields: List[str]) -> None:
-        """Delete an index from a collection."""
-        es = self._get_client()
-        try:
-            if not await es.indices.exists(index=collection):
-                return
-                
-            # Get current mappings
-            mapping = await es.indices.get_mapping(index=collection)
-            properties = mapping[collection]['mappings'].get('properties', {})
-            
-            # Remove fields from mappings
-            for field in fields:
-                properties.pop(field, None)
-                
-            # Update mappings
-            await es.indices.put_mapping(
-                index=collection,
-                properties=properties
-            )
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="delete_index"
-            )
-
-    async def exists(self, collection: str, doc_id: str) -> bool:
-        """Check if a document exists."""
-        es = self._get_client()
-        try:
-            if not await es.indices.exists(index=collection):
-                return False
-                
-            response = await es.exists(index=collection, id=doc_id)
-            return bool(response)
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="exists"
-            )
-
-    async def supports_native_indexes(self) -> bool:
-        """Elasticsearch does not support native unique indexes"""
-        return False
+    def _prepare_datetime_fields(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert datetime fields for Elasticsearch storage (as ISO strings)"""
+        from datetime import datetime
+        
+        fields_meta = MetadataService.fields(entity_type)
+        data_copy = data.copy()
+        
+        for field_name, field_meta in fields_meta.items():
+            if field_name in data_copy and field_meta.get('type') == 'DateTime':
+                value = data_copy[field_name]
+                if isinstance(value, datetime):
+                    # Convert datetime to ISO string for ES storage
+                    data_copy[field_name] = value.isoformat()
+        
+        return data_copy
     
-    async def document_exists_with_field_value(self, collection: str, field: str, value: Any, exclude_id: Optional[str] = None) -> bool:
-        """Check if a document exists with the given field value"""
-        es = self._get_client()
-        try:
-            if not await es.indices.exists(index=collection):
-                return False
+    async def _validate_unique_constraints(
+        self, 
+        entity_type: str, 
+        data: Dict[str, Any], 
+        unique_constraints: List[List[str]], 
+        exclude_id: Optional[str] = None
+    ) -> bool:
+        """Validate unique constraints (Elasticsearch synthetic implementation)"""
+        
+        # Get unique constraints from metadata if not provided
+        if not unique_constraints:
+            metadata = MetadataService.get(entity_type) 
+            if metadata:
+                unique_constraints = metadata.get('unique_constraints', [])
+        
+        if not unique_constraints:
+            return True
             
-            # Check field type to determine correct query field
-            query_field = field
-            try:
-                mapping = await es.indices.get_mapping(index=collection)
-                existing_properties = mapping[collection]['mappings'].get('properties', {})
+        es = self.parent.core.get_connection()
+        index = entity_type
+        
+        if not await es.indices.exists(index=index):
+            return True  # No existing docs to check against
+            
+        for constraint_fields in unique_constraints:
+            # Build query to check for existing documents with same field values
+            must_clauses = []
+            for field in constraint_fields:
+                if field in data and data[field] is not None:
+                    # Use .raw field for exact string matching if it's a text field
+                    metadata = MetadataService.get(entity_type)
+                    field_type = metadata.get('fields', {}).get(field, {}).get('type', 'String') if metadata else 'String'
+                    
+                    if field_type == 'String':
+                        # Use .raw subfield for exact matching on strings
+                        must_clauses.append({"term": {f"{field}.raw": data[field]}})
+                    else:
+                        # Use direct field for non-string types
+                        must_clauses.append({"term": {field: data[field]}})
+            
+            if not must_clauses:
+                continue
                 
-                if field in existing_properties:
-                    field_type = existing_properties[field].get('type', 'text')
-                    if field_type == 'text':
-                        # For text fields, we need to use the .raw subfield for exact matching
-                        if 'fields' in existing_properties[field] and 'raw' in existing_properties[field]['fields']:
-                            query_field = f"{field}.raw"
-                        else:
-                            # Fall back to match query for text fields without raw subfield
-                            query = {"match": {field: value}}
-                            if exclude_id:
-                                query = {
-                                    "bool": {
-                                        "must": [{"match": {field: value}}],
-                                        "must_not": [{"term": {"_id": exclude_id}}]
-                                    }
-                                }
-                            result = await es.search(
-                                index=collection,
-                                body={"query": query, "size": 1}
-                            )
-                            return result['hits']['total']['value'] > 0
-            except Exception:
-                # If we can't get mapping info, use the original field name
-                pass
-            
-            # Build query to search for field value using term query (exact match)
-            query = {"term": {query_field: value}}
-            
-            # Exclude specific document ID if provided
+            # Exclude current document if updating
+            query = {"bool": {"must": must_clauses}}
             if exclude_id:
-                query = {
-                    "bool": {
-                        "must": [{"term": {query_field: value}}],
-                        "must_not": [{"term": {"_id": exclude_id}}]
-                    }
-                }
+                query["bool"]["must_not"] = [{"term": {"_id": exclude_id}}]
             
-            result = await es.search(
-                index=collection,
+            response = await es.search(
+                index=index,
                 body={"query": query, "size": 1}
             )
             
-            return result['hits']['total']['value'] > 0
-            
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=collection,
-                operation="document_exists_with_field_value"
-            )
-    
-    async def create_single_field_index(self, collection: str, field: str, index_name: str) -> None:
-        """Create a single field index for synthetic index support"""
-        es = self._get_client()
-        try:
-            if not await es.indices.exists(index=collection):
-                # Create collection with this field mapping
-                await self.create_collection(collection, [{"fields": [field], "unique": False}])
-                return
-                
-            # Check if field already exists and what type it is
-            try:
-                mapping = await es.indices.get_mapping(index=collection)
-                existing_properties = mapping[collection]['mappings'].get('properties', {})
-                
-                if field in existing_properties:
-                    # Field already exists - check if it's suitable for exact matching
-                    existing_type = existing_properties[field].get('type', 'text')
-                    if existing_type == 'text':
-                        # For text fields, we need to use the .raw subfield if it exists
-                        # or create a multi-field mapping
-                        if 'fields' not in existing_properties[field]:
-                            # Add raw subfield to existing text field
-                            properties = {
-                                field: {
-                                    "type": "text",
-                                    "fields": {
-                                        "raw": {
-                                            "type": "keyword",
-                                            "ignore_above": 256
-                                        }
-                                    }
-                                }
-                            }
-                            await es.indices.put_mapping(
-                                index=collection,
-                                properties=properties
-                            )
-                        # Field is already suitable or has been made suitable
-                        return
-                    elif existing_type == 'keyword':
-                        # Already perfect for exact matching
-                        return
-                
-                # Field doesn't exist - add it as keyword
-                properties = {field: {"type": "keyword"}}
-                await es.indices.put_mapping(
-                    index=collection,
-                    properties=properties
-                )
-                
-            except Exception as mapping_error:
-                # If we can't get or update mapping, log warning but continue
-                logging.warning(f"Failed to update mapping for field '{field}': {str(mapping_error)}")
-            
-        except Exception as e:
-            # Log warning but don't fail - index creation is optional for performance
-            logging.warning(f"Failed to create synthetic index '{index_name}' on field '{field}': {str(e)}")
-    
-    # ES-specific synthetic index methods
-    def _add_synthetic_hash_fields(self, data: Dict[str, Any], unique_constraints: List[List[str]]) -> Dict[str, Any]:
-        """Add synthetic hash fields for multi-field unique constraints"""
-        result = data.copy()
+            if response.get("hits", {}).get("total", {}).get("value", 0) > 0:
+                # Use first field in constraint (matches MongoDB pattern)
+                duplicate_field = constraint_fields[0]
+                duplicate_warning("Duplicate value for field ", entity=entity_type, entity_id=exclude_id or "new", field=duplicate_field)
+                return False
         
-        for constraint_fields in unique_constraints:
-            if len(constraint_fields) > 1:
-                # Multi-field constraint - add hash field
-                hash_field_name = self._get_hash_field_name(constraint_fields)
-                values = [str(data.get(field, "")) for field in constraint_fields]
-                hash_value = self._generate_constraint_hash(values)
-                result[hash_field_name] = hash_value
-        
-        return result
-    
-    async def _validate_synthetic_constraints(self, collection: str, data: Dict[str, Any], unique_constraints: List[List[str]]) -> None:
-        """Validate synthetic unique constraints"""
-        document_id = data.get('id')
-        
-        for constraint_fields in unique_constraints:
-            if len(constraint_fields) == 1:
-                # Single field constraint
-                field = constraint_fields[0]
-                value = data.get(field)
-                if value is not None and await self.document_exists_with_field_value(collection, field, value, document_id):
-                    raise SyntheticDuplicateError(collection, field, value)
-            else:
-                # Multi-field constraint - check hash field
-                hash_field_name = self._get_hash_field_name(constraint_fields)
-                hash_value = data.get(hash_field_name)
-                if hash_value and await self.document_exists_with_field_value(collection, hash_field_name, hash_value, document_id):
-                    # Create user-friendly error message
-                    field_desc = " + ".join(constraint_fields)
-                    values = [str(data.get(field, "")) for field in constraint_fields]
-                    value_desc = " + ".join(values)
-                    raise SyntheticDuplicateError(collection, field_desc, value_desc)
-    
-    def _get_hash_field_name(self, fields: List[str]) -> str:
-        """Generate consistent hash field name for multi-field constraints"""
-        return "_".join(sorted(fields)) + "_hash"
-    
-    def _generate_constraint_hash(self, values: List[str]) -> str:
-        """Generate consistent hash for multi-field constraints"""
-        import hashlib
-        combined = "|".join(values)
-        return hashlib.sha256(combined.encode()).hexdigest()
-    
-    async def prepare_document_for_save(self, collection: str, data: Dict[str, Any], entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Dict[str, Any]:
-        """Prepare document for save by converting datetime fields and adding synthetic hash fields"""
-        
-        # Step 1: Convert datetime fields based on metadata
-        processed_data = self._process_datetime_fields_for_save(data, entity_metadata)
-        
-        # Step 2: Add synthetic hash fields for unique constraints (ES always needs them)
-        if unique_constraints:
-            processed_data = self._add_synthetic_hash_fields(processed_data, unique_constraints)
-            
-        return processed_data
-    
-    async def validate_unique_constraints_before_save(self, collection: str, data: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> None:
-        """Validate unique constraints before saving using synthetic indexes"""
-        if unique_constraints:
-            await self._validate_synthetic_constraints(collection, data, unique_constraints)
+        return True
 
-    async def save_document(self, collection: str, data: Dict[str, Any], entity_metadata: Dict[str, Any], unique_constraints: Optional[List[List[str]]] = None) -> Tuple[Dict[str, Any], List[str]]:
-        """Save a document to the database with synthetic index support."""
-        self._ensure_initialized()
+
+class ElasticsearchEntities(EntityManager):
+    """Elasticsearch implementation of entity operations"""
+    
+    def __init__(self, parent: 'ElasticsearchDatabase'):
+        self.parent = parent
+    
+    async def exists(self, entity_type: str) -> bool:
+        """Check if index exists"""
+        self.parent._ensure_initialized()
+        es = self.parent.core.get_connection()
+        
+        return await es.indices.exists(index=entity_type)
+    
+    async def create(self, entity_type: str, unique_constraints: List[List[str]]) -> bool:
+        """Create index (Elasticsearch doesn't enforce unique constraints natively)"""
+        self.parent._ensure_initialized()
+        es = self.parent.core.get_connection()
         
         try:
-            warnings = []
-            
-            # Prepare document with synthetic hash fields
-            prepared_data = await self.prepare_document_for_save(collection, data, unique_constraints, entity_metadata)
-            
-            # Validate unique constraints before save
-            await self.validate_unique_constraints_before_save(collection, prepared_data, unique_constraints)
-            
-            # Perform the actual save
-            es = self._get_client()
-            doc_id = prepared_data.get('id')
-            
-            # Let ES auto-create the index on first write - template will apply automatically
-            # No need to pre-create empty collections
-            
-            # Handle new documents vs updates
-            if not doc_id or (isinstance(doc_id, str) and doc_id.strip() == ""):
-                # New document - let Elasticsearch auto-generate ID
-                save_data = prepared_data.copy()
-                save_data.pop('id', None)
+            if await es.indices.exists(index=entity_type):
+                return True
                 
-                result = await es.index(index=collection, body=save_data)
-                doc_id_str = result['_id']
-            else:
-                # Update existing document
-                save_data = prepared_data.copy()
-                save_data.pop('id', None)
-                
-                await es.index(index=collection, id=doc_id, body=save_data)
-                doc_id_str = str(doc_id)
-            
-            # Get the saved document
-            saved_doc, get_warnings = await self.get_by_id(collection, doc_id_str)
-            warnings.extend(get_warnings)
-            
-            return saved_doc, warnings
-            
-        except SyntheticDuplicateError as e:
-            # Convert synthetic duplicate error to standard DuplicateError
-            raise DuplicateError(
-                entity=e.collection,
-                field=e.field,
-                value=e.value
-            )
+            await es.indices.create(index=entity_type)
+            return True
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
-                entity=collection,
-                operation="save_document"
+                entity=entity_type,
+                operation="create"
             )
     
-    async def _check_unique_indexes(self, collection: str, unique_constraints: List[List[str]]) -> List[str]:
-        """Check if unique indexes exist for the given constraints. Returns list of missing constraint descriptions."""
-        if not unique_constraints:
-            return []
-            
+    async def delete(self, entity_type: str) -> bool:
+        """Delete index"""
+        self.parent._ensure_initialized()
+        es = self.parent.core.get_connection()
+        
         try:
-            # Note: Elasticsearch doesn't have traditional unique constraints like MongoDB
-            # In Elasticsearch, uniqueness is typically enforced at the application level
-            # For now, we'll just warn that Elasticsearch doesn't support unique constraints natively
+            if await es.indices.exists(index=entity_type):
+                await es.indices.delete(index=entity_type)
+            return True
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="delete"
+            )
+    
+    async def get_all(self) -> List[str]:
+        """Get all index names"""
+        self.parent._ensure_initialized()
+        es = self.parent.core.get_connection()
+        
+        try:
+            response = await es.cat.indices(format="json")
+            return [index["index"] for index in response]
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity="",
+                operation="list_entities"
+            )
+
+
+class ElasticsearchIndexes(IndexManager):
+    """Elasticsearch implementation of index operations (limited functionality)"""
+    
+    def __init__(self, parent: 'ElasticsearchDatabase'):
+        self.parent = parent
+    
+    async def create(
+        self, 
+        entity_type: str, 
+        fields: List[str],
+        unique: bool = False,
+        name: Optional[str] = None
+    ) -> None:
+        """Create synthetic unique constraint mapping for Elasticsearch"""
+        if not unique:
+            return  # Only handle unique constraints
             
-            missing_constraints = []
-            for constraint_fields in unique_constraints:
-                constraint_desc = " + ".join(constraint_fields) if len(constraint_fields) > 1 else constraint_fields[0]
-                missing_constraints.append(f"Missing unique constraint for {constraint_desc} - Elasticsearch doesn't support unique indexes")
+        self.parent._ensure_initialized()
+        es = self.parent.core.get_connection()
+        
+        try:
+            # Ensure index exists
+            if not await es.indices.exists(index=entity_type):
+                await es.indices.create(index=entity_type)
             
-            return missing_constraints
+            if len(fields) == 1:
+                # Single field unique constraint - ensure it has .raw subfield for exact matching
+                field_name = fields[0]
+                properties = {
+                    field_name: {
+                        "type": "text",
+                        "fields": {
+                            "raw": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    }
+                }
+            else:
+                # Multi-field unique constraint - create hash field
+                hash_field_name = f"_hash_{'_'.join(sorted(fields))}"
+                properties = {
+                    hash_field_name: {
+                        "type": "keyword"
+                    }
+                }
+                # Also ensure all individual fields have proper mapping
+                for field_name in fields:
+                    properties[field_name] = {
+                        "type": "text",
+                        "fields": {
+                            "raw": {
+                                "type": "keyword", 
+                                "ignore_above": 256
+                            }
+                        }
+                    }
+            
+            # Update mapping
+            await es.indices.put_mapping(
+                index=entity_type,
+                properties=properties
+            )
             
         except Exception as e:
-            # Return empty list on error - Factory layer will handle notification
-            return []
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="create_index"
+            )
+    
+    async def get_all(self, entity_type: str) -> List[List[str]]:
+        """Get synthetic unique indexes (hash fields) for Elasticsearch"""
+        self.parent._ensure_initialized()
+        es = self.parent.core.get_connection()
+        
+        try:
+            if not await es.indices.exists(index=entity_type):
+                return []
+            
+            # For Elasticsearch, we look for hash fields that represent unique constraints
+            # Hash fields follow pattern: _hash_field1_field2_... for multi-field constraints
+            response = await es.indices.get_mapping(index=entity_type)
+            mapping = response.get(entity_type, {}).get("mappings", {}).get("properties", {})
+            
+            unique_constraints = []
+            processed_fields = set()
+            
+            for field_name in mapping.keys():
+                if field_name.startswith('_hash_'):
+                    # This is a hash field for multi-field unique constraint
+                    # Extract original field names from hash field name
+                    # Format: _hash_field1_field2_...
+                    fields_part = field_name[6:]  # Remove '_hash_'
+                    original_fields = fields_part.split('_')
+                    if len(original_fields) > 1:
+                        unique_constraints.append(original_fields)
+                        processed_fields.update(original_fields)
+                elif field_name not in processed_fields:
+                    # Single field that might have unique constraint
+                    # Check if it's a .raw field (which indicates unique constraint setup)
+                    field_config = mapping[field_name]
+                    if (isinstance(field_config, dict) and 
+                        'fields' in field_config and 
+                        'raw' in field_config['fields']):
+                        # This field has unique constraint
+                        unique_constraints.append([field_name])
+            
+            return unique_constraints
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="list_indexes"
+            )
+    
+    async def delete(self, entity_type: str, fields: List[str]) -> None:
+        """Delete synthetic unique constraint (limited in Elasticsearch)"""
+        # Elasticsearch doesn't allow removing fields from existing mappings
+        # In practice, you'd need to reindex to a new index without these fields
+        # For now, this is a no-op as field removal requires complex reindexing
+        
+        # Note: In a full implementation, this would:
+        # 1. Create new index without the constraint fields/hash fields
+        # 2. Reindex all data from old to new index  
+        # 3. Delete old index and alias new index to old name
+        # This is complex and not commonly done in production
+        pass
+
+
+class ElasticsearchDatabase(DatabaseInterface):
+    """Elasticsearch implementation of DatabaseInterface"""
+    
+    def _create_core_manager(self) -> CoreManager:
+        return ElasticsearchCore(self)
+    
+    def _create_document_manager(self) -> DocumentManager:
+        return ElasticsearchDocuments(self)
+    
+    def _create_entity_manager(self) -> EntityManager:
+        return ElasticsearchEntities(self)
+    
+    def _create_index_manager(self) -> IndexManager:
+        return ElasticsearchIndexes(self)
+    
+    async def supports_native_indexes(self) -> bool:
+        """Elasticsearch does not support native unique indexes"""
+        return False
