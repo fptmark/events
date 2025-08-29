@@ -1,11 +1,12 @@
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional, TypeVar, Type
+from typing import Dict, Any, Optional, TypeVar, Type, List, Tuple, Union
 from pydantic import BaseModel
 from beanie import Document
 import logging
 from datetime import datetime, timezone
 import re
+from urllib.parse import unquote
 
 
 # Path to the configuration file
@@ -37,10 +38,9 @@ def deep_merge_dicts(dest, override):
             dest[key] = value
 
 
-def get_metadata(entity: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
-    """Get metadata for a model with proper type hints"""
+def merge_overrides(entity: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge overrides from overrides.json with metadata"""
     overrides = load_settings(Path('overrides.json'), False) or {}
-    # name = metadata.get('fields', '')
     entity_cfg = overrides.get(entity, {})
     if entity_cfg:
         deep_merge_dicts(metadata, entity_cfg)
@@ -64,3 +64,59 @@ def validate_id(id: str) -> bool:
 def sanitize_field_name(field: str) -> str:
     """Sanitize a field name for database operations"""
     return field.strip().replace('.', '_')
+
+
+def pagination(page: int, totalRecords: int, pageSize: int = 25) -> Dict[str, Any]:
+    """
+    Build pagination response structure used by all models.
+    
+    Args:
+        page: Current page number
+        pageSize: Items per page  
+        totalRecords: Total number of items
+        
+    Returns:
+        Dictionary with pagination fields matching existing pattern
+    """
+    totalPages = (totalRecords + pageSize - 1) // pageSize if totalRecords > 0 else 0
+    
+    return {
+        "page": page,
+        "pageSize": pageSize,
+        "total": totalRecords,
+        "totalPages": totalPages
+    }
+
+
+# URL Parsing Utilities
+# =====================
+
+def parse_url_path(path: str) -> Tuple[str, Optional[str]]:
+    """
+    Extract entity name and entity ID from URL path.
+    
+    Args:
+        path: URL path like "/api/user/123" or "/api/user"
+        
+    Returns:
+        Tuple of (entity_name, entity_id)
+        
+    Raises:
+        ValueError: If path format is invalid
+    """
+    # Remove leading/trailing slashes and split
+    path_parts = [part for part in path.strip('/').split('/') if part]
+    
+    if not path_parts:
+        raise ValueError("Empty URL path")
+    
+    if path_parts[0] != 'api':
+        raise ValueError("Missing /api prefix in URL path")
+    
+    if len(path_parts) < 2:
+        raise ValueError("Bad URL format, expected /api/{entity}/{id?}")
+    
+    entity_name = path_parts[1].lower()  # Entity name after /api
+    entity_id = path_parts[2] if len(path_parts) > 2 else None
+    
+    return entity_name, entity_id
