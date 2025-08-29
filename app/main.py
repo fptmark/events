@@ -10,25 +10,22 @@ from app.db import DatabaseFactory
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.errors import DatabaseError
-# Note: ValidationError, NotFoundError, DuplicateError removed - using notification system
-
+from app.errors import DatabaseError 
+from app.services.metadata import MetadataService
 from app.routers.router import get_all_dynamic_routers
 
 from app.services.auth.cookies.redis_provider import CookiesAuth as Auth
-from app.services.metadata import MetadataService
 
-# from app.models.account_model import Account
-# from app.models.user_model import User
-# from app.models.profile_model import Profile
-# from app.models.tagaffinity_model import TagAffinity
-# from app.models.event_model import Event
-# from app.models.userevent_model import UserEvent
-# from app.models.url_model import Url
-# from app.models.crawl_model import Crawl
-
-# Initialize metadata service with entity list
-ENTITIES = ['Account', 'User', 'Profile', 'TagAffinity', 'Event', 'UserEvent', 'Url', 'Crawl']
+ENTITIES = [
+   "Account",
+   "User",
+   "Profile",
+   "TagAffinity",
+   "Event",
+   "UserEvent",
+   "Url",
+   "Crawl",
+]
 
 import logging
 
@@ -79,8 +76,9 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 db_type: str = config.get('database', '')
 db_uri: str = config.get('db_uri', '')
 db_name: str = config.get('db_name', '')
-validation = Config.validation(False)
-print(f"validation : get = {validation}.")
+get_validation = Config.validation(False)
+get_all_validation = Config.validation(True)
+print(f"Validations : get={get_validation}.  get_all={get_all_validation}")
 
 if (db_uri == '' or db_name == '' or db_type == ''):
     logger.error("Missing required database configuration")
@@ -106,7 +104,7 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing metadata service...")
     MetadataService.initialize(ENTITIES)
     logger.info("Metadata service initialized successfully")
-    
+
     logger.info(f"Registing routers")
     setup_routers(args.yaml)
 
@@ -155,22 +153,6 @@ app = FastAPI(
     # Disable Starlette's built-in exception middleware so our handlers work
     exception_handlers={}
 )
-
-# FORCE LOWERCASE URL MIDDLEWARE - Convert entire URL to lowercase BEFORE any processing
-@app.middleware("http")
-async def force_lowercase_url_middleware(request: Request, call_next):
-    """Convert the entire URL (path + query string) to lowercase before any processing"""
-    # Get the original scope
-    scope = request.scope
-    
-    # URL normalization now handled by RequestContext
-    
-    # Create new request with lowercase URL
-    new_request = Request(scope, request.receive)
-    
-    # Continue with processing
-    response = await call_next(new_request)
-    return response
 
 # Store FastAPI's original openapi method before we override it
 _original_openapi = app.openapi
@@ -236,8 +218,6 @@ app.add_middleware(
     allow_headers=["*"],
     max_age=3600,             # cache preflight for 1 hour
 )
-
-
 
 @app.exception_handler(DatabaseError)
 async def database_error_handler(request: Request, exc: DatabaseError):
