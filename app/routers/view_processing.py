@@ -17,14 +17,11 @@ from urllib.parse import unquote
 
 from app.config import Config
 from app.routers.router_factory import ModelImportCache
-from app.notification import notify_business_error, notify_validation_error
-from app.errors import NotFoundError
+from app.services.notification import validation_warning
+from app.services.metadata import MetadataService
 
 if TYPE_CHECKING:
-    from typing import Protocol
-    
-    class EntityModelProtocol(Protocol):
-        _metadata: Dict[str, Any]
+    from app.routers.router_factory import EntityModelProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -86,12 +83,12 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Optional[Dict[st
             if fk_id_field in entity_dict and entity_dict[fk_id_field]:
                 try:
                     # Import the related entity class
-                    fk_entity_name = fk_name.capitalize()
+                    fk_entity_name = MetadataService.get_proper_name(fk_name)
                     fk_entity_cls = ModelImportCache.get_model_class(fk_entity_name)
                     
                     # Get the related entity
-                    related_entity, _ = await fk_entity_cls.get(entity_dict[fk_id_field])
-                    related_data = related_entity.model_dump()
+                    related_response = await fk_entity_cls.get(entity_dict[fk_id_field], None)
+                    related_data = related_response.get('data', {})
                     
                     # Extract only the requested fields and add exists flag
                     fk_data = {"exists": True}
@@ -119,7 +116,7 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Optional[Dict[st
                     
                     # Extract clean error message and format consistently
                     error_msg = str(fk_error)
-                    fk_entity_name = fk_id_field[:-2].capitalize()  # Remove 'Id' suffix and capitalize
+                    fk_entity_name = MetadataService.get_proper_name(fk_id_field[:-2])  # Remove 'Id' suffix
                     
                     # Router packages complete notification with all context
                     if "Document not found:" in error_msg:
@@ -138,11 +135,11 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Optional[Dict[st
                     
                     # Add warning notification instead of raising ValidationError
                     # This allows data to be returned with FK validation warnings
-                    notify_business_error(
+                    validation_warning(
                         message=f"Id {missing_value} does not exist",
-                        field_name=fk_id_field,
                         entity=entity_name,
-                        entity_id=entity_id
+                        entity_id=entity_id,
+                        field=fk_id_field
                     )
                     
                     # Set FK data to indicate non-existence but continue processing
@@ -150,7 +147,12 @@ async def add_view_data(entity_dict: Dict[str, Any], view_spec: Optional[Dict[st
     
     except Exception as view_error:
         # Log view parsing error but continue without FK data
-        notify_validation_error(f"Failed to parse view parameter: {str(view_error)}", entity=entity_name)
+        validation_warning(
+            message=f"Failed to parse view parameter: {str(view_error)}",
+            entity=entity_name,
+            entity_id="unknown",
+            field="view"
+        )
 
 
 async def auto_validate_fk_fields(entity_dict: Dict[str, Any], entity_name: str, entity_cls: Type['EntityModelProtocol']) -> None:
@@ -161,17 +163,19 @@ async def auto_validate_fk_fields(entity_dict: Dict[str, Any], entity_name: str,
     for field_name, field_meta in metadata.get('fields', {}).items():
         if field_meta.get('type') == 'ObjectId' and entity_dict.get(field_name):
             try:
-                fk_entity_name = field_name[:-2].capitalize()  # Remove 'Id' suffix
+                fk_entity_name = MetadataService.get_proper_name(field_name[:-2])  # Remove 'Id' suffix
                 fk_entity_cls = ModelImportCache.get_model_class(fk_entity_name)
-                await fk_entity_cls.get(entity_dict[field_name])
-            except NotFoundError:
+                response = await fk_entity_cls.get(entity_dict[field_name], None)
+                if not response.get('data'):
+                    raise Exception(f"FK not found: {entity_dict[field_name]}")
+            except Exception:
                 # Add warning notification instead of raising ValidationError
                 # This allows data to be returned with FK validation warnings
-                notify_business_error(
+                validation_warning(
                     message=f"Id {entity_dict[field_name]} does not exist",
-                    field_name=field_name,
                     entity=entity_name,
-                    entity_id=entity_id
+                    entity_id=entity_id,
+                    field=field_name
                 )
             except ImportError:
                 # FK entity class doesn't exist - skip validation

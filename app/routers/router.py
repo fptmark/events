@@ -13,7 +13,7 @@ import logging
 
 from app.routers.router_factory import get_entity_names, ModelImportCache
 from app.routers.endpoint_handlers import (
-    list_entities_handler, get_entity_handler, create_entity_handler,
+    get_all_handler, get_entity_handler, create_entity_handler,
     update_entity_handler, delete_entity_handler, EntityModelProtocol
 )
 
@@ -35,7 +35,7 @@ def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
     
-    class EntityListResponse(BaseModel):
+    class EntityAllResponse(BaseModel):
         data: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
         # message: Optional[str] = None
         # level: Optional[str] = None
@@ -47,9 +47,9 @@ def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[
     
     # Dynamically set the class names for better OpenAPI docs
     EntityResponse.__name__ = f"{entity_name}Response"
-    EntityListResponse.__name__ = f"{entity_name}ListResponse"
+    EntityAllResponse.__name__ = f"{entity_name}AllResponse"
     
-    return EntityResponse, EntityListResponse
+    return EntityResponse, EntityAllResponse
 
 
 class SimpleDynamicRouterFactory:
@@ -81,25 +81,25 @@ class SimpleDynamicRouterFactory:
             # Return empty router if imports fail
             return router
         
-        entity_lower = entity_name.lower()
+        entity_lower = entity_name
         
         # Create response models for OpenAPI documentation
-        EntityResponse, EntityListResponse = create_response_models(entity_cls)
+        EntityResponse, EntityAllResponse = create_response_models(entity_cls)
         
         # Use proper FastAPI decorators for better OpenAPI schema generation
         
         @router.get(
             "",
-            summary=f"List all {entity_lower}s",
+            summary=f"Get all {entity_lower}s",
             response_description=f"List of {entity_lower}s with metadata",
-            response_model=EntityListResponse,
+            response_model=EntityAllResponse,
             responses={
                 200: {"description": f"Successfully retrieved {entity_lower} list"},
                 500: {"description": "Server error"}
             }
         )
-        async def list_entities(request: Request) -> Dict[str, Any]:  # noqa: F811
-            return await list_entities_handler(entity_cls, entity_name, request)
+        async def get_all(request: Request) -> Dict[str, Any]:  # noqa: F811
+            return await get_all_handler(entity_cls, entity_name, request)
         
         @router.get(
             "/{entity_id}",
@@ -127,8 +127,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def create_entity(entity_data: create_cls) -> Dict[str, Any]:  # noqa: F811
-            return await create_entity_handler(entity_cls, entity_name, entity_data)
+        async def create_entity(entity_data: create_cls, request: Request) -> Dict[str, Any]:  # noqa: F811
+            return await create_entity_handler(entity_cls, entity_name, entity_data, request)
         
         @router.put(
             "/{entity_id}",
@@ -143,8 +143,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def update_entity(entity_id: str, entity_data: update_cls) -> Dict[str, Any]:  # noqa: F811
-            return await update_entity_handler(entity_cls, entity_name, entity_id, entity_data)
+        async def update_entity(entity_id: str, entity_data: update_cls, request: Request) -> Dict[str, Any]:  # noqa: F811
+            return await update_entity_handler(entity_cls, entity_name, entity_id, entity_data, request)
         
         @router.delete(
             "/{entity_id}",
@@ -157,8 +157,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def delete_entity(entity_id: str) -> Dict[str, Any]:  # noqa: F811
-            return await delete_entity_handler(entity_cls, entity_name, entity_id)
+        async def delete_entity(entity_id: str, request: Request) -> Dict[str, Any]:  # noqa: F811
+            return await delete_entity_handler(entity_cls, entity_name, entity_id, request)
         
         logger.info(f"Created dynamic router for entity: {entity_name}")
         return router
