@@ -36,38 +36,30 @@ class Config:
             'server_port': 8000,
             'environment': 'production',
             'log_level': 'info',
-            'fk_validation': '',
+            'validation': '',
             'case_sensitive': False
         }
 
     @staticmethod
-    def validations(get_multiple: bool) -> Tuple[bool, bool]:
+    def validation(get_multiple: bool) -> bool:
         """Get the current validation type from config
         
         Rules:
-        - fk_validation="single|multiple" : validate fk on single get (get) or multiple gets (get_all, list)
-        - Any other value: No FK validation
+        - validation="single|multiple" : validate on single get (get) or multiple gets (get_all, list)
+        - Any other value: No validation
+        Notes:
+        - save validates everything by default
+        - get/get_all validates fk only
+        - get with view does selective fk validation based on view spec
         """
-        validation = Config._config.get('fk_validation', '')
+        validation = Config._config.get('validation', '')
         
         if validation == 'multiple':
-            # get_all setting applies to ALL operations (both single get and get_all)
-            fk_validation = True
+            # multiple setting applies to ALL operations (both single get and get_all)
+            return True
         elif validation == 'single' and not get_multiple:
-            # get setting applies only to single get operations
-            fk_validation = True
+            # single setting applies only to single get operations
+            return True
         else:
             # No FK validation
-            fk_validation = False
-
-        unique_validation = Config._config.get('unique_validation', False)
-        return (fk_validation, unique_validation)
-
-    # @staticmethod
-    # def is_get_validation(get_all: bool) -> bool:
-    #     """Check if validation should occur for get operations"""
-    #     if get_all and Config.validation_type() == 'get-all':
-    #         return True
-    #     else:
-    #          return Config.validation_type() in ['get', 'get-all']
-
+            return False

@@ -5,8 +5,7 @@
     "db_name"		: "eventMgr",
     "host"		: "0.0.0.0",
     "server_port"	: 5500,
-    "fk_validationN": "multiple",
-    "unique_validation" : true,
+    "validationN"	: "multiple",
     "log_level"		: "info",
     "environment"	: "development",
     "auth.cookies.redis" : {
