@@ -17,6 +17,15 @@ class Config:
         cls._config = cls._load_system_config(config_file)
         return cls._config
 
+    @staticmethod
+    def get_db_params(config_data: dict) -> Tuple[str, str, str]:
+        """Get database parameters from config data"""
+        return (
+            config_data.get('database', ''),
+            config_data.get('db_uri', ''), 
+            config_data.get('db_name', '')
+        )
+
 
     @staticmethod
     def _load_system_config(config_file: str) -> Dict[str, Any]:

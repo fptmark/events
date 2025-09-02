@@ -177,3 +177,9 @@ class DatabaseFactory:
             id=doc_id,
             entity_type=entity_type
         )
+
+    @classmethod
+    async def remove_entity(cls, entity_type: str) -> bool:
+        """Remove entire entity collection/index"""
+        db = cls.get_instance()
+        return await db.entities.delete(entity_type)

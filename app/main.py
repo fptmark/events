@@ -154,6 +154,24 @@ app = FastAPI(
     exception_handlers={}
 )
 
+# FORCE LOWERCASE URL MIDDLEWARE - Convert entity names to lowercase BEFORE routing
+@app.middleware("http")
+async def force_lowercase_url_middleware(request: Request, call_next):
+    """Convert entity names in URL path to lowercase before routing"""
+    original_path = request.url.path
+    
+    # Convert path to lowercase for API routes
+    if original_path.startswith("/api/"):
+        new_path = original_path.lower()
+        if new_path != original_path:
+            logger.info(f"URL normalization: {original_path} -> {new_path}")
+            # Modify the scope directly
+            request.scope["path"] = new_path
+    
+    # Continue with processing
+    response = await call_next(request)
+    return response
+
 # Store FastAPI's original openapi method before we override it
 _original_openapi = app.openapi
 
