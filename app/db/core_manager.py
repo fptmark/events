@@ -39,7 +39,8 @@ class CoreManager(ABC):
     def _get_default_sort_field(self, entity_type: str) -> str:
         from app.services.metadata import MetadataService
         
-        for field in MetadataService.get(entity_type).get('fields', {}):
-            if MetadataService.get(entity_type, field).get('autoGenerate', False):
-                return field
+        fields = MetadataService.fields(entity_type)
+        for field_name, field_info in fields.items():
+            if field_info.get('autoGenerate', False):
+                return field_name
         return self.id_field
