@@ -11,15 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import utils
 from .user_data import UserDataFactory
 from .account_data import AccountDataFactory
-
-# Registry for factory discovery
-DATA_FACTORIES = {
-    'user': UserDataFactory,
-    'account': AccountDataFactory,
-}
 
 
 class DataFactory:
@@ -38,39 +31,36 @@ class DataFactory:
         """
         entity_lower = entity_type.lower()
         
-        # if entity_lower not in DATA_FACTORIES:
-        #     return {}
-            
-        factory_class = DATA_FACTORIES[entity_lower]
-        
-        # Call the factory's get_test_record_by_id method
-        if hasattr(factory_class, 'get_test_record_by_id'):
-            return factory_class.get_test_record_by_id(record_id) or {}
+        if entity_lower == 'user':
+            return UserDataFactory.get_test_record_by_id(record_id) or {}
+        elif entity_lower == 'account':
+            return AccountDataFactory.get_test_record_by_id(record_id) or {}
         
         return {}
 
 
 def initialize_metadata_cache(verbose: bool = False) -> None:
     """Initialize entity metadata cache exactly once for all entities."""
-    from app.metadata import register_entity_metadata, get_entity_metadata
+    from app.services.metadata import MetadataService
     
-    for entity_name in DATA_FACTORIES.keys():
-        # Check if already initialized
-        if get_entity_metadata(entity_name):
-            continue
-            
-        if verbose:
-            print(f"🔧 Initializing metadata for {entity_name}...")
-            
-        model_class = utils.get_model_class(entity_name.capitalize())
-        raw_metadata = model_class.get_metadata() or {}
-        register_entity_metadata(entity_name, raw_metadata)
-        
-        if verbose:
-            print(f"✅ Registered metadata for {entity_name}")
+    # Initialize MetadataService with all entity names (same as main.py)
+    ENTITIES = [
+        "Account",
+        "User", 
+        "Profile",
+        "TagAffinity",
+        "Event",
+        "UserEvent",
+        "Url",
+        "Crawl",
+    ]
+    MetadataService.initialize(ENTITIES)
+    
+    if verbose:
+        print(f"✅ Metadata loaded into MetadataService")
 
 
-async def save_test_data(config_file: str, verbose: bool = False) -> bool:
+async def save_test_data(config_data: dict, verbose: bool = False) -> bool:
     """
     Save test data for all entities using proper SOC.
     1. Each entity factory generates its own data 
@@ -87,7 +77,9 @@ async def save_test_data(config_file: str, verbose: bool = False) -> bool:
         
         # Step 1: Each entity generates its own data
         all_entity_data = {}
-        for entity_name, factory_class in DATA_FACTORIES.items():
+        
+        # Process each entity factory directly
+        for entity_name, factory_class in [('user', UserDataFactory), ('account', AccountDataFactory)]:
             if verbose:
                 print(f"  📝 Generating data for {entity_name}...")
             
@@ -95,8 +87,8 @@ async def save_test_data(config_file: str, verbose: bool = False) -> bool:
             factory_class.generate_data()
             # Get all records from static test_scenarios
             all_scenarios = factory_class.test_scenarios
-            valid_records = [record for record_id, record in all_scenarios.items() if not ("bad_" in record_id or "expired_" in record_id or "multiple_errors" in record_id)]
-            invalid_records = [record for record_id, record in all_scenarios.items() if ("bad_" in record_id or "expired_" in record_id or "multiple_errors" in record_id)]
+            valid_records = [record for record in all_scenarios if not ("bad_" in record.get('id', '') or "expired_" in record.get('id', '') or "multiple_errors" in record.get('id', ''))]
+            invalid_records = [record for record in all_scenarios if ("bad_" in record.get('id', '') or "expired_" in record.get('id', '') or "multiple_errors" in record.get('id', ''))]
             all_records = valid_records + invalid_records
             
             if verbose:
@@ -105,30 +97,19 @@ async def save_test_data(config_file: str, verbose: bool = False) -> bool:
             all_entity_data[entity_name] = all_records
         
         # Step 2: Initialize metadata cache and apply metadata-driven field management
-        from app.metadata import register_entity_metadata, get_entity_metadata
+        # Metadata is now handled by MetadataService.initialize() above
         
         for entity_name, records in all_entity_data.items():
             if verbose:
                 print(f"  🔧 Initializing metadata and applying field management for {entity_name}...")
             
-            model_class = utils.get_model_class(entity_name.capitalize())
-            
-            # Initialize metadata cache exactly once per entity
-            entity_metadata = get_entity_metadata(entity_name)
-            if not entity_metadata:
-                raw_metadata = model_class.get_metadata() or {}
-                register_entity_metadata(entity_name, raw_metadata)
-                if verbose:
-                    print(f"    ✅ Registered metadata for {entity_name}")
-            
             for record in records:
-                apply_metadata_fields(record, model_class, verbose)
+                apply_metadata_fields(record, entity_name.capitalize(), verbose)
         
         # Step 3: Initialize DB once, save all data, close DB once  
-        config = Config.initialize(config_file)
-        db_type: str = config.get('database', '')
-        db_uri: str = config.get('db_uri', '')
-        db_name: str = config.get('db_name', '')
+        db_type: str = config_data.get('database', '')
+        db_uri: str = config_data.get('db_uri', '')
+        db_name: str = config_data.get('db_name', '')
         
         await DatabaseFactory.initialize(db_type, db_uri, db_name)
         
@@ -140,7 +121,7 @@ async def save_test_data(config_file: str, verbose: bool = False) -> bool:
             saved_count = 0
             for i, record in enumerate(records):
                 try:
-                    result, warnings = await DatabaseFactory.save_document(entity_name, record, [])
+                    result, warnings = await DatabaseFactory.save(entity_name, record, '', validate=False)
                     if result:
                         saved_count += 1
                         if warnings and verbose:
@@ -170,17 +151,17 @@ async def save_test_data(config_file: str, verbose: bool = False) -> bool:
         return False
 
 
-def apply_metadata_fields(record: Dict[str, Any], model_class, verbose: bool = False) -> None:
+def apply_metadata_fields(record: Dict[str, Any], entity_name: str, verbose: bool = False) -> None:
     """
-    Apply metadata-driven field management for any entity.
+    Apply metadata-driven field management for any entity using MetadataService.
     Handles required, autogenerate, and autocreate datetime fields.
     """
     try:
         from datetime import datetime, timezone
         import uuid
+        from app.services.metadata import MetadataService
         
-        metadata = model_class.get_metadata()
-        fields = metadata.get('fields', {})
+        fields = MetadataService.fields(entity_name)
         current_time = datetime.now(timezone.utc)
         
         for field_name, field_info in fields.items():

@@ -30,26 +30,26 @@ class CombinationTester:
             
         return [
             # View + Single Sort
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=username", "View with single sort (username asc)", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=-firstName", "View with single sort (firstName desc)", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=dob", "View with date sort", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=netWorth", "View with currency sort", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=username", "View with single sort (username asc)", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=-firstName", "View with single sort (firstName desc)", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=dob", "View with date sort", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=netWorth", "View with currency sort", 200),
             
             # View + Multiple Sort
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=firstName,lastName", "View with multiple sort (names)", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=-dob,firstName", "View with date desc then name sort", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=gender,-netWorth", "View with enum then currency desc sort", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=firstName,lastName", "View with multiple sort (names)", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=-dob,firstName", "View with date desc then name sort", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=gender,-netWorth", "View with enum then currency desc sort", 200),
             
             # View + Single Filter
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=gender:male", "View with single filter (gender)", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=isAccountOwner:true", "View with boolean filter", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=netWorth:gte:50000", "View with currency range filter", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=dob:gte:1990-01-01", "View with date range filter", 200),
+            TestCase("GET", "User", "", "view=account(id)&filter=gender:male", "View with single filter (gender)", 200),
+            TestCase("GET", "User", "", "view=account(id)&filter=isAccountOwner:true", "View with boolean filter", 200),
+            TestCase("GET", "User", "", "view=account(id)&filter=netWorth:gte:50000", "View with currency range filter", 200),
+            TestCase("GET", "User", "", "view=account(id)&filter=dob:gte:1990-01-01", "View with date range filter", 200),
             
             # View + Multiple Filter
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=gender:male,isAccountOwner:true", "View with multiple filters", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=dob:gte:1960-01-01,netWorth:gte:0", "View with date and currency filters", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=gender:female,dob:lt:1995-01-01,isAccountOwner:false", "View with complex multiple filters", 200),
+            TestCase("GET", "User", "", "view=account(id)&filter=gender:male,isAccountOwner:true", "View with multiple filters", 200),
+            TestCase("GET", "User", "", "view=account(id)&filter=dob:gte:1960-01-01,netWorth:gte:0", "View with date and currency filters", 200),
+            TestCase("GET", "User", "", "view=account(id)&filter=gender:female,dob:lt:1995-01-01,isAccountOwner:false", "View with complex multiple filters", 200),
             
             # Pagination + Single Sort
             TestCase("GET", "User", "", "sort=username&pageSize=3", "Pagination with single sort", 200),
@@ -81,11 +81,11 @@ class CombinationTester:
             TestCase("GET", "User", "", "sort=-dob,firstName&filter=netWorth:gte:50000,gender:female", "Complex sort with complex filters", 200),
             
             # All 4 parameters combined
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=firstName&filter=gender:male&pageSize=3", "All parameters: view + sort + filter + pagination", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=-dob,firstName&filter=isAccountOwner:true,netWorth:gte:0&page=1&pageSize=2", "All parameters with multiple sort/filter", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&sort=gender,-netWorth&filter=dob:gte:1960-01-01,dob:lt:2000-01-01&pageSize=5", "All parameters with date range filtering", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=firstName&filter=gender:male&pageSize=3", "All parameters: view + sort + filter + pagination", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=-dob,firstName&filter=isAccountOwner:true,netWorth:gte:0&page=1&pageSize=2", "All parameters with multiple sort/filter", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=gender,-netWorth&filter=dob:gte:1960-01-01,dob:lt:2000-01-01&pageSize=5", "All parameters with date range filtering", 200),
             
             # Edge case combinations
             TestCase("GET", "User", "", "sort=firstName&filter=firstName:Valid", "Sort and filter by same field", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D&filter=accountId:nonexistent_account_123456", "View with filter on FK field", 200),
+            TestCase("GET", "User", "", "view=account(id)&filter=accountId:nonexistent_account_123456", "View with filter on FK field", 200),
         ]

@@ -208,7 +208,8 @@ class TestDataCreator:
     
     async def wipe_all_test_data(self):
         """Remove ALL data from database - use with caution!"""
-        from app.metadata import get_all_entity_names
+        # Hard-coded entity list since get_all_entity_names removed
+        entity_names = ["User", "Account", "Profile", "Event", "UserEvent", "TagAffinity", "Url", "Crawl"]
         
         print("💥 WIPING ALL DATA - This will remove ALL collections/indices!")
         

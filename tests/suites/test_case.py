@@ -123,15 +123,16 @@ class TestCase:
         
         try:
             # Get entity metadata (initialized at framework startup)
-            from app.metadata import get_entity_metadata
-            entity_metadata = get_entity_metadata(self.entity)
+            from app.services.metadata import MetadataService
+            entity_metadata = MetadataService.get(self.entity)
             
             # Generate expected errors - detect bad fields
             expected_errors = []
             
             if self.expected_status in [200, 201]:
                 for field in get_url_fields(self.url):
-                    if not entity_metadata.is_valid_field(field): # type: ignore
+                    # Check if field exists in metadata
+                    if field not in MetadataService.fields(self.entity):
                         expected_errors.append({'type': 'application', 'message': f'Invalid field \'{field}\' does not exist in entity'})
 
             entity_data = DataFactory.get_data_record(self.entity, self.id)
@@ -174,11 +175,11 @@ class TestCase:
             if not entity_metadata:
                 return warnings
             
-            for field_name, field_info in entity_metadata.fields.items():
+            for field_name, field_info in MetadataService.fields(self.entity).items():
                 field_value = entity_data.get(field_name)
                 
                 # Required field validation
-                if field_info.required and field_value is None:
+                if field_info.get('required') and field_value is None:
                     warnings.append({
                         "type": "validation",
                         "field": field_name,
@@ -186,15 +187,15 @@ class TestCase:
                     })
                 
                 # Enum validation
-                if field_value is not None and field_info.enum_values:
-                    if field_value not in field_info.enum_values:
+                if field_value is not None and field_info.get('enum', {}).get('values'):
+                    if field_value not in field_info.get('enum', {}).get('values', []):
                         warnings.append({
                             "type": "validation",
                             "field": field_name
                         })
                 
                 # Currency validation
-                if field_value is not None and field_info.type == 'Currency':
+                if field_value is not None and field_info.get('type') == 'Currency':
                     if isinstance(field_value, (int, float)) and field_value < 0:
                         warnings.append({
                             "type": "validation",
@@ -202,7 +203,7 @@ class TestCase:
                         })
                 
                 # Email validation
-                if field_value is not None and field_info.type == 'String' and 'email' in field_name.lower():
+                if field_value is not None and field_info.get('type') == 'String' and 'email' in field_name.lower():
                     if isinstance(field_value, str) and '@' not in field_value:
                         warnings.append({
                             "type": "validation",

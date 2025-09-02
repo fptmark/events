@@ -9,22 +9,11 @@ from datetime import datetime
 import json
 import re
 from urllib.parse import urlparse, parse_qs
+from app.services.metadata import MetadataService
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-# Graceful imports - handle missing dependencies
-try:
-    import utils
-    from app.metadata import MetadataManager, register_entity_metadata, get_entity_metadata
-    METADATA_AVAILABLE = True
-except ImportError:
-    # Mock metadata functions for testing without full app dependencies
-    def get_entity_metadata(entity_name):
-        return None
-    METADATA_AVAILABLE = False
-
+# sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# sys.path.insert(0, str(Path(__file__).parent.parent))
 
 class ValidationReporter:
     """Standardized error reporting with consistent format and try/catch protection."""
@@ -64,8 +53,10 @@ class FieldTypeConverter:
     @staticmethod
     def convert_for_comparison(actual_value: Any, expected_value: str, field_info) -> Tuple[Any, Any]:
         """Convert actual and expected values to compatible types for comparison."""
+        actual_typed: Any = actual_value
+        expected_typed: Any = expected_value
         try:
-            field_type = field_info.type if field_info else 'String'
+            field_type = field_info.get('type') if field_info else 'String'
             
             if field_type in ['Integer', 'Currency', 'Float']:
                 try:
@@ -117,7 +108,7 @@ class FieldTypeConverter:
     def compare_values(val1: Any, val2: Any, field_info) -> int:
         """Compare two values using metadata-aware type handling. Returns -1, 0, or 1."""
         try:
-            field_type = field_info.type if field_info else 'String'
+            field_type = field_info.get('type') if field_info else 'String'
             
             # Handle None values
             if val1 is None and val2 is None:
@@ -253,14 +244,18 @@ class StructureValidator:
             if not self.test_case.is_list_request():
                 return True
             
+            # Pagination fields are under 'pagination' key
             if 'pagination' not in self.result:
-                ValidationReporter.report_error("Pagination Structure", "Missing pagination object in list response", self.verbose)
+                ValidationReporter.report_error("Pagination", "Missing 'pagination' field", self.verbose)
                 return False
-            
-            pagination = self.result['pagination']
-            required_fields = ['page', 'per_page', 'total', 'total_pages', 'has_next', 'has_prev']
-            
-            return ValidationReporter.check_required_fields(pagination, required_fields, "Pagination", self.verbose)
+                
+            pagination_data = self.result['pagination']
+            if pagination_data is None:
+                ValidationReporter.report_error("Pagination", "Pagination cannot be null for list responses", self.verbose)
+                return False
+                
+            required_fields = ['page', 'pageSize', 'total', 'totalPages']
+            return ValidationReporter.check_required_fields(pagination_data, required_fields, "Pagination", self.verbose)
         except Exception as e:
             print(f"    ❌ ERROR in StructureValidator._validate_pagination_structure: {e}")
             sys.exit(1)
@@ -269,8 +264,8 @@ class StructureValidator:
 class SortValidator:
     """Specialized sorting validation."""
     
-    def __init__(self, entity_metadata, verbose: bool = False):
-        self.entity_metadata = entity_metadata
+    def __init__(self, test_case, verbose: bool = False):
+        self.test_case = test_case
         self.verbose = verbose
     
     def validate_sort_order(self, data: List[Dict], sort_criteria: List[Tuple[str, str]], invalid_fields: set) -> bool:
@@ -297,7 +292,7 @@ class SortValidator:
                     next_val = next_record.get(field_name)
                     
                     # Get field info for proper type-aware comparison
-                    field_info = self.entity_metadata.get_field_info(field_name) if self.entity_metadata else None
+                    field_info = MetadataService.get(self.test_case.entity, field_name)
                     comparison = FieldTypeConverter.compare_values(current_val, next_val, field_info)
                     
                     if comparison == 0:
@@ -326,8 +321,8 @@ class SortValidator:
 class FilterValidator:
     """Specialized filtering validation."""
     
-    def __init__(self, entity_metadata, verbose: bool = False):
-        self.entity_metadata = entity_metadata
+    def __init__(self, test_case, verbose: bool = False):
+        self.test_case = test_case
         self.verbose = verbose
     
     def validate_filters(self, data: List[Dict], filter_criteria: Dict[str, Any], invalid_fields: set) -> bool:
@@ -397,7 +392,7 @@ class FilterValidator:
     def _validate_single_filter(self, actual_value: Any, operator: str, expected_value: str, field_name: str, record_index: int) -> bool:
         """Validate a single filter condition."""
         try:
-            field_info = self.entity_metadata.get_field_info(field_name) if self.entity_metadata else None
+            field_info = MetadataService.get(self.test_case.entity, field_name)
             
             if operator == 'eq':
                 return self._validate_equality_filter(actual_value, expected_value, field_info, field_name, record_index)
@@ -410,9 +405,9 @@ class FilterValidator:
     def _validate_equality_filter(self, actual_value: Any, expected_value: str, field_info, field_name: str, record_index: int) -> bool:
         """Validate equality filter with type-aware comparison."""
         try:
-            field_type = field_info.type if field_info else 'String'
+            field_type = field_info.get('type') if field_info else 'String'
             
-            if field_type == 'String' and not (field_info and self.entity_metadata.is_enum_field(field_name)):
+            if field_type == 'String' and not (field_info and field_info.get('enum')):
                 # String fields use partial matching (contains)
                 if actual_value is None:
                     ValidationReporter.report_error(f"Filter mismatch at record {record_index}", 
@@ -429,7 +424,7 @@ class FilterValidator:
                     return False
             else:
                 # Non-string fields use exact matching
-                expected_typed = self._convert_filter_value(expected_value, field_info)
+                expected_typed = self._convert_filter_value(expected_value, field_name)
                 if actual_value != expected_typed:
                     ValidationReporter.report_error(f"Filter mismatch at record {record_index}", 
                                                   f"{field_name}='{actual_value}', expected '{expected_typed}'", self.verbose)
@@ -485,10 +480,9 @@ class FilterValidator:
         """Map filter field name to actual response field name."""
         try:
             # Use metadata system to get proper field name
-            if self.entity_metadata:
-                proper_field_name = self.entity_metadata.get_field_name(filter_field_name)
-                if proper_field_name and proper_field_name in record:
-                    return proper_field_name
+            proper_field_name = MetadataService.get_proper_name(self.test_case.entity, filter_field_name)
+            if proper_field_name and proper_field_name in record:
+                return proper_field_name
             
             # If metadata doesn't have it, try exact match
             if filter_field_name in record:
@@ -500,13 +494,12 @@ class FilterValidator:
             print(f"    ❌ ERROR in FilterValidator._map_response_field_name: {e}")
             sys.exit(1)
     
-    def _convert_filter_value(self, filter_value: str, field_info) -> Any:
+    def _convert_filter_value(self, filter_value: str, field_name: str) -> Any:
         """Convert string filter value to proper type."""
         try:
-            if not field_info:
+            field_type = MetadataService.get(self.test_case.entity, field_name, 'type')
+            if not field_type:
                 return filter_value
-            
-            field_type = field_info.type
             
             if field_type == 'Boolean':
                 return filter_value.lower() in ['true', '1', 'yes']
@@ -529,16 +522,9 @@ class ListValidator:
         self.test_case = test_case
         self.verbose = verbose
         
-        # Get entity metadata
-        try:
-            self.entity_metadata = get_entity_metadata(test_case.entity)
-        except Exception as e:
-            print(f"    ❌ ERROR getting entity metadata in ListValidator: {e}")
-            sys.exit(1)
-        
         # Initialize specialized validators
-        self.sort_validator = SortValidator(self.entity_metadata, verbose)
-        self.filter_validator = FilterValidator(self.entity_metadata, verbose)
+        self.sort_validator = SortValidator(test_case, verbose)
+        self.filter_validator = FilterValidator(test_case, verbose)
     
     def validate(self) -> bool:
         """Main list validation entry point."""
@@ -635,12 +621,6 @@ class ContentValidator:
         self.config = config
         self.verbose = verbose
         
-        # Get entity metadata
-        try:
-            self.entity_metadata = get_entity_metadata(test_case.entity)
-        except Exception as e:
-            print(f"    ❌ ERROR getting entity metadata in ContentValidator: {e}")
-            sys.exit(1)
     
     def validate(self) -> bool:
         """Main content validation entry point."""
@@ -690,9 +670,8 @@ class ContentValidator:
             actual_data = self.result.get('data', {})
             
             # Check auto-generated fields exist
-            if self.entity_metadata:
-                for field_name, field_info in self.entity_metadata.fields.items():
-                    if field_info.auto_generate or field_info.auto_update:
+            for field_name, field_info in MetadataService.fields(self.test_case.entity).items():
+                    if field_info.get('autoGenerate') or field_info.get('autoUpdate'):
                         if field_name not in actual_data or not actual_data[field_name]:
                             ValidationReporter.report_error("Expected Response", 
                                                           f"Missing auto-generated field '{field_name}' in actual data", self.verbose)

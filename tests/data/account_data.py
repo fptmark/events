@@ -18,19 +18,22 @@ class AccountDataFactory:
     """Data generation for Account entity - combines fixed scenarios with dynamic generation"""
     
     # Static test scenarios
-    test_scenarios = {
-        "507f1f77bcf86cd799439011": {
+    test_scenarios = [
+        {
             "id": "507f1f77bcf86cd799439011",
             "name": "Test Account",
             "createdAt": "2023-01-01T00:00:00Z",
             "expiredAt": "2025-12-31T23:59:59Z"
         }
-    }
+    ]
     
     @staticmethod
     def get_test_record_by_id(record_id: str) -> Optional[Dict]:
         """Get test record by ID"""
-        return AccountDataFactory.test_scenarios.get(record_id)
+        for record in AccountDataFactory.test_scenarios:
+            if record.get('id') == record_id:
+                return record
+        return None
     
     @staticmethod
     def generate_data():
@@ -44,7 +47,7 @@ class AccountDataFactory:
         
         # Add random records to test scenarios
         for record in random_valid + random_invalid:
-            AccountDataFactory.test_scenarios[record['id']] = record
+            AccountDataFactory.test_scenarios.append(record)
     
     
     

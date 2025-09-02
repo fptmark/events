@@ -29,12 +29,12 @@ class ViewParameterTester:
             return ViewParameterTester._test_cases
             
         return [
-            TestCase("GET", "User", "valid_all_user_123456", "view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get valid user with account ID view", 200),
-            TestCase("GET", "User", "valid_all_user_123456", "view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", "Get valid user with full account view", 200),
-            TestCase("GET", "User", "bad_fk_user_123456", "view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with bad FK and account view", 200, view_objects={"account": {"exists": False}}),
-            TestCase("GET", "User", "multiple_errors_user_123456", "view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user with multiple errors and account view", 200, view_objects={"account": {"exists": False}}),
-            TestCase("GET", "User", "valid_all_user_123456", "view=%7B%22account%22%3A%5B%22nonexistent_field%22%5D%7D", "Get valid user with invalid view field", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user list with account ID view", 200),
-            TestCase("GET", "User", "", "view=%7B%22account%22%3A%5B%22id%22%2C%22createdAt%22%2C%22expiredAt%22%5D%7D", "Get user list with full account view", 200),
-            TestCase("GET", "User", "", "pageSize=3&view=%7B%22account%22%3A%5B%22id%22%5D%7D", "Get user list with pagination and view", 200),
+            TestCase("GET", "User", "valid_user_1", "view=account(id)", "Get valid user with account ID view", 200),
+            TestCase("GET", "User", "valid_user_1", "view=account(id,createdAt,expiredAt)", "Get valid user with full account view", 200),
+            TestCase("GET", "User", "bad_fk_user_123456", "view=account(id)", "Get user with bad FK and account view", 200, view_objects={"account": {"exists": False}}),
+            TestCase("GET", "User", "multiple_errors_user_123456", "view=account(id)", "Get user with multiple errors and account view", 200, view_objects={"account": {"exists": False}}),
+            TestCase("GET", "User", "valid_user_1", "view=account(nonexistent_field)", "Get valid user with invalid view field", 200),
+            TestCase("GET", "User", "", "view=account(id)", "Get user list with account ID view", 200),
+            TestCase("GET", "User", "", "view=account(id,createdAt,expiredAt)", "Get user list with full account view", 200),
+            TestCase("GET", "User", "", "pageSize=3&view=account(id)", "Get user list with pagination and view", 200),
         ]
