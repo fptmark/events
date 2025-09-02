@@ -14,11 +14,10 @@ from urllib.parse import unquote
 from fastapi import Request
 from pydantic import BaseModel
 
-from app.config import Config
 from app.routers.router_factory import ModelImportCache, EntityModelProtocol
 from app.services.notification import Notification, ErrorType, WarningType
-# Old error classes removed - using notification system instead
 from app.services.request_context import RequestContext
+from app.utils import pagination
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ async def get_all_handler(entity_cls: Type[EntityModelProtocol], entity_name: st
     proper_entity_name = RequestContext.entity_type
     
     # Start notifications for this request
-    Notification.start(entity=proper_entity_name, operation="list")
+    Notification.start(entity=proper_entity_name, operation="get_all")
     
     try:
         # Get paginated data from model - pass RequestContext parameters  
@@ -48,40 +47,31 @@ async def get_all_handler(entity_cls: Type[EntityModelProtocol], entity_name: st
             RequestContext.view_spec
         )
         
-        # End notifications and build success response
-        notification_response = Notification.end()
-        
-        # Build response with correct structure: data, notifications, status
-        final_response = {
-            "data": response.get('data', []),
-            "notifications": notification_response.get("notifications", {}),
-            "status": notification_response.get("status", "success")
-        }
-        
-        # Add pagination metadata using total_records from factory
-        if 'total_records' in response:
-            from app.utils import pagination
-            final_response.update(pagination(RequestContext.page, response['total_records'], RequestContext.pageSize))
-        
-        return final_response
-        
     except Exception as e:
         Notification.error(ErrorType.SYSTEM, f"Failed to retrieve entities: {str(e)}")
         
-        # End notifications and build error response
-        notification_response = Notification.end()
+    # End notifications and build response
+    notification_response = Notification.end()
         
-        # Build error response with correct structure
-        final_response = {
-            "data": [],
-            "notifications": notification_response.get("notifications", {}),
-            "status": notification_response.get("status", "failed")
-        }
+    total_records = response.get('total_records', 0) if response else 0
+    notifications = notification_response.get("notifications", {})
+    if notifications.get("errors", []):
+        status = "error"
+    elif notifications.get("warnings", {}):
+        status = "warning"
+    else:
+        status = "success"
+
+    # Build error response with correct structure
+    final_response = {
+        "data": response.get('data', []),
+        "notifications": notifications,
+        "status": status #notification_response.get("status", "failed")
+    }
         
-        # Add pagination metadata for error case
-        from app.utils import pagination
-        final_response.update(pagination(RequestContext.page, 0, RequestContext.pageSize))
-        return final_response
+    # Add pagination metadata under pagination key
+    final_response["pagination"] = pagination(RequestContext.page, total_records, RequestContext.pageSize)
+    return final_response
 
 
 async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, entity_id: str, request: Request) -> Dict[str, Any]:
