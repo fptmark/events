@@ -43,7 +43,7 @@ def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[
         notifications: Optional[Dict[str, Any]] = None
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
-        pagination: Optional[Dict[str, Any]] = None
+        pagination: Optional[Dict[str, Any]]
     
     # Dynamically set the class names for better OpenAPI docs
     EntityResponse.__name__ = f"{entity_name}Response"
@@ -66,6 +66,7 @@ class SimpleDynamicRouterFactory:
         Returns:
             FastAPI router with all CRUD endpoints for the entity
         """
+        # Create router with lowercase prefix but also register uppercase route
         router = APIRouter(
             prefix=f"/{entity_name.lower()}", 
             tags=[entity_name]
