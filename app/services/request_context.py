@@ -145,11 +145,7 @@ class RequestContext:
                     RequestContext.filters = RequestContext._parse_filter_parameter(value, RequestContext.entity_type)
                     
                 elif key == 'view':
-                    try:
-                        RequestContext.view_spec = json.loads(unquote(value))
-                    except (json.JSONDecodeError, ValueError) as e:
-                        system_error(f"Invalid view parameter: {str(e)}")
-                        RequestContext.view_spec = None
+                    RequestContext.view_spec = RequestContext._parse_view_parameter(value, RequestContext.entity_type)
                         
                 else:
                     # Unknown parameter
@@ -328,6 +324,52 @@ class RequestContext:
                 
         except Exception as e:
             system_error(f"Error parsing filter '{field_name}:{operator}:{value}': {str(e)}")
+            return None
+
+    @staticmethod
+    def _parse_view_parameter(view_str: str, entity_name: str) -> Optional[Dict[str, List[str]]]:
+        """
+        Parse view parameter into FK expansion dict.
+        
+        Args:
+            view_str: View parameter like "account(id,name),profile(firstName,lastName)"
+            entity_name: Entity name for field name resolution
+            
+        Returns:
+            Dict like {"account": ["id", "name"], "profile": ["firstName", "lastName"]}
+        """
+        if not view_str or view_str.strip() == "":
+            return None
+        
+        view_spec = {}
+        
+        try:
+            import re
+            
+            # Regex to match fk_name(field1,field2,field3) patterns
+            pattern = r'(\w+)\(([^)]+)\)'
+            matches = re.findall(pattern, view_str)
+            
+            if not matches:
+                system_error(f"Invalid view format: '{view_str}'. Use format: fk_name(field1,field2)")
+                return None
+            
+            for fk_name, fields_str in matches:
+                field_names = []
+                for field in fields_str.split(','):
+                    field = field.strip()
+                    if field:
+                        # Map field name to proper case using MetadataService
+                        proper_field_name = MetadataService.get_proper_name(entity_name, field)
+                        field_names.append(proper_field_name)
+                
+                if field_names:
+                    view_spec[fk_name] = field_names
+            
+            return view_spec if view_spec else None
+            
+        except Exception as e:
+            system_error(f"Error parsing view parameter: {str(e)}")
             return None
 
     @staticmethod
