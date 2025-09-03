@@ -180,7 +180,7 @@ class ElasticsearchDocuments(DocumentManager):
             
             total_count = response.get("hits", {}).get("total", {}).get("value", 0)
             
-            return documents, True, total_count
+            return documents, total_count
             
         except Exception as e:
             raise DatabaseError(
@@ -193,7 +193,7 @@ class ElasticsearchDocuments(DocumentManager):
         self, 
         id: str,
         entity_type: str
-    ) -> Tuple[Dict[str, Any], bool]:
+    ) -> Tuple[Dict[str, Any], int]:
         """Get single document by ID"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
@@ -203,19 +203,19 @@ class ElasticsearchDocuments(DocumentManager):
             
             if not await es.indices.exists(index=index):
                 not_found_warning(f"Index does not exist", entity=entity_type, entity_id=id)
-                return {}, False
+                return {}, 0
             
             response = await es.get(index=index, id=id)
             doc = self._normalize_document(response["_source"])
             
             # Note: FK processing and view_spec handling done in model layer
             # Database returns raw document data only
-            return doc, True
+            return doc, 1
             
         except Exception as e:
             if "not found" in str(e).lower():
                 not_found_warning(f"Document not found", entity=entity_type, entity_id=id)
-                return {}, False
+                return {}, 0
             raise DatabaseError(
                 message=str(e),
                 entity=entity_type,
@@ -301,7 +301,7 @@ class ElasticsearchDocuments(DocumentManager):
         """Get the core manager instance"""
         return self.parent.core
     
-    async def delete(self, id: str, entity_type: str) -> bool:
+    async def delete(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
         """Delete document by ID"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
@@ -310,14 +310,15 @@ class ElasticsearchDocuments(DocumentManager):
             index = entity_type
             
             if not await es.indices.exists(index=index):
-                return False
+                return {}, 0
                 
             response = await es.delete(index=index, id=id)
-            return response.get("result") == "deleted"
+            record_count = 1 if response.get("result") == "deleted" else 0
+            return {}, record_count
             
         except Exception as e:
             if "not found" in str(e).lower():
-                return False
+                return {}, 0
             raise DatabaseError(
                 message=str(e),
                 entity=entity_type,

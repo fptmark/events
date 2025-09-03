@@ -99,7 +99,7 @@ class MongoDocuments(DocumentManager):
         page: int = 1,
         pageSize: int = 25,
         process_fks: bool = True
-    ) -> Tuple[List[Dict[str, Any]], bool, int]:
+    ) -> Tuple[List[Dict[str, Any]], int]:
         """Get paginated list of documents"""
         self.parent._ensure_initialized()
         db = self.parent.core.get_connection()
@@ -159,7 +159,7 @@ class MongoDocuments(DocumentManager):
             # Note: FK processing handled in model layer based on config/view specs
             # Database returns raw documents only
             
-            return documents, True, total_count
+            return documents, total_count
             
         except Exception as e:
             raise DatabaseError(
@@ -174,7 +174,7 @@ class MongoDocuments(DocumentManager):
         entity_type: str,
         # process_fks: bool = True,
         # view_spec: Optional[Dict[str, Any]] = None
-    ) -> Tuple[Dict[str, Any], bool]:
+    ) -> Tuple[Dict[str, Any], int]:
         """Get single document by ID"""
         self.parent._ensure_initialized()
         db = self.parent.core.get_connection()
@@ -190,17 +190,13 @@ class MongoDocuments(DocumentManager):
             
             doc = await db[collection].find_one({"_id": object_id})
             
-            if not doc:
+            if doc:
+                # Normalize ID and return document
+                doc = self._normalize_document(doc)
+                return doc, 1
+            else:
                 not_found_warning(f"Document not found", entity=entity_type, entity_id=id)
-                return {}, False
-            
-            # Normalize ID
-            doc = self._normalize_document(doc)
-            
-            # Note: FK processing and view_spec handling done in model layer
-            # Database returns raw document data only
-            
-            return doc, True
+                return {}, 0
             
         except Exception as e:
             raise DatabaseError(
@@ -293,7 +289,7 @@ class MongoDocuments(DocumentManager):
         """Get the core manager instance"""
         return self.parent.core
     
-    async def delete(self, id: str, entity_type: str) -> bool:
+    async def delete(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
         """Delete document by ID"""
         self.parent._ensure_initialized()
         db = self.parent.core.get_connection()
@@ -308,7 +304,8 @@ class MongoDocuments(DocumentManager):
                 object_id = id
             
             result = await db[collection].delete_one({"_id": object_id})
-            return result.deleted_count > 0
+            record_count = 1 if result.deleted_count > 0 else 0
+            return {}, record_count
             
         except Exception as e:
             raise DatabaseError(

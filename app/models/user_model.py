@@ -117,59 +117,59 @@ class User(BaseModel):
         validation = Config.validation(True)
         
         # Get filtered data from database - RequestContext provides the parameters
-        response = await DatabaseFactory.get_all("User", sort, filter, page, pageSize)
+        data, total_count = await DatabaseFactory.get_all("User", sort, filter, page, pageSize)
         
-        if response["data"]:
-            for user_dict in response["data"]:
+        if data:
+            for data_dict in data:
                 # Always run Pydantic validation (required fields, types, ranges)
-                utils.validate_model(cls, user_dict, "User")
+                utils.validate_model(cls, data_dict, "User")
                 
                 # Run FK validation if enabled by config
                 if validation:
-                    await utils.validate_fks("User", user_dict, cls._metadata)
+                    await utils.validate_fks("User", data_dict, cls._metadata)
                     
                     # Run unique validation if enabled by config
                     unique_constraints = cls._metadata.get('uniques', [])
                     if unique_constraints:
-                        await utils.validate_uniques("User", user_dict, unique_constraints, None)
+                        await utils.validate_uniques("User", data_dict, unique_constraints, None)
                 
                 # Populate view data if requested
                 if view_spec:
-                    await utils.populate_view(user_dict, view_spec, "User")
+                    await utils.populate_view(data_dict, view_spec, "User")
         
+        response = {"data": data, "total_records": total_count}
         return utils.build_standard_response(response)
-
 
     @classmethod
     async def get(cls, id: str, view_spec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         validation = Config.validation(False)
         
-        response = await DatabaseFactory.get_by_id(str(id), "User")
-        if response["data"]:
-            user_dict = response["data"]
+        data, record_count = await DatabaseFactory.get_by_id(str(id), "User")
+        if data:
+            data_dict = data
             
             # Always run Pydantic validation (required fields, types, ranges)
-            utils.validate_model(cls, user_dict, "User")
+            utils.validate_model(cls, data_dict, "User")
             
             # Run FK validation if enabled by config
             if validation:
-                await utils.validate_fks("User", user_dict, cls._metadata)
+                await utils.validate_fks("User", data_dict, cls._metadata)
                 
                 # Run unique validation if enabled by config
                 unique_constraints = cls._metadata.get('uniques', [])
                 if unique_constraints:
-                    await utils.validate_uniques("User", user_dict, unique_constraints, None)
+                    await utils.validate_uniques("User", data_dict, unique_constraints, None)
             
             # Populate view data if requested
             if view_spec:
-                await utils.populate_view(user_dict, view_spec, "User")
+                await utils.populate_view(data_dict, view_spec, "User")
         
+        response = {"data": data}
         return utils.build_standard_response(response)
 
 
     @classmethod
     async def create(cls, data: Dict[str, Any], validate: bool = True) -> Dict[str, Any]:
-        # Set updatedAt timestamp
         data['updatedAt'] = datetime.now(timezone.utc)
         
         if validate:
@@ -186,26 +186,26 @@ class User(BaseModel):
                 await utils.validate_uniques("User", data, unique_constraints, None)
 
         # Create new document
-        response = await DatabaseFactory.create("User", data)
-        # result = response["data"]
-
+        created_data, record_count = await DatabaseFactory.create("User", data)
+        
+        response = {"data": created_data}
         return utils.build_standard_response(response)
 
     @classmethod
     async def update(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        data['updatedAt'] = datetime.now(timezone.utc)
+
         if 'id' not in data or not data['id']:
             validation_warning(message="Missing 'id' field or value for update operation", 
                                entity="User", 
                                field="id")
             return  utils.build_error_response("warning")
             
-        # Set updatedAt timestamp
-        data['updatedAt'] = datetime.now(timezone.utc)
-        
         # Always validate for updates
         # 1. Pydantic validation (missing fields + constraints)
         validated_instance = utils.validate_model(cls, data, "User")
         data = validated_instance.model_dump(mode='python')
+        
         # 2. FK validation
         await utils.validate_fks("User", data, cls._metadata)
         
@@ -215,16 +215,15 @@ class User(BaseModel):
             await utils.validate_uniques("User", data, unique_constraints, data['id'])
 
         # Update existing document
-        response = await DatabaseFactory.update("User", data)
-        # result = response["data"]
-        # success = response.get("success", False)
-
+        updated_data, record_count = await DatabaseFactory.update("User", data)
+        
+        response = {"data": updated_data}
         return utils.build_standard_response(response)
 
- 
     @classmethod
-    async def delete(cls, user_id: str) -> bool:
-        return await DatabaseFactory.delete("User", user_id)
+    async def delete(cls, id: str) -> bool:
+        deleted_data, record_count = await DatabaseFactory.delete("User", id)
+        return record_count > 0
 
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)

@@ -245,7 +245,7 @@ def build_error_response(status: str) -> Dict[str, Any]:
         "status": status
     }
 
-def build_standard_response(response: Any) -> Dict[str, Any]:
+def build_standard_response(data: Any, total_records: int) -> Dict[str, Any]:
     """
     Build a standardized API response dictionary from internal response.
     
@@ -257,20 +257,18 @@ def build_standard_response(response: Any) -> Dict[str, Any]:
     """
     result: Dict[str, Any] = {}
 
-    if 'total_records' in response: # get_all response
-        total_records = response.get('total_records', 0)
-        data = response.get('data', [])
-        result["pagination"] = pagination(RequestContext.page, total_records, RequestContext.pageSize)
-    else:   # single entity response
-        total_records = 1 if len(response.get('data', {})) > 0 else 0
-        data = response.get('data', {}) 
-    errors = len(response.get('errors', []))
-    warnings = len(response.get('warnings', {}))
-    status = "success" if errors == 0 and warnings == 0 else "warning" if warnings > 0 else "error"
-    
     result["data"] = data
+
+    notifications = Notification.end().get("notifications", {})
     result["notifications"] = Notification.end().get("notifications", {})
+
+    errors = notifications.get('errors', [])
+    warnings = notifications.get('warnings', {})
+    status = "success" if len(errors) == 0 and len(warnings) == 0 else "warning" if len(warnings) > 0 else "error"
     result["status"] = status
+
+    if isinstance(data, List):
+        result["pagination"] = pagination(RequestContext.page, total_records, RequestContext.pageSize)
 
     return result
 

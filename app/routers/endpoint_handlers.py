@@ -18,7 +18,6 @@ from pydantic import BaseModel
 from app.routers.router_factory import EntityModelProtocol
 from app.services.notification import Notification, ErrorType, validation_warning
 from app.services.request_context import RequestContext
-from app.utils import pagination
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +81,7 @@ async def get_all_handler(entity_cls: Type[EntityModelProtocol]) -> Dict[str, An
     }
         
     # Add pagination metadata under pagination key
-    final_response["pagination"] = pagination(RequestContext.page, total_records, RequestContext.pageSize)
+    # final_response["pagination"] = pagination(RequestContext.page, total_records, RequestContext.pageSize)
     return final_response
 
 

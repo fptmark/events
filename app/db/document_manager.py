@@ -71,7 +71,7 @@ class DocumentManager(ABC):
             validate: Unused parameter (validation handled at model layer)
             
         Returns:
-            Tuple of (saved_document, success)
+            Tuple of (saved_document_or_empty_dict, record_count)
         """
         try:
             # Prepare data for database storage (database-specific)
@@ -84,7 +84,7 @@ class DocumentManager(ABC):
             # Should not need this.  public I/F may only use doc['id']
             # saved_doc = self._normalize_document(doc)
             
-            return doc, True
+            return doc, 1
             
         except Exception as e:
             # Let database-specific errors bubble up
@@ -95,7 +95,7 @@ class DocumentManager(ABC):
         entity_type: str,
         data: Dict[str, Any],
         validate: bool = True
-    ) -> Tuple[Dict[str, Any], bool]:
+    ) -> Tuple[Dict[str, Any], int]:
         """
         Update existing document by id. Fails if document doesn't exist.
         
