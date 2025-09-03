@@ -9,33 +9,45 @@ notification handling.
 import json
 import logging
 import inspect
-from typing import Dict, Any, Type, Optional, Union, Protocol
+from typing import Dict, Any, Type, Optional, Union, Protocol, Callable
 from urllib.parse import unquote
+from functools import wraps
 from fastapi import Request
 from pydantic import BaseModel
 
-from app.routers.router_factory import ModelImportCache, EntityModelProtocol
-from app.services.notification import Notification, ErrorType, WarningType
+from app.routers.router_factory import EntityModelProtocol
+from app.services.notification import Notification, ErrorType, validation_warning
 from app.services.request_context import RequestContext
 from app.utils import pagination
 
 logger = logging.getLogger(__name__)
 
 
+def parse_request_context(handler: Callable) -> Callable:
+    """Decorator to parse RequestContext from request for all handlers."""
+    @wraps(handler)
+    async def wrapper(*args, **kwargs):
+        # Find request parameter
+        request = None
+        for arg in args:
+            if isinstance(arg, Request):
+                request = arg
+                break
+        
+        # Parse and normalize URL using RequestContext
+        if request:
+            RequestContext.parse_request(str(request.url.path), dict(request.query_params))
+        
+        return await handler(*args, **kwargs)
+    return wrapper
 
 
-
-
-
-async def get_all_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, request: Request) -> Dict[str, Any]:
+@parse_request_context
+async def get_all_handler(entity_cls: Type[EntityModelProtocol]) -> Dict[str, Any]:
     """Reusable handler for GET ALL endpoint (paginated version)."""
     
-    # Parse and normalize URL using RequestContext
-    RequestContext.parse_request(str(request.url.path), dict(request.query_params))
-    proper_entity_name = RequestContext.entity_type
-    
     # Start notifications for this request
-    Notification.start(entity=proper_entity_name, operation="get_all")
+    Notification.start(entity=RequestContext.entity_type, operation="get_all")
     
     try:
         # Get paginated data from model - pass RequestContext parameters  
@@ -74,15 +86,12 @@ async def get_all_handler(entity_cls: Type[EntityModelProtocol], entity_name: st
     return final_response
 
 
-async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, entity_id: str, request: Request) -> Dict[str, Any]:
+@parse_request_context
+async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str) -> Dict[str, Any]:
     """Reusable handler for GET endpoint."""
     
-    # Parse and normalize URL using RequestContext
-    RequestContext.parse_request(str(request.url.path), dict(request.query_params))
-    proper_entity_name = RequestContext.entity_type
-    
     # Start notifications for this request
-    Notification.start(entity=proper_entity_name, operation="get")
+    Notification.start(entity=RequestContext.entity_type, operation="get")
     
     try:
         # Get entity directly from model - pass RequestContext parameters
@@ -115,30 +124,23 @@ async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name:
         return final_response
 
 
-async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, entity_data: BaseModel, request: Optional[Request] = None) -> Dict[str, Any]:
+@parse_request_context
+async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_data: BaseModel) -> Dict[str, Any]:
     """Reusable handler for POST endpoint."""
     
-    # Parse and normalize URL using RequestContext (mainly for proper entity name)
-    if request:
-        RequestContext.parse_request(str(request.url.path), dict(request.query_params))
-        proper_entity_name = RequestContext.entity_type
-    else:
-        proper_entity_name = entity_name
-    
     # Start notifications for this request
-    Notification.start(entity=proper_entity_name, operation="create")
+    Notification.start(entity=RequestContext.entity_type, operation="create")
     
     try:
         # Let model handle all validation and business logic
-        entity = entity_cls(**entity_data.model_dump())
-        result, warnings = await entity.save()
+        result = await entity_cls.create(entity_data.model_dump())
         # Note: Warnings are now added directly to notification system by model layer
         
         # End notifications and build response
         notification_response = Notification.end()
         
         return {
-            "data": result.model_dump(),
+            "data": result,
             "notifications": notification_response.get("notifications", {}),
             "status": notification_response.get("status", "success")
         }
@@ -149,26 +151,31 @@ async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_na
         raise
 
 
-async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, entity_id: str, entity_data: BaseModel, request: Request = None) -> Dict[str, Any]:
+@parse_request_context
+async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_data: BaseModel) -> Dict[str, Any]:
     """Reusable handler for PUT endpoint - True PUT semantics (full replacement)."""
     
-    # Parse and normalize URL using RequestContext (mainly for proper entity name)
-    if request:
-        RequestContext.parse_request(str(request.url.path), dict(request.query_params))
-        proper_entity_name = RequestContext.entity_type
-    else:
-        proper_entity_name = entity_name
-    
     # Start notifications for this request
-    Notification.start(entity=proper_entity_name, operation="update")
+    Notification.start(entity=RequestContext.entity_type, operation="update")
     
     try:
         # True PUT semantics: validate complete entity data with URL's entity_id
         entity_dict = entity_data.model_dump()
-        validated_entity = entity_cls.model_validate(entity_dict)
+        if 'id' not in entity_dict or not entity_dict['id']:
+            validation_warning(
+                message="Missing 'id' field in request body for update operation",
+                entity=RequestContext.entity_type,
+                entity_id="missing",
+                field="id"
+            )
+            return {
+                "data": entity_dict,
+                "notifications": Notification.end().get("notifications", {}),
+                "status": "warning"
+            }
         
-        # Save with entity_id from URL (authoritative) - this handles auto-fields internally
-        result, save_warnings = await validated_entity.save(entity_id=entity_id)
+        # Let model handle all validation and business logic
+        result = await entity_cls.update(entity_dict)
         
         # Note: Warnings are now added directly to notification system by model layer
         
@@ -176,9 +183,9 @@ async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_na
         notification_response = Notification.end()
         
         return {
-            "data": result.model_dump(),
+            "data": result,
             "notifications": notification_response.get("notifications", {}),
-            "status": notification_response.get("status", "success")
+            "status": "success"
         }
         # Note: Validation errors are now handled by notification system in model layer
     except Exception:
@@ -187,18 +194,12 @@ async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_na
         raise
 
 
-async def delete_entity_handler(entity_cls: Type[EntityModelProtocol], entity_name: str, entity_id: str, request: Request = None) -> Dict[str, Any]:
+@parse_request_context
+async def delete_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str) -> Dict[str, Any]:
     """Reusable handler for DELETE endpoint."""
     
-    # Parse and normalize URL using RequestContext (mainly for proper entity name)
-    if request:
-        RequestContext.parse_request(str(request.url.path), dict(request.query_params))
-        proper_entity_name = RequestContext.entity_type
-    else:
-        proper_entity_name = entity_name
-    
     # Start notifications for this request
-    Notification.start(entity=proper_entity_name, operation="delete")
+    Notification.start(entity=RequestContext.entity_type, operation="delete")
     
     try:
         success = await entity_cls.delete(entity_id)

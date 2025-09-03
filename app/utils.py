@@ -66,28 +66,6 @@ def sanitize_field_name(field: str) -> str:
     return field.strip().replace('.', '_')
 
 
-def pagination(page: int, totalRecords: int, pageSize: int = 25) -> Dict[str, Any]:
-    """
-    Build pagination response structure used by all models.
-    
-    Args:
-        page: Current page number
-        pageSize: Items per page  
-        totalRecords: Total number of items
-        
-    Returns:
-        Dictionary with pagination fields matching existing pattern
-    """
-    totalPages = (totalRecords + pageSize - 1) // pageSize if totalRecords > 0 else 0
-    
-    return {
-        "page": page,
-        "pageSize": pageSize,
-        "total": totalRecords,
-        "totalPages": totalPages
-    }
-
-
 # URL Parsing Utilities
 # =====================
 

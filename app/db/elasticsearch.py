@@ -243,24 +243,24 @@ class ElasticsearchDocuments(DocumentManager):
             not_found_warning(f"Document not found for update", entity=entity_type, entity_id=id)
             return False
     
-    async def _save_to_database(self, entity_type: str, data: Dict[str, Any], id: str) -> Dict[str, Any]:
-        """Save document to Elasticsearch database"""
-        self.parent._ensure_initialized()
+    async def _create_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create document in Elasticsearch. If data contains 'id', use it as _id, otherwise auto-generate."""
         es = self.parent.core.get_connection()
         
         try:
             index = entity_type
-            is_update = bool(id.strip())
+            create_data = data.copy()
             
-            if is_update:
-                # Update existing document
-                await es.index(index=index, id=id, body=data)
-                saved_doc = data.copy()
-                saved_doc["_id"] = id
+            # If data contains 'id', use it as Elasticsearch _id
+            if 'id' in create_data:
+                doc_id = create_data.pop('id')
+                response = await es.index(index=index, id=doc_id, body=create_data)
+                saved_doc = create_data.copy()
+                saved_doc["_id"] = doc_id
             else:
-                # Create new document
-                response = await es.index(index=index, body=data)
-                saved_doc = data.copy()
+                # Auto-generate ID
+                response = await es.index(index=index, body=create_data)
+                saved_doc = create_data.copy()
                 saved_doc["_id"] = response["_id"]
             
             return saved_doc
@@ -269,7 +269,32 @@ class ElasticsearchDocuments(DocumentManager):
             raise DatabaseError(
                 message=str(e),
                 entity=entity_type,
-                operation="save"
+                operation="create"
+            )
+
+    async def _update_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update existing document in Elasticsearch. Extracts id from data['id']."""
+        es = self.parent.core.get_connection()
+        
+        try:
+            index = entity_type
+            id = data['id']  # Extract id from data
+            
+            # Create update data without 'id' field
+            update_data = data.copy()
+            del update_data['id']
+            
+            await es.index(index=index, id=id, body=update_data)
+            saved_doc = update_data.copy()
+            saved_doc["_id"] = id
+            
+            return saved_doc
+            
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="update"
             )
     
     def _get_core_manager(self) -> CoreManager:

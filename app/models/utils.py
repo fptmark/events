@@ -2,8 +2,9 @@ from typing import List, Dict, Any, Optional
 from pydantic import ValidationError as PydanticValidationError
 import warnings as python_warnings
 from app.config import Config
-from app.services.notification import validation_warning, system_error
+from app.services.notification import Notification, validation_warning, system_error
 from app.services.metadata import MetadataService
+from app.services.request_context import RequestContext
 
 def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], warnings: List[str]) -> List[Dict[str, Any]]:
     """Common processing for raw database results."""
@@ -77,38 +78,36 @@ async def validate_fks(entity_name: str, data: Dict[str, Any], metadata: Dict[st
         ValidationError: If any ObjectId references don't exist
     """
     from app.services.notification import validation_warning
-    from app.routers.router_factory import ModelImportCache
-    entity_id = data.get('id', 'unknown')
+    from app.services.model import ModelService
     
     # Check all ObjectId fields in the entity metadata
     for field_name, field_meta in metadata.get('fields', {}).items():
         if field_meta.get('type') == 'ObjectId' and data.get(field_name):
             fk_entity_name = MetadataService.get_proper_name(field_name[:-2])
             subobj = {'exists': False}
-            try:
-                # Derive FK entity name from field name (e.g., accountId -> Account)
-                fk_entity_cls = ModelImportCache.get_model_class(fk_entity_name)
+            # Derive FK entity name from field name (e.g., accountId -> Account)
+            fk_entity_cls = ModelService.get_model_class(fk_entity_name)
+            if fk_entity_cls:
                 response = await fk_entity_cls.get(data[field_name], None)
                 
-                # Check if FK exists - if not, send validation warning
-                if not response.get('data'):
+                # Check if FK exists
+                if response.get('data'):
+                    subobj = {'exists': True}
+                else:
                     validation_warning(
                         message="Referenced ID does not exist",
-                        entity=entity_name,
-                        entity_id=entity_id,
+                        entity=fk_entity_name,
+                        entity_id=data[field_name],
                         field=field_name
                     )
-                else:
-                    subobj = {'exists': True}
-            except Exception:
-                # Handle import errors or other failures
+            else:
+                # Bad entity name in FK reference
                 validation_warning(
-                    message="internal error - model lookup failed during FK validation",
-                    entity=entity_name,
-                    entity_id=entity_id,
+                    message=f"Invalid FK entity", 
+                    entity=fk_entity_name,
                     field=field_name
                 )
-            data[field_name[:-2]] = subobj  # Add FK field without 'Id' suffix
+            data[fk_entity_name.lower()] = subobj  # Add FK field without 'Id' suffix
     
     # Note: FK validation failures are now handled through notification system
 
@@ -159,7 +158,7 @@ async def populate_view(entity_dict: Dict[str, Any], view_spec: Optional[Dict[st
     if not view_spec:
         return
         
-    from app.routers.router_factory import ModelImportCache
+    from app.services.model import ModelService
     
     metadata = MetadataService.get(entity_name)
     entity_id = entity_dict.get('id', 'unknown')
@@ -169,29 +168,38 @@ async def populate_view(entity_dict: Dict[str, Any], view_spec: Optional[Dict[st
             fk_name = field_name[:-2]  # Remove 'Id' suffix
             if view_spec and fk_name in view_spec:
                 fk_data = {"exists": False}
-                try:
-                    fk_entity_cls = ModelImportCache.get_model_class(MetadataService.get_proper_name(fk_name))
-                    related_entity_object: Dict[str, Any] = await fk_entity_cls.get(entity_dict[field_name], None)
-                    related_data = related_entity_object.get('data', {})
-                
-                    fk_data = {"exists": True}
-                    requested_fields = view_spec[fk_name]
-                
-                    # Handle case-insensitive field matching for URL parameter issues
-                    field_map = {k.lower(): k for k in related_data.keys()}
+                fk_entity_cls = ModelService.get_model_class(MetadataService.get_proper_name(fk_name))
+                if fk_entity_cls:
+                    try:
+                        related_entity_object: Dict[str, Any] = await fk_entity_cls.get(entity_dict[field_name], None)
+                        related_data = related_entity_object.get('data', {})
                     
-                    for field in requested_fields or []:
-                        # Try exact match first, then case-insensitive fallback
-                        if field in related_data:
-                            fk_data[field] = related_data[field]
-                        elif field.lower() in field_map:
-                            actual_field = field_map[field.lower()]
-                            fk_data[actual_field] = related_data[actual_field]
-                
-                except Exception as e:
-                    # FK lookup failed - set exists=False and continue
+                        fk_data = {"exists": True}
+                        requested_fields = view_spec[fk_name]
+                    
+                        # Handle case-insensitive field matching for URL parameter issues
+                        field_map = {k.lower(): k for k in related_data.keys()}
+                        
+                        for field in requested_fields or []:
+                            # Try exact match first, then case-insensitive fallback
+                            if field in related_data:
+                                fk_data[field] = related_data[field]
+                            elif field.lower() in field_map:
+                                actual_field = field_map[field.lower()]
+                                fk_data[actual_field] = related_data[actual_field]
+                    
+                    except Exception as e:
+                        # FK lookup failed - set exists=False and continue
+                        validation_warning(
+                            message=f"Failed to populate {fk_name}: {str(e)}",
+                            entity=entity_name,
+                            entity_id=entity_id,
+                            field=field_name
+                        )
+                else:
+                    # Bad entity name in view spec
                     validation_warning(
-                        message=f"Failed to populate {fk_name}: {str(e)}",
+                        message=f"Invalid entity '{fk_name}' in view specification",
                         entity=entity_name,
                         entity_id=entity_id,
                         field=field_name
@@ -228,6 +236,65 @@ def validate_model(cls, data: Dict[str, Any], entity_name: str):
         # Return unvalidated instance so API can continue
         return cls.model_construct(**data)
 
+def build_error_response(status: str) -> Dict[str, Any]:
+
+    """Build standardized error response when validation fails before DB operation."""
+    return {
+        "data": {},
+        "notifications": Notification.end().get("notifications", {}),
+        "status": status
+    }
+
+def build_standard_response(response: Any) -> Dict[str, Any]:
+    """
+    Build a standardized API response dictionary from internal response.
+    
+    Args:
+        response: Internal response dictionary with keys like 'data', 'errors', 'warnings', 'notifications', 'total_records'
+    
+    Returns:
+        Standardized response dictionary with keys: 'data', 'notifications', 'status', 'pagination'
+    """
+    result: Dict[str, Any] = {}
+
+    if 'total_records' in response: # get_all response
+        total_records = response.get('total_records', 0)
+        data = response.get('data', [])
+        result["pagination"] = pagination(RequestContext.page, total_records, RequestContext.pageSize)
+    else:   # single entity response
+        total_records = 1 if len(response.get('data', {})) > 0 else 0
+        data = response.get('data', {}) 
+    errors = len(response.get('errors', []))
+    warnings = len(response.get('warnings', {}))
+    status = "success" if errors == 0 and warnings == 0 else "warning" if warnings > 0 else "error"
+    
+    result["data"] = data
+    result["notifications"] = Notification.end().get("notifications", {})
+    result["status"] = status
+
+    return result
+
+
+def pagination(page: int, totalRecords: int, pageSize: int = 25) -> Dict[str, Any]:
+    """
+    Build pagination response structure used by all models.
+    
+    Args:
+        page: Current page number
+        pageSize: Items per page  
+        totalRecords: Total number of items
+        
+    Returns:
+        Dictionary with pagination fields matching existing pattern
+    """
+    totalPages = (totalRecords + pageSize - 1) // pageSize if totalRecords > 0 else 0
+    
+    return {
+        "page": page,
+        "pageSize": pageSize,
+        "total": totalRecords,
+        "totalPages": totalPages
+    }
 
 
 

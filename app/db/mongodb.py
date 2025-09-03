@@ -230,33 +230,51 @@ class MongoDocuments(DocumentManager):
             not_found_warning(f"Document not found for update", entity=entity_type, entity_id=id)
             return False
     
-    async def _save_to_database(self, entity_type: str, data: Dict[str, Any], id: str) -> Dict[str, Any]:
-        """Save document to MongoDB database"""
-        self.parent._ensure_initialized()
+    async def _create_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create document in MongoDB. If data contains 'id', use it as _id, otherwise auto-generate."""
         db = self.parent.core.get_connection()
         
         try:
             collection = entity_type
-            is_update = bool(id.strip())
+            create_data = data.copy()
             
-            if is_update:
-                # Update existing document
-                mongo_id = ObjectId(id) if ObjectId.is_valid(id) else id
-                data_with_id = data.copy()
-                data_with_id["_id"] = mongo_id
-                
-                await db[collection].replace_one(
-                    {"_id": mongo_id}, 
-                    data_with_id,
-                    upsert=False
-                )
-                return data_with_id
-            else:
-                # Create new document (MongoDB auto-generates _id)
-                result = await db[collection].insert_one(data)
-                saved_doc = data.copy()
+            # If data contains 'id', use it as MongoDB _id
+            if 'id' in create_data:
+                create_data["_id"] = create_data.pop('id')
+            
+            result = await db[collection].insert_one(create_data)
+            saved_doc = create_data.copy()
+            if "_id" not in saved_doc:
                 saved_doc["_id"] = result.inserted_id
-                return saved_doc
+            return saved_doc
+            
+        except Exception as e:
+            raise DatabaseError(
+                message=str(e),
+                entity=entity_type,
+                operation="create"
+            )
+
+    async def _update_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update existing document in MongoDB. Extracts id from data['id']."""
+        db = self.parent.core.get_connection()
+        
+        try:
+            collection = entity_type
+            id = data['id']  # Extract id from data
+            mongo_id = ObjectId(id) if ObjectId.is_valid(id) else id
+            
+            # Create update data without 'id' field
+            update_data = data.copy()
+            del update_data['id']
+            update_data["_id"] = mongo_id
+            
+            await db[collection].replace_one(
+                {"_id": mongo_id}, 
+                update_data,
+                upsert=False
+            )
+            return update_data
                 
         except DuplicateKeyError as e:
             # Convert MongoDB duplicate key error to warning

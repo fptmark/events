@@ -56,60 +56,82 @@ class DocumentManager(ABC):
         """
         pass
     
-    async def save(
+    async def create(
         self,
         entity_type: str,
         data: Dict[str, Any],
-        id: str = '',
         validate: bool = True
     ) -> Tuple[Dict[str, Any], bool]:
         """
-        Base class save implementation - handles validation and delegates storage to database-specific method.
+        Create new document. If data contains 'id', use it as _id, otherwise auto-generate.
         
         Args:
             entity_type: Entity type (e.g., "user", "account")
-            data: Document data to save (any 'id' field will be ignored/removed)
-            id: Document ID for updates (empty = create new document)
-            validate: Whether to validate data and constraints (False for testing)
+            data: Document data to save
+            validate: Unused parameter (validation handled at model layer)
             
         Returns:
             Tuple of (saved_document, success)
         """
         try:
-            # Clean data - remove any id field, only use id parameter
-            clean_data = data.copy()
-            if 'id' in clean_data:
-                del clean_data['id']
+            # Prepare data for database storage (database-specific)
+            prepared_data = self._prepare_datetime_fields(entity_type, data)
             
-            # 1. Validate field types and constraints - collect all warnings first
-            if validate:
-                validation_success = self._validate_field_types(entity_type, clean_data)    # adds warnings automatically
+            # Create in database (database-specific implementation)
+            doc = await self._create_document(entity_type, prepared_data)
+            
+            # Normalize response (remove database-specific ID fields, add standard "id")
+            # Should not need this.  public I/F may only use doc['id']
+            # saved_doc = self._normalize_document(doc)
+            
+            return doc, True
+            
+        except Exception as e:
+            # Let database-specific errors bubble up
+            raise
 
-            # 2. For updates, validate document exists (database-specific)
-            if id.strip():
-                exists_success = await self._validate_document_exists_for_update(entity_type, id)
-                
-            # 3. Get unique constraints from metadata and validate
-            from app.services.metadata import MetadataService
-            metadata = MetadataService.get(entity_type)
-            unique_constraints = metadata.get('uniques', []) if metadata else []
-            if unique_constraints:
-                constraint_success = await self._validate_unique_constraints(entity_type, clean_data, unique_constraints, id if id.strip() else None)
+    async def update(
+        self,
+        entity_type: str,
+        data: Dict[str, Any],
+        validate: bool = True
+    ) -> Tuple[Dict[str, Any], bool]:
+        """
+        Update existing document by id. Fails if document doesn't exist.
+        
+        Args:
+            entity_type: Entity type (e.g., "user", "account")
+            data: Document data to update (must contain 'id' field)
+            validate: Unused parameter (validation handled at model layer)
             
-            # If validation failed, return empty result with False
-            if not (validation_success and exists_success and constraint_success):
+        Returns:
+            Tuple of (saved_document, success)
+        """
+        try:
+            # ID validation - must exist for update
+            if 'id' not in data or not data['id']:
+                validation_warning(message="Missing 'id' field or value for update operation", 
+                                   entity=entity_type)
+                return {}, False     
+            
+            # Validate document exists for update
+            exists_success = await self._validate_document_exists_for_update(entity_type, data['id'])
+            
+            if not exists_success:
+                validation_warning(message=f"Document to update not found using id", field="id")
                 return {}, False
             
-            # 4. Prepare data for database storage (database-specific)
-            prepared_data = self._prepare_datetime_fields(entity_type, clean_data)
+            # Prepare data for database storage (database-specific)
+            prepared_data = self._prepare_datetime_fields(entity_type, data)
             
-            # 5. Save to database (database-specific implementation)
-            saved_document_with_native_id = await self._save_to_database(entity_type, prepared_data, id)
+            # Update in database (database-specific implementation)
+            doc = await self._update_document(entity_type, prepared_data)
             
-            # 6. Normalize response (remove database-specific ID fields, add standard "id")
-            saved_doc = self._normalize_document(saved_document_with_native_id)
+            # Normalize response (remove database-specific ID fields, add standard "id")
+            # Should not need this.  public I/F may only use doc['id']
+            # saved_doc = self._normalize_document(saved_document_with_native_id)
             
-            return saved_doc, True
+            return doc, True
             
         except Exception as e:
             # Let database-specific errors bubble up
@@ -141,17 +163,30 @@ class DocumentManager(ABC):
         pass
     
     @abstractmethod  
-    async def _save_to_database(self, entity_type: str, data: Dict[str, Any], id: str) -> Dict[str, Any]:
+    async def _create_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Save document to database (database-specific implementation).
+        Create document in database. If data contains 'id', use it as _id, otherwise auto-generate.
         
         Args:
             entity_type: Entity type
-            data: Prepared data (datetime fields converted, no "id" field)
-            id: Document ID for updates (empty string = create new)
+            data: Prepared data (datetime fields converted)
             
         Returns:
             Saved document with database's native ID field populated
+        """
+        pass
+
+    @abstractmethod  
+    async def _update_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update existing document in database.
+        
+        Args:
+            entity_type: Entity type
+            data: Prepared data (datetime fields converted, contains 'id' field)
+            
+        Returns:
+            Updated document with database's native ID field populated
         """
         pass
     
@@ -178,66 +213,6 @@ class DocumentManager(ABC):
             del dest[id_field]  # Remove native _id field
         return dest
 
-    # Shared validation methods for save operations
-    def _validate_field_types(self, entity_type: str, data: Dict[str, Any]) -> bool:
-        """Validate business logic field constraints using metadata
-        
-        Returns:
-            True if validation passed, False if validation warnings were generated
-        """
-        from app.services.metadata import MetadataService
-        from app.services.notification import validation_warning
-        
-        metadata = MetadataService.get(entity_type)
-        if not metadata:
-            validation_warning(f"Unknown entity type: {entity_type}", entity=entity_type)
-            return False
-            
-        fields_meta = metadata.get('fields', {})
-        validation_success = True
-        
-        for field_name, value in data.items():
-            if field_name not in fields_meta:
-                continue  # Skip unknown fields 
-                
-            field_meta = fields_meta[field_name]
-            
-            # Required field check
-            if field_meta.get('required') and not value:
-                validation_warning(f"Required field '{field_name}' is missing or empty", entity=entity_type, field=field_name)
-                validation_success = False
-                
-            if value is None:
-                continue  # Skip null values for other validations
-                
-            # String length validation
-            if field_meta.get('type') == 'String' and isinstance(value, str):
-                min_len = field_meta.get('min_length')
-                max_len = field_meta.get('max_length')
-                if min_len and len(value) < min_len:
-                    validation_warning(f"Field '{field_name}' is too short (minimum {min_len} characters)", entity=entity_type, field=field_name)
-                    validation_success = False
-                if max_len and len(value) > max_len:
-                    validation_warning(f"Field '{field_name}' is too long (maximum {max_len} characters)", entity=entity_type, field=field_name)
-                    validation_success = False
-            
-            # Enum validation
-            if 'enum' in field_meta:
-                valid_values = field_meta['enum'].get('values', [])
-                if value not in valid_values:
-                    validation_warning(f"Invalid value '{value}' for field '{field_name}'. Valid values: {valid_values}", entity=entity_type, field=field_name)
-                    validation_success = False
-                    
-            # Numeric range validation  
-            if field_meta.get('type') in ['Integer', 'Float', 'Currency'] and isinstance(value, (int, float)):
-                if 'ge' in field_meta and value < field_meta['ge']:
-                    validation_warning(f"Field '{field_name}' value {value} is below minimum {field_meta['ge']}", entity=entity_type, field=field_name)
-                    validation_success = False
-                if 'le' in field_meta and value > field_meta['le']:
-                    validation_warning(f"Field '{field_name}' value {value} is above maximum {field_meta['le']}", entity=entity_type, field=field_name)
-                    validation_success = False
-        
-        return validation_success
     
     # Abstract methods for database-specific logic
     @abstractmethod
@@ -254,6 +229,12 @@ class DocumentManager(ABC):
         exclude_id: Optional[str] = None
     ) -> bool:
         """Validate unique constraints (database-specific implementation)
+        
+        Args:
+            entity_type: Entity type
+            data: Document data to validate
+            unique_constraints: List of unique constraint field groups
+            exclude_id: ID to exclude from validation (for updates)
         
         Returns:
             True if constraints are valid, False if constraint violations detected

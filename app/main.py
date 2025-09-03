@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
+from app.services.model import ModelService
 import app.utils as utils
 from app.config import Config
 from app.db import DatabaseFactory
@@ -103,6 +104,7 @@ async def lifespan(app: FastAPI):
     # Initialize metadata service
     logger.info("Initializing metadata service...")
     MetadataService.initialize(ENTITIES)
+    ModelService.initialize(ENTITIES)
     logger.info("Metadata service initialized successfully")
 
     logger.info(f"Registing routers")

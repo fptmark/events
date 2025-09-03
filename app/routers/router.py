@@ -11,7 +11,8 @@ from typing import Dict, Any, List, Optional, Type, Protocol
 from pydantic import BaseModel, Field
 import logging
 
-from app.routers.router_factory import get_entity_names, ModelImportCache
+from app.routers.router_factory import get_entity_names
+from app.services.model import ModelService
 from app.routers.endpoint_handlers import (
     get_all_handler, get_entity_handler, create_entity_handler,
     update_entity_handler, delete_entity_handler, EntityModelProtocol
@@ -74,9 +75,9 @@ class SimpleDynamicRouterFactory:
         
         # Dynamic model imports using cached factory
         try:
-            entity_cls = ModelImportCache.get_model_class(entity_name)
-            create_cls = ModelImportCache.get_create_class(entity_name)  # type: ignore
-            update_cls = ModelImportCache.get_update_class(entity_name)  # type: ignore
+            entity_cls = ModelService.get_model_class(entity_name)
+            create_cls = ModelService.get_create_class(entity_name)  # type: ignore
+            update_cls = ModelService.get_update_class(entity_name)  # type: ignore
         except ImportError as e:
             logger.error(f"Failed to import classes for {entity_name}: {e}")
             # Return empty router if imports fail

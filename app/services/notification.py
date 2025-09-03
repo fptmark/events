@@ -66,7 +66,7 @@ class Notification:
             
         # Build response
         if cls._errors:
-            status = "failed"
+            status = "error"
         elif cls._warnings:
             status = "warning"
         else:

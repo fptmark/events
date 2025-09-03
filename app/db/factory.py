@@ -23,7 +23,7 @@ class DatabaseFactory:
         # Use managers
         users = await db.documents.get_all("user", page=1, pageSize=10)
         user = await db.documents.get("123", "user")
-        await db.documents.save("user", user_data)
+        await db.documents.create("user", user_data)
         
         # Admin operations
         await db.entities.create("user", [["email"], ["username"]])
@@ -155,19 +155,31 @@ class DatabaseFactory:
         }
 
     @classmethod
-    async def save(cls, entity_type: str, data: Dict[str, Any], doc_id: str = '', validate: bool = True) -> Dict[str, Any]:
-        
+    async def create(cls, entity_type: str, data: Dict[str, Any], validate: bool = True) -> Dict[str, Any]:
         db = cls.get_instance()
-        document, warnings = await db.documents.save(
+        document, success = await db.documents.create(
             entity_type=entity_type,
             data=data,
-            id=doc_id,
             validate=validate
         )
         
         return {
             "data": document,
-            "warnings": warnings
+            "success": success
+        }
+
+    @classmethod
+    async def update(cls, entity_type: str, data: Dict[str, Any], validate: bool = True) -> Dict[str, Any]:
+        db = cls.get_instance()
+        document, success = await db.documents.update(
+            entity_type=entity_type,
+            data=data,
+            validate=validate
+        )
+        
+        return {
+            "data": document,
+            "success": success
         }
 
     @classmethod
