@@ -85,3 +85,14 @@ class ApplicationError(HTTPException):
                 "operation": self.operation
             }
         }
+
+
+class DuplicateConstraintError(Exception):
+    """Raised when a unique constraint violation occurs - database agnostic"""
+    
+    def __init__(self, message: str, entity: str, field: str, entity_id: str = "new"):
+        self.message = message
+        self.entity = entity
+        self.field = field
+        self.entity_id = entity_id
+        super().__init__(message)

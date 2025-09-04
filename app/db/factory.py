@@ -129,7 +129,7 @@ class DatabaseFactory:
     async def get_all(cls, entity_type: str, sort: List[Tuple[str, str]], filter: Optional[Dict[str, Any]], page: int, pageSize: int) -> tuple[List[Dict[str, Any]], int]:
         
         db = cls.get_instance()
-        documents, warnings, total_count = await db.documents.get_all(
+        documents, total_count = await db.documents.get_all(
             entity_type=entity_type,
             sort=sort,
             filter=filter,
@@ -140,60 +140,50 @@ class DatabaseFactory:
         return documents, total_count
 
     @classmethod
-    async def get_by_id(cls, doc_id: str, entity_type: str) -> tuple[Dict[str, Any], int]:
-        """Get document by ID. Returns (document_or_empty_dict, record_count)."""
+    async def get_by_id(cls, doc_id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
+        """Get document by ID. Returns (document, count)."""
         db = cls.get_instance()
-        document, warnings = await db.documents.get(
+        document, count = await db.documents.get(
             id=doc_id,
             entity_type=entity_type
         )
         
-        if document:
-            return document, 1
-        else:
-            return {}, 0
+        return document, count
 
     @classmethod
-    async def create(cls, entity_type: str, data: Dict[str, Any], validate: bool = True) -> tuple[Dict[str, Any], int]:
-        """Create document. Returns (document_or_empty_dict, record_count)."""
+    async def create(cls, entity_type: str, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
+        """Create document. Returns (document, count)."""
         db = cls.get_instance()
-        document, success = await db.documents.create(
+        document, count = await db.documents.create(
             entity_type=entity_type,
             data=data,
             validate=validate
         )
         
-        if success and document:
-            return document, 1
-        else:
-            return {}, 0
+        return document, count
 
     @classmethod
-    async def update(cls, entity_type: str, data: Dict[str, Any], validate: bool = True) -> tuple[Dict[str, Any], int]:
-        """Update document. Returns (document_or_empty_dict, record_count)."""
+    async def update(cls, entity_type: str, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
+        """Update document. Returns (document, count)."""
         db = cls.get_instance()
-        document, success = await db.documents.update(
+        document, count = await db.documents.update(
             entity_type=entity_type,
             data=data,
             validate=validate
         )
         
-        if success and document:
-            return document, 1
-        else:
-            return {}, 0
+        return document, count
 
     @classmethod
-    async def delete(cls, entity_type: str, doc_id: str) -> tuple[Dict[str, Any], int]:
-        """Delete document. Returns (empty_dict, record_count)."""
+    async def delete(cls, entity_type: str, doc_id: str) -> Tuple[Dict[str, Any], int]:
+        """Delete document. Returns (deleted_document, count)."""
         db = cls.get_instance()
-        success = await db.documents.delete(
+        deleted_document, count = await db.documents.delete(
             id=doc_id,
             entity_type=entity_type
         )
         
-        record_count = 1 if success else 0
-        return {}, record_count
+        return deleted_document, count
 
     @classmethod
     async def remove_entity(cls, entity_type: str) -> bool:

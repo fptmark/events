@@ -236,63 +236,64 @@ def validate_model(cls, data: Dict[str, Any], entity_name: str):
         # Return unvalidated instance so API can continue
         return cls.model_construct(**data)
 
-def build_error_response(status: str) -> Dict[str, Any]:
+# def build_error_response(status: str) -> Dict[str, Any]:
 
-    """Build standardized error response when validation fails before DB operation."""
-    return {
-        "data": {},
-        "notifications": Notification.end().get("notifications", {}),
-        "status": status
-    }
+#     """Build standardized error response when validation fails before DB operation."""
+#     return {
+#         "data": {},
+#         "notifications": Notification.end().get("notifications", {}),
+#         "status": status
+#     }
 
-def build_standard_response(data: Any, total_records: int) -> Dict[str, Any]:
-    """
-    Build a standardized API response dictionary from internal response.
+# def build_standard_response(data: Any, total_records: int) -> Dict[str, Any]:
+#     """
+#     Build a standardized API response dictionary from internal response.
     
-    Args:
-        response: Internal response dictionary with keys like 'data', 'errors', 'warnings', 'notifications', 'total_records'
+#     Args:
+#         response: Internal response dictionary with keys like 'data', 'errors', 'warnings', 'notifications', 'total_records'
     
-    Returns:
-        Standardized response dictionary with keys: 'data', 'notifications', 'status', 'pagination'
-    """
-    result: Dict[str, Any] = {}
+#     Returns:
+#         Standardized response dictionary with keys: 'data', 'notifications', 'status', 'pagination'
+#     """
+#     result: Dict[str, Any] = {}
 
-    result["data"] = data
+#     result["data"] = data
 
-    notifications = Notification.end().get("notifications", {})
-    result["notifications"] = Notification.end().get("notifications", {})
+#     notification_response = Notification.end()
+#     notifications = notification_response.get("notifications", {})
+#     result["notifications"] = notifications
 
-    errors = notifications.get('errors', [])
-    warnings = notifications.get('warnings', {})
-    status = "success" if len(errors) == 0 and len(warnings) == 0 else "warning" if len(warnings) > 0 else "error"
-    result["status"] = status
+#     errors = notifications.get('errors', [])
+#     warnings = notifications.get('warnings', {})
+#     status = "success" if len(errors) == 0 and len(warnings) == 0 else "warning" if len(warnings) > 0 else "error"
+#     result["status"] = status
 
-    if isinstance(data, List):
-        result["pagination"] = pagination(RequestContext.page, total_records, RequestContext.pageSize)
+#     if isinstance(data, List):
+#         result["pagination"] = pagination(RequestContext.page, total_records, RequestContext.pageSize)
 
-    return result
+#     return result
 
 
-def pagination(page: int, totalRecords: int, pageSize: int = 25) -> Dict[str, Any]:
-    """
-    Build pagination response structure used by all models.
+# def pagination(page: int, totalRecords: int, pageSize: int = 25) -> Dict[str, Any]:
+#     """
+#     Build pagination response structure used by all models.
     
-    Args:
-        page: Current page number
-        pageSize: Items per page  
-        totalRecords: Total number of items
+#     Args:
+#         page: Current page number
+#         pageSize: Items per page  
+#         totalRecords: Total number of items
         
-    Returns:
-        Dictionary with pagination fields matching existing pattern
-    """
-    totalPages = (totalRecords + pageSize - 1) // pageSize if totalRecords > 0 else 0
+#     Returns:
+#         Dictionary with pagination fields matching existing pattern
+#     """
+#     totalPages = (totalRecords + pageSize - 1) // pageSize if totalRecords > 0 else 0
     
-    return {
-        "page": page,
-        "pageSize": pageSize,
-        "total": totalRecords,
-        "totalPages": totalPages
-    }
+#     return {
+#         "page": page,
+#         "pageSize": pageSize,
+#         "total": totalRecords,
+#         "totalPages": totalPages
+#     }
 
 
 

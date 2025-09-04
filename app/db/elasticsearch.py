@@ -142,20 +142,20 @@ class ElasticsearchDocuments(DocumentManager):
     
     async def get_all(
         self, 
-        entity_type: str,
+        entity_type: str, 
         sort: Optional[List[Tuple[str, str]]] = None,
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
         pageSize: int = 25,
         process_fks: bool = True
-    ) -> Tuple[List[Dict[str, Any]], bool, int]:
+    ) -> Tuple[List[Dict[str, Any]], int]:
         """Get paginated list of documents"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
         try:
             if not await es.indices.exists(index=entity_type):
-                return [], True, 0
+                return [], 0
             
             # Build query
             query_body = {
@@ -429,8 +429,13 @@ class ElasticsearchDocuments(DocumentManager):
             if response.get("hits", {}).get("total", {}).get("value", 0) > 0:
                 # Use first field in constraint (matches MongoDB pattern)
                 duplicate_field = constraint_fields[0]
-                duplicate_warning("Duplicate value for field ", entity=entity_type, entity_id=exclude_id or "new", field=duplicate_field)
-                return False
+                from app.errors import DuplicateConstraintError
+                raise DuplicateConstraintError(
+                    message=f"Duplicate value for field '{duplicate_field}'",
+                    entity=entity_type,
+                    field=duplicate_field,
+                    entity_id=exclude_id or "new"
+                )
         
         return True
 
@@ -517,6 +522,7 @@ class ElasticsearchIndexes(IndexManager):
             
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
+        properties: Dict[str, Any] = {}
         
         try:
             # Ensure index exists

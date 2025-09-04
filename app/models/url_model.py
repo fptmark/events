@@ -4,8 +4,6 @@ from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
 from app.db import DatabaseFactory
 from app.config import Config
-from app.services.notification import validation_warning
-from app.services.request_context import RequestContext
 from app.services.metadata import MetadataService
 import app.models.utils as utils
 
@@ -56,86 +54,102 @@ class Url(BaseModel):
                       filter: Optional[Dict[str, Any]], 
                       page: int, 
                       pageSize: int, 
-                      view_spec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+                      view_spec: Optional[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
         "Get paginated, sorted, and filtered list of entity." 
         validation = Config.validation(True)
         
         # Get filtered data from database - RequestContext provides the parameters
-        response = await DatabaseFactory.get_all("Url", sort, filter, page, pageSize)
+        data_records, total_count = await DatabaseFactory.get_all("Url", sort, filter, page, pageSize)
         
-        if response["data"]:
-            for user_dict in response["data"]:
-                # Process Pydantic and FK validation if enabled
-                if validation:
-                    utils.validate_model(cls, user_dict, "Url")
-                    await utils.validate_fks("Url", user_dict, cls._metadata)
-                
-                # Populate view data if requested
-                if view_spec:
-                    await utils.populate_view(user_dict, view_spec, "Url")
-        
-        return response
-
-
-    @classmethod
-    async def get(cls, id: str, view_spec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        validation = Config.validation(False)
-        
-        response = await DatabaseFactory.get_by_id(str(id), "Url")
-        if response["data"]:
-            user_dict = response["data"]
+        #if data_records:
+        for data in data_records:
+            # Always run Pydantic validation (required fields, types, ranges)
+            utils.validate_model(cls, data, "Url")
             
-            # Process Pydantic and FK validation if enabled
+            # Run FK validation if enabled by config
             if validation:
-                utils.validate_model(cls, user_dict, "Url")
-                await utils.validate_fks("Url", user_dict, cls._metadata)
+                await utils.validate_fks("Url", data, cls._metadata)
+                
+                # Run unique validation if enabled by config
+                unique_constraints = cls._metadata.get('uniques', [])
+                if unique_constraints:
+                    await utils.validate_uniques("Url", data, unique_constraints, None)
             
             # Populate view data if requested
             if view_spec:
-                await utils.populate_view(user_dict, view_spec, "Url")
+                    await utils.populate_view(data, view_spec, "Url")
         
-        return response
+        return data_records, total_count
+
+    @classmethod
+    async def get(cls, id: str, view_spec: Optional[Dict[str, Any]]) -> Tuple[Dict[str, Any], int]:
+        validation = Config.validation(False)
+        
+        data, record_count = await DatabaseFactory.get_by_id(str(id), "Url")
+        if data:
+            
+            # Always run Pydantic validation (required fields, types, ranges)
+            utils.validate_model(cls, data, "Url")
+            
+            # Run FK validation if enabled by config
+            if validation:
+                await utils.validate_fks("Url", data, cls._metadata)
+                
+                # Run unique validation if enabled by config
+                unique_constraints = cls._metadata.get('uniques', [])
+                if unique_constraints:
+                    await utils.validate_uniques("Url", data, unique_constraints, None)
+            
+            # Populate view data if requested
+            if view_spec:
+                await utils.populate_view(data, view_spec, "Url")
+        
+        return data, record_count
 
 
-    async def save(self, entity_id: str = '', validate: bool = True) -> tuple[Self, List[str]]:
-        self.updatedAt = datetime.now(timezone.utc)
-
-        data = self.model_dump(mode='python')
-
+    @classmethod
+    async def create(cls, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
+        data['updatedAt'] = datetime.now(timezone.utc)
+        
         if validate:
-            # Pydantic validation
-            validated_instance = utils.validate_model(self.__class__, data, "Url")
+            # 1. Pydantic validation (missing fields + constraints)
+            validated_instance = utils.validate_model(cls, data, "Url")
             data = validated_instance.model_dump(mode='python')
             
-            # FK validation (sends notifications, doesn't throw)
-            await utils.validate_fks("Url", data, self._metadata)
-        
-        # Unique validation (always enforced)
-        unique_constraints = self._metadata.get('uniques', [])
-        if unique_constraints:
-            await utils.validate_uniques("Url", data, unique_constraints, entity_id if entity_id.strip() else None)
+            # 2. FK validation
+            await utils.validate_fks("Url", data, cls._metadata)
+            
+            # 3. Unique validation
+            unique_constraints = cls._metadata.get('uniques', [])
+            if unique_constraints:
+                await utils.validate_uniques("Url", data, unique_constraints, None)
 
-        # Save document
-        response = await DatabaseFactory.save("Url", data, entity_id)
-        result = response["data"]
-        warnings = response.get("warnings", [])
+        # Create new document
+        return await DatabaseFactory.create("Url", data)
 
-        # Check if save was successful based on response content
-        if not result:
-            return self, warnings
-
-        # Update ID from result
-        if not self.id and result and isinstance(result, dict):
-            extracted_id = result.get('id')
-            if extracted_id:
-                self.id = extracted_id
-
-        return self, warnings
-
- 
     @classmethod
-    async def delete(cls, url_id: str) -> bool:
-        return await DatabaseFactory.delete("Url", url_id)
+    async def update(cls, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+        data['updatedAt'] = datetime.now(timezone.utc)
+
+        # Always validate for updates
+        # 1. Pydantic validation (missing fields + constraints)
+        validated_instance = utils.validate_model(cls, data, "Url")
+        data = validated_instance.model_dump(mode='python')
+        
+        # 2. FK validation
+        await utils.validate_fks("Url", data, cls._metadata)
+        
+        # 3. Unique validation
+        unique_constraints = cls._metadata.get('uniques', [])
+        if unique_constraints:
+            await utils.validate_uniques("Url", data, unique_constraints, data['id'])
+
+        # Update existing document
+        return await DatabaseFactory.update("Url", data)
+
+    @classmethod
+    async def delete(cls, id: str) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.delete("Url", id)
 
 class UrlCreate(BaseModel):
     url: str = Field(..., pattern=r"main.url")

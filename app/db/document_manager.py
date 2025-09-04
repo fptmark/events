@@ -21,7 +21,7 @@ class DocumentManager(ABC):
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
         pageSize: int = 25
-    ) -> Tuple[List[Dict[str, Any]], bool, int]:
+    ) -> Tuple[List[Dict[str, Any]], int]:
         """
         Get paginated list of documents with explicit parameters.
         
@@ -33,7 +33,7 @@ class DocumentManager(ABC):
             pageSize: Number of items per page
             
         Returns:
-            Tuple of (documents, success, total_count)
+            Tuple of (documents, total_count)
         """
         pass
     
@@ -42,17 +42,16 @@ class DocumentManager(ABC):
         self,
         id: str,
         entity_type: str,
-    ) -> Tuple[Dict[str, Any], bool]:
+    ) -> Tuple[Dict[str, Any], int]:
         """
         Get single document by ID.
         
         Args:
             id: Document ID
             entity_type: Entity type (e.g., "user", "account") 
-            view_spec: View specification for FK expansion (passed to model layer)
             
         Returns:
-            Tuple of (document, success)
+            Tuple of (document, count) where count is 1 if found, 0 if not found
         """
         pass
     
@@ -61,7 +60,7 @@ class DocumentManager(ABC):
         entity_type: str,
         data: Dict[str, Any],
         validate: bool = True
-    ) -> Tuple[Dict[str, Any], bool]:
+    ) -> Tuple[Dict[str, Any], int]:
         """
         Create new document. If data contains 'id', use it as _id, otherwise auto-generate.
         
@@ -71,7 +70,7 @@ class DocumentManager(ABC):
             validate: Unused parameter (validation handled at model layer)
             
         Returns:
-            Tuple of (saved_document_or_empty_dict, record_count)
+            Tuple of (saved_document, count) where count is 1 if created, 0 if failed
         """
         try:
             # Prepare data for database storage (database-specific)
@@ -87,8 +86,15 @@ class DocumentManager(ABC):
             return doc, 1
             
         except Exception as e:
-            # Let database-specific errors bubble up
-            raise
+            # Convert database errors to notifications instead of raising
+            from app.errors import DuplicateConstraintError
+            from app.services.notification import system_error, duplicate_warning
+            
+            if isinstance(e, DuplicateConstraintError):
+                duplicate_warning(e.message, entity=e.entity, field=e.field, entity_id=e.entity_id)
+            else:
+                system_error(f"Create operation failed: {str(e)}")
+            return {}, 0
 
     async def update(
         self,
@@ -105,21 +111,21 @@ class DocumentManager(ABC):
             validate: Unused parameter (validation handled at model layer)
             
         Returns:
-            Tuple of (saved_document, success)
+            Tuple of (saved_document, count) where count is 1 if updated, 0 if failed
         """
         try:
             # ID validation - must exist for update
             if 'id' not in data or not data['id']:
                 validation_warning(message="Missing 'id' field or value for update operation", 
                                    entity=entity_type)
-                return {}, False     
+                return {}, 0     
             
             # Validate document exists for update
             exists_success = await self._validate_document_exists_for_update(entity_type, data['id'])
             
             if not exists_success:
                 validation_warning(message=f"Document to update not found using id", field="id")
-                return {}, False
+                return {}, 0
             
             # Prepare data for database storage (database-specific)
             prepared_data = self._prepare_datetime_fields(entity_type, data)
@@ -131,14 +137,21 @@ class DocumentManager(ABC):
             # Should not need this.  public I/F may only use doc['id']
             # saved_doc = self._normalize_document(saved_document_with_native_id)
             
-            return doc, True
+            return doc, 1
             
         except Exception as e:
-            # Let database-specific errors bubble up
-            raise
+            # Convert database errors to notifications instead of raising
+            from app.errors import DuplicateConstraintError
+            from app.services.notification import system_error, duplicate_warning
+            
+            if isinstance(e, DuplicateConstraintError):
+                duplicate_warning(e.message, entity=e.entity, field=e.field, entity_id=e.entity_id)
+            else:
+                system_error(f"Update operation failed: {str(e)}")
+            return {}, 0
     
     @abstractmethod
-    async def delete(self, id: str, entity_type: str) -> bool:
+    async def delete(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
         """
         Delete document by ID.
         
@@ -147,7 +160,7 @@ class DocumentManager(ABC):
             entity_type: Entity type (e.g., "user", "account")
             
         Returns:
-            True if deleted successfully
+            Tuple of (deleted_document, count) where count is 1 if deleted, 0 if not found
         """
         pass
     

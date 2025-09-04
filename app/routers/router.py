@@ -6,12 +6,11 @@ eliminating the need for metadata services, reflection, or async complexity.
 """
 
 from pathlib import Path
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from typing import Dict, Any, List, Optional, Type, Protocol
 from pydantic import BaseModel, Field
 import logging
 
-from app.routers.router_factory import get_entity_names
 from app.services.model import ModelService
 from app.routers.endpoint_handlers import (
     get_all_handler, get_entity_handler, create_entity_handler,
@@ -29,18 +28,12 @@ def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[
     # Create response models using class-based approach for better type safety
     class EntityResponse(BaseModel):
         data: Optional[Dict[str, Any]] = None
-        # message: Optional[str] = None
-        # level: Optional[str] = None
-        # metadata: Optional[Dict[str, Any]] = None
         notifications: Optional[Dict[str, Any]] = None
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
     
     class EntityAllResponse(BaseModel):
         data: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
-        # message: Optional[str] = None
-        # level: Optional[str] = None
-        # metadata: Optional[Dict[str, Any]] = None
         notifications: Optional[Dict[str, Any]] = None
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
@@ -86,7 +79,7 @@ class SimpleDynamicRouterFactory:
         entity_lower = entity_name
         
         # Create response models for OpenAPI documentation
-        EntityResponse, EntityAllResponse = create_response_models(entity_cls)
+        EntityResponse, EntityAllResponse = create_response_models(entity_cls) # type: ignore
         
         # Use proper FastAPI decorators for better OpenAPI schema generation
         
@@ -100,8 +93,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def get_all(request: Request) -> Dict[str, Any]:  # noqa: F811
-            return await get_all_handler(entity_cls, entity_name, request)
+        async def get_all() -> Dict[str, Any]:  # noqa: F811
+            return await get_all_handler(entity_cls)
         
         @router.get(
             "/{entity_id}",
@@ -114,8 +107,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def get_entity(entity_id: str, request: Request) -> Dict[str, Any]:  # noqa: F811
-            return await get_entity_handler(entity_cls, entity_name, entity_id, request)
+        async def get_entity(entity_id: str) -> Dict[str, Any]:  # noqa: F811
+            return await get_entity_handler(entity_cls, entity_id)
 
         @router.post(
             "",
@@ -129,8 +122,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def create_entity(entity_data: create_cls, request: Request) -> Dict[str, Any]:  # noqa: F811
-            return await create_entity_handler(entity_cls, entity_name, entity_data, request)
+        async def create_entity(entity_data: create_cls) -> Dict[str, Any]:  # type: ignore # noqa: F811
+            return await create_entity_handler(entity_cls, entity_data)
         
         @router.put(
             "/{entity_id}",
@@ -145,8 +138,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def update_entity(entity_id: str, entity_data: update_cls, request: Request) -> Dict[str, Any]:  # noqa: F811
-            return await update_entity_handler(entity_cls, entity_name, entity_id, entity_data, request)
+        async def update_entity(entity_id: str, entity_data: update_cls) -> Dict[str, Any]:  # type: ignore # noqa: F811
+            return await update_entity_handler(entity_cls, entity_data)
         
         @router.delete(
             "/{entity_id}",
@@ -159,8 +152,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def delete_entity(entity_id: str, request: Request) -> Dict[str, Any]:  # noqa: F811
-            return await delete_entity_handler(entity_cls, entity_name, entity_id, request)
+        async def delete_entity(entity_id: str) -> Dict[str, Any]:  # noqa: F811
+            return await delete_entity_handler(entity_cls, entity_id)
         
         logger.info(f"Created dynamic router for entity: {entity_name}")
         return router
@@ -173,7 +166,7 @@ class SimpleDynamicRouterFactory:
         Returns:
             List of FastAPI routers, one for each entity
         """
-        entity_names = get_entity_names(schema_path)
+        entity_names = ModelService.get_available_models()
         routers = []
         
         for entity_name in entity_names:

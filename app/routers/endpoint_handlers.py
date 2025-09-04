@@ -44,176 +44,85 @@ def parse_request_context(handler: Callable) -> Callable:
 @parse_request_context
 async def get_all_handler(entity_cls: Type[EntityModelProtocol]) -> Dict[str, Any]:
     """Reusable handler for GET ALL endpoint (paginated version)."""
+    Notification.start(entity=entity_cls.__name__, operation="get_all")
     
-    # Start notifications for this request
-    Notification.start(entity=RequestContext.entity_type, operation="get_all")
-    
-    try:
-        # Get paginated data from model - pass RequestContext parameters  
-        response = await entity_cls.get_all(
-            RequestContext.sort_fields,
-            RequestContext.filters,
-            RequestContext.page,
-            RequestContext.pageSize,
-            RequestContext.view_spec
-        )
-        
-    except Exception as e:
-        Notification.error(ErrorType.SYSTEM, f"Failed to retrieve entities: {str(e)}")
-        
-    # End notifications and build response
-    notification_response = Notification.end()
-        
-    total_records = response.get('total_records', 0) if response else 0
-    notifications = notification_response.get("notifications", {})
-    if notifications.get("errors", []):
-        status = "error"
-    elif notifications.get("warnings", {}):
-        status = "warning"
-    else:
-        status = "success"
-
-    # Build error response with correct structure
-    final_response = {
-        "data": response.get('data', []),
-        "notifications": notifications,
-        "status": status #notification_response.get("status", "failed")
-    }
-        
-    # Add pagination metadata under pagination key
-    # final_response["pagination"] = pagination(RequestContext.page, total_records, RequestContext.pageSize)
-    return final_response
+    # Model handles notifications internally, just call and return
+    data, records = await entity_cls.get_all(
+        RequestContext.sort_fields,
+        RequestContext.filters,
+        RequestContext.page,
+        RequestContext.pageSize,
+        RequestContext.view_spec
+    )
+    return update_response(data, records)
 
 
 @parse_request_context
 async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str) -> Dict[str, Any]:
     """Reusable handler for GET endpoint."""
+    Notification.start(entity=entity_cls.__name__, operation="get")
     
-    # Start notifications for this request
-    Notification.start(entity=RequestContext.entity_type, operation="get")
-    
-    try:
-        # Get entity directly from model - pass RequestContext parameters
-        response = await entity_cls.get(entity_id, RequestContext.view_spec)
-        
-        # Note: Warnings are now added directly to notification system by model layer
-        
-        # End notifications and build response following response.json structure
-        notification_response = Notification.end()
-        
-        # Build response with correct structure: data, notifications, status
-        final_response = {
-            "data": response.get('data'),
-            "notifications": notification_response.get("notifications", {}),
-            "status": notification_response.get("status", "success")
-        }
-        return final_response
-        
-    except Exception as e:
-        Notification.error(ErrorType.SYSTEM, f"Failed to retrieve entity: {str(e)}")
-        # End notifications and build error response following response.json structure
-        notification_response = Notification.end()
-        
-        # Build error response with correct structure
-        final_response = {
-            "data": None,
-            "notifications": notification_response.get("notifications", {}),
-            "status": notification_response.get("status", "failed")
-        }
-        return final_response
+    # Model handles notifications internally, just call and return
+    response = await entity_cls.get(entity_id, RequestContext.view_spec)
+
+    return update_response(response)   
 
 
 @parse_request_context
 async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_data: BaseModel) -> Dict[str, Any]:
     """Reusable handler for POST endpoint."""
+    Notification.start(entity=entity_cls.__name__, operation="create")
     
-    # Start notifications for this request
-    Notification.start(entity=RequestContext.entity_type, operation="create")
-    
-    try:
-        # Let model handle all validation and business logic
-        result = await entity_cls.create(entity_data.model_dump())
-        # Note: Warnings are now added directly to notification system by model layer
-        
-        # End notifications and build response
-        notification_response = Notification.end()
-        
-        return {
-            "data": result,
-            "notifications": notification_response.get("notifications", {}),
-            "status": notification_response.get("status", "success")
-        }
-        # Note: Validation errors are now handled by notification system in model layer
-    except Exception:
-        # Let generic exceptions bubble up to FastAPI exception handler
-        # which will return proper HTTP status code (500)
-        raise
-
+    # Model handles notifications internally, just call and return
+    response = await entity_cls.create(entity_data.model_dump())
+    return update_response(response)   
 
 @parse_request_context
 async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_data: BaseModel) -> Dict[str, Any]:
     """Reusable handler for PUT endpoint - True PUT semantics (full replacement)."""
-    
-    # Start notifications for this request
-    Notification.start(entity=RequestContext.entity_type, operation="update")
-    
-    try:
-        # True PUT semantics: validate complete entity data with URL's entity_id
-        entity_dict = entity_data.model_dump()
-        if 'id' not in entity_dict or not entity_dict['id']:
-            validation_warning(
-                message="Missing 'id' field in request body for update operation",
-                entity=RequestContext.entity_type,
-                entity_id="missing",
-                field="id"
-            )
-            return {
-                "data": entity_dict,
-                "notifications": Notification.end().get("notifications", {}),
-                "status": "warning"
-            }
-        
-        # Let model handle all validation and business logic
-        result = await entity_cls.update(entity_dict)
-        
-        # Note: Warnings are now added directly to notification system by model layer
-        
-        # End notifications and build response
-        notification_response = Notification.end()
-        
-        return {
-            "data": result,
-            "notifications": notification_response.get("notifications", {}),
-            "status": "success"
-        }
-        # Note: Validation errors are now handled by notification system in model layer
-    except Exception:
-        # Let generic exceptions bubble up to FastAPI exception handler
-        # which will return proper HTTP status code (500)
-        raise
+    Notification.start(entity=entity_cls.__name__, operation="update")
+
+    # id MUST exist in the payload for update - moved to docmgr
+    # data = entity_data.model_dump()
+    # if 'id' not in data or not data['id']:
+    #     validation_warning(message="Missing 'id' field or value for update operation", 
+    #                     entity="User", 
+    #                     field="id")
+
+    # Model handles notifications internally, just call and return
+    response = await entity_cls.update(entity_data.model_dump())
+    return update_response(response)
 
 
 @parse_request_context
 async def delete_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str) -> Dict[str, Any]:
     """Reusable handler for DELETE endpoint."""
-    
-    # Start notifications for this request
-    Notification.start(entity=RequestContext.entity_type, operation="delete")
-    
-    try:
-        success = await entity_cls.delete(entity_id)
-        # Note: Warnings are now added directly to notification system by model layer
-        
-        # End notifications and build response
-        notification_response = Notification.end()
-        
-        return {
-            "data": None,
-            "notifications": notification_response.get("notifications", {}),
-            "status": notification_response.get("status", "success")
+    Notification.start(entity=entity_cls.__name__, operation="delete")
+
+    # Model handles notifications internally, just call and return
+    response = await entity_cls.delete(entity_id)
+    return update_response(response)
+
+
+def update_response(data: Any, records: Optional[int] = None) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+
+    result['data'] = data
+
+    if records:
+        totalPages = (records + RequestContext.pageSize - 1) // RequestContext.pageSize if records > 0 else 0
+        result['pagination'] = {
+            "page": RequestContext.page,
+            "pageSize": RequestContext.pageSize,
+            "total": records,
+            "totalPages": totalPages
         }
-        # Note: Not found errors are now handled by notification system in model layer
-    except Exception:
-        # Let generic exceptions bubble up to FastAPI exception handler
-        # which will return proper HTTP status code (500)
-        raise
+
+    notification_response = Notification.get()
+    notifications = notification_response.get("notifications", {})
+    result["notifications"] = notifications
+
+    errors = notifications.get('errors', [])
+    warnings = notifications.get('warnings', {})
+    result["status"] = notification_response.get('status', "missing")
+    return result

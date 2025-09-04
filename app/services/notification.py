@@ -59,7 +59,7 @@ class Notification:
         cls._active = True
     
     @classmethod
-    def end(cls) -> Dict[str, Any]:
+    def get(cls) -> Dict[str, Any]:
         """End collection and return formatted response"""
         if not cls._active:
             return {"status": "success"}

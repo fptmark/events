@@ -4,7 +4,6 @@ import argparse
 from pathlib import Path
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-from app.services.model import ModelService
 import app.utils as utils
 from app.config import Config
 from app.db import DatabaseFactory
@@ -13,6 +12,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.errors import DatabaseError 
 from app.services.metadata import MetadataService
+from app.services.model import ModelService
+from app.services.notification import Notification
 from app.routers.router import get_all_dynamic_routers
 
 from app.services.auth.cookies.redis_provider import CookiesAuth as Auth
@@ -105,7 +106,7 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing metadata service...")
     MetadataService.initialize(ENTITIES)
     ModelService.initialize(ENTITIES)
-    logger.info("Metadata service initialized successfully")
+    logger.info("Metadata & Model services initialized successfully")
 
     logger.info(f"Registing routers")
     setup_routers(args.yaml)
@@ -249,7 +250,7 @@ async def database_error_handler(request: Request, exc: DatabaseError):
     # Add error to notification system (notification collection should already be started by endpoint handler)
     Notification.error(ErrorType.DATABASE, exc.message)
     
-    notification_response = Notification.end()
+    notification_response = Notification.get()
     return JSONResponse(
         status_code=500,
         content={

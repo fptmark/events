@@ -143,7 +143,7 @@ class MongoDocuments(DocumentManager):
             result = await cursor.to_list(1)
             
             if not result:
-                return [], False, 0
+                return [], 0
             
             facet_result = result[0]
             raw_data = facet_result.get("data", [])
@@ -244,6 +244,16 @@ class MongoDocuments(DocumentManager):
                 saved_doc["_id"] = result.inserted_id
             return saved_doc
             
+        except DuplicateKeyError as e:
+            # Convert MongoDB duplicate key error to database-agnostic exception
+            field, value = self._parse_duplicate_key_error(e)
+            from app.errors import DuplicateConstraintError
+            raise DuplicateConstraintError(
+                message=f"Duplicate value for field '{field}'",
+                entity=entity_type,
+                field=field,
+                entity_id=data.get('id', 'new')
+            )
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
@@ -273,11 +283,15 @@ class MongoDocuments(DocumentManager):
             return update_data
                 
         except DuplicateKeyError as e:
-            # Convert MongoDB duplicate key error to warning
+            # Convert MongoDB duplicate key error to database-agnostic exception
             field, value = self._parse_duplicate_key_error(e)
-            from app.services.notification import duplicate_warning
-            duplicate_warning(f"Duplicate value for field '{field}'", entity=entity_type, entity_id=id or "new", field=field)
-            raise
+            from app.errors import DuplicateConstraintError
+            raise DuplicateConstraintError(
+                message=f"Duplicate value for field '{field}'",
+                entity=entity_type,
+                field=field,
+                entity_id=data.get('id', 'new')
+            )
         except Exception as e:
             raise DatabaseError(
                 message=str(e),
