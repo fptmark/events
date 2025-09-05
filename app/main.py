@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 import app.utils as utils
 from app.config import Config
 from app.db import DatabaseFactory
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.errors import DatabaseError 
@@ -258,6 +258,21 @@ async def database_error_handler(request: Request, exc: DatabaseError):
             "notifications": notification_response.get("notifications", {}),
             "status": notification_response.get("status", "failed")
         }
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions using consistent response format"""
+    from app.routers.endpoint_handlers import update_response
+    
+    logger.info(f"HTTP {exc.status_code}: {exc.detail}")
+    
+    # Use update_response to maintain consistent API structure
+    response_data = update_response(data=None)
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=response_data
     )
 
 # ValidationError handler removed - validation errors now handled by notification system
