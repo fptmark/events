@@ -12,7 +12,7 @@ import inspect
 from typing import Dict, Any, Type, Optional, Union, Protocol, Callable
 from urllib.parse import unquote
 from functools import wraps
-from fastapi import Request
+from fastapi import Request, HTTPException
 from pydantic import BaseModel
 
 from app.routers.router_factory import EntityModelProtocol
@@ -47,14 +47,18 @@ async def get_all_handler(entity_cls: Type[EntityModelProtocol], request: Reques
     Notification.start(entity=entity_cls.__name__, operation="get_all")
     
     # Model handles notifications internally, just call and return
-    data, records = await entity_cls.get_all(
+    data, count = await entity_cls.get_all(
         RequestContext.sort_fields,
         RequestContext.filters,
         RequestContext.page,
         RequestContext.pageSize,
         RequestContext.view_spec
     )
-    return update_response(data, records)
+
+    if count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return update_response(data, count)
 
 
 @parse_request_context
@@ -63,7 +67,10 @@ async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: s
     Notification.start(entity=entity_cls.__name__, operation="get")
     
     # Model handles notifications internally, just call and return
-    response, _ = await entity_cls.get(entity_id, RequestContext.view_spec)
+    response, count = await entity_cls.get(entity_id, RequestContext.view_spec)
+    
+    if count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
 
     return update_response(response)   
 
