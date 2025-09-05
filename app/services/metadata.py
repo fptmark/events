@@ -70,6 +70,10 @@ class MetadataService:
 
     @staticmethod
     def get_proper_name(entity: str, field: Optional[str] = None) -> str:
+        #id is a special case
+        if field and field.lower() == 'id':
+            return 'id'
+
         # find metadata where lower key = entity.lower()
         for e, md in MetadataService._metadata.items():
             if e.lower() == entity.lower():
