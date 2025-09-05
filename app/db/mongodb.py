@@ -304,7 +304,7 @@ class MongoDocuments(DocumentManager):
         return self.parent.core
     
     async def delete(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
-        """Delete document by ID"""
+        """Delete document by ID using atomic findOneAndDelete"""
         self.parent._ensure_initialized()
         db = self.parent.core.get_connection()
         
@@ -317,9 +317,16 @@ class MongoDocuments(DocumentManager):
             except:
                 object_id = id
             
-            result = await db[collection].delete_one({"_id": object_id})
-            record_count = 1 if result.deleted_count > 0 else 0
-            return {}, record_count
+            # Use findOneAndDelete for atomic operation that returns deleted document
+            deleted_doc = await db[collection].find_one_and_delete({"_id": object_id})
+            
+            if deleted_doc:
+                # Normalize the deleted document and return
+                normalized_doc = self._normalize_document(deleted_doc)
+                return normalized_doc, 1
+            else:
+                not_found_warning(f"Document not found for deletion", entity=entity_type, entity_id=id)
+                return {}, 0
             
         except Exception as e:
             raise DatabaseError(

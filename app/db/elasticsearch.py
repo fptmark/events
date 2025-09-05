@@ -302,7 +302,7 @@ class ElasticsearchDocuments(DocumentManager):
         return self.parent.core
     
     async def delete(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
-        """Delete document by ID"""
+        """Delete document by ID after retrieving it"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
@@ -311,10 +311,22 @@ class ElasticsearchDocuments(DocumentManager):
             
             if not await es.indices.exists(index=index):
                 return {}, 0
-                
-            response = await es.delete(index=index, id=id)
-            record_count = 1 if response.get("result") == "deleted" else 0
-            return {}, record_count
+            
+            # First get the document before deleting
+            try:
+                get_response = await es.get(index=index, id=id)
+                doc_to_delete = self._normalize_document(get_response["_source"])
+            except Exception as e:
+                if "not found" in str(e).lower():
+                    not_found_warning(f"Document not found for deletion", entity=entity_type, entity_id=id)
+                    return {}, 0
+                raise
+            
+            # Now delete the document
+            delete_response = await es.delete(index=index, id=id)
+            record_count = 1 if delete_response.get("result") == "deleted" else 0
+            
+            return doc_to_delete, record_count
             
         except Exception as e:
             if "not found" in str(e).lower():
