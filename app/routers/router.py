@@ -155,7 +155,7 @@ class SimpleDynamicRouterFactory:
         async def delete_entity(entity_id: str) -> Dict[str, Any]:  # noqa: F811
             return await delete_entity_handler(entity_cls, entity_id)
         
-        logger.info(f"Created dynamic router for entity: {entity_name}")
+        # logger.info(f"Created dynamic router for entity: {entity_name}")
         return router
     
     @classmethod
@@ -173,7 +173,7 @@ class SimpleDynamicRouterFactory:
             try:
                 router = cls.create_entity_router(entity_name)
                 routers.append(router)
-                logger.info(f"Successfully created router for: {entity_name}")
+                # logger.info(f"Successfully created router for: {entity_name}")
             except Exception as e:
                 logger.warning(f"Skipping {entity_name} - failed to create router: {e}")
                 continue
