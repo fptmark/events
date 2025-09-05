@@ -54,9 +54,9 @@ class TagAffinity(BaseModel):
                       filter: Optional[Dict[str, Any]], 
                       page: int, 
                       pageSize: int, 
-                      view_spec: Optional[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
+                      view_spec: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int]:
         "Get paginated, sorted, and filtered list of entity." 
-        validation = Config.validation(True)
+        validate = Config.validation(True)
         
         # Get filtered data from database - RequestContext provides the parameters
         data_records, total_count = await DatabaseFactory.get_all("TagAffinity", sort, filter, page, pageSize)
@@ -66,24 +66,18 @@ class TagAffinity(BaseModel):
             # Always run Pydantic validation (required fields, types, ranges)
             utils.validate_model(cls, data, "TagAffinity")
             
-            # Run FK validation if enabled by config
-            if validation:
-                await utils.validate_fks("TagAffinity", data, cls._metadata)
-                
-                # Run unique validation if enabled by config
+            if validate:
                 unique_constraints = cls._metadata.get('uniques', [])
-                if unique_constraints:
-                    await utils.validate_uniques("TagAffinity", data, unique_constraints, None)
+                await utils.validate_uniques("TagAffinity", data, unique_constraints, None)
             
-            # Populate view data if requested
-            if view_spec:
-                    await utils.populate_view(data, view_spec, "TagAffinity")
+            # Populate view data if requested and validate fks
+            await utils.process_fks("TagAffinity", data, validate, view_spec)
         
         return data_records, total_count
 
     @classmethod
-    async def get(cls, id: str, view_spec: Optional[Dict[str, Any]]) -> Tuple[Dict[str, Any], int]:
-        validation = Config.validation(False)
+    async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+        validate = Config.validation(False)
         
         data, record_count = await DatabaseFactory.get_by_id(str(id), "TagAffinity")
         if data:
@@ -91,18 +85,12 @@ class TagAffinity(BaseModel):
             # Always run Pydantic validation (required fields, types, ranges)
             utils.validate_model(cls, data, "TagAffinity")
             
-            # Run FK validation if enabled by config
-            if validation:
-                await utils.validate_fks("TagAffinity", data, cls._metadata)
-                
-                # Run unique validation if enabled by config
+            if validate:
                 unique_constraints = cls._metadata.get('uniques', [])
-                if unique_constraints:
-                    await utils.validate_uniques("TagAffinity", data, unique_constraints, None)
+                await utils.validate_uniques("TagAffinity", data, unique_constraints, None)
             
-            # Populate view data if requested
-            if view_spec:
-                await utils.populate_view(data, view_spec, "TagAffinity")
+            # Populate view data if requested and validate fks
+            await utils.process_fks("TagAffinity", data, validate, view_spec)
         
         return data, record_count
 
@@ -112,18 +100,15 @@ class TagAffinity(BaseModel):
         data['updatedAt'] = datetime.now(timezone.utc)
         
         if validate:
-            # 1. Pydantic validation (missing fields + constraints)
             validated_instance = utils.validate_model(cls, data, "TagAffinity")
             data = validated_instance.model_dump(mode='python')
             
-            # 2. FK validation
-            await utils.validate_fks("TagAffinity", data, cls._metadata)
-            
-            # 3. Unique validation
             unique_constraints = cls._metadata.get('uniques', [])
-            if unique_constraints:
-                await utils.validate_uniques("TagAffinity", data, unique_constraints, None)
+            await utils.validate_uniques("TagAffinity", data, unique_constraints, None)
 
+            # Validate fks
+            await utils.process_fks("TagAffinity", data, True)
+        
         # Create new document
         return await DatabaseFactory.create("TagAffinity", data)
 
@@ -131,19 +116,15 @@ class TagAffinity(BaseModel):
     async def update(cls, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         data['updatedAt'] = datetime.now(timezone.utc)
 
-        # Always validate for updates
-        # 1. Pydantic validation (missing fields + constraints)
         validated_instance = utils.validate_model(cls, data, "TagAffinity")
         data = validated_instance.model_dump(mode='python')
         
-        # 2. FK validation
-        await utils.validate_fks("TagAffinity", data, cls._metadata)
-        
-        # 3. Unique validation
         unique_constraints = cls._metadata.get('uniques', [])
-        if unique_constraints:
-            await utils.validate_uniques("TagAffinity", data, unique_constraints, data['id'])
+        await utils.validate_uniques("TagAffinity", data, unique_constraints, data['id'])
 
+        # Validate fks
+        await utils.process_fks("TagAffinity", data, True)
+    
         # Update existing document
         return await DatabaseFactory.update("TagAffinity", data)
 
