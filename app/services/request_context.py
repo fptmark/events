@@ -32,7 +32,7 @@ class RequestContext:
     pageSize: int = 25
     
     # View/expansion
-    view_spec: Optional[Dict[str, Any]] = None
+    view_spec: Dict[str, Any] = {}
     
     @staticmethod
     def parse_request(path: str, query_params: Dict[str, str]) -> None:
@@ -91,7 +91,7 @@ class RequestContext:
         pageSize: int = 25,
         filters: Optional[Dict[str, Any]] = None,
         sort_fields: Optional[List[Tuple[str, str]]] = None,
-        view_spec: Optional[Dict[str, Any]] = None
+        view_spec: Dict[str, Any] = {}
     ) -> None:
         """
         Set query parameters directly (for programmatic use).
@@ -327,7 +327,7 @@ class RequestContext:
             return None
 
     @staticmethod
-    def _parse_view_parameter(view_str: str, entity_name: str) -> Optional[Dict[str, List[str]]]:
+    def _parse_view_parameter(view_str: str, entity_name: str) -> Dict[str, List[str]]:
         """
         Parse view parameter into FK expansion dict.
         
@@ -339,7 +339,7 @@ class RequestContext:
             Dict like {"account": ["id", "name"], "profile": ["firstName", "lastName"]}
         """
         if not view_str or view_str.strip() == "":
-            return None
+            return {}
         
         view_spec = {}
         
@@ -352,7 +352,7 @@ class RequestContext:
             
             if not matches:
                 system_error(f"Invalid view format: '{view_str}'. Use format: fk_name(field1,field2)")
-                return None
+                return {}
             
             for fk_name, fields_str in matches:
                 field_names = []
@@ -366,11 +366,11 @@ class RequestContext:
                 if field_names:
                     view_spec[fk_name] = field_names
             
-            return view_spec if view_spec else None
+            return view_spec if view_spec else {}
             
         except Exception as e:
             system_error(f"Error parsing view parameter: {str(e)}")
-            return None
+            return {}
 
     @staticmethod
     def _parse_number(value: str) -> Union[int, float, None]:
