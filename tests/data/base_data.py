@@ -79,7 +79,7 @@ async def save_test_data(config_data: dict, verbose: bool = False) -> bool:
         all_entity_data = {}
         
         # Process each entity factory directly
-        for entity_name, factory_class in [('user', UserDataFactory), ('account', AccountDataFactory)]:
+        for entity_name, factory_class in [('User', UserDataFactory), ('Account', AccountDataFactory)]:
             if verbose:
                 print(f"  📝 Generating data for {entity_name}...")
             
@@ -121,11 +121,14 @@ async def save_test_data(config_data: dict, verbose: bool = False) -> bool:
             saved_count = 0
             for i, record in enumerate(records):
                 try:
-                    result, warnings = await DatabaseFactory.save(entity_name, record, '', validate=False)
-                    if result:
+                    data, count = await DatabaseFactory.create(entity_name, record, validate=False)
+                    if count > 0:
                         saved_count += 1
-                        if warnings and verbose:
-                            print(f"      ⚠️ Record {record.get('id', i+1)} warnings: {warnings}")
+                        if verbose:
+                            print(f"      ✓ Created record {record.get('id', i+1)}")
+                    else:
+                        if verbose:
+                            print(f"      ⚠️ Failed to create record {record.get('id', i+1)}")
                             
                 except Exception as e:
                     if verbose:
