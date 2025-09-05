@@ -6,7 +6,7 @@ eliminating the need for metadata services, reflection, or async complexity.
 """
 
 from pathlib import Path
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from typing import Dict, Any, List, Optional, Type, Protocol
 from pydantic import BaseModel, Field
 import logging
@@ -93,8 +93,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def get_all() -> Dict[str, Any]:  # noqa: F811
-            return await get_all_handler(entity_cls)
+        async def get_all(request: Request) -> Dict[str, Any]:  # noqa: F811
+            return await get_all_handler(entity_cls, request)
         
         @router.get(
             "/{entity_id}",
@@ -107,8 +107,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def get_entity(entity_id: str) -> Dict[str, Any]:  # noqa: F811
-            return await get_entity_handler(entity_cls, entity_id)
+        async def get_entity(entity_id: str, request: Request) -> Dict[str, Any]:  # noqa: F811
+            return await get_entity_handler(entity_cls, entity_id, request)
 
         @router.post(
             "",

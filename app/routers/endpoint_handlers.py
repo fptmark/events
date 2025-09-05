@@ -42,7 +42,7 @@ def parse_request_context(handler: Callable) -> Callable:
 
 
 @parse_request_context
-async def get_all_handler(entity_cls: Type[EntityModelProtocol]) -> Dict[str, Any]:
+async def get_all_handler(entity_cls: Type[EntityModelProtocol], request: Request) -> Dict[str, Any]:
     """Reusable handler for GET ALL endpoint (paginated version)."""
     Notification.start(entity=entity_cls.__name__, operation="get_all")
     
@@ -58,12 +58,12 @@ async def get_all_handler(entity_cls: Type[EntityModelProtocol]) -> Dict[str, An
 
 
 @parse_request_context
-async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str) -> Dict[str, Any]:
+async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str, request: Request) -> Dict[str, Any]:
     """Reusable handler for GET endpoint."""
     Notification.start(entity=entity_cls.__name__, operation="get")
     
     # Model handles notifications internally, just call and return
-    response = await entity_cls.get(entity_id, RequestContext.view_spec)
+    response, _ = await entity_cls.get(entity_id, RequestContext.view_spec)
 
     return update_response(response)   
 
@@ -74,7 +74,7 @@ async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_da
     Notification.start(entity=entity_cls.__name__, operation="create")
     
     # Model handles notifications internally, just call and return
-    response = await entity_cls.create(entity_data.model_dump())
+    response, _ = await entity_cls.create(entity_data.model_dump())
     return update_response(response)   
 
 @parse_request_context
@@ -90,7 +90,7 @@ async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_da
     #                     field="id")
 
     # Model handles notifications internally, just call and return
-    response = await entity_cls.update(entity_data.model_dump())
+    response, _ = await entity_cls.update(entity_data.model_dump())
     return update_response(response)
 
 
@@ -100,7 +100,7 @@ async def delete_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id
     Notification.start(entity=entity_cls.__name__, operation="delete")
 
     # Model handles notifications internally, just call and return
-    response = await entity_cls.delete(entity_id)
+    response, _ = await entity_cls.delete(entity_id)
     return update_response(response)
 
 
