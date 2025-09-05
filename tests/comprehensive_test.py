@@ -114,6 +114,36 @@ async def create_data(config_data: dict, verbose: bool = False) -> bool:
     if not success:
         print(f"❌ Failed to wipe data")
         return False
+        
+    # Initialize database exactly like the app does (ES templates, indices, constraints)  
+    print("🔧 Initializing database like the main app...")
+    try:
+        from app.db import DatabaseFactory
+        from app.config import Config
+        from app.services.metadata import MetadataService
+        from app.services.model import ModelService
+        
+        # Same ENTITIES list as main.py
+        ENTITIES = ["Account", "User", "Profile", "TagAffinity", "Event", "UserEvent", "Url", "Crawl"]
+        
+        # Initialize services like the app does
+        MetadataService.initialize(ENTITIES)
+        ModelService.initialize(ENTITIES)
+        
+        # Initialize database connection
+        db_type, db_uri, db_name = Config.get_db_params(config_data)
+        db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name)
+        
+        # Initialize database structures (indexes, templates, etc.)
+        success = await db_instance.indexes.initialize()
+        if not success:
+            print("⚠️ Database initialization returned failure (continuing anyway)")
+        
+        print("✅ Database initialized successfully")
+    except Exception as e:
+        print(f"❌ Failed to initialize database: {e}")
+        return False
+    
     success = await create_test_data(config_data, verbose)
     if not success:
         print(f"❌ Failed to create test data")
@@ -173,13 +203,32 @@ async def wipe_data(config_data: dict, verbose: bool = False) -> bool:
         
         await DatabaseFactory.initialize(db_type, db_uri, db_name)
         
-        # Wipe all entities
-        entities = ['user', 'account']  # Add other entities as needed
-        for entity in entities:
-            await DatabaseFactory.remove_entity(entity)
+        # Get entities from MetadataService
+        from app.services.metadata import MetadataService
+        entities = MetadataService.list_entities()
+        wiped_entities = []
+        failed_entities = []
         
-        print("✅ All data wiped successfully")
-        return True
+        for entity in entities:
+            try:
+                success = await DatabaseFactory.remove_entity(entity)
+                if success:
+                    wiped_entities.append(entity)
+                    if verbose:
+                        print(f"   🗑️ Dropped collection: {entity}")
+                else:
+                    failed_entities.append(entity)
+                    print(f"   ⚠️ Failed to drop collection: {entity}")
+            except Exception as e:
+                failed_entities.append(entity)
+                print(f"   ❌ Error dropping collection {entity}: {e}")
+        
+        if failed_entities:
+            print(f"❌ Data wipe failed for: {', '.join(failed_entities)}")
+            return False
+        else:
+            print(f"✅ All data wiped successfully: {', '.join(wiped_entities)}")
+            return True
             
     except Exception as e:
         print(f"❌ Data wipe error: {e}")
@@ -409,8 +458,12 @@ async def main():
     args = parser.parse_args()
     
     # Validate arguments - require --config for operations that need it
-    if (args.wipe or args.newdata or args.connection or args.tests or args.curl) and not args.config:
+    if (args.wipe or args.newdata or args.connection or args.tests) and not args.config:
         parser.error("--config is required for database operations")
+    
+    # --curl generate-only mode doesn't need config, but --curl execute does
+    if args.curl and args.curl != True and args.curl == 'execute' and not args.config:
+        parser.error("--config is required for --curl execute")
     
     # Initialize test system before any real work
     from tests.init import initialize_all
@@ -435,7 +488,13 @@ async def main():
         dbs = []
 
 
+    # Handle --curl generate-only mode without config
+    if args.curl and args.curl == True and not args.config:
+        await generate_curl(test_cases, args.verbose)
+        return 0
+
     for config in get_configs(dbs, args.config):
+        server_started = False
         try:
             for i, arg in enumerate(sys.argv):
                 if arg == '--wipe':
@@ -445,11 +504,13 @@ async def main():
                 elif arg == '--connection':
                     print("🔗 Running connectivity test...")
                     success = await test_connection(config, args.verbose)
+                    server_started = True
                 elif arg == '--curl':
                     if i + 1 < len(sys.argv) and not sys.argv[i + 1].startswith('--'):
                         if sys.argv[i + 1] == 'execute':
                             await generate_curl(test_cases, args.verbose)
                             await start_server(config, args.verbose)
+                            server_started = True
                             result = subprocess.run(['bash', 'tests/curl.sh'], capture_output=True, text=True, timeout=300)
                             if result.returncode != 0:
                                 print(f"❌ curl.sh execution failed")
@@ -469,7 +530,9 @@ async def main():
             return 1
         
         finally:
-            cleanup(args.verbose)
+            # Only cleanup server if we actually started one
+            if server_started:
+                cleanup(args.verbose)
 
     return 0
 
