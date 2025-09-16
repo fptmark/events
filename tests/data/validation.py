@@ -2,49 +2,82 @@
 Clean Validation System - Modular, focused validation with comprehensive error handling.
 """
 
-import sys
-from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
-import json
-import re
+
+# TestCase import removed to avoid circular import
+
+def _convert_to_timestamp(value: Any) -> Optional[float]:
+    """Convert date/datetime value to Unix timestamp for reliable comparison."""
+    try:
+        if isinstance(value, (int, float)):
+            return float(value)  # Already a timestamp
+        elif hasattr(value, 'timestamp'):  # datetime object
+            return value.timestamp()
+        elif isinstance(value, str):
+            # Try various date formats
+            try:
+                # ISO format with timezone
+                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                return dt.timestamp()
+            except ValueError:
+                try:
+                    # Date only - treat as start of day UTC
+                    dt = datetime.fromisoformat(f"{value}T00:00:00+00:00")
+                    return dt.timestamp()
+                except ValueError:
+                    return None
+        else:
+            return None
+    except Exception:
+        return None
 from urllib.parse import urlparse, parse_qs
 from app.services.metadata import MetadataService
+# FilterValidator imported locally to avoid circular import
 
 # Add project root to path
 # sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 # sys.path.insert(0, str(Path(__file__).parent.parent))
 
 class ValidationReporter:
-    """Standardized error reporting with consistent format and try/catch protection."""
+    _verbose: bool = False
+    _header: str = ""
+    """Static error reporter initialized once per test run."""
+    
+    def __init__(self, header: str, verbose: bool):
+        """Initialize static settings."""
+        ValidationReporter._verbose = verbose
+        ValidationReporter._header = header
     
     @staticmethod
-    def report_error(context: str, message: str, verbose: bool = False) -> None:
-        """Report validation error with clear context."""
+    def report_error(context: str, message: str, header: Optional[str] = "") -> None:
+        """Report validation error if verbose mode is enabled."""
+        if not header:
+            header = ValidationReporter._header
+
         try:
-            if verbose:
-                print(f"    ❌ {context}: {message}")
+            if ValidationReporter._verbose:
+                print(f"{header}❌ {context}: {message}")
         except Exception as e:
-            print(f"    ❌ ERROR in ValidationReporter.report_error: {e}")
-            sys.exit(1)
+            ValidationReporter.report_error(f"ValidationReporter.report_error", f"{e}")
+            # Don't crash - continue with test execution
     
     @staticmethod
-    def check_required_fields(obj: Dict, required_fields: List[str], context: str, verbose: bool = False) -> bool:
+    def check_required_fields(obj: Dict, required_fields: List[str], context: str) -> bool:
         """Check that all required fields are present."""
         try:
             if not obj or not isinstance(obj, dict):
-                if verbose:
-                    ValidationReporter.report_error(context, f"Expected dict object, got {type(obj)}", verbose)
+                ValidationReporter.report_error(context, f"Expected dict object, got {type(obj)}")
                 return False
             
             for field in required_fields:
                 if field not in obj:
-                    ValidationReporter.report_error(context, f"Missing required field '{field}'", verbose)
+                    ValidationReporter.report_error(context, f"Missing required field '{field}'")
                     return False
             return True
         except Exception as e:
-            print(f"    ❌ ERROR in ValidationReporter.check_required_fields: {e}")
-            sys.exit(1)
+            ValidationReporter.report_error(f"ValidationReporter.check_required_fields", f"{e}")
+            return False
 
 
 class FieldTypeConverter:
@@ -63,36 +96,22 @@ class FieldTypeConverter:
                     actual_typed = float(actual_value)
                     expected_typed = float(expected_value)
                 except (ValueError, TypeError) as e:
-                    raise ValueError(f"Cannot convert numeric values: actual={actual_value}, expected={expected_value}")
+                    ValidationReporter.report_error("Cannot convert numeric values", f"actual={actual_value}, expected={expected_value}")
                     
             elif field_type in ['Date', 'Datetime']:
-                try:
-                    # Handle actual value
-                    if isinstance(actual_value, str):
-                        actual_typed = datetime.fromisoformat(actual_value.replace('Z', '+00:00'))
-                    elif hasattr(actual_value, 'year'):  # datetime-like object
-                        actual_typed = actual_value
-                    else:
-                        raise ValueError(f"Cannot convert actual value '{actual_value}' to datetime")
-                    
-                    # Handle expected value
-                    if isinstance(expected_value, str):
-                        try:
-                            expected_typed = datetime.fromisoformat(expected_value.replace('Z', '+00:00'))
-                        except ValueError:
-                            # Try date-only format
-                            expected_typed = datetime.fromisoformat(f"{expected_value}T00:00:00+00:00")
-                    else:
-                        expected_typed = expected_value
-                except Exception as e:
-                    raise ValueError(f"Date conversion error: {e}")
+                # Convert to Unix timestamps for reliable comparison
+                actual_typed = _convert_to_timestamp(actual_value)
+                expected_typed = _convert_to_timestamp(expected_value)
+                
+                if actual_typed is None or expected_typed is None:
+                    ValidationReporter.report_error("Date conversion error", f"actual='{actual_value}', expected='{expected_value}'")
                         
             elif field_type == 'Boolean':
                 try:
                     actual_typed = bool(actual_value)
                     expected_typed = expected_value.lower() in ['true', '1', 'yes', 'on']
                 except Exception as e:
-                    raise ValueError(f"Boolean conversion error: {e}")
+                    raise ValueError(f"Boolean conversion error", f"{e}")
             else:
                 # String comparison - case insensitive to match server behavior
                 actual_typed = str(actual_value).lower()
@@ -101,8 +120,8 @@ class FieldTypeConverter:
             return actual_typed, expected_typed
             
         except Exception as e:
-            print(f"    ❌ ERROR in FieldTypeConverter.convert_for_comparison: {e}")
-            sys.exit(1)
+            ValidationReporter.report_error(f"FieldTypeConverter.convert_for_comparison", f"{e}")
+            return "", ""
     
     @staticmethod
     def compare_values(val1: Any, val2: Any, field_info) -> int:
@@ -127,17 +146,13 @@ class FieldTypeConverter:
                     pass  # Fall through to string comparison
                     
             elif field_type in ['Date', 'Datetime']:
-                try:
-                    if isinstance(val1, datetime) and isinstance(val2, datetime):
-                        date1, date2 = val1, val2
-                    else:
-                        # Try parsing ISO format
-                        date1 = datetime.fromisoformat(str(val1).replace('Z', '+00:00'))
-                        date2 = datetime.fromisoformat(str(val2).replace('Z', '+00:00'))
-                    
-                    return -1 if date1 < date2 else (1 if date1 > date2 else 0)
-                except Exception:
-                    pass  # Fall through to string comparison
+                # Convert to Unix timestamps for simple numeric comparison
+                timestamp1 = _convert_to_timestamp(val1)
+                timestamp2 = _convert_to_timestamp(val2)
+                
+                if timestamp1 is not None and timestamp2 is not None:
+                    return -1 if timestamp1 < timestamp2 else (1 if timestamp1 > timestamp2 else 0)
+                # Fall through to string comparison if conversion fails
                     
             elif field_type == 'Boolean':
                 try:
@@ -151,124 +166,136 @@ class FieldTypeConverter:
             return -1 if str1 < str2 else (1 if str1 > str2 else 0)
             
         except Exception as e:
-            print(f"    ❌ ERROR in FieldTypeConverter.compare_values: {e}")
-            sys.exit(1)
+            ValidationReporter.report_error(f"FieldTypeConverter.compare_values", f"{e}")
+            return False
 
 
-class StructureValidator:
-    """Validates basic response structure (data, notifications, pagination)."""
+def validate_structure(result: Dict, test_case, http_status: int) -> bool:
+    """Main structure validation entry point."""
+    try:
+        return (validate_data_structure(result, test_case, http_status) and
+                validate_notification_structure(result) and
+                validate_status_field(result) and
+                validate_pagination_structure(result, test_case))
+    except Exception as e:
+        ValidationReporter.report_error(f"validate_structure", f"{e}")
+        return False
+
+def validate_data_structure(result: Dict, test_case, http_status: int) -> bool:
+    """Validate data field structure based on request type."""
+    # Validate data segment existence and type
+    data = result.get('data', None)
     
-    def __init__(self, result: Dict, test_case, verbose: bool = False):
-        self.result = result
-        self.test_case = test_case
-        self.verbose = verbose
-    
-    def validate(self, http_status: int) -> bool:
-        """Main structure validation entry point."""
-        try:
-            return (self._validate_data_structure(http_status) and
-                    self._validate_notification_structure() and
-                    self._validate_status_field() and
-                    self._validate_pagination_structure())
-        except Exception as e:
-            print(f"    ❌ ERROR in StructureValidator.validate: {e}")
-            sys.exit(1)
-    
-    def _validate_data_structure(self, http_status: int) -> bool:
-        """Validate data field structure based on request type."""
-        try:
-            # Must have data field for success responses
-            if http_status in [200, 201]:
-                if 'data' not in self.result:
-                    ValidationReporter.report_error("Data Structure", "Missing 'data' field in response", self.verbose)
-                    return False
-                
-                data = self.result['data']
-                
-                # Single request = single object or null, List request = array
-                if self.test_case.is_single_request():
-                    if isinstance(data, list):
-                        ValidationReporter.report_error("Data Structure", "Single entity request returned array, expected object or null", self.verbose)
-                        return False
-                else:
-                    if not isinstance(data, list):
-                        ValidationReporter.report_error("Data Structure", "List request returned object, expected array", self.verbose)
-                        return False
-            
+    if http_status in [200, 201]:
+        if not data or len(data) == 0:
+            ValidationReporter.report_error("Data Structure", "200/201 response with empty data")
+            return False
+    elif http_status == 404:
+        if data and len(data) != 0:
+            ValidationReporter.report_error("Data Structure", "404 response with non-empty data")
+            return False    
+    else:
+        ValidationReporter.report_error("Http Status", f"Unexpected HTTP status {http_status}")
+        return False
+    return True
+
+def validate_notification_structure(result: Dict) -> bool:
+    """Validate notifications structure if present."""
+    try:
+        if 'notifications' not in result:
+            return True  # notifications are optional
+        
+        notifications = result['notifications']
+        if notifications is None:
+            return True  # null notifications are valid
+        
+        if not isinstance(notifications, dict):
+            ValidationReporter.report_error("Notification Structure", f"Expected dict, got {type(notifications)}")
+            return False
+        
+        return True
+    except Exception as e:
+        ValidationReporter.report_error(f"validate_notification_structure", f"{e}")
+        return False
+
+def validate_status_field(result: Dict) -> bool:
+    """Validate status field."""
+    try:
+        if 'status' not in result:
+            ValidationReporter.report_error("Status Field", "Missing 'status' field")
+            return False
+        
+        status = result['status']
+        valid_statuses = ['success', 'warning', 'error']
+        if status not in valid_statuses:
+            ValidationReporter.report_error("Status Field", f"Invalid status '{status}', expected one of {valid_statuses}")
+            return False
+        
+        return True
+    except Exception as e:
+        ValidationReporter.report_error(f"validate_status_field", f"{e}")
+        return False
+
+def validate_pagination_structure(result: Dict, test_case) -> bool:
+    """Validate pagination structure for list responses."""
+    try:
+        # Pagination only required for list responses
+        if not test_case.is_get_all():
             return True
-        except Exception as e:
-            print(f"    ❌ ERROR in StructureValidator._validate_data_structure: {e}")
-            sys.exit(1)
-    
-    def _validate_notification_structure(self) -> bool:
-        """Validate notifications structure if present."""
-        try:
-            if 'notifications' not in self.result:
-                return True  # notifications are optional
+        
+        # Pagination fields are under 'pagination' key
+        if 'pagination' not in result:
+            ValidationReporter.report_error("Pagination", "Missing 'pagination' field")
+            return False
             
-            notifications = self.result['notifications']
-            if notifications is None:
-                return True  # null notifications are valid
+        pagination_data = result['pagination']
+        if pagination_data is None:
+            ValidationReporter.report_error("Pagination", "Pagination cannot be null for list responses")
+            return False
             
-            if not isinstance(notifications, dict):
-                ValidationReporter.report_error("Notification Structure", f"Expected dict, got {type(notifications)}", self.verbose)
-                return False
+        required_fields = ['page', 'pageSize', 'total', 'totalPages']
+        if not ValidationReporter.check_required_fields(pagination_data, required_fields, "Pagination"):
+            return False
+        
+        # Validate pagination bounds
+        page = pagination_data.get('page')
+        page_size = pagination_data.get('pageSize')
+        total = pagination_data.get('total')
+        total_pages = pagination_data.get('totalPages')
+        
+        if page < 1:
+            ValidationReporter.report_error("Pagination", f"Invalid page number {page}, must be >= 1")
+            return False
             
-            return True
-        except Exception as e:
-            print(f"    ❌ ERROR in StructureValidator._validate_notification_structure: {e}")
-            sys.exit(1)
-    
-    def _validate_status_field(self) -> bool:
-        """Validate status field."""
-        try:
-            if 'status' not in self.result:
-                ValidationReporter.report_error("Status Field", "Missing 'status' field", self.verbose)
-                return False
+        if page_size < 1:
+            ValidationReporter.report_error("Pagination", f"Invalid pageSize {page_size}, must be >= 1")
+            return False
             
-            status = self.result['status']
-            valid_statuses = ['success', 'warning', 'error']
-            if status not in valid_statuses:
-                ValidationReporter.report_error("Status Field", f"Invalid status '{status}', expected one of {valid_statuses}", self.verbose)
-                return False
+        if total < 0:
+            ValidationReporter.report_error("Pagination", f"Invalid total {total}, must be >= 0")
+            return False
             
-            return True
-        except Exception as e:
-            print(f"    ❌ ERROR in StructureValidator._validate_status_field: {e}")
-            sys.exit(1)
-    
-    def _validate_pagination_structure(self) -> bool:
-        """Validate pagination structure for list responses."""
-        try:
-            # Pagination only required for list responses
-            if not self.test_case.is_list_request():
-                return True
+        if total_pages < 0:
+            ValidationReporter.report_error("Pagination", f"Invalid totalPages {total_pages}, must be >= 0")
+            return False
             
-            # Pagination fields are under 'pagination' key
-            if 'pagination' not in self.result:
-                ValidationReporter.report_error("Pagination", "Missing 'pagination' field", self.verbose)
-                return False
-                
-            pagination_data = self.result['pagination']
-            if pagination_data is None:
-                ValidationReporter.report_error("Pagination", "Pagination cannot be null for list responses", self.verbose)
-                return False
-                
-            required_fields = ['page', 'pageSize', 'total', 'totalPages']
-            return ValidationReporter.check_required_fields(pagination_data, required_fields, "Pagination", self.verbose)
-        except Exception as e:
-            print(f"    ❌ ERROR in StructureValidator._validate_pagination_structure: {e}")
-            sys.exit(1)
+        if page > total_pages and total_pages > 0:
+            ValidationReporter.report_error("Pagination", f"Page {page} exceeds totalPages {total_pages}")
+            return False
+        
+        # Check for default pagination - when no page specified in request, response should show page 1
+        request_url = getattr(test_case, 'url', '')
+        if 'page=' not in request_url and pagination_data.get('page') != 1:
+            ValidationReporter.report_error("Pagination", f"No page specified in request, but response shows page {pagination_data.get('page')}, expected page 1")
+            return False
+            
+        return True
+    except Exception as e:
+        ValidationReporter.report_error("validate_pagination_structure", f"{e}")
+        return False
 
 
-class SortValidator:
-    """Specialized sorting validation."""
-    
-    def __init__(self, test_case, verbose: bool = False):
-        self.test_case = test_case
-        self.verbose = verbose
-    
-    def validate_sort_order(self, data: List[Dict], sort_criteria: List[Tuple[str, str]], invalid_fields: set) -> bool:
+def validate_sort_order(test_case, data: List[Dict], sort_criteria: List[Tuple[str, str]], invalid_fields: set) -> bool:
         """Validate data is sorted according to sort criteria."""
         try:
             if not sort_criteria or len(data) < 2:
@@ -292,7 +319,9 @@ class SortValidator:
                     next_val = next_record.get(field_name)
                     
                     # Get field info for proper type-aware comparison
-                    field_info = MetadataService.get(self.test_case.entity, field_name)
+                    field_info = MetadataService.get(test_case.entity, field_name)
+                    if not field_info:
+                        ValidationReporter.report_error("Cannot find entity field", f"{test_case.entity}.{field_name}")
                     comparison = FieldTypeConverter.compare_values(current_val, next_val, field_info)
                     
                     if comparison == 0:
@@ -306,382 +335,78 @@ class SortValidator:
                         direction_text = "ascending" if direction == 'asc' else "descending"
                         sort_context = f"sort field {field_idx + 1}/{len(valid_criteria)} ({field_name} {direction_text})"
                         ValidationReporter.report_error(f"Sort Order at records {i}-{i + 1}", 
-                                                      f"'{current_val}' vs '{next_val}' for {sort_context}", self.verbose)
+                                                      f"'{current_val}' vs '{next_val}' for {sort_context}")
                         return False
                     else:
                         break  # Correct order found, no need to check remaining fields
             
             return True
         except Exception as e:
-            print(f"    ❌ ERROR in SortValidator.validate_sort_order: {e}")
-            sys.exit(1)
+            ValidationReporter.report_error("validate_sort_order", f"{e}")
+            return False
     
 
 
-class FilterValidator:
-    """Specialized filtering validation."""
-    
-    def __init__(self, test_case, verbose: bool = False):
-        self.test_case = test_case
-        self.verbose = verbose
-    
-    def validate_filters(self, data: List[Dict], filter_criteria: Dict[str, Any], invalid_fields: set) -> bool:
-        """Validate all data items match filter criteria."""
-        try:
-            if not filter_criteria:
-                return True
-            
-            # Group filters by field, excluding invalid fields
-            field_filters = self._group_filters_by_field(filter_criteria, invalid_fields)
-            
-            if not field_filters:
-                return True  # No valid filters to check
-            
-            # Validate each record against all filters
-            for i, record in enumerate(data):
-                if not self._validate_record_filters(record, field_filters, i):
-                    return False
-            
-            return True
-        except Exception as e:
-            print(f"    ❌ ERROR in FilterValidator.validate_filters: {e}")
-            sys.exit(1)
-    
-    def _group_filters_by_field(self, filter_criteria: Dict[str, Any], invalid_fields: set) -> Dict[str, List[Tuple[str, str]]]:
-        """Group filter criteria by field name, excluding invalid fields."""
-        try:
-            field_filters = {}
-            
-            for filter_key, expected_value in filter_criteria.items():
-                if ':' in filter_key:
-                    field_name, operator = filter_key.split(':', 1)
-                else:
-                    field_name, operator = filter_key, 'eq'
-                
-                # Skip invalid fields
-                if field_name.lower() in invalid_fields:
-                    continue
-                
-                if field_name not in field_filters:
-                    field_filters[field_name] = []
-                field_filters[field_name].append((operator, expected_value))
-            
-            return field_filters
-        except Exception as e:
-            print(f"    ❌ ERROR in FilterValidator._group_filters_by_field: {e}")
-            sys.exit(1)
-    
-    def _validate_record_filters(self, record: Dict, field_filters: Dict[str, List[Tuple[str, str]]], record_index: int) -> bool:
-        """Validate a single record against all field filters."""
-        try:
-            for field_name, filters in field_filters.items():
-                # Map field name using metadata
-                actual_field_name = self._map_response_field_name(field_name, record)
-                actual_value = record.get(actual_field_name)
-                
-                # All filters for this field must pass
-                for operator, expected_value in filters:
-                    if not self._validate_single_filter(actual_value, operator, expected_value, field_name, record_index):
-                        return False
-            
-            return True
-        except Exception as e:
-            print(f"    ❌ ERROR in FilterValidator._validate_record_filters: {e}")
-            sys.exit(1)
-    
-    def _validate_single_filter(self, actual_value: Any, operator: str, expected_value: str, field_name: str, record_index: int) -> bool:
-        """Validate a single filter condition."""
-        try:
-            field_info = MetadataService.get(self.test_case.entity, field_name)
-            
-            if operator == 'eq':
-                return self._validate_equality_filter(actual_value, expected_value, field_info, field_name, record_index)
-            else:
-                return self._validate_comparison_filter(actual_value, operator, expected_value, field_info, field_name, record_index)
-        except Exception as e:
-            print(f"    ❌ ERROR in FilterValidator._validate_single_filter: {e}")
-            sys.exit(1)
-    
-    def _validate_equality_filter(self, actual_value: Any, expected_value: str, field_info, field_name: str, record_index: int) -> bool:
-        """Validate equality filter with type-aware comparison."""
-        try:
-            field_type = field_info.get('type') if field_info else 'String'
-            
-            if field_type == 'String' and not (field_info and field_info.get('enum')):
-                # String fields use partial matching (contains)
-                if actual_value is None:
-                    ValidationReporter.report_error(f"Filter mismatch at record {record_index}", 
-                                                  f"{field_name}=null, can't contain '{expected_value}'", self.verbose)
-                    return False
-                
-                # Case-insensitive partial matching
-                actual_str = str(actual_value).lower()
-                expected_str = str(expected_value).lower()
-                
-                if expected_str not in actual_str:
-                    ValidationReporter.report_error(f"Filter mismatch at record {record_index}", 
-                                                  f"{field_name}='{actual_value}', doesn't contain '{expected_value}'", self.verbose)
-                    return False
-            else:
-                # Non-string fields use exact matching
-                expected_typed = self._convert_filter_value(expected_value, field_name)
-                if actual_value != expected_typed:
-                    ValidationReporter.report_error(f"Filter mismatch at record {record_index}", 
-                                                  f"{field_name}='{actual_value}', expected '{expected_typed}'", self.verbose)
-                    return False
-            
-            return True
-        except Exception as e:
-            print(f"    ❌ ERROR in FilterValidator._validate_equality_filter: {e}")
-            sys.exit(1)
-    
-    def _validate_comparison_filter(self, actual_value: Any, operator: str, expected_value: str, field_info, field_name: str, record_index: int) -> bool:
-        """Validate comparison filter (gte, lte, gt, lt, ne)."""
-        try:
-            # Handle null values
-            if actual_value is None:
-                if operator == 'eq' and expected_value.lower() in ['null', 'none', '']:
-                    return True
-                else:
-                    ValidationReporter.report_error(f"Filter mismatch at record {record_index}", 
-                                                  f"{field_name}=null, can't apply {operator} '{expected_value}'", self.verbose)
-                    return False
-            
-            # Convert values for comparison
-            actual_typed, expected_typed = FieldTypeConverter.convert_for_comparison(actual_value, expected_value, field_info)
-            
-            # Perform comparison
-            if operator == 'gte':
-                result = actual_typed >= expected_typed
-            elif operator == 'lte':
-                result = actual_typed <= expected_typed
-            elif operator == 'gt':
-                result = actual_typed > expected_typed
-            elif operator == 'lt':
-                result = actual_typed < expected_typed
-            elif operator == 'ne':
-                result = actual_typed != expected_typed
-            else:
-                ValidationReporter.report_error(f"Filter error at record {record_index}", 
-                                              f"Unknown operator '{operator}' for {field_name}", self.verbose)
-                return False
-            
-            if not result:
-                ValidationReporter.report_error(f"Filter mismatch at record {record_index}", 
-                                              f"{field_name}='{actual_value}', failed {operator} '{expected_value}'", self.verbose)
-                return False
-            
-            return True
-        except Exception as e:
-            print(f"    ❌ ERROR in FilterValidator._validate_comparison_filter: {e}")
-            sys.exit(1)
-    
-    def _map_response_field_name(self, filter_field_name: str, record: Dict) -> str:
-        """Map filter field name to actual response field name."""
-        try:
-            # Use metadata system to get proper field name
-            proper_field_name = MetadataService.get_proper_name(self.test_case.entity, filter_field_name)
-            if proper_field_name and proper_field_name in record:
-                return proper_field_name
-            
-            # If metadata doesn't have it, try exact match
-            if filter_field_name in record:
-                return filter_field_name
-            
-            # Return original (will result in None value during validation)
-            return filter_field_name
-        except Exception as e:
-            print(f"    ❌ ERROR in FilterValidator._map_response_field_name: {e}")
-            sys.exit(1)
-    
-    def _convert_filter_value(self, filter_value: str, field_name: str) -> Any:
-        """Convert string filter value to proper type."""
-        try:
-            field_type = MetadataService.get(self.test_case.entity, field_name, 'type')
-            if not field_type:
-                return filter_value
-            
-            if field_type == 'Boolean':
-                return filter_value.lower() in ['true', '1', 'yes']
-            elif field_type == 'Integer':
-                return int(filter_value)
-            elif field_type in ['Currency', 'Float']:
-                return float(filter_value)
-            else:
-                return filter_value
-        except Exception as e:
-            print(f"    ❌ ERROR in FilterValidator._convert_filter_value: {e}")
-            sys.exit(1)
+# FilterValidator is now imported from validate_filters.py
+
+# Common field utility functions  
+# def get_field_info(test_case, field_name) -> Dict[str, Any]:
+#     """Get field metadata information for a given field name."""
+#     return MetadataService.get(test_case.entity, field_name) or {}
+
+# def get_field_type(field_info: Dict[str, Any]) -> str:
+#     """Extract field type from field info, defaulting to String."""
+#     return field_info.get('type', 'String')
 
 
-class ListValidator:
-    """Validates list responses (pagination, sorting, filtering)."""
-    
-    def __init__(self, result: Dict, test_case, verbose: bool = False):
-        self.result = result
-        self.test_case = test_case
-        self.verbose = verbose
+def validate_auto_fields(result: Dict, test_case) -> bool:
+    """Validate actual data matches expected_response exactly."""
+    try:
+        if not test_case.expected_response:
+            return True  # No expected response to validate
         
-        # Initialize specialized validators
-        self.sort_validator = SortValidator(test_case, verbose)
-        self.filter_validator = FilterValidator(test_case, verbose)
-    
-    def validate(self) -> bool:
-        """Main list validation entry point."""
-        try:
-            if self.test_case.is_single_request():
-                return True  # Not a list request
-            
-            data = self.result.get('data', [])
-            if not isinstance(data, list):
-                return True  # Structure validation should catch this
-            
-            return (self._validate_sort_order(data) and
-                    self._validate_filtering(data))
-        except Exception as e:
-            print(f"    ❌ ERROR in ListValidator.validate: {e}")
-            sys.exit(1)
-    
-    def _validate_sort_order(self, data: List[Dict]) -> bool:
-        """Validate sort order."""
-        try:
-            sort_criteria = self.test_case.get_sort_criteria()
-            if not sort_criteria:
-                return True
-            
-            invalid_fields = self._get_invalid_sort_fields()
-            return self.sort_validator.validate_sort_order(data, sort_criteria, invalid_fields)
-        except Exception as e:
-            print(f"    ❌ ERROR in ListValidator._validate_sort_order: {e}")
-            sys.exit(1)
-    
-    def _validate_filtering(self, data: List[Dict]) -> bool:
-        """Validate filtering."""
-        try:
-            filter_criteria = self.test_case.get_filter_criteria()
-            if not filter_criteria:
-                return True
-            
-            invalid_fields = self._get_invalid_filter_fields()
-            return self.filter_validator.validate_filters(data, filter_criteria, invalid_fields)
-        except Exception as e:
-            print(f"    ❌ ERROR in ListValidator._validate_filtering: {e}")
-            sys.exit(1)
-    
-    def _get_invalid_sort_fields(self) -> set:
-        """Extract invalid sort fields from application errors."""
-        try:
-            return self._extract_invalid_fields("Sort criteria field")
-        except Exception as e:
-            print(f"    ❌ ERROR in ListValidator._get_invalid_sort_fields: {e}")
-            sys.exit(1)
-    
-    def _get_invalid_filter_fields(self) -> set:
-        """Extract invalid filter fields from application errors."""
-        try:
-            return self._extract_invalid_fields("Filter criteria field")
-        except Exception as e:
-            print(f"    ❌ ERROR in ListValidator._get_invalid_filter_fields: {e}")
-            sys.exit(1)
-    
-    def _extract_invalid_fields(self, error_prefix: str) -> set:
-        """Extract invalid field names from application error messages."""
-        try:
-            invalid_fields = set()
-            
-            notifications = self.result.get('notifications')
-            if not notifications or not isinstance(notifications, dict):
-                return invalid_fields
-            
-            errors = notifications.get('errors', [])
-            if not isinstance(errors, list):
-                return invalid_fields
-            
-            for error in errors:
-                if error.get('type') == 'application':
-                    message = error.get('message', '')
-                    if error_prefix in message and 'does not exist in entity' in message:
-                        match = re.search(rf"{error_prefix} '([^']+)' does not exist", message)
-                        if match:
-                            field_name = match.group(1)
-                            invalid_fields.add(field_name.lower())
-            
-            return invalid_fields
-        except Exception as e:
-            print(f"    ❌ ERROR in ListValidator._extract_invalid_fields: {e}")
-            sys.exit(1)
+        expected_data = test_case.expected_response.get('data', {})
+        actual_data = result.get('data', {})
+        
+        # Check auto-generated fields exist
+        for field_name, field_info in MetadataService.fields(test_case.entity).items():
+                if field_info.get('autoGenerate') or field_info.get('autoUpdate'):
+                    if field_name not in actual_data or not actual_data[field_name]:
+                        ValidationReporter.report_error("Expected Response", 
+                                                      f"Missing auto-generated field '{field_name}' in actual data")
+                        return False
+        
+        # Compare data fields (simplified for now - could be expanded)
+        return True
+    except Exception as e:
+        ValidationReporter.report_error(f"validate_expected_response_data", f"{e}")
+        return False
 
 
 class ContentValidator:
     """Validates single entity responses with deep field comparison."""
     
-    def __init__(self, result: Dict, test_case, config: Dict, verbose: bool = False):
+    def __init__(self, result: Dict, test_case, config: Dict):
         self.result = result
         self.test_case = test_case
         self.config = config
-        self.verbose = verbose
         
     
     def validate(self) -> bool:
         """Main content validation entry point."""
         try:
-            if self.test_case.is_list_request():
+            if self.test_case.is_get_all():
                 return True  # Not a single entity request
             
-            return (self._validate_single_entity_response() and
-                    self._validate_expected_response() and
+            return (self._validate_expected_response() and
                     self._validate_notification_counts())
         except Exception as e:
-            print(f"    ❌ ERROR in ContentValidator.validate: {e}")
-            sys.exit(1)
-    
-    def _validate_single_entity_response(self) -> bool:
-        """Validate single entity response data."""
-        try:
-            data = self.result.get('data')
-            
-            # For 404 responses, data should be null
-            if self.test_case.expected_status == 404:
-                if data is not None:
-                    ValidationReporter.report_error("Single Entity Response", 
-                                                  f"404 response should have data: null, but got: {type(data)}", self.verbose)
-                    return False
-                return True
-            
-            # For 200 responses, data should not be null
-            if self.test_case.expected_status == 200:
-                if data is None:
-                    ValidationReporter.report_error("Single Entity Response", 
-                                                  "200 response should have data object, but got: null", self.verbose)
-                    return False
-            
-            return True
-        except Exception as e:
-            print(f"    ❌ ERROR in ContentValidator._validate_single_entity_response: {e}")
-            sys.exit(1)
+            ValidationReporter.report_error(f"ContentValidator.validate", f"{e}")
+            return False
     
     def _validate_expected_response(self) -> bool:
         """Validate actual data matches expected_response exactly."""
-        try:
-            if not self.test_case.expected_response:
-                return True  # No expected response to validate
-            
-            expected_data = self.test_case.expected_response.get('data', {})
-            actual_data = self.result.get('data', {})
-            
-            # Check auto-generated fields exist
-            for field_name, field_info in MetadataService.fields(self.test_case.entity).items():
-                    if field_info.get('autoGenerate') or field_info.get('autoUpdate'):
-                        if field_name not in actual_data or not actual_data[field_name]:
-                            ValidationReporter.report_error("Expected Response", 
-                                                          f"Missing auto-generated field '{field_name}' in actual data", self.verbose)
-                            return False
-            
-            # Compare data fields (simplified for now - could be expanded)
-            return True
-        except Exception as e:
-            print(f"    ❌ ERROR in ContentValidator._validate_expected_response: {e}")
-            sys.exit(1)
+        return validate_auto_fields(self.result, self.test_case)
     
     def _validate_notification_counts(self) -> bool:
         """Validate notification counts match expectations."""
@@ -693,25 +418,17 @@ class ContentValidator:
             actual_notifications = self.result.get('notifications', {})
             
             # Check errors count
-            if 'errors' in expected_notifications:
-                expected_errors = expected_notifications['errors']
-                actual_errors = actual_notifications.get('errors', [])
-                if len(expected_errors) != len(actual_errors):
-                    ValidationReporter.report_error("Notification Counts", 
-                                                  f"Errors count mismatch: expected {len(expected_errors)}, got {len(actual_errors)}", self.verbose)
-                    return False
+            if not self._validate_error_counts(expected_notifications, actual_notifications):
+                return False
             
             # Check warnings structure
-            if 'warnings' in expected_notifications:
-                expected_warnings = self._filter_validation_warnings(expected_notifications.get('warnings', {}))
-                actual_warnings = self._filter_validation_warnings(actual_notifications.get('warnings', {}))
-                
-                return self._compare_warning_counts(actual_warnings, expected_warnings)
+            if not self._validate_warning_counts(expected_notifications, actual_notifications):
+                return False
             
             return True
         except Exception as e:
-            print(f"    ❌ ERROR in ContentValidator._validate_notification_counts: {e}")
-            sys.exit(1)
+            ValidationReporter.report_error(f"ContentValidator.validate_notification_counts", f"{e}")
+            return False
     
     def _filter_validation_warnings(self, warnings: dict) -> dict:
         """
@@ -736,105 +453,125 @@ class ContentValidator:
 
         return filtered
 
+    def _validate_error_counts(self, expected_notifications: Dict, actual_notifications: Dict) -> bool:
+        """Validate error counts match expectations."""
+        if 'errors' not in expected_notifications:
+            return True
+            
+        expected_errors = expected_notifications['errors']
+        actual_errors = actual_notifications.get('errors', [])
+        
+        if len(expected_errors) != len(actual_errors):
+            ValidationReporter.report_error("Notification Counts", 
+                                          f"Errors count mismatch: expected {len(expected_errors)}, got {len(actual_errors)}")
+            return False
+        return True
+    
+    def _validate_warning_counts(self, expected_notifications: Dict, actual_notifications: Dict) -> bool:
+        """Validate warning counts match expectations."""
+        if 'warnings' not in expected_notifications:
+            return True
+            
+        expected_warnings = self._filter_validation_warnings(expected_notifications.get('warnings', {}))
+        actual_warnings = self._filter_validation_warnings(actual_notifications.get('warnings', {}))
+        
+        return self._compare_warning_counts(actual_warnings, expected_warnings)
+    
     def _compare_warning_counts(self, actual_warnings: Dict, expected_warnings: Dict) -> bool:
         """Compare warning counts between actual and expected."""
         try:
             # Check entity types match
-            actual_entities = set(actual_warnings.keys())
-            expected_entities = set(expected_warnings.keys())
-            
-            if actual_entities != expected_entities:
-                missing = expected_entities - actual_entities
-                extra = actual_entities - expected_entities
-                ValidationReporter.report_error("Warning Counts", 
-                                              f"Entities differ. missing={missing}, extra={extra}", self.verbose)
+            if not self._validate_entity_types_match(actual_warnings, expected_warnings):
                 return False
             
             # Check IDs and counts per entity
-            for entity, actual_ids_map in actual_warnings.items():
-                expected_ids_map = expected_warnings.get(entity, {})
-                
-                actual_ids = set(actual_ids_map.keys())
-                expected_ids = set(expected_ids_map.keys())
-                
-                if actual_ids != expected_ids:
-                    missing = expected_ids - actual_ids
-                    extra = actual_ids - expected_ids
-                    ValidationReporter.report_error("Warning Counts", 
-                                                  f"[{entity}] IDs differ. missing={missing}, extra={extra}", self.verbose)
+            for entity in actual_warnings.keys():
+                if not self._validate_entity_warning_counts(entity, actual_warnings, expected_warnings):
                     return False
-                
-                # Check warning counts per ID
-                for entity_id in actual_ids:
-                    actual_list = actual_ids_map.get(entity_id, [])
-                    expected_list = expected_ids_map.get(entity_id, [])
-                    
-                    if len(actual_list) != len(expected_list):
-                        ValidationReporter.report_error("Warning Counts", 
-                                                      f"[{entity}:{entity_id}] Count mismatch: expected {len(expected_list)}, got {len(actual_list)}", self.verbose)
+            
+            return True
+        except Exception as e:
+            ValidationReporter.report_error(f"ContentValidator.compare_warning_counts", f"{e}")
+            return False
+    
+    def _validate_entity_types_match(self, actual_warnings: Dict, expected_warnings: Dict) -> bool:
+        """Validate that entity types match between actual and expected warnings."""
+        actual_entities = set(actual_warnings.keys())
+        expected_entities = set(expected_warnings.keys())
+        
+        if actual_entities != expected_entities:
+            missing = expected_entities - actual_entities
+            extra = actual_entities - expected_entities
+            ValidationReporter.report_error("Warning Counts", 
+                                          f"Entities differ. missing={missing}, extra={extra}")
+            return False
+        return True
+    
+    def _validate_entity_warning_counts(self, entity: str, actual_warnings: Dict, expected_warnings: Dict) -> bool:
+        """Validate warning counts for a specific entity."""
+        actual_ids_map = actual_warnings[entity]
+        expected_ids_map = expected_warnings.get(entity, {})
+        
+        actual_ids = set(actual_ids_map.keys())
+        expected_ids = set(expected_ids_map.keys())
+        
+        # Check IDs match
+        if actual_ids != expected_ids:
+            missing = expected_ids - actual_ids
+            extra = actual_ids - expected_ids
+            ValidationReporter.report_error("Warning Counts", 
+                                          f"[{entity}] IDs differ. missing={missing}, extra={extra}")
+            return False
+        
+        # Check warning counts per ID
+        for entity_id in actual_ids:
+            actual_list = actual_ids_map.get(entity_id, [])
+            expected_list = expected_ids_map.get(entity_id, [])
+            
+            if len(actual_list) != len(expected_list):
+                ValidationReporter.report_error("Warning Counts", 
+                                              f"[{entity}:{entity_id}] Count mismatch: expected {len(expected_list)}, got {len(actual_list)}")
+                return False
+        
+        return True
+
+
+# Main validation function - replaces ValidationEngine and Validator classes
+def validate_test_case(test_case, result: Dict, config: Dict, http_status: int) -> bool:
+    """Main validation entry point - fail fast approach."""
+    try:
+        
+        # Structure validation
+        if not validate_structure(result, test_case, http_status):
+            return False
+        
+        if http_status not in [200, 201]:
+            return True  # Only validate structure for non-success responses
+        
+        # Content validation
+        content_validator = ContentValidator(result, test_case, config)
+        if not content_validator.validate():
+            return False
+        
+        # List validation - call validators directly instead of ListValidator wrapper
+        if test_case.is_get_all():
+            data = result.get('data', [])
+            if isinstance(data, list):
+                # Sort validation
+                sort_criteria = test_case.get_sort_criteria()
+                if sort_criteria:
+                    if not validate_sort_order(test_case, data, sort_criteria, set()):
                         return False
-            
-            return True
-        except Exception as e:
-            print(f"    ❌ ERROR in ContentValidator._compare_warning_counts: {e}")
-            sys.exit(1)
-
-
-class ValidationEngine:
-    """Main validation orchestrator - coordinates all validation types."""
-    
-    def __init__(self, test_case, result: Dict, config: Dict, verbose: bool = False):
-        try:
-            self.test_case = test_case
-            self.result = result
-            self.config = config
-            self.verbose = verbose
-            
-            # Initialize specialized validators
-            self.structure_validator = StructureValidator(result, test_case, verbose)
-            self.content_validator = ContentValidator(result, test_case, config, verbose)
-            self.list_validator = ListValidator(result, test_case, verbose)
-        except Exception as e:
-            print(f"    ❌ ERROR in ValidationEngine.__init__: {e}")
-            sys.exit(1)
-    
-    def validate_test_case(self, http_status: int) -> bool:
-        """Main validation entry point - fail fast approach."""
-        try:
-            # Fail fast: if any validation fails, stop immediately
-            if not self.structure_validator.validate(http_status):
-                return False
-            
-            if http_status not in [200, 201]:
-                return True  # Only validate structure for non-success responses
-            
-            if not self.content_validator.validate():
-                return False
-            
-            if not self.list_validator.validate():
-                return False
-            
-            return True
-        except Exception as e:
-            print(f"    ❌ ERROR in ValidationEngine.validate_test_case: {e}")
-            sys.exit(1)
-
-
-# Main Validator class for backward compatibility
-class Validator:
-    """Main validator class - delegates to ValidationEngine."""
-    
-    def __init__(self, test_case, result: Dict, config: Dict, verbose: bool = False):
-        try:
-            self.validation_engine = ValidationEngine(test_case, result, config, verbose)
-        except Exception as e:
-            print(f"    ❌ ERROR in Validator.__init__: {e}")
-            sys.exit(1)
-    
-    def validate_test_case(self, http_status: int) -> bool:
-        """Main validation entry point."""
-        try:
-            return self.validation_engine.validate_test_case(http_status)
-        except Exception as e:
-            print(f"    ❌ ERROR in Validator.validate_test_case: {e}")
-            sys.exit(1)
+                
+                # Filter validation
+                filter_criteria = test_case.get_filter_criteria()
+                if filter_criteria:
+                    from .validate_filters import FilterValidator
+                    filter_validator = FilterValidator(test_case)
+                    if not filter_validator.validate_filters(data, filter_criteria, set()):
+                        return False
+        
+        return True
+    except Exception as e:
+        ValidationReporter.report_error(f"validate_test_case", f"{e}")
+        return False
