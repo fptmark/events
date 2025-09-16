@@ -6,7 +6,7 @@ No dependency on RequestContext - can be used standalone.
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Tuple
 
-from app.services.notification import validation_warning, not_found_warning
+from app.services.notify import Notification, Warning, Error
 from app.db.core_manager import CoreManager
 
 
@@ -72,29 +72,18 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (saved_document, count) where count is 1 if created, 0 if failed
         """
-        try:
-            # Prepare data for database storage (database-specific)
-            prepared_data = self._prepare_datetime_fields(entity_type, data)
-            
-            # Create in database (database-specific implementation)
-            doc = await self._create_document(entity_type, prepared_data)
-            
-            # Normalize response (remove database-specific ID fields, add standard "id")
-            # Should not need this.  public I/F may only use doc['id']
-            # saved_doc = self._normalize_document(doc)
-            
-            return doc, 1
-            
-        except Exception as e:
-            # Convert database errors to notifications instead of raising
-            from app.errors import DuplicateConstraintError
-            from app.services.notification import system_error, duplicate_warning
-            
-            if isinstance(e, DuplicateConstraintError):
-                duplicate_warning(e.message, entity=e.entity, field=e.field, entity_id=e.entity_id)
-            else:
-                system_error(f"Create operation failed: {str(e)}")
-            return {}, 0
+        # Prepare data for database storage (database-specific)
+        prepared_data = self._prepare_datetime_fields(entity_type, data)
+        
+        # Create in database (database-specific implementation)
+        doc = await self._create_document(entity_type, prepared_data)
+        
+        # Normalize response (remove database-specific ID fields, add standard "id")
+        # Should not need this.  public I/F may only use doc['id']
+        # saved_doc = self._normalize_document(doc)
+        
+        return doc, 1
+        
 
     async def update(
         self,
@@ -113,42 +102,28 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (saved_document, count) where count is 1 if updated, 0 if failed
         """
-        try:
-            # ID validation - must exist for update
-            if 'id' not in data or not data['id']:
-                validation_warning(message="Missing 'id' field or value for update operation", 
-                                   entity=entity_type)
-                return {}, 0     
+        # ID validation - must exist for update
+        if 'id' not in data or not data['id']:
+            Notification.error(Error.REQUEST, "Missing 'id' field or value for update operation")     
+        
+        # Validate document exists for update
+        exists_success = await self._validate_document_exists_for_update(entity_type, data['id'])
+        
+        if not exists_success:
+            Notification.error(Error.REQUEST, "Document to update not found using id")
+        
+        # Prepare data for database storage (database-specific)
+        prepared_data = self._prepare_datetime_fields(entity_type, data)
+        
+        # Update in database (database-specific implementation)
+        doc = await self._update_document(entity_type, prepared_data)
+        
+        # Normalize response (remove database-specific ID fields, add standard "id")
+        # Should not need this.  public I/F may only use doc['id']
+        # saved_doc = self._normalize_document(saved_document_with_native_id)
+        
+        return doc, 1
             
-            # Validate document exists for update
-            exists_success = await self._validate_document_exists_for_update(entity_type, data['id'])
-            
-            if not exists_success:
-                validation_warning(message=f"Document to update not found using id", field="id")
-                return {}, 0
-            
-            # Prepare data for database storage (database-specific)
-            prepared_data = self._prepare_datetime_fields(entity_type, data)
-            
-            # Update in database (database-specific implementation)
-            doc = await self._update_document(entity_type, prepared_data)
-            
-            # Normalize response (remove database-specific ID fields, add standard "id")
-            # Should not need this.  public I/F may only use doc['id']
-            # saved_doc = self._normalize_document(saved_document_with_native_id)
-            
-            return doc, 1
-            
-        except Exception as e:
-            # Convert database errors to notifications instead of raising
-            from app.errors import DuplicateConstraintError
-            from app.services.notification import system_error, duplicate_warning
-            
-            if isinstance(e, DuplicateConstraintError):
-                duplicate_warning(e.message, entity=e.entity, field=e.field, entity_id=e.entity_id)
-            else:
-                system_error(f"Update operation failed: {str(e)}")
-            return {}, 0
     
     @abstractmethod
     async def delete(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
@@ -231,6 +206,11 @@ class DocumentManager(ABC):
     @abstractmethod
     def _prepare_datetime_fields(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Convert datetime fields for database storage (database-specific)"""
+        pass
+    
+    @abstractmethod
+    def _convert_filter_values(self, filters: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
+        """Convert filter values to database-appropriate types (database-specific)"""
         pass
         
     @abstractmethod

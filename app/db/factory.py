@@ -9,7 +9,6 @@ from typing import Optional, Dict, Any, List, Tuple
 from .base import DatabaseInterface
 from .mongodb import MongoDatabase
 from .elasticsearch import ElasticsearchDatabase
-from ..errors import DatabaseError
 
 
 class DatabaseFactory:
@@ -74,16 +73,12 @@ class DatabaseFactory:
             cls._db_type = db_type
             
             logging.info(f"DatabaseFactory: Initialized {db_type} database")
-            return db
             
         except Exception as e:
-            if isinstance(e, DatabaseError):
-                raise
-            raise DatabaseError(
-                message=f"Failed to initialize database: {str(e)}",
-                entity="connection",
-                operation="initialize"
-            )
+            from app.services.notify import Notification, Error
+            Notification.error(Error.DATABASE, f"Failed to initialize database: {str(e)}")
+
+        return db
 
     @classmethod
     def get_instance(cls) -> DatabaseInterface:

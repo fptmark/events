@@ -12,8 +12,7 @@ from .core_manager import CoreManager
 from .document_manager import DocumentManager
 from .entity_manager import EntityManager
 from .index_manager import IndexManager
-from ..errors import DatabaseError
-from app.services.notification import duplicate_warning, validation_warning, not_found_warning
+from app.services.notify import Notification, Warning, Error, DuplicateConstraintError
 from app.services.metadata import MetadataService
 
 
@@ -35,24 +34,16 @@ class ElasticsearchCore(CoreManager):
             logging.info("ElasticsearchDatabase: Already initialized")
             return
 
-        try:
-            self._client = AsyncElasticsearch([connection_str])
-            self._database_name = database_name
-            
-            # Test connection
-            await self._client.ping()
-            self.parent._initialized = True
-            logging.info(f"ElasticsearchDatabase: Connected to {database_name}")
-            
-            # Create index template for .raw subfields on all new indices
-            await self._ensure_index_template()
-            
-        except Exception as e:
-            raise DatabaseError(
-                message=f"Failed to connect to Elasticsearch: {str(e)}",
-                entity="connection",
-                operation="init"
-            )
+        self._client = AsyncElasticsearch([connection_str])
+        self._database_name = database_name
+        
+        # Test connection
+        await self._client.ping()
+        self.parent._initialized = True
+        logging.info(f"ElasticsearchDatabase: Connected to {database_name}")
+        
+        # Create index template for .raw subfields on all new indices
+        await self._ensure_index_template()
     
     async def close(self) -> None:
         """Close Elasticsearch connection"""
@@ -82,24 +73,22 @@ class ElasticsearchCore(CoreManager):
     
     async def _ensure_index_template(self) -> None:
         """Create composable index template for .raw subfields with high priority."""
-        try:
-            # Get entity names from metadata service to determine index patterns
-            entities = MetadataService.list_entities()
-            index_patterns = [entity.lower() for entity in entities] if entities else ["*"]
-            
-            template_name = "app-text-raw-template"
-            template_body = {
-                "index_patterns": index_patterns,
-                "priority": 1000,  # Higher priority than default templates
-                "template": {
-                    "settings": {
-                        "analysis": {
-                            "normalizer": {
-                                "lc": {
-                                    "type": "custom",
-                                    "char_filter": [],
-                                    "filter": ["lowercase"]
-                                }
+        # Get entity names from metadata service to determine index patterns
+        entities = MetadataService.list_entities()
+        index_patterns = [entity.lower() for entity in entities] if entities else ["*"]
+        
+        template_name = "app-text-raw-template"
+        template_body = {
+            "index_patterns": index_patterns,
+            "priority": 1000,  # Higher priority than default templates
+            "template": {
+                "settings": {
+                    "analysis": {
+                        "normalizer": {
+                            "lc": {
+                                "type": "custom",
+                                "char_filter": [],
+                                "filter": ["lowercase"]
                             }
                         }
                     },
@@ -125,12 +114,10 @@ class ElasticsearchCore(CoreManager):
                     }
                 }
             }
-            
-            await self._client.indices.put_index_template(name=template_name, body=template_body) # type: ignore
-            logging.info(f"Created index template: {template_name}")
-        except Exception as e:
-            logging.warning(f"Failed to create index template: {e}")
-            # Don't fail initialization if template creation fails
+        }
+        
+        await self._client.indices.put_index_template(name=template_name, body=template_body) # type: ignore
+        logging.info(f"Created index template: {template_name}")
 
 
 class ElasticsearchDocuments(DocumentManager):
@@ -153,41 +140,33 @@ class ElasticsearchDocuments(DocumentManager):
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
-        try:
-            if not await es.indices.exists(index=entity_type):
-                return [], 0
-            
-            # Build query
-            query_body = {
-                "from": (page - 1) * pageSize,
-                "size": pageSize,
-                "query": self._build_query_filter(filter, entity_type)
-            }
-            
-            # Add sorting
-            sort_spec = self._build_sort_spec(sort, entity_type)
-            if sort_spec:
-                query_body["sort"] = sort_spec
-            
-            # Execute query
-            response = await es.search(index=entity_type, body=query_body)
-            hits = response.get("hits", {}).get("hits", [])
-            
-            documents = []
-            for hit in hits:
-                doc = self._normalize_document(hit["_source"])
-                documents.append(doc)
-            
-            total_count = response.get("hits", {}).get("total", {}).get("value", 0)
-            
-            return documents, total_count
-            
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=entity_type,
-                operation="get_all"
-            )
+        if not await es.indices.exists(index=entity_type):
+            return [], 0
+        
+        # Build query
+        query_body = {
+            "from": (page - 1) * pageSize,
+            "size": pageSize,
+            "query": self._build_query_filter(filter, entity_type)
+        }
+        
+        # Add sorting
+        sort_spec = self._build_sort_spec(sort, entity_type)
+        if sort_spec:
+            query_body["sort"] = sort_spec
+        
+        # Execute query
+        response = await es.search(index=entity_type, body=query_body)
+        hits = response.get("hits", {}).get("hits", [])
+        
+        documents = []
+        for hit in hits:
+            doc = self._normalize_document(hit["_source"])
+            documents.append(doc)
+        
+        total_count = response.get("hits", {}).get("total", {}).get("value", 0)
+        
+        return documents, total_count
     
     async def get(
         self, 
@@ -198,144 +177,107 @@ class ElasticsearchDocuments(DocumentManager):
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
+        index = entity_type
+        
+        if not await es.indices.exists(index=index):
+            Notification.warning(Warning.NOT_FOUND, "Index does not exist", entity_type=entity_type, entity_id=id)
+            return {}, 0
+        
         try:
-            index = entity_type
-            
-            if not await es.indices.exists(index=index):
-                not_found_warning(f"Index does not exist", entity=entity_type, entity_id=id)
-                return {}, 0
-            
             response = await es.get(index=index, id=id)
             doc = self._normalize_document(response["_source"])
-            
-            # Note: FK processing and view_spec handling done in model layer
-            # Database returns raw document data only
             return doc, 1
-            
         except Exception as e:
-            if "not found" in str(e).lower():
-                not_found_warning(f"Document not found", entity=entity_type, entity_id=id)
-                return {}, 0
-            raise DatabaseError(
-                message=str(e),
-                entity=entity_type,
-                operation="get"
-            )
+            if "not found" not in str(e).lower():
+                Notification.error(Error.DATABASE, f"Elasticsearch get error: {str(e)}")
+            return {}, 0
     
     async def _validate_document_exists_for_update(self, entity_type: str, id: str) -> bool:
         """Validate that document exists for update operations"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
+        index = entity_type
+        
+        if not await es.indices.exists(index=index):
+            Notification.warning(Warning.NOT_FOUND, "Index does not exist", entity_type=entity_type, entity_id=id)
+            return False
+        
         try:
-            index = entity_type
-            
-            if not await es.indices.exists(index=index):
-                from app.services.notification import not_found_warning
-                not_found_warning(f"Index does not exist", entity=entity_type, entity_id=id)
-                return False
-            
             await es.get(index=index, id=id)
             return True
-            
         except Exception:
-            from app.services.notification import not_found_warning
-            not_found_warning(f"Document not found for update", entity=entity_type, entity_id=id)
+            Notification.warning(Warning.NOT_FOUND, "Document not found for update", entity_type=entity_type, entity_id=id)
             return False
     
     async def _create_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create document in Elasticsearch. If data contains 'id', use it as _id, otherwise auto-generate."""
         es = self.parent.core.get_connection()
         
-        try:
-            index = entity_type
-            create_data = data.copy()
-            
-            # If data contains 'id', use it as Elasticsearch _id
-            if 'id' in create_data:
-                doc_id = create_data.pop('id')
-                response = await es.index(index=index, id=doc_id, body=create_data)
-                saved_doc = create_data.copy()
-                saved_doc["_id"] = doc_id
-            else:
-                # Auto-generate ID
-                response = await es.index(index=index, body=create_data)
-                saved_doc = create_data.copy()
-                saved_doc["_id"] = response["_id"]
-            
-            return saved_doc
-            
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=entity_type,
-                operation="create"
-            )
+        index = entity_type
+        create_data = data.copy()
+        
+        # If data contains 'id', use it as Elasticsearch _id
+        if 'id' in create_data:
+            doc_id = create_data.pop('id')
+            response = await es.index(index=index, id=doc_id, body=create_data)
+            saved_doc = create_data.copy()
+            saved_doc["_id"] = doc_id
+        else:
+            # Auto-generate ID
+            response = await es.index(index=index, body=create_data)
+            saved_doc = create_data.copy()
+            saved_doc["_id"] = response["_id"]
+        
+        return saved_doc
 
     async def _update_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update existing document in Elasticsearch. Extracts id from data['id']."""
         es = self.parent.core.get_connection()
         
-        try:
-            index = entity_type
-            id = data['id']  # Extract id from data
-            
-            # Create update data without 'id' field
-            update_data = data.copy()
-            del update_data['id']
-            
-            await es.index(index=index, id=id, body=update_data)
-            saved_doc = update_data.copy()
-            saved_doc["_id"] = id
-            
-            return saved_doc
-            
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=entity_type,
-                operation="update"
-            )
+        index = entity_type
+        id = data['id']  # Extract id from data
+        
+        # Create update data without 'id' field
+        update_data = data.copy()
+        del update_data['id']
+        
+        await es.index(index=index, id=id, body=update_data)
+        saved_doc = update_data.copy()
+        saved_doc["_id"] = id
+        
+        return saved_doc
     
     def _get_core_manager(self) -> CoreManager:
         """Get the core manager instance"""
         return self.parent.core
     
     async def delete(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
-        """Delete document by ID after retrieving it"""
+        """Delete document by ID"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
+        index = entity_type
+        
+        if not await es.indices.exists(index=index):
+            return {}, 0
+        
+        # Elasticsearch doesn't return deleted doc automatically, so fetch it first
         try:
-            index = entity_type
+            # Get document before deleting
+            get_response = await es.get(index=index, id=id)
+            doc = self._normalize_document(get_response["_source"])
             
-            if not await es.indices.exists(index=index):
-                return {}, 0
-            
-            # First get the document before deleting
-            try:
-                get_response = await es.get(index=index, id=id)
-                doc_to_delete = self._normalize_document(get_response["_source"])
-            except Exception as e:
-                if "not found" in str(e).lower():
-                    not_found_warning(f"Document not found for deletion", entity=entity_type, entity_id=id)
-                    return {}, 0
-                raise
-            
-            # Now delete the document
+            # Now delete it
             delete_response = await es.delete(index=index, id=id)
-            record_count = 1 if delete_response.get("result") == "deleted" else 0
-            
-            return doc_to_delete, record_count
-            
-        except Exception as e:
-            if "not found" in str(e).lower():
+            if delete_response.get("result") == "deleted":
+                return doc, 1
+            else:
                 return {}, 0
-            raise DatabaseError(
-                message=str(e),
-                entity=entity_type,
-                operation="delete"
-            )
+        except Exception as e:
+            if "not found" not in str(e).lower():
+                Notification.error(Error.DATABASE, f"Elasticsearch delete error: {str(e)}")
+            return {}, 0
     
     def _build_query_filter(self, filters: Optional[Dict[str, Any]], entity_type: str) -> Dict[str, Any]:
         """Build Elasticsearch query from filter conditions"""
@@ -385,6 +327,52 @@ class ElasticsearchDocuments(DocumentManager):
         
         return data_copy
     
+    def _convert_filter_values(self, filters: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
+        """Convert filter values to Elasticsearch-appropriate types"""
+        if not filters:
+            return filters
+            
+        converted_filters = {}
+        fields_meta = MetadataService.fields(entity_type)
+        
+        for field_name, filter_value in filters.items():
+            field_meta = fields_meta.get(field_name, {})
+            field_type = field_meta.get('type', 'String')
+            
+            if isinstance(filter_value, dict):
+                # Range queries like {"$gte": 21, "$lt": 65}
+                converted_range = {}
+                for op, value in filter_value.items():
+                    converted_range[op] = self._convert_single_value(value, field_type)
+                converted_filters[field_name] = converted_range
+            else:
+                # Simple equality filter
+                converted_filters[field_name] = self._convert_single_value(filter_value, field_type)
+        
+        return converted_filters
+    
+    def _convert_single_value(self, value, field_type: str):
+        """Convert a single filter value based on field type"""
+        if field_type in ('Date', 'DateTime'):
+            # For date fields, ensure string format for ES
+            if hasattr(value, 'isoformat'):
+                return value.isoformat()
+            return str(value)
+        elif field_type == 'Boolean':
+            # Convert boolean strings to actual booleans
+            if isinstance(value, str):
+                return value.lower() in ('true', '1', 'yes')
+            return bool(value)
+        elif field_type in ('Number', 'Currency', 'Integer'):
+            # Ensure numeric types
+            try:
+                return float(value) if field_type in ('Number', 'Currency') else int(value)
+            except (ValueError, TypeError):
+                return value
+        else:
+            # String and other types - keep as-is
+            return value
+    
     async def _validate_unique_constraints(
         self, 
         entity_type: str, 
@@ -399,6 +387,9 @@ class ElasticsearchDocuments(DocumentManager):
             metadata = MetadataService.get(entity_type) 
             if metadata:
                 unique_constraints = metadata.get('unique_constraints', [])
+            else:
+                Notification.warning(Warning.DATA_VALIDATION, "Unknown entity", entity_type=entity_type)
+                return False
         
         if not unique_constraints:
             return True
@@ -415,10 +406,12 @@ class ElasticsearchDocuments(DocumentManager):
             for field in constraint_fields:
                 if field in data and data[field] is not None:
                     # Use .raw field for exact string matching if it's a text field
-                    metadata = MetadataService.get(entity_type)
-                    field_type = metadata.get('fields', {}).get(field, {}).get('type', 'String') if metadata else 'String'
+                    type = MetadataService.get(entity_type, field, 'type')
+                    if type == None:
+                        Notification.warning(Warning.DATA_VALIDATION, "No type found", entity_type=entity_type, entity_id=data.get(self.parent.core.id_field, ''), field=field)
+                    # field_type = metadata.get('fields', {}).get(field, {}).get('type', 'String') if metadata else 'String'
                     
-                    if field_type == 'String':
+                    if type == 'String':
                         # Use .raw subfield for exact matching on strings
                         must_clauses.append({"term": {f"{field}.raw": data[field]}})
                     else:
@@ -441,13 +434,15 @@ class ElasticsearchDocuments(DocumentManager):
             if response.get("hits", {}).get("total", {}).get("value", 0) > 0:
                 # Use first field in constraint (matches MongoDB pattern)
                 duplicate_field = constraint_fields[0]
-                from app.errors import DuplicateConstraintError
-                raise DuplicateConstraintError(
+                
+                error = DuplicateConstraintError(
                     message=f"Duplicate value for field '{duplicate_field}'",
                     entity=entity_type,
                     field=duplicate_field,
                     entity_id=exclude_id or "new"
                 )
+                Notification.handle_duplicate_constraint(error)
+                # Execution never reaches here - StopWorkError raised above
         
         return True
 
@@ -470,49 +465,28 @@ class ElasticsearchEntities(EntityManager):
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
-        try:
-            if await es.indices.exists(index=entity_type):
-                return True
-                
-            await es.indices.create(index=entity_type)
+        if await es.indices.exists(index=entity_type):
             return True
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=entity_type,
-                operation="create"
-            )
+            
+        await es.indices.create(index=entity_type)
+        return True
     
     async def delete(self, entity_type: str) -> bool:
         """Delete index"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
-        try:
-            if await es.indices.exists(index=entity_type):
-                await es.indices.delete(index=entity_type)
-            return True
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=entity_type,
-                operation="delete"
-            )
+        if await es.indices.exists(index=entity_type):
+            await es.indices.delete(index=entity_type)
+        return True
     
     async def get_all(self) -> List[str]:
         """Get all index names"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
-        try:
-            response = await es.cat.indices(format="json")
-            return [index["index"] for index in response]
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity="",
-                operation="list_entities"
-            )
+        response = await es.cat.indices(format="json")
+        return [index["index"] for index in response]
 
 
 class ElasticsearchIndexes(IndexManager):
@@ -536,102 +510,87 @@ class ElasticsearchIndexes(IndexManager):
         es = self.parent.core.get_connection()
         properties: Dict[str, Any] = {}
         
-        try:
-            # Ensure index exists
-            if not await es.indices.exists(index=entity_type):
-                await es.indices.create(index=entity_type)
-            
-            if len(fields) == 1:
-                # Single field unique constraint - ensure it has .raw subfield for exact matching
-                field_name = fields[0]
-                properties = {
-                    field_name: {
-                        "type": "text",
-                        "fields": {
-                            "raw": {
-                                "type": "keyword",
-                                "ignore_above": 256
-                            }
+        # Ensure index exists
+        if not await es.indices.exists(index=entity_type):
+            await es.indices.create(index=entity_type)
+        
+        if len(fields) == 1:
+            # Single field unique constraint - ensure it has .raw subfield for exact matching
+            field_name = fields[0]
+            properties = {
+                field_name: {
+                    "type": "text",
+                    "fields": {
+                        "raw": {
+                            "type": "keyword",
+                            "ignore_above": 256
                         }
                     }
                 }
-            else:
-                # Multi-field unique constraint - create hash field
-                hash_field_name = f"_hash_{'_'.join(sorted(fields))}"
-                properties = {
-                    hash_field_name: {
-                        "type": "keyword"
-                    }
+            }
+        else:
+            # Multi-field unique constraint - create hash field
+            hash_field_name = f"_hash_{'_'.join(sorted(fields))}"
+            properties = {
+                hash_field_name: {
+                    "type": "keyword"
                 }
-                # Also ensure all individual fields have proper mapping
-                for field_name in fields:
-                    properties[field_name] = {
-                        "type": "text",
-                        "fields": {
-                            "raw": {
-                                "type": "keyword", 
-                                "ignore_above": 256
-                            }
+            }
+            # Also ensure all individual fields have proper mapping
+            for field_name in fields:
+                properties[field_name] = {
+                    "type": "text",
+                    "fields": {
+                        "raw": {
+                            "type": "keyword", 
+                            "ignore_above": 256
                         }
                     }
-            
-            # Update mapping
-            await es.indices.put_mapping(
-                index=entity_type,
-                properties=properties
-            )
-            
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=entity_type,
-                operation="create_index"
-            )
+                }
+        
+        # Update mapping
+        await es.indices.put_mapping(
+            index=entity_type,
+            properties=properties
+        )
     
     async def get_all(self, entity_type: str) -> List[List[str]]:
         """Get synthetic unique indexes (hash fields) for Elasticsearch"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
-        try:
-            if not await es.indices.exists(index=entity_type):
-                return []
-            
-            # For Elasticsearch, we look for hash fields that represent unique constraints
-            # Hash fields follow pattern: _hash_field1_field2_... for multi-field constraints
-            response = await es.indices.get_mapping(index=entity_type)
-            mapping = response.get(entity_type, {}).get("mappings", {}).get("properties", {})
-            
-            unique_constraints = []
-            processed_fields = set()
-            
-            for field_name in mapping.keys():
-                if field_name.startswith('_hash_'):
-                    # This is a hash field for multi-field unique constraint
-                    # Extract original field names from hash field name
-                    # Format: _hash_field1_field2_...
-                    fields_part = field_name[6:]  # Remove '_hash_'
-                    original_fields = fields_part.split('_')
-                    if len(original_fields) > 1:
-                        unique_constraints.append(original_fields)
-                        processed_fields.update(original_fields)
-                elif field_name not in processed_fields:
-                    # Single field that might have unique constraint
-                    # Check if it's a .raw field (which indicates unique constraint setup)
-                    field_config = mapping[field_name]
-                    if (isinstance(field_config, dict) and 
-                        'fields' in field_config and 
-                        'raw' in field_config['fields']):
-                        # This field has unique constraint
-                        unique_constraints.append([field_name])
-            
-            return unique_constraints
-        except Exception as e:
-            raise DatabaseError(
-                message=str(e),
-                entity=entity_type,
-                operation="list_indexes"
-            )
+        if not await es.indices.exists(index=entity_type):
+            return []
+        
+        # For Elasticsearch, we look for hash fields that represent unique constraints
+        # Hash fields follow pattern: _hash_field1_field2_... for multi-field constraints
+        response = await es.indices.get_mapping(index=entity_type)
+        mapping = response.get(entity_type, {}).get("mappings", {}).get("properties", {})
+        
+        unique_constraints = []
+        processed_fields = set()
+        
+        for field_name in mapping.keys():
+            if field_name.startswith('_hash_'):
+                # This is a hash field for multi-field unique constraint
+                # Extract original field names from hash field name
+                # Format: _hash_field1_field2_...
+                fields_part = field_name[6:]  # Remove '_hash_'
+                original_fields = fields_part.split('_')
+                if len(original_fields) > 1:
+                    unique_constraints.append(original_fields)
+                    processed_fields.update(original_fields)
+            elif field_name not in processed_fields:
+                # Single field that might have unique constraint
+                # Check if it's a .raw field (which indicates unique constraint setup)
+                field_config = mapping[field_name]
+                if (isinstance(field_config, dict) and 
+                    'fields' in field_config and 
+                    'raw' in field_config['fields']):
+                    # This field has unique constraint
+                    unique_constraints.append([field_name])
+        
+        return unique_constraints
     
     async def delete(self, entity_type: str, fields: List[str]) -> None:
         """Delete synthetic unique constraint (limited in Elasticsearch)"""
@@ -650,17 +609,14 @@ class ElasticsearchIndexes(IndexManager):
 class ElasticsearchDatabase(DatabaseInterface):
     """Elasticsearch implementation of DatabaseInterface"""
     
-    def _create_core_manager(self) -> CoreManager:
-        return ElasticsearchCore(self)
-    
-    def _create_document_manager(self) -> DocumentManager:
-        return ElasticsearchDocuments(self)
-    
-    def _create_entity_manager(self) -> EntityManager:
-        return ElasticsearchEntities(self)
-    
-    def _create_index_manager(self) -> IndexManager:
-        return ElasticsearchIndexes(self)
+    def _get_manager_classes(self) -> dict:
+        """Return Elasticsearch manager classes"""
+        return {
+            'core': ElasticsearchCore,
+            'documents': ElasticsearchDocuments,
+            'entities': ElasticsearchEntities,
+            'indexes': ElasticsearchIndexes
+        }
     
     async def supports_native_indexes(self) -> bool:
         """Elasticsearch does not support native unique indexes"""

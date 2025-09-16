@@ -4,10 +4,14 @@ Clean separation of concerns with explicit parameters.
 """
 
 from abc import ABC, abstractmethod
+from typing import Type, TYPE_CHECKING
 from .core_manager import CoreManager
 from .document_manager import DocumentManager
 from .entity_manager import EntityManager
 from .index_manager import IndexManager
+
+if TYPE_CHECKING:
+    pass
 
 
 class DatabaseInterface(ABC):
@@ -25,30 +29,18 @@ class DatabaseInterface(ABC):
         self.case_sensitive_sorting = case_sensitive_sorting
         self._initialized = False
         
-        # Composed managers - implemented by concrete drivers
-        self.core: CoreManager = self._create_core_manager()
-        self.documents: DocumentManager = self._create_document_manager()
-        self.entities: EntityManager = self._create_entity_manager()  
-        self.indexes: IndexManager = self._create_index_manager()
+        # Get manager classes from concrete implementation
+        manager_classes = self._get_manager_classes()
+        
+        # Create composed managers using template method pattern
+        self.core: CoreManager = manager_classes['core'](self)
+        self.documents: DocumentManager = manager_classes['documents'](self)
+        self.entities: EntityManager = manager_classes['entities'](self)
+        self.indexes: IndexManager = manager_classes['indexes'](self)
     
     @abstractmethod
-    def _create_core_manager(self) -> CoreManager:
-        """Create core manager implementation"""
-        pass
-    
-    @abstractmethod
-    def _create_document_manager(self) -> DocumentManager:
-        """Create document manager implementation"""
-        pass
-    
-    @abstractmethod
-    def _create_entity_manager(self) -> EntityManager:
-        """Create entity manager implementation"""
-        pass
-    
-    @abstractmethod
-    def _create_index_manager(self) -> IndexManager:
-        """Create index manager implementation"""
+    def _get_manager_classes(self) -> dict:
+        """Return dictionary of manager class types for this database"""
         pass
     
     # Utility methods
