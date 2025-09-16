@@ -1,5 +1,5 @@
 from typing import Dict, List, Any, Optional, Tuple
-from app.services.notification import system_error
+from app.services.notify import Notification, Error
 from app.utils import merge_overrides
 
 class MetadataService:
@@ -15,6 +15,7 @@ class MetadataService:
                 MetadataService._fail_fast(f"No metadata found for entity {entity}")
             # Apply overrides to the metadata
             merged_md = merge_overrides(entity, md.copy()) # type: ignore
+            merged_md['fields']['id'] = {'type': 'ObjectId', 'required': True}
             MetadataService._metadata[entity] = merged_md
      
     @staticmethod
@@ -31,8 +32,9 @@ class MetadataService:
             if e.lower() == entity.lower():
                 found = True
                 break
-        if not metadata:
-            MetadataService._fail_fast(f"Entity metadata not found: {entity}")
+        if not found:
+            return None
+        #     MetadataService._fail_fast(f"Entity metadata not found: {entity}")
             
         if field is None:
             return metadata
@@ -46,7 +48,8 @@ class MetadataService:
                 break
                 
         if not found:
-            MetadataService._fail_fast(f"Field metadata not found: {entity}.{field}")
+            return None
+            # MetadataService._fail_fast(f"Field metadata not found: {entity}.{field}")
             
         if attribute is None:
             return fd
@@ -66,7 +69,7 @@ class MetadataService:
     def fields(entity: str) -> Dict[str, Any]:
         """Get all fields metadata for an entity."""
         metadata = MetadataService.get(entity)
-        return metadata.get('fields', {})
+        return metadata.get('fields', {}) if metadata else {}
 
     @staticmethod
     def get_proper_name(entity: str, field: Optional[str] = None) -> str:
@@ -104,5 +107,5 @@ class MetadataService:
     @staticmethod
     def _fail_fast(message: str) -> None:
         """Fail-fast error handling - notify and raise exception."""
-        system_error(message)
+        Notification.error(Error.SYSTEM, message)
         raise ValueError(message)

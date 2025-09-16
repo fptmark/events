@@ -2,10 +2,9 @@ from typing import List, Dict, Any, Optional
 from pydantic import ValidationError as PydanticValidationError
 import warnings as python_warnings
 from app.config import Config
-from app.services.notification import Notification, validation_warning, system_error
+from app.services.notify import Notification, Warning, Error
 from app.services.metadata import MetadataService
 from app.services.model import ModelService
-from app.services.request_context import RequestContext
 
 def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], warnings: List[str]) -> List[Dict[str, Any]]:
     """Common processing for raw database results."""
@@ -31,7 +30,7 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
             if caught_warnings:
                 entity_id = data_dict.get('id')
                 if not entity_id:
-                    system_error("Document missing ID field")
+                    Notification.error(Error.SYSTEM, "Document missing ID field")
                     entity_id = "missing"
 
                 # Extract field names from warning messages  
@@ -57,62 +56,13 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
                 
                 if warning_field_names:
                     field_list = ', '.join(sorted(warning_field_names))
-                    validation_warning(f"Serialization warnings for fields: {field_list}", entity=entity_type, entity_id=entity_id)
+                    Notification.warning(Warning.DATA_VALIDATION, f"Serialization warnings for fields: {field_list}", entity_type=entity_type, entity_id=entity_id)
                 else:
                     # Fallback for warnings without extractable field names
                     warning_count = len(caught_warnings)
-                    validation_warning(f"{entity_type} {entity_id}: {warning_count} serialization warnings", entity=entity_type, entity_id=entity_id)
+                    Notification.warning(Warning.DATA_VALIDATION, f"{entity_type} {entity_id}: {warning_count} serialization warnings", entity_type=entity_type, entity_id=entity_id)
 
     return entity_data
-
-
-# async def validate_fks(entity_name: str, data: Dict[str, Any], metadata: Dict[str, Any]) -> None:
-#     """
-#     Worker function: Generic ObjectId reference validation for any entity.
-    
-#     Args:
-#         entity_name: Name of the entity being validated (e.g., "User")
-#         data: Entity data dictionary to validate
-#         metadata: Entity metadata containing field definitions
-    
-#     Raises:
-#         ValidationError: If any ObjectId references don't exist
-#     """
-#     from app.services.notification import validation_warning
-#     from app.services.model import ModelService
-    
-#     # Check all ObjectId fields in the entity metadata
-#     for field_name, field_meta in metadata.get('fields', {}).items():
-#         if field_meta.get('type') == 'ObjectId' and data.get(field_name):
-#             fk_entity_name = MetadataService.get_proper_name(field_name[:-2])
-#             subobj = {'exists': False}
-#             # Derive FK entity name from field name (e.g., accountId -> Account)
-#             fk_entity_cls = ModelService.get_model_class(fk_entity_name)
-#             if fk_entity_cls:
-#                 response = await fk_entity_cls.get(data[field_name], None)
-                
-#                 # Check if FK exists
-#                 if response.get('data'):
-#                     subobj = {'exists': True}
-#                 else:
-#                     validation_warning(
-#                         message="Referenced ID does not exist",
-#                         entity=fk_entity_name,
-#                         entity_id=data[field_name],
-#                         field=field_name
-#                     )
-#             else:
-#                 # Bad entity name in FK reference
-#                 validation_warning(
-#                     message=f"Invalid FK entity", 
-#                     entity=fk_entity_name,
-#                     field=field_name
-#                 )
-#             data[fk_entity_name.lower()] = subobj  # Add FK field without 'Id' suffix
-    
-#     # Note: FK validation failures are now handled through notification system
-
-
 
 
 async def validate_uniques(entity_type: str, data: Dict[str, Any], unique_constraints: List[List[str]], exclude_id: Optional[str] = None) -> None:
@@ -142,86 +92,8 @@ async def validate_uniques(entity_type: str, data: Dict[str, Any], unique_constr
     # For MongoDB, this will always be True (relies on native database constraints)
     # For Elasticsearch, this returns False if synthetic validation finds duplicates
     if not constraint_success:
-        from app.services.notification import system_error
-        system_error(f"Unique constraint violation for {entity_type}")
+        Notification.error(Error.SYSTEM, f"Unique constraint violation for {entity_type}")
         # Note: MongoDB will throw DuplicateKeyError, Elasticsearch handles in _validate_unique_constraints
-
-
-# async def populate_view(entity_dict: Dict[str, Any], view_spec: Optional[Dict[str, Any]], entity_name: str) -> None:
-#     """
-#     Worker function: Populate FK view data in entity dictionary.
-    
-#     Args:
-#         entity_dict: Entity data dictionary to populate
-#         view_spec: Dict of FK fields to populate with requested fields
-#         entity_name: Name of the entity type
-#     """
-#     if not view_spec:
-#         return
-        
-    
-#     metadata = MetadataService.get(entity_name)
-#     entity_id = entity_dict.get('id', 'unknown')
-    
-#     for field_name, field_meta in metadata.get('fields', {}).items():
-#         if field_meta.get('type') == 'ObjectId' and entity_dict.get(field_name):
-#             fk_name = field_name[:-2]  # Remove 'Id' suffix
-#             if view_spec and fk_name in view_spec:
-#                 fk_data = {"exists": False}
-#                 fk_entity_cls = ModelService.get_model_class(MetadataService.get_proper_name(fk_name))
-#                 if fk_entity_cls:
-#                     try:
-#                         related_data, count = await fk_entity_cls.get(entity_dict[field_name], None)
-                    
-#                         if count == 1:
-#                             fk_data = {"exists": True}
-#                             requested_fields = view_spec[fk_name]
-                        
-#                             # Handle case-insensitive field matching for URL parameter issues
-#                             field_map = {k.lower(): k for k in related_data.keys()}
-                            
-#                             for field in requested_fields or []:
-#                                 # Try exact match first, then case-insensitive fallback
-#                                 if field in related_data:
-#                                     fk_data[field] = related_data[field]
-#                                 elif field.lower() in field_map:
-#                                     actual_field = field_map[field.lower()]
-#                                     fk_data[actual_field] = related_data[actual_field]
-#                         elif count == 0:
-#                             # FK record missing (broken ref integrity)
-#                             validation_warning(
-#                                 message="FK record not found",
-#                                 entity=fk_name,
-#                                 entity_id=entity_dict[field_name],
-#                                 field=field_name
-#                             )
-#                         else:
-#                             # Multiple FK records found - should not happen with ObjectId
-#                             validation_warning(
-#                                 message="Multiple FK records found.  Data integrity issue?",
-#                                 entity=fk_name,
-#                                 entity_id=entity_dict[field_name],
-#                                 field=field_name
-#                             )
-                    
-#                     except Exception as e:
-#                         # FK lookup failed - set exists=False and continue
-#                         validation_warning(
-#                             message=f"Failed to populate {fk_name}: {str(e)}",
-#                             entity=entity_name,
-#                             entity_id=entity_id,
-#                             field=field_name
-#                         )
-#                 else:
-#                     # Bad entity name in view spec
-#                     validation_warning(
-#                         message=f"Invalid entity '{fk_name}' in view specification",
-#                         entity=entity_name,
-#                         entity_id=entity_id,
-#                         field=field_name
-#                     )
-                
-#                 entity_dict[fk_name] = fk_data
 
 
 def validate_model(cls, data: Dict[str, Any], entity_name: str):
@@ -243,77 +115,9 @@ def validate_model(cls, data: Dict[str, Any], entity_name: str):
         entity_id = data.get('id', 'unknown')
         for error in e.errors():
             field_name = str(error['loc'][-1]) if error.get('loc') else 'unknown'
-            validation_warning(
-                message=error.get('msg', 'Validation error'),
-                entity=entity_name,
-                entity_id=entity_id,
-                field=field_name
-            )
+            Notification.warning(Warning.DATA_VALIDATION, error.get('msg', 'Validation error'), entity_type=entity_name, entity_id=entity_id, field=field_name)
         # Return unvalidated instance so API can continue
         return cls.model_construct(**data)
-
-# def build_error_response(status: str) -> Dict[str, Any]:
-
-#     """Build standardized error response when validation fails before DB operation."""
-#     return {
-#         "data": {},
-#         "notifications": Notification.end().get("notifications", {}),
-#         "status": status
-#     }
-
-# def build_standard_response(data: Any, total_records: int) -> Dict[str, Any]:
-#     """
-#     Build a standardized API response dictionary from internal response.
-    
-#     Args:
-#         response: Internal response dictionary with keys like 'data', 'errors', 'warnings', 'notifications', 'total_records'
-    
-#     Returns:
-#         Standardized response dictionary with keys: 'data', 'notifications', 'status', 'pagination'
-#     """
-#     result: Dict[str, Any] = {}
-
-#     result["data"] = data
-
-#     notification_response = Notification.end()
-#     notifications = notification_response.get("notifications", {})
-#     result["notifications"] = notifications
-
-#     errors = notifications.get('errors', [])
-#     warnings = notifications.get('warnings', {})
-#     status = "success" if len(errors) == 0 and len(warnings) == 0 else "warning" if len(warnings) > 0 else "error"
-#     result["status"] = status
-
-#     if isinstance(data, List):
-#         result["pagination"] = pagination(RequestContext.page, total_records, RequestContext.pageSize)
-
-#     return result
-
-
-# def pagination(page: int, totalRecords: int, pageSize: int = 25) -> Dict[str, Any]:
-#     """
-#     Build pagination response structure used by all models.
-    
-#     Args:
-#         page: Current page number
-#         pageSize: Items per page  
-#         totalRecords: Total number of items
-        
-#     Returns:
-#         Dictionary with pagination fields matching existing pattern
-#     """
-#     totalPages = (totalRecords + pageSize - 1) // pageSize if totalRecords > 0 else 0
-    
-#     return {
-#         "page": page,
-#         "pageSize": pageSize,
-#         "total": totalRecords,
-#         "totalPages": totalPages
-#     }
-
-
-
-# get_entity_with_fk function removed - models now handle FK processing directly
 
 
 async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, view_spec: Dict[str, Any] = {}) -> None:
@@ -355,46 +159,21 @@ async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, vi
                                         actual_field = field_map[field.lower()]
                                         fk_data[actual_field] = related_data[actual_field]
                                     else: # viewspec field not found in related entity
-                                        validation_warning(
-                                            message="Field not found in related entity",
-                                            entity=entity_type,
-                                            entity_id=data['id'],
-                                            field=field
-                                        )
+                                        Notification.warning(Warning.DATA_VALIDATION, "Field not found in related entity", entity_type=entity_type, entity_id=data['id'], field=field)
                                         
                         elif count == 0:
                             # FK record not found - validation warning if validating
-                            validation_warning(
-                                message="Referenced ID does not exist",
-                                entity=entity_type,
-                                entity_id=data['id'],
-                                field=field_name
-                            )
+                            Notification.warning(Warning.DATA_VALIDATION, "Referenced ID does not exist", entity_type=entity_type, entity_id=data['id'], field=field_name)
                         else:
                             # Multiple records - data integrity issue
-                            validation_warning(
-                                message="Multiple FK records found. Data integrity issue?",
-                                entity=entity_type,
-                                entity_id=data['id'],
-                                field=field_name
-                            )
+                            Notification.warning(Warning.DATA_VALIDATION, "Multiple FK records found. Data integrity issue?", entity_type=entity_type, entity_id=data['id'], field=field_name)
                             
                     else:
-                        validation_warning(
-                            message="FK entity does not exist",
-                            entity=entity_type,
-                            entity_id=data['id'],
-                            field=field_name
-                        )
+                        Notification.warning(Warning.DATA_VALIDATION, "FK entity does not exist", entity_type=entity_type, entity_id=data['id'], field=field_name)
                 else:
                     # Invalid entity class or missing ID - validation warning if validating and required or entity in view spec
                     if (validate and field_meta.get('required', False)) or fk_name.lower() in view_spec.keys():
-                        validation_warning(
-                            message="Missing fk ID",
-                            entity=entity_type,
-                            entity_id=data['id'],
-                            field=field_name
-                        )
+                        Notification.warning(Warning.DATA_VALIDATION, "Missing fk ID", entity_type=entity_type, entity_id=data['id'], field=field_name)
                 
                 # Set FK field data (inside the loop for each FK)
                 data[fk_name] = fk_data  

@@ -17,7 +17,7 @@ from urllib.parse import unquote
 
 from app.config import Config
 from app.services.model import ModelService
-from app.services.notification import validation_warning
+from app.services.notify import Notification, Warning
 from app.services.metadata import MetadataService
 
 if TYPE_CHECKING:
@@ -100,31 +100,16 @@ async def _process_fk_field(entity_dict: Dict[str, Any], fk_name: str, fk_id_fie
                             fk_data[actual_field] = related_data[actual_field]
                         else:
                             # FK field not found in related entity
-                            validation_warning(
-                                message="Field not found in related entity",
-                                entity=fk_name,
-                                field=view_field
-                            )
+                            Notification.warning(Warning.DATA_VALIDATION, "Field not found in related entity", entity_type=fk_name, field=view_field)
             else:
                 # FK record missing (broken ref integrity)
-                validation_warning(
-                    message="FK record not found",
-                    entity=fk_name,
-                    entity_id=entity_dict[fk_id_field]
-                )
+                Notification.warning(Warning.NOT_FOUND, "FK record not found", entity_type=fk_name, entity_id=entity_dict[fk_id_field])
         else:
             # FK ID field missing in entity
-            validation_warning(
-                message="Missing FK ID field",
-                entity=entity_name,
-                field=fk_id_field
-            )
+            Notification.warning(Warning.DATA_VALIDATION, "Missing FK ID field", entity_type=entity_name, field=fk_id_field)
     else:
         # FK entity does not exist (bad entity name in view spec)
-        validation_warning(
-            message="Invalid entity in view specification",
-            entity=fk_name
-        )
+        Notification.warning(Warning.DATA_VALIDATION, "Invalid entity in view specification", entity_type=fk_name)
     
     return fk_data
 

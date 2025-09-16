@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List, Tuple, Union
 from urllib.parse import unquote
 from app.services.metadata import MetadataService
-from app.services.notification import system_error
+from app.services.notify import Notification, Error, Warning
 from app.utils import parse_url_path
 
 
@@ -49,8 +49,7 @@ class RequestContext:
             RequestContext.setup_entity(entity_type, entity_id)
             
         except ValueError as e:
-            system_error(f"Invalid URL path: {str(e)}")
-            return
+            Notification.error(Error.REQUEST, f"Invalid URL path: {str(e)}")
         
         # Parse query parameters
         RequestContext._parse_url_query_params(query_params)
@@ -79,11 +78,11 @@ class RequestContext:
         """
         # Normalize entity name and get metadata
         RequestContext.entity_type = MetadataService.get_proper_name(entity_name)
-        RequestContext.entity_metadata = MetadataService.get(RequestContext.entity_type) or {}
+        RequestContext.entity_metadata = MetadataService.get(RequestContext.entity_type)
         RequestContext.entity_id = entity_id
         
         if not RequestContext.entity_metadata:
-            system_error(f"Entity metadata not found: {RequestContext.entity_type}")
+            Notification.error(Error.REQUEST, f"Entity metadata not found: {RequestContext.entity_type}")
     
     @staticmethod
     def set_parameters(
@@ -120,23 +119,31 @@ class RequestContext:
         for key, value in normalized_params.items():
             try:
                 if key == 'page':
-                    page_val = int(value)
-                    if page_val < 1:
-                        system_error(f"Page number must be >= 1, got: {value}")
+                    try:
+                        page_val = int(value)
+                        if page_val < 1:
+                            Notification.warning(Warning.REQUEST, f"Page number must be >= 1, got: {value}. Using default: 1", parameter='page')
+                            RequestContext.page = 1
+                        else:
+                            RequestContext.page = page_val
+                    except ValueError:
+                        Notification.warning(Warning.REQUEST, f"Invalid page number: {value}. Using default: 1", parameter='page')
                         RequestContext.page = 1
-                    else:
-                        RequestContext.page = page_val
                         
                 elif key == 'pagesize':  # URL param is pageSize but gets lowercased
-                    size_val = int(value)
-                    if size_val < 1:
-                        system_error(f"Page size must be >= 1, got: {value}")
+                    try:
+                        size_val = int(value)
+                        if size_val < 1:
+                            Notification.warning(Warning.REQUEST, f"pageSize must be >= 1, got: {value}. Using default: 25", parameter='pageSize')
+                            RequestContext.pageSize = 25
+                        elif size_val > 1000:
+                            Notification.warning(Warning.REQUEST, f"pageSize cannot exceed 1000, got: {value}. Using maximum: 1000", parameter='pageSize')
+                            RequestContext.pageSize = 1000
+                        else:
+                            RequestContext.pageSize = size_val
+                    except ValueError:
+                        Notification.warning(Warning.REQUEST, f"Invalid pageSize: {value}. Using default: 25", parameter='pageSize')
                         RequestContext.pageSize = 25
-                    elif size_val > 1000:
-                        system_error(f"Page size cannot exceed 1000, got: {value}")
-                        RequestContext.pageSize = 1000
-                    else:
-                        RequestContext.pageSize = size_val
                         
                 elif key == 'sort':
                     RequestContext.sort_fields = RequestContext._parse_sort_parameter(value, RequestContext.entity_type)
@@ -148,13 +155,12 @@ class RequestContext:
                     RequestContext.view_spec = RequestContext._parse_view_parameter(value, RequestContext.entity_type)
                         
                 else:
-                    # Unknown parameter
+                    # Unknown parameter - ignore and continue
                     valid_params = ['page', 'pageSize', 'sort', 'filter', 'view']
-                    system_error(f"Invalid query parameter '{key}'. Valid parameters: {', '.join(valid_params)}")
+                    Notification.warning(Warning.REQUEST, f"Unknown query parameter '{key}'. Valid parameters: {', '.join(valid_params)}", parameter=key)
                     
             except ValueError as e:
-                system_error(f"Invalid parameter '{key}={value}': {str(e)}")
-                continue
+                Notification.warning(Warning.REQUEST, f"Invalid parameter '{key}={value}': {str(e)}", parameter=key)
     
     @staticmethod
     def to_dict() -> Dict[str, Any]:
@@ -201,25 +207,27 @@ class RequestContext:
                 parts = field_spec.split(':', 1)
                 field_name = parts[0].strip()
                 direction = parts[1].strip().lower()
-                
-                if not field_name:
-                    system_error(f"Empty field name in sort: '{field_spec}'")
-                    continue
-                
-                if direction not in ['asc', 'desc']:
-                    system_error(f"Invalid sort direction '{direction}' for field '{field_name}'. Use 'asc' or 'desc'")
-                    continue
-                
-                # Map field name to proper case using MetadataService
-                proper_field_name = MetadataService.get_proper_name(entity_name, field_name)
-                sort_fields.append((proper_field_name, direction))
-                
             else:
-                # No direction specified - default to ascending
-                proper_field_name = MetadataService.get_proper_name(entity_name, field_spec)
-                sort_fields.append((proper_field_name, "asc"))
+                field_name = field_spec
+                direction = "asc"
+                
+            if not field_name:
+                Notification.warning(Warning.REQUEST, f"Empty field name in sort: '{field_spec}'", parameter='sort')
+                continue
+
+            if not MetadataService.get(entity_name, field_name):
+                Notification.warning(Warning.REQUEST, f"Unknown sort field {field_name}", parameter='sort')
+                continue
+            
+            if direction not in ['asc', 'desc']:
+                Notification.warning(Warning.REQUEST, f"Invalid sort direction '{direction}' for field '{field_name}'. Use 'asc' or 'desc'", parameter='sort')
+                direction = 'asc'
+            
+            # Use lowercase field name - proper casing handled by database driver
+            sort_fields.append((field_name, direction))
         
         return sort_fields
+
 
     @staticmethod
     def _parse_filter_parameter(filter_str: str, entity_name: str) -> Dict[str, Any]:
@@ -250,81 +258,81 @@ class RequestContext:
                 # Split by colon - minimum 2 parts (field:value)
                 parts = filter_part.split(':', 2)
                 if len(parts) < 2:
-                    system_error(f"Invalid filter format: '{filter_part}'. Use field:value")
+                    Notification.warning(Warning.REQUEST, f"Invalid filter format: '{filter_part}'. Use field:value", parameter='filter')
                     continue
                     
                 field_name = parts[0].strip()
                 if not field_name:
-                    system_error(f"Empty field name in filter: '{filter_part}'")
+                    Notification.warning(Warning.REQUEST, f"Empty field name in filter: '{filter_part}'", parameter='filter')
                     continue
                 
-                # Map field name to proper case using MetadataService
-                proper_field_name = MetadataService.get_proper_name(entity_name, field_name)
+                if not MetadataService.get(entity_name, field_name):
+                    Notification.warning(Warning.REQUEST, f"Unknown filter field {field_name}", parameter='filter')
+                    continue
                 
                 if len(parts) == 2:
                     # Simple format: field:value
                     operator = "eq"
-                    value = parts[1].strip()
+                    value = parts[1].strip() 
                 else:
                     # Extended format: field:operator:value
                     operator = parts[1].strip().lower()
                     value = parts[2].strip()
                 
-                # Parse the filter value
-                parsed_filter = RequestContext._parse_filter_value(proper_field_name, operator, value)
+                # Parse the filter value with type conversion
+                parsed_filter = RequestContext._parse_filter_value(entity_name, field_name, operator, value)
                 if parsed_filter is not None:
                     # Handle multiple conditions on the same field (e.g., age:gte:21,age:lt:65)
-                    if proper_field_name in filters:
-                        existing_filter = filters[proper_field_name]
+                    if field_name in filters:
+                        existing_filter = filters[field_name]
                         if isinstance(existing_filter, dict) and isinstance(parsed_filter, dict):
                             # Merge dictionaries for range conditions like {"$gte": X} + {"$lt": Y}
                             existing_filter.update(parsed_filter)
                         else:
                             # For non-dict filters, overwrite (shouldn't happen with range operators)
-                            filters[proper_field_name] = parsed_filter
+                            filters[field_name] = parsed_filter
                     else:
-                        filters[proper_field_name] = parsed_filter
+                        filters[field_name] = parsed_filter
                         
         except Exception as e:
-            system_error(f"Error parsing filter parameter: {str(e)}")
+            Notification.warning(Warning.REQUEST, f"Error parsing filter parameter: {str(e)}", parameter='filter')
             
         return filters
 
     @staticmethod
-    def _parse_filter_value(field_name: str, operator: str, value: str) -> Union[str, int, float, Dict[str, Any], None]:
-        """Parse individual filter value based on operator."""
+    def _parse_filter_value(entity_name: str, field_name: str, operator: str, value: str) -> Union[str, int, float, bool, Dict[str, Any], None]:
+        """Parse individual filter value based on field type and operator."""
         try:
+            # Get field type from metadata for proper type conversion
+            field_type = MetadataService.get(entity_name, field_name, 'type')
+            
+            # Convert value based on field type
+            typed_value = RequestContext._convert_value_by_type(entity_name, field_name, value, field_type)
+            
             if operator == "eq":
-                # Exact match - try to parse as number, fall back to string
-                return RequestContext._parse_number(value) if RequestContext._parse_number(value) is not None else value
+                return typed_value
                 
             elif operator == "gt":
-                # Try to parse as number first, but allow non-numeric values (like dates)
-                num_val = RequestContext._parse_number(value)
-                return {"$gt": num_val if num_val is not None else value}
+                return {"$gt": typed_value}
                 
             elif operator == "gte":
-                # Try to parse as number first, but allow non-numeric values (like dates)
-                num_val = RequestContext._parse_number(value)
-                return {"$gte": num_val if num_val is not None else value}
+                return {"$gte": typed_value}
                 
             elif operator == "lt":
-                # Try to parse as number first, but allow non-numeric values (like dates)
-                num_val = RequestContext._parse_number(value)
-                return {"$lt": num_val if num_val is not None else value}
+                return {"$lt": typed_value}
                 
             elif operator == "lte":
-                # Try to parse as number first, but allow non-numeric values (like dates)
-                num_val = RequestContext._parse_number(value)
-                return {"$lte": num_val if num_val is not None else value}
+                return {"$lte": typed_value}
                 
             else:
-                system_error(f"Unknown filter operator '{operator}' for field '{field_name}'. Supported: eq, gt, gte, lt, lte")
+                Notification.warning(Warning.REQUEST, f"Unknown filter operator '{operator}' for field '{field_name}'. Supported: eq, gt, gte, lt, lte", parameter='filter')
                 return None
                 
         except Exception as e:
-            system_error(f"Error parsing filter '{field_name}:{operator}:{value}': {str(e)}")
+            Notification.warning(Warning.REQUEST, f"Error parsing filter '{field_name}:{operator}:{value}': {str(e)}", parameter='filter')
             return None
+            
+        return None  # Should never reach here due to request_error() exceptions
 
     @staticmethod
     def _parse_view_parameter(view_str: str, entity_name: str) -> Dict[str, List[str]]:
@@ -351,17 +359,24 @@ class RequestContext:
             matches = re.findall(pattern, view_str)
             
             if not matches:
-                system_error(f"Invalid view format: '{view_str}'. Use format: fk_name(field1,field2)")
+                Notification.warning(Warning.REQUEST, f"Invalid view format: '{view_str}'. Use format: fk_name(field1,field2)", parameter='view')
                 return {}
             
             for fk_name, fields_str in matches:
+                # First validate the foreign entity exists
+                if not MetadataService.get(fk_name):
+                    Notification.warning(Warning.REQUEST, f"Unknown entity in view: {fk_name}", parameter='view')
+                    continue
+                
                 field_names = []
                 for field in fields_str.split(','):
                     field = field.strip()
                     if field:
-                        # Map field name to proper case using MetadataService
-                        proper_field_name = MetadataService.get_proper_name(entity_name, field)
-                        field_names.append(proper_field_name)
+                        # Check if field exists in the FOREIGN entity, not current entity
+                        if not MetadataService.get(fk_name, field):
+                            Notification.warning(Warning.REQUEST, f"Unknown field in view: {fk_name}.{field}", parameter='view')
+                            continue
+                        field_names.append(field)
                 
                 if field_names:
                     view_spec[fk_name] = field_names
@@ -369,9 +384,58 @@ class RequestContext:
             return view_spec if view_spec else {}
             
         except Exception as e:
-            system_error(f"Error parsing view parameter: {str(e)}")
+            Notification.warning(Warning.REQUEST, f"Error parsing view parameter: {str(e)}", parameter='view')
             return {}
+            
+        return {}  # Should never reach here due to request_error() exceptions
 
+    @staticmethod
+    def _convert_value_by_type(entity_name: str, field_name: str, value: str, field_type: str) -> Union[str, int, float, bool, None]:
+        """Convert string value to appropriate type based on field metadata."""
+        try:
+            value = value.strip()
+            if not value:
+                return None
+                
+            # Handle type conversions based on schema types
+            if field_type == 'Boolean':
+                if value.lower() in ('true', '1', 'yes'):
+                    return True
+                elif value.lower() in ('false', '0', 'no'):
+                    return False
+                else:
+                    Notification.warning(Warning.REQUEST, f"Invalid boolean value '{value}' for field '{field_name}'. Use true/false", parameter='filter')
+                    return None
+                    
+            elif field_type in ('Currency', 'Number'):
+                try:
+                    return float(value)
+                except ValueError:
+                    Notification.warning(Warning.REQUEST, f"Invalid number value '{value}' for {field_type} field '{field_name}'", parameter='filter')
+                    return None
+                    
+            elif field_type == 'Integer':
+                try:
+                    return int(value)
+                except ValueError:
+                    Notification.warning(Warning.REQUEST, f"Invalid integer value '{value}' for Integer field '{field_name}'", parameter='filter')
+                    return None
+                    
+            elif field_type in ('Date', 'Datetime'):
+                # Keep as string - database driver will handle date parsing
+                # TODO: Add date validation if needed
+                return value
+                
+            else:
+                # String, ObjectId, JSON, Array[String] - keep as string
+                return value
+                
+        except Exception as e:
+            Notification.warning(Warning.REQUEST, f"Error converting value '{value}' for type '{field_type}' field '{field_name}': {str(e)}", parameter='filter')
+            return None
+            
+        return None  # Should never reach here due to request_error() exceptions
+    
     @staticmethod
     def _parse_number(value: str) -> Union[int, float, None]:
         """Try to parse string as number, return None if not numeric."""

@@ -10,10 +10,10 @@ from app.db import DatabaseFactory
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.errors import DatabaseError 
+from app.services.notify import StopWorkError 
 from app.services.metadata import MetadataService
 from app.services.model import ModelService
-from app.services.notification import Notification
+from app.services.notify import Notification, Warning, Error
 from app.routers.router import get_all_dynamic_routers
 
 from app.services.auth.cookies.redis_provider import CookiesAuth as Auth
@@ -240,24 +240,20 @@ app.add_middleware(
     max_age=3600,             # cache preflight for 1 hour
 )
 
-@app.exception_handler(DatabaseError)
-async def database_error_handler(request: Request, exc: DatabaseError):
-    """Handle database errors"""
-    from app.services.notification import Notification, ErrorType
+@app.exception_handler(StopWorkError)
+async def stop_work_handler(request: Request, exc: StopWorkError):
+    """Handle all stop-work errors with unified response"""
+    from app.routers.endpoint_handlers import update_response
     
-    logger.error(f"Database error in {exc.entity}.{exc.operation}: {exc}")
+    logger.error(f"Stop-work error [{exc.error_type}]: {exc.detail}")
     
-    # Add error to notification system (notification collection should already be started by endpoint handler)
-    Notification.error(ErrorType.DATABASE, exc.message)
+    # Notification system already populated by notify.py
+    # Use update_response to maintain consistent API structure
+    response_data = update_response(data=None)
     
-    notification_response = Notification.get()
     return JSONResponse(
-        status_code=500,
-        content={
-            "data": None,
-            "notifications": notification_response.get("notifications", {}),
-            "status": notification_response.get("status", "failed")
-        }
+        status_code=exc.status_code,
+        content=response_data
     )
 
 @app.exception_handler(HTTPException)
@@ -275,52 +271,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         content=response_data
     )
 
-# ValidationError handler removed - validation errors now handled by notification system
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Handle FastAPI request validation errors"""
-    from app.services.notification import Notification, WarningType
-    
-    logger.error(f"Request validation error: {exc}")
-    
-    # Add validation warnings to notification system
-    for error in exc.errors():
-        field = str(error['loc'][-1]) if error['loc'] else 'unknown'
-        message = error['msg']
-        Notification.warning(WarningType.VALIDATION, f"Invalid {field}: {message}", field=field)
-    
-    notification_response = Notification.end()
-    return JSONResponse(
-        status_code=422,
-        content={
-            "data": None,
-            "notifications": notification_response.get("notifications", {}),
-            "status": notification_response.get("status", "failed")
-        }
-    )
-
-# NotFoundError and DuplicateError handlers removed - these errors now handled by notification system
-
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    """Handle any unhandled exceptions"""
-    from app.services.notification import Notification, ErrorType
-    
-    logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
-    
-    # Add system error to notification system
-    Notification.error(ErrorType.SYSTEM, f"An unexpected error occurred: {str(exc)}")
-    
-    notification_response = Notification.end()
-    return JSONResponse(
-        status_code=500,
-        content={
-            "data": None,
-            "notifications": notification_response.get("notifications", {}),
-            "status": notification_response.get("status", "failed")
-        }
-    )
+# All validation and system errors now handled by StopWorkError via notification system
  
 @app.get('')
 def read_root():

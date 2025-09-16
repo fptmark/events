@@ -16,7 +16,7 @@ from fastapi import Request, HTTPException
 from pydantic import BaseModel
 
 from app.routers.router_factory import EntityModelProtocol
-from app.services.notification import Notification, ErrorType, validation_warning
+from app.services.notify import Notification
 from app.services.request_context import RequestContext
 
 logger = logging.getLogger(__name__)
