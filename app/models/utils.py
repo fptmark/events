@@ -56,11 +56,11 @@ def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], w
                 
                 if warning_field_names:
                     field_list = ', '.join(sorted(warning_field_names))
-                    Notification.warning(Warning.DATA_VALIDATION, f"Serialization warnings for fields: {field_list}", entity_type=entity_type, entity_id=entity_id)
+                    Notification.warning(Warning.DATA_VALIDATION, "Serialization warnings for fields", entity_type=entity_type, entity_id=entity_id, value=field_list)
                 else:
                     # Fallback for warnings without extractable field names
                     warning_count = len(caught_warnings)
-                    Notification.warning(Warning.DATA_VALIDATION, f"{entity_type} {entity_id}: {warning_count} serialization warnings", entity_type=entity_type, entity_id=entity_id)
+                    Notification.warning(Warning.DATA_VALIDATION, "Serialization warnings", entity_type=entity_type, entity_id=entity_id, value=str(warning_count))
 
     return entity_data
 
@@ -115,7 +115,7 @@ def validate_model(cls, data: Dict[str, Any], entity_name: str):
         entity_id = data.get('id', 'unknown')
         for error in e.errors():
             field_name = str(error['loc'][-1]) if error.get('loc') else 'unknown'
-            Notification.warning(Warning.DATA_VALIDATION, error.get('msg', 'Validation error'), entity_type=entity_name, entity_id=entity_id, field=field_name)
+            Notification.warning(Warning.DATA_VALIDATION, "Validation error", entity_type=entity_name, entity_id=entity_id, field=field_name, value=error.get('msg', 'Validation error'))
         # Return unvalidated instance so API can continue
         return cls.model_construct(**data)
 
@@ -141,7 +141,8 @@ async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, vi
                     
                     if fk_cls:
                         # Fetch FK record
-                        related_data, count = await fk_cls.get(fk_field_id, None)
+                        with Notification.suppress_warnings():  # suppress warnings when fetching a fk as the code below has a better warning (it includes the offending field)
+                            related_data, count = await fk_cls.get(fk_field_id, None)
                         
                         # if there is more than one fk record, something is very wrong
                         if count == 1:
@@ -163,13 +164,13 @@ async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, vi
                                         
                         elif count == 0:
                             # FK record not found - validation warning if validating
-                            Notification.warning(Warning.DATA_VALIDATION, "Referenced ID does not exist", entity_type=entity_type, entity_id=data['id'], field=field_name)
+                            Notification.warning(Warning.DATA_VALIDATION, "Referenced ID does not exist", entity_type=entity_type, entity_id=data['id'], field=field_name, value=fk_field_id)
                         else:
                             # Multiple records - data integrity issue
-                            Notification.warning(Warning.DATA_VALIDATION, "Multiple FK records found. Data integrity issue?", entity_type=entity_type, entity_id=data['id'], field=field_name)
+                            Notification.warning(Warning.DATA_VALIDATION, "Multiple FK records found. Data integrity issue?", entity_type=entity_type, entity_id=data['id'], field=field_name, value=fk_field_id)
                             
                     else:
-                        Notification.warning(Warning.DATA_VALIDATION, "FK entity does not exist", entity_type=entity_type, entity_id=data['id'], field=field_name)
+                        Notification.warning(Warning.DATA_VALIDATION, "FK entity does not exist", entity_type=entity_type, entity_id=data['id'], field=field_name, value=fk_entity_type)
                 else:
                     # Invalid entity class or missing ID - validation warning if validating and required or entity in view spec
                     if (validate and field_meta.get('required', False)) or fk_name.lower() in view_spec.keys():

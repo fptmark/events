@@ -3,6 +3,7 @@ Simple static notification system with 3 types: errors, request_warnings, warnin
 """
 
 import logging
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Any
 from fastapi import HTTPException
 
@@ -15,7 +16,7 @@ class Error:
 class Warning:
     NOT_FOUND = 'not_found'
     UNIQUE_VIOLATION = 'unique_violation'
-    DATA_VALIDATION = 'data_validation'
+    DATA_VALIDATION = 'validation'
     REQUEST = 'request'     # e.g. - bad sort field
 
 
@@ -43,13 +44,25 @@ class Notification:
     _errors: List[str] = []
     _warnings: Dict[str, Dict[str, List[Dict[str, str]]]] = {}  # Already in final format
     _request_warnings: List[Dict[str, str]] = []
+    _suppress_warnings: bool = False
     
     @classmethod
-    def start(cls, entity: Optional[str] = None, operation: Optional[str] = None) -> None:
+    def start(cls) -> None:
         """Start notification collection"""
         cls._errors.clear()
         cls._warnings.clear()
         cls._request_warnings.clear()
+    
+    @classmethod
+    @contextmanager
+    def suppress_warnings(cls):
+        """Context manager to suppress warning notifications during FK lookups"""
+        old_value = cls._suppress_warnings
+        cls._suppress_warnings = True
+        try:
+            yield
+        finally:
+            cls._suppress_warnings = old_value
     
     @classmethod
     def get(cls) -> Dict[str, Any]:
@@ -102,35 +115,39 @@ class Notification:
             raise StopWorkError(message, status_code, stop_type)
     
     @classmethod
-    def warning(cls, warning_type: str, message: str, entity_type = None, entity_id = None, field = None, value = None, parameter = None) -> None:
+    def warning(cls, warning_type: str, message: str = '', entity_type:str = '', entity_id:str = '', field:str = '', value = None, parameter:str = '') -> None:
         """Add warning"""
-        if parameter:
-            # Request parameter warning - smart format: "[REQUEST] page: Invalid page number: abc"
-            formatted_message = f"[{warning_type}] {parameter}: {message}"
-            cls._request_warnings.append({"parameter": parameter, "message": formatted_message})
-            logging.warning(f"[REQUEST WARNING] {formatted_message}")
-        else:
-            # Entity data warning - smart format based on available context
-            entity_type = entity_type or "system"
-            entity_id = entity_id or "general"
+        # Skip warnings if suppressed (e.g., during FK lookups)
+        if cls._suppress_warnings:
+            return
             
-            # Smart message formatting
-            if entity_type and entity_id and field:
-                # "[DATA_VALIDATION] User:123 email: Invalid email format"
-                formatted_message = f"[{warning_type}] {entity_type}:{entity_id} {field}: {message}"
-                log_context = f"{entity_type}:{entity_id} {field}"
-            elif entity_type and entity_id:
-                # "[NOT_FOUND] User:123: Document not found"  
-                formatted_message = f"[{warning_type}] {entity_type}:{entity_id}: {message}"
-                log_context = f"{entity_type}:{entity_id}"
-            elif entity_type:
-                # "[UNIQUE_VIOLATION] User: Duplicate email address"
-                formatted_message = f"[{warning_type}] {entity_type}: {message}"
-                log_context = entity_type
-            else:
-                # "[DATA_VALIDATION] Missing required field"
-                formatted_message = f"[{warning_type}] {message}"
-                log_context = "System"
+        warning = {'type': warning_type}
+        if warning_type == Warning.REQUEST:
+            if message:
+                warning['message'] = message
+            if value:
+                warning['value'] = value
+            if len(entity_type) > 0:
+                warning['entity_type'] = entity_type
+            if len(field) > 0:
+                warning['field'] = field
+            if parameter:
+                warning['parameter'] = parameter
+            cls._request_warnings.append(warning)
+
+        else:
+            # entity_type = entity_type or 'system'
+            # entity_id = entity_id or 'general'
+            warning['entity_type'] = entity_type
+            warning['entity_id'] = entity_id
+            warning['message'] = message
+        
+            if field:
+                warning['field'] = field
+            if value:
+                warning['value'] = value
+            if parameter:
+                warning['parameter'] = parameter
             
             # Initialize structure if needed
             if entity_type not in cls._warnings:
@@ -138,14 +155,10 @@ class Notification:
             if entity_id not in cls._warnings[entity_type]:
                 cls._warnings[entity_type][entity_id] = []
             
-            # Add warning in final format
-            warning_dict = {"message": formatted_message}
-            if field:
-                warning_dict["field"] = field
-            cls._warnings[entity_type][entity_id].append(warning_dict)
+            cls._warnings[entity_type][entity_id].append(warning)
             
-            # Smart logging
-            logging.warning(f"[WARNING] {log_context}: {formatted_message}")
+        # Log the warning
+        logging.warning(warning)
 
 
     @classmethod
