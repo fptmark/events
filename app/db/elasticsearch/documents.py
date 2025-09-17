@@ -62,7 +62,8 @@ class ElasticsearchDocuments(DocumentManager):
     async def get(
         self, 
         id: str,
-        entity_type: str
+        entity_type: str,
+        viewspec: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], int]:
         """Get single document by ID"""
         self.parent._ensure_initialized()

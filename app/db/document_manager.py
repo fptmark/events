@@ -42,6 +42,7 @@ class DocumentManager(ABC):
         self,
         id: str,
         entity_type: str,
+        viewspec: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], int]:
         """
         Get single document by ID.
@@ -191,14 +192,19 @@ class DocumentManager(ABC):
             source: Document with database's native ID field
             
         Returns:
-            Document with standardized "id" field and native ID field removed
+            Document with standardized "id" field first, then other fields
         """
         core = self._get_core_manager()
-        dest: Dict[str, Any] = source.copy()
-        dest["id"] = core.get_id(source)
         id_field = core.id_field
-        if id_field in dest:
-            del dest[id_field]  # Remove native _id field
+        
+        # Create new dict with 'id' first
+        dest: Dict[str, Any] = {"id": core.get_id(source)}
+        
+        # Add all other fields except the native ID field
+        for key, value in source.items():
+            if key != id_field:
+                dest[key] = value
+                
         return dest
 
     
