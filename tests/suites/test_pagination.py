@@ -33,6 +33,6 @@ class PaginationTester:
             TestCase("GET", "User", "", "pageSize=3", "Get user list with page size 3", 200),
             TestCase("GET", "User", "", "page=1&pageSize=5", "Get user list page 1 with size 5", 200),
             TestCase("GET", "User", "", "page=2&pageSize=3", "Get user list page 2 with size 3", 200),
-            TestCase("GET", "User", "valid_all_user_123456", "", "Get individual user (no pagination)", 200),
-            TestCase("GET", "User", "valid_all_user_123456", "page=2&pageSize=10", "Get individual user with pagination params", 200),
+            TestCase("GET", "User", "valid_user_1", "", "Get individual user (no pagination)", 200),
+            TestCase("GET", "User", "valid_user_1", "page=2&pageSize=10", "Get individual user with pagination params", 200),
         ]

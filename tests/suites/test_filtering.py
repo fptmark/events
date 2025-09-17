@@ -51,7 +51,7 @@ class FilteringTester:
             
             # Date filtering - Exact dates
             TestCase("GET", "User", "", "filter=dob:1985-06-15", "Filter by exact date of birth", 200),
-            TestCase("GET", "User", "", "filter=dob:1992-03-20", "Filter by different exact date", 200),
+            TestCase("GET", "User", "", "filter=dob:1992-03-20", "Filter by non-existant dob", 404),
             
             # Date filtering - Comparison operators (exclude null dates)
             TestCase("GET", "User", "", "filter=dob:gte:1950-01-01", "Filter by dob greater than or equal 1950 (broader range)", 200),
