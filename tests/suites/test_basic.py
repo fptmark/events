@@ -12,7 +12,7 @@ from typing import List, Tuple
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tests.base_test import BaseTestFramework
+# BaseTestFramework import removed - no longer needed
 from .test_case import TestCase
 
 # Removed hardcoded helper functions - using runtime data generation from base_test.py

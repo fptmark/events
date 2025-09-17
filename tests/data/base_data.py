@@ -124,8 +124,8 @@ async def save_test_data(config_data: dict, verbose: bool = False) -> bool:
                     data, count = await DatabaseFactory.create(entity_name, record, validate=False)
                     if count > 0:
                         saved_count += 1
-                        if verbose:
-                            print(f"      ✓ Created record {record.get('id', i+1)}")
+                        # if verbose:
+                        #     print(f"      ✓ Created record {record.get('id', i+1)}")
                     else:
                         if verbose:
                             print(f"      ⚠️ Failed to create record {record.get('id', i+1)}")
