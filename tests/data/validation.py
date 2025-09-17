@@ -2,8 +2,11 @@
 Clean Validation System - Modular, focused validation with comprehensive error handling.
 """
 
+import re
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
+
+from tests.suites.test_case import TestCase
 
 # TestCase import removed to avoid circular import
 
@@ -359,6 +362,140 @@ def validate_sort_order(test_case, data: List[Dict], sort_criteria: List[Tuple[s
 #     return field_info.get('type', 'String')
 
 
+def filter_validation_warnings(warnings: dict, bad_view:bool) -> dict:
+    """
+    Removes all warnings of type 'business' from the warnings structure,
+    preserving only 'validation' warnings.
+    """
+    if not warnings:
+        return warnings
+
+    filtered: Dict[str, Any] = {}
+    for entity, entity_warnings in warnings.items():
+        filtered[entity] = {}
+        for entity_id, warning_list in entity_warnings.items():
+            # keep only validation type warnings
+            kept = [w for w in warning_list if not ("FK" in w.get("message") and bad_view)]  # ignore FK validations if the view was bad
+            if kept:  # only add if something remains
+                filtered[entity][entity_id] = kept
+
+        # remove entity if empty after filtering
+        if not filtered[entity]:
+            filtered.pop(entity)
+
+    return filtered
+
+
+def validate_entity_types_match(actual_warnings: Dict, expected_warnings: Dict) -> bool:
+    """Validate that entity types match between actual and expected warnings."""
+    actual_entities = set(actual_warnings.keys())
+    expected_entities = set(expected_warnings.keys())
+    
+    if actual_entities != expected_entities:
+        missing = expected_entities - actual_entities
+        extra = actual_entities - expected_entities
+        ValidationReporter.report_error("Warning Counts", 
+                                      f"Entities differ. missing={missing}, extra={extra}")
+        return False
+    return True
+
+
+def validate_entity_warning_counts(entity: str, actual_warnings: Dict, expected_warnings: Dict) -> bool:
+    """Validate warning counts for a specific entity."""
+    actual_ids_map = actual_warnings[entity]
+    expected_ids_map = expected_warnings.get(entity, {})
+    
+    actual_ids = set(actual_ids_map.keys())
+    expected_ids = set(expected_ids_map.keys())
+    
+    # Check IDs match
+    if actual_ids != expected_ids:
+        missing = expected_ids - actual_ids
+        extra = actual_ids - expected_ids
+        ValidationReporter.report_error("Warning Counts", 
+                                      f"[{entity}] IDs differ. missing={missing}, extra={extra}")
+        return False
+    
+    # Check warning counts per ID
+    for entity_id in actual_ids:
+        actual_list = actual_ids_map.get(entity_id, [])
+        expected_list = expected_ids_map.get(entity_id, [])
+        
+        if len(actual_list) != len(expected_list):
+            ValidationReporter.report_error("Warning Counts", 
+                                          f"[{entity}:{entity_id}] Count mismatch: expected {len(expected_list)}, got {len(actual_list)}")
+            return False
+    
+    return True
+
+
+def compare_warning_counts(actual_warnings: Dict, expected_warnings: Dict) -> bool:
+    """Compare warning counts between actual and expected."""
+    try:
+        # Check entity types match
+        if not validate_entity_types_match(actual_warnings, expected_warnings):
+            return False
+        
+        # Check IDs and counts per entity
+        for entity in actual_warnings.keys():
+            if not validate_entity_warning_counts(entity, actual_warnings, expected_warnings):
+                return False
+        
+        return True
+    except Exception as e:
+        ValidationReporter.report_error(f"compare_warning_counts", f"{e}")
+        return False
+
+
+def validate_warning_counts(expected_notifications: Dict, actual_notifications: Dict, bad_view: bool) -> bool:
+    """Validate warning counts match expectations."""
+    if 'warnings' not in expected_notifications:
+        return True
+        
+    expected_warnings = filter_validation_warnings(expected_notifications.get('warnings', {}), bad_view)
+    actual_warnings = filter_validation_warnings(actual_notifications.get('warnings', {}), bad_view)
+    
+    return compare_warning_counts(actual_warnings, expected_warnings)
+
+
+def validate_notification_counts(result: Dict, test_case, request_error:bool) -> bool:
+    """Validate notification counts match expectations."""
+    try:
+        if not test_case.expected_response:
+            return True
+        
+        expected_notifications = test_case.expected_response.get('notifications', {})
+        actual_notifications = result.get('notifications', {})
+        
+        # Check errors count
+        if not validate_error_counts(expected_notifications, actual_notifications):
+            return False
+        
+        # Check warnings structure
+        if not validate_warning_counts(expected_notifications, actual_notifications, request_error):
+            return False
+        
+        return True
+    except Exception as e:
+        ValidationReporter.report_error(f"validate_notification_counts", f"{e}")
+        return False
+
+
+def validate_error_counts(expected_notifications: Dict, actual_notifications: Dict) -> bool:
+    """Validate error counts match expectations."""
+    if 'errors' not in expected_notifications:
+        return True
+        
+    expected_errors = expected_notifications['errors']
+    actual_errors = actual_notifications.get('errors', [])
+    
+    if len(expected_errors) != len(actual_errors):
+        ValidationReporter.report_error("Notification Counts", 
+                                      f"Errors count mismatch: expected {len(expected_errors)}, got {len(actual_errors)}")
+        return False
+    return True
+
+
 def validate_auto_fields(result: Dict, test_case) -> bool:
     """Validate actual data matches expected_response exactly."""
     try:
@@ -379,178 +516,45 @@ def validate_auto_fields(result: Dict, test_case) -> bool:
         # Compare data fields (simplified for now - could be expanded)
         return True
     except Exception as e:
-        ValidationReporter.report_error(f"validate_expected_response_data", f"{e}")
+        ValidationReporter.report_error(f"validate_auto_fields", f"{e}")
         return False
 
 
-class ContentValidator:
-    """Validates single entity responses with deep field comparison."""
-    
-    def __init__(self, result: Dict, test_case, config: Dict):
-        self.result = result
-        self.test_case = test_case
-        self.config = config
-        
-    
-    def validate(self) -> bool:
-        """Main content validation entry point."""
-        try:
-            if self.test_case.is_get_all():
-                return True  # Not a single entity request
-            
-            return (self._validate_expected_response() and
-                    self._validate_notification_counts())
-        except Exception as e:
-            ValidationReporter.report_error(f"ContentValidator.validate", f"{e}")
-            return False
-    
-    def _validate_expected_response(self) -> bool:
-        """Validate actual data matches expected_response exactly."""
-        return validate_auto_fields(self.result, self.test_case)
-    
-    def _validate_notification_counts(self) -> bool:
-        """Validate notification counts match expectations."""
-        try:
-            if not self.test_case.expected_response:
-                return True
-            
-            expected_notifications = self.test_case.expected_response.get('notifications', {})
-            actual_notifications = self.result.get('notifications', {})
-            
-            # Check errors count
-            if not self._validate_error_counts(expected_notifications, actual_notifications):
-                return False
-            
-            # Check warnings structure
-            if not self._validate_warning_counts(expected_notifications, actual_notifications):
-                return False
-            
-            return True
-        except Exception as e:
-            ValidationReporter.report_error(f"ContentValidator.validate_notification_counts", f"{e}")
-            return False
-    
-    def _filter_validation_warnings(self, warnings: dict) -> dict:
-        """
-        Removes all warnings of type 'business' from the warnings structure,
-        preserving only 'validation' warnings.
-        """
-        if not warnings:
-            return warnings
 
-        filtered: Dict[str, Any] = {}
-        for entity, entity_warnings in warnings.items():
-            filtered[entity] = {}
-            for entity_id, warning_list in entity_warnings.items():
-                # keep only validation type warnings
-                kept = [w for w in warning_list if w.get("type") == "validation"]
-                if kept:  # only add if something remains
-                    filtered[entity][entity_id] = kept
+def validate_content(result: Dict, test_case, config: Dict, request_error:bool) -> bool:
+    """Validate single entity responses with expected data and notification counts."""
+    try:
+        if test_case.is_get_all():
+            return True  # Not a single entity request
+        
+        return (validate_auto_fields(result, test_case) and
+                validate_notification_counts(result, test_case, request_error))
+    except Exception as e:
+        ValidationReporter.report_error(f"validate_content", f"{e}")
+        return False
 
-            # remove entity if empty after filtering
-            if not filtered[entity]:
-                filtered.pop(entity)
 
-        return filtered
-
-    def _validate_error_counts(self, expected_notifications: Dict, actual_notifications: Dict) -> bool:
-        """Validate error counts match expectations."""
-        if 'errors' not in expected_notifications:
-            return True
-            
-        expected_errors = expected_notifications['errors']
-        actual_errors = actual_notifications.get('errors', [])
-        
-        if len(expected_errors) != len(actual_errors):
-            ValidationReporter.report_error("Notification Counts", 
-                                          f"Errors count mismatch: expected {len(expected_errors)}, got {len(actual_errors)}")
-            return False
-        return True
-    
-    def _validate_warning_counts(self, expected_notifications: Dict, actual_notifications: Dict) -> bool:
-        """Validate warning counts match expectations."""
-        if 'warnings' not in expected_notifications:
-            return True
-            
-        expected_warnings = self._filter_validation_warnings(expected_notifications.get('warnings', {}))
-        actual_warnings = self._filter_validation_warnings(actual_notifications.get('warnings', {}))
-        
-        return self._compare_warning_counts(actual_warnings, expected_warnings)
-    
-    def _compare_warning_counts(self, actual_warnings: Dict, expected_warnings: Dict) -> bool:
-        """Compare warning counts between actual and expected."""
-        try:
-            # Check entity types match
-            if not self._validate_entity_types_match(actual_warnings, expected_warnings):
-                return False
-            
-            # Check IDs and counts per entity
-            for entity in actual_warnings.keys():
-                if not self._validate_entity_warning_counts(entity, actual_warnings, expected_warnings):
-                    return False
-            
-            return True
-        except Exception as e:
-            ValidationReporter.report_error(f"ContentValidator.compare_warning_counts", f"{e}")
-            return False
-    
-    def _validate_entity_types_match(self, actual_warnings: Dict, expected_warnings: Dict) -> bool:
-        """Validate that entity types match between actual and expected warnings."""
-        actual_entities = set(actual_warnings.keys())
-        expected_entities = set(expected_warnings.keys())
-        
-        if actual_entities != expected_entities:
-            missing = expected_entities - actual_entities
-            extra = actual_entities - expected_entities
-            ValidationReporter.report_error("Warning Counts", 
-                                          f"Entities differ. missing={missing}, extra={extra}")
-            return False
-        return True
-    
-    def _validate_entity_warning_counts(self, entity: str, actual_warnings: Dict, expected_warnings: Dict) -> bool:
-        """Validate warning counts for a specific entity."""
-        actual_ids_map = actual_warnings[entity]
-        expected_ids_map = expected_warnings.get(entity, {})
-        
-        actual_ids = set(actual_ids_map.keys())
-        expected_ids = set(expected_ids_map.keys())
-        
-        # Check IDs match
-        if actual_ids != expected_ids:
-            missing = expected_ids - actual_ids
-            extra = actual_ids - expected_ids
-            ValidationReporter.report_error("Warning Counts", 
-                                          f"[{entity}] IDs differ. missing={missing}, extra={extra}")
-            return False
-        
-        # Check warning counts per ID
-        for entity_id in actual_ids:
-            actual_list = actual_ids_map.get(entity_id, [])
-            expected_list = expected_ids_map.get(entity_id, [])
-            
-            if len(actual_list) != len(expected_list):
-                ValidationReporter.report_error("Warning Counts", 
-                                              f"[{entity}:{entity_id}] Count mismatch: expected {len(expected_list)}, got {len(actual_list)}")
-                return False
-        
-        return True
+# ContentValidator class removed - all functionality moved to standalone functions
 
 
 # Main validation function - replaces ValidationEngine and Validator classes
-def validate_test_case(test_case, result: Dict, config: Dict, http_status: int) -> bool:
+def validate_test_case(test_case: TestCase, result: Dict, config: Dict, http_status: int) -> bool:
     """Main validation entry point - fail fast approach."""
     try:
         
         # Structure validation
         if not validate_structure(result, test_case, http_status):
             return False
+
+        error_match, request_error = validate_request_response(result, test_case)
+        if not error_match:
+            return False
         
         if http_status not in [200, 201]:
             return True  # Only validate structure for non-success responses
         
         # Content validation
-        content_validator = ContentValidator(result, test_case, config)
-        if not content_validator.validate():
+        if not validate_content(result, test_case, config, request_error):
             return False
         
         # List validation - call validators directly instead of ListValidator wrapper
@@ -575,3 +579,21 @@ def validate_test_case(test_case, result: Dict, config: Dict, http_status: int) 
     except Exception as e:
         ValidationReporter.report_error(f"validate_test_case", f"{e}")
         return False
+
+def validate_request_response(result: Dict, testCase:TestCase) -> Tuple[bool, bool]:
+    """ Return success/failure and if a request error was encountered"""
+    actual_request_warnings = result.get('notifications', {}).get('request_warnings', [])
+    pattern = r'view=(\w+)\(([^)]+)\)'
+    match = re.match(pattern, testCase.params)
+
+    # Look up the fk record
+    if match:
+        metadata = MetadataService.get(match.group(1))
+        if not metadata:
+            return actual_request_warnings[0].get('entity_type', '').lower() == match.group(1).lower(), True
+        for f in match.group(2).split(','):
+            field = f.strip()
+            if not metadata['fields'].get(field, None):
+                return actual_request_warnings[0].get('field', '').lower() == field.lower(), True
+
+    return True, False
