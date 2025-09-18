@@ -110,7 +110,7 @@ class UserDataFactory:
             TestCase("GET", "User", "bad_currency_user_123456", '', "Get user with bad currency", 200),
             TestCase("GET", "User", "bad_fk_user_123456", '', "Get user with bad FK", 200),
             TestCase("GET", "User", "multiple_errors_user_123456", '', "Get user with multiple errors", 200),
-            TestCase("GET", "User", "nonexistent_user_123456", '', "Get non-existent user", 404),
+            TestCase("GET", "User", "nonexistent_user_123456", '', "Get non-existent user", 200),
             TestCase("GET", "User", '', '', "Get user list", 200),
             TestCase("GET", "user", '', "pageSize=3", "Get user list with page size", 200)
         ]

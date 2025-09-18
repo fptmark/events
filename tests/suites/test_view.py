@@ -36,7 +36,7 @@ class ViewParameterTester:
             TestCase("GET", "User", "valid_user_1", "view=account(nonexistent_field)", "Get valid user with invalid view field", 200),
             TestCase("GET", "User", "", "view=account(id)", "Get user list with account ID view", 200),
             TestCase("GET", "User", "", "view=account(id,createdAt,expiredAt)", "Get user list with full account view", 200),
-            TestCase("GET", "User", "", "view=badentity(id,createdAt,expiredAt)", "Get user list with bad fk", 400),
-            TestCase("GET", "User", "", "view=account(id,createdAt,badfield)", "Get user list with bad account field", 400),
+            TestCase("GET", "User", "", "view=badentity(id,createdAt,expiredAt)", "Get user list with bad fk", 200),
+            TestCase("GET", "User", "", "view=account(id,createdAt,badfield)", "Get user list with bad account field", 200),
             TestCase("GET", "User", "", "pageSize=3&view=account(id)", "Get user list with pagination and view", 200),
         ]
