@@ -26,8 +26,9 @@ def parse_request_context(handler: Callable) -> Callable:
     """Decorator to parse RequestContext from request for all handlers."""
     @wraps(handler)
     async def wrapper(*args, **kwargs):
-        # Initialize notifications for each request
+        # Initialize notifications and reset the request params for each request
         Notification.start()
+        RequestContext.reset()
         
         # Find request parameter
         request = None
@@ -58,9 +59,6 @@ async def get_all_handler(entity_cls: Type[EntityModelProtocol], request: Reques
         RequestContext.view_spec
     )
 
-    if count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-
     return update_response(data, count)
 
 
@@ -72,9 +70,6 @@ async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: s
     # Model handles notifications internally, just call and return
     response, count = await entity_cls.get(entity_id, RequestContext.view_spec)
     
-    if count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-
     return update_response(response)   
 
 
@@ -119,7 +114,7 @@ def update_response(data: Any, records: Optional[int] = None) -> Dict[str, Any]:
 
     result['data'] = data
 
-    if records:
+    if records is not None:
         totalPages = (records + RequestContext.pageSize - 1) // RequestContext.pageSize if records > 0 else 0
         result['pagination'] = {
             "page": RequestContext.page,

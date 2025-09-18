@@ -53,6 +53,20 @@ class RequestContext:
         
         # Parse query parameters
         RequestContext._parse_url_query_params(query_params)
+
+
+    @staticmethod
+    def reset():
+        """Reset context for new request"""
+        RequestContext.entity_type = ""
+        RequestContext.entity_metadata = {}
+        RequestContext.entity_id = None
+        RequestContext.filters = {}
+        RequestContext.sort_fields = []
+        RequestContext.page = 1
+        RequestContext.pageSize = 25
+        RequestContext.view_spec = {}
+
     
     @staticmethod
     def from_request(request) -> None:
@@ -365,7 +379,7 @@ class RequestContext:
             for fk_name, fields_str in matches:
                 # First validate the foreign entity exists
                 if not MetadataService.get(fk_name):
-                    Notification.warning(Warning.REQUEST, "Unknown entity in view", value=fk_name, parameter='view')
+                    Notification.warning(Warning.REQUEST, "Unknown entity in view", entity_type=fk_name, parameter='view')
                     continue
                 
                 field_names = []
