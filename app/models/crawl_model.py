@@ -81,7 +81,7 @@ class Crawl(BaseModel):
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         validate = Config.validation(False)
         
-        data, record_count = await DatabaseFactory.get_by_id(str(id), "Crawl")
+        data, record_count = await DatabaseFactory.get("Crawl", id)
         if data:
             
             # Always run Pydantic validation (required fields, types, ranges)

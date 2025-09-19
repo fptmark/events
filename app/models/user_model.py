@@ -135,7 +135,7 @@ class User(BaseModel):
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         validate = Config.validation(False)
         
-        data, record_count = await DatabaseFactory.get(id, "User", view_spec)
+        data, record_count = await DatabaseFactory.get("User", id)
         if data:
             
             # Always run Pydantic validation (required fields, types, ranges)
@@ -146,7 +146,7 @@ class User(BaseModel):
                 await utils.validate_uniques("User", data, unique_constraints, None)
             
             # Populate view data if requested and validate fks
-            await utils.process_fks("User", data, validate, view_spec) 
+            await utils.process_fks("User", data, validate, view_spec)
         
         return data, record_count
 

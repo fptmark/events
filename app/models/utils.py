@@ -126,14 +126,15 @@ async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, vi
     Only makes DB calls when data is actually needed.
     """
     
+    fk_data = None
     for field_name, field_meta in MetadataService.fields(entity_type).items():
         # process every FK field if validating OR if it's in the view spec
         if field_meta.get('type') == 'ObjectId' and len(field_name) > 2:
             fk_name = field_name[:-2]  # Remove 'Id' suffix to get FK entity name
-            fk_entity_type = MetadataService.get_proper_name(fk_name)
-            fk_data = {"exists": False}
 
             if validate or fk_name.lower() in view_spec.keys():
+                fk_entity_type = MetadataService.get_proper_name(fk_name)
+                fk_data = {"exists": False}
                 fk_field_id = data.get(field_name, None)
                 
                 if fk_field_id:
@@ -160,21 +161,43 @@ async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, vi
                                         actual_field = field_map[field.lower()]
                                         fk_data[actual_field] = related_data[actual_field]
                                     else: # viewspec field not found in related entity
-                                        Notification.warning(Warning.DATA_VALIDATION, "Field not found in related entity", entity_type=entity_type, entity_id=data['id'], field=field)
+                                        Notification.warning(Warning.BAD_NAME, "Field not found in related entity", entity_type=entity_type, entity_id=data['id'], field=field)
                                         
                         elif count == 0:
                             # FK record not found - validation warning if validating
-                            Notification.warning(Warning.DATA_VALIDATION, "Referenced ID does not exist", entity_type=entity_type, entity_id=data['id'], field=field_name, value=fk_field_id)
+                            Notification.warning(Warning.NOT_FOUND, "Referenced ID does not exist", entity_type=entity_type, entity_id=data['id'], field=field_name, value=fk_field_id)
                         else:
                             # Multiple records - data integrity issue
                             Notification.warning(Warning.DATA_VALIDATION, "Multiple FK records found. Data integrity issue?", entity_type=entity_type, entity_id=data['id'], field=field_name, value=fk_field_id)
                             
                     else:
-                        Notification.warning(Warning.DATA_VALIDATION, "FK entity does not exist", entity_type=entity_type, entity_id=data['id'], field=field_name, value=fk_entity_type)
+                        Notification.warning(Warning.NOT_FOUND, "FK entity does not exist", entity_type=entity_type, entity_id=data['id'], field=field_name, value=fk_entity_type)
                 else:
                     # Invalid entity class or missing ID - validation warning if validating and required or entity in view spec
                     if (validate and field_meta.get('required', False)) or fk_name.lower() in view_spec.keys():
-                        Notification.warning(Warning.DATA_VALIDATION, "Missing fk ID", entity_type=entity_type, entity_id=data['id'], field=field_name)
+                        Notification.warning(Warning.MISSING, "Missing fk ID", entity_type=entity_type, entity_id=data['id'], field=field_name)
                 
                 # Set FK field data (inside the loop for each FK)
-                data[fk_name] = fk_data  
+                if fk_data:
+                    data[fk_name] = fk_data  
+
+
+    def _get_proper_view_fields(self, view_spec: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
+        """Get view spec with proper case field names if database is case-sensitive"""
+        if not view_spec or not self.isInternallyCaseSensitive():
+            return view_spec
+
+        proper_view_spec = {}
+        for fk_entity_name, field_list in view_spec.items():
+            # Convert the foreign entity name to proper case
+            proper_fk_entity_name = MetadataService.get_proper_name(fk_entity_name)
+
+            # Convert each field name in the field list to proper case
+            proper_field_list = []
+            for field_name in field_list:
+                proper_field_name = MetadataService.get_proper_name(fk_entity_name, field_name)
+                proper_field_list.append(proper_field_name)
+
+            proper_view_spec[proper_fk_entity_name] = proper_field_list
+
+        return proper_view_spec
