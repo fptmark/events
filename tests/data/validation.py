@@ -7,82 +7,81 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 
 from tests.suites.test_case import TestCase
-
 from app.db import DatabaseFactory
 
 
-# TestCase import removed to avoid circular import
+async def validate_test_case(test_case: TestCase, result: Dict, config: Dict, http_status: int) -> bool:
+    return await Validator.validate_test_case(test_case, result, config, http_status)
 
-def _convert_to_timestamp(value: Any) -> Optional[float]:
-    """Convert date/datetime value to Unix timestamp for reliable comparison."""
-    try:
-        if isinstance(value, (int, float)):
-            return float(value)  # Already a timestamp
-        elif hasattr(value, 'timestamp'):  # datetime object
-            return value.timestamp()
-        elif isinstance(value, str):
-            # Try various date formats
-            try:
-                # ISO format with timezone
-                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                return dt.timestamp()
-            except ValueError:
-                try:
-                    # Date only - treat as start of day UTC
-                    dt = datetime.fromisoformat(f"{value}T00:00:00+00:00")
-                    return dt.timestamp()
-                except ValueError:
-                    return None
-        else:
-            return None
-    except Exception:
-        return None
-from urllib.parse import urlparse, parse_qs
-from app.services.metadata import MetadataService
-# FilterValidator imported locally to avoid circular import
+class Validator:
 
-# Add project root to path
-# sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-# sys.path.insert(0, str(Path(__file__).parent.parent))
+    test_case: TestCase
+    result: Dict
+    http_status: int
+    db_data: Dict   ## only compare struct for single get
+    expected_result: Dict
 
-class ValidationReporter:
-    _verbose: bool = False
-    _header: str = ""
-    """Static error reporter initialized once per test run."""
-    
-    def __init__(self, header: str, verbose: bool):
-        """Initialize static settings."""
-        ValidationReporter._verbose = verbose
-        ValidationReporter._header = header
-    
+
+    # Main validation function - replaces ValidationEngine and Validator classes
     @staticmethod
-    def report_error(context: str, message: str, header: Optional[str] = "") -> None:
-        """Report validation error if verbose mode is enabled."""
-        if not header:
-            header = ValidationReporter._header
+    async def validate_test_case(test_case: TestCase, result: Dict, config: Dict, http_status: int) -> bool: 
+        Validator.test_case = test_case
+        Validator.result = result
+        Validator.http_status = http_status
 
         try:
-            if ValidationReporter._verbose:
-                print(f"{header}❌ {context}: {message}")
-        except Exception as e:
-            ValidationReporter.report_error(f"ValidationReporter.report_error", f"{e}")
-            # Don't crash - continue with test execution
-    
-    @staticmethod
-    def check_required_fields(obj: Dict, required_fields: List[str], context: str) -> bool:
-        """Check that all required fields are present."""
-        try:
-            if not obj or not isinstance(obj, dict):
-                ValidationReporter.report_error(context, f"Expected dict object, got {type(obj)}")
+            
+            # Structure validation
+            if not validate_structure(Validator.result, Validator.test_case, Validator.http_status):
+                return False
+
+            # get the data from the database so we know what to expect
+            db_type: str = config.get('database', '')
+            db_uri: str = config.get('db_uri', '')
+            db_name: str = config.get('db_name', '')
+            
+            if not test_case.is_get_all():
+                await DatabaseFactory.initialize(db_type, db_uri, db_name)
+                data, count = await DatabaseFactory.get(test_case.entity, test_case.id)
+                await DatabaseFactory.close()
+            else:
+
+
+            if count > 0:   # only check the request if there is data
+                error_match, request_error = validate_request_response(result, test_case)
+                if not error_match:
+                    return False
+            else:
+                request_error = False
+            
+            if http_status not in [200, 201]:
+                return True  # Only validate structure for non-success responses
+            
+            # Content validation
+            if not validate_content(result, test_case, config, request_error):
                 return False
             
-            for field in required_fields:
-                if field not in obj:
-                    ValidationReporter.report_error(context, f"Missing required field '{field}'")
-                    return False
+            # List validation - call validators directly instead of ListValidator wrapper
+            if test_case.is_get_all():
+                data = result.get('data', [])
+                if isinstance(data, list):
+                    # Sort validation
+                    sort_criteria = test_case.get_sort_criteria()
+                    if sort_criteria:
+                        if not validate_sort_order(test_case, data, sort_criteria, set()):
+                            return False
+                    
+                    # Filter validation
+                    filter_criteria = test_case.get_filter_criteria()
+                    if filter_criteria:
+                        from .validate_filters import FilterValidator
+                        filter_validator = FilterValidator(test_case)
+                        if not filter_validator.validate_filters(data, filter_criteria, set()):
+                            return False
+            
             return True
         except Exception as e:
-            ValidationReporter.report_error(f"ValidationReporter.check_required_fields", f"{e}")
+            ValidationReporter.report_error(f"validate_test_case", f"{e}")
             return False
 
 
@@ -537,66 +536,7 @@ def validate_content(result: Dict, test_case, config: Dict, request_error:bool) 
         return False
 
 
-# ContentValidator class removed - all functionality moved to standalone functions
 
-
-# Main validation function - replaces ValidationEngine and Validator classes
-async def validate_test_case(test_case: TestCase, result: Dict, config: Dict, http_status: int) -> bool:
-    """Main validation entry point - fail fast approach."""
-    try:
-        
-        # Structure validation
-        if not validate_structure(result, test_case, http_status):
-            return False
-
-        # get the data from the database so we know what to expect
-        db_type: str = config.get('database', '')
-        db_uri: str = config.get('db_uri', '')
-        db_name: str = config.get('db_name', '')
-        
-        await DatabaseFactory.initialize(db_type, db_uri, db_name)
-        if test_case.is_get_all():
-            data, count = await DatabaseFactory.get_all(test_case.entity)
-        else:
-            data, count = await DatabaseFactory.get(test_case.id, test_case.entity)
-        await DatabaseFactory.close()
-
-        if count > 0:   # only check the request if there is data
-            error_match, request_error = validate_request_response(result, test_case)
-            if not error_match:
-                return False
-        else:
-            request_error = False
-        
-        if http_status not in [200, 201]:
-            return True  # Only validate structure for non-success responses
-        
-        # Content validation
-        if not validate_content(result, test_case, config, request_error):
-            return False
-        
-        # List validation - call validators directly instead of ListValidator wrapper
-        if test_case.is_get_all():
-            data = result.get('data', [])
-            if isinstance(data, list):
-                # Sort validation
-                sort_criteria = test_case.get_sort_criteria()
-                if sort_criteria:
-                    if not validate_sort_order(test_case, data, sort_criteria, set()):
-                        return False
-                
-                # Filter validation
-                filter_criteria = test_case.get_filter_criteria()
-                if filter_criteria:
-                    from .validate_filters import FilterValidator
-                    filter_validator = FilterValidator(test_case)
-                    if not filter_validator.validate_filters(data, filter_criteria, set()):
-                        return False
-        
-        return True
-    except Exception as e:
-        ValidationReporter.report_error(f"validate_test_case", f"{e}")
-        return False
 
 def validate_request_response(result: Dict, testCase:TestCase) -> Tuple[bool, bool]:
     """ Return success/failure and if a request error was encountered"""
@@ -617,3 +557,71 @@ def validate_request_response(result: Dict, testCase:TestCase) -> Tuple[bool, bo
                 return actual_request_warnings[0].get('field', '').lower() == field.lower(), True
 
     return True, False
+
+
+def _convert_to_timestamp(value: Any) -> Optional[float]:
+    """Convert date/datetime value to Unix timestamp for reliable comparison."""
+    try:
+        if isinstance(value, (int, float)):
+            return float(value)  # Already a timestamp
+        elif hasattr(value, 'timestamp'):  # datetime object
+            return value.timestamp()
+        elif isinstance(value, str):
+            # Try various date formats
+            try:
+                # ISO format with timezone
+                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                return dt.timestamp()
+            except ValueError:
+                try:
+                    # Date only - treat as start of day UTC
+                    dt = datetime.fromisoformat(f"{value}T00:00:00+00:00")
+                    return dt.timestamp()
+                except ValueError:
+                    return None
+        else:
+            return None
+    except Exception:
+        return None
+from urllib.parse import urlparse, parse_qs
+from app.services.metadata import MetadataService
+class ValidationReporter:
+    _verbose: bool = False
+    _header: str = ""
+    """Static error reporter initialized once per test run."""
+    
+    def __init__(self, header: str, verbose: bool):
+        """Initialize static settings."""
+        ValidationReporter._verbose = verbose
+        ValidationReporter._header = header
+    
+    @staticmethod
+    def report_error(context: str, message: str, header: Optional[str] = "") -> None:
+        """Report validation error if verbose mode is enabled."""
+        if not header:
+            header = ValidationReporter._header
+
+        try:
+            if ValidationReporter._verbose:
+                print(f"{header}❌ {context}: {message}")
+        except Exception as e:
+            ValidationReporter.report_error(f"ValidationReporter.report_error", f"{e}")
+            # Don't crash - continue with test execution
+    
+    @staticmethod
+    def check_required_fields(obj: Dict, required_fields: List[str], context: str) -> bool:
+        """Check that all required fields are present."""
+        try:
+            if not obj or not isinstance(obj, dict):
+                ValidationReporter.report_error(context, f"Expected dict object, got {type(obj)}")
+                return False
+            
+            for field in required_fields:
+                if field not in obj:
+                    ValidationReporter.report_error(context, f"Missing required field '{field}'")
+                    return False
+            return True
+        except Exception as e:
+            ValidationReporter.report_error(f"ValidationReporter.check_required_fields", f"{e}")
+            return False
+
