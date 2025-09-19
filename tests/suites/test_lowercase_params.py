@@ -30,12 +30,12 @@ class LowercaseParamTester:
             
         return [
             # Test standard URL parameters
-            TestCase("GET", "User", "", "page_size=5", "page_size parameter", 200),
-            TestCase("GET", "User", "", "page=1&page_size=3", "page_size with page", 200),
+            TestCase("GET", "User", "", "pagesize=5", "pagesize parameter", 200),
+            TestCase("GET", "User", "", "page=1&pagesize=3", "pagesize with page", 200),
             
             # Test field names in sorting
             TestCase("GET", "User", "", "sort=firstname", "Sort by firstname", 200),
-            TestCase("GET", "User", "", "sort=lastname,-createdat", "Sort by multiple fields", 200),
+            TestCase("GET", "User", "", "sort=lastname,createdat:desc", "Sort by multiple fields", 200),
             TestCase("GET", "User", "", "sort=isaccountowner,firstname", "Sort by boolean and string", 200),
             
             # Test field names in filtering
@@ -67,16 +67,16 @@ class LowercaseParamTester:
             TestCase("GET", "User", "", "filter=email:test@example.com", "Filter email with lowercase", 200),
             
             # Test mixed case URLs (server should convert to lowercase)
-            TestCase("GET", "User", "", "Page=1&Page_Size=5", "Mixed case Page and Page_Size", 200),
-            TestCase("GET", "User", "", "PAGE=2&page_SIZE=10", "Uppercase PAGE and mixed page_SIZE", 200),
+            TestCase("GET", "User", "", "Page=1&PageSize=5", "Mixed case Page and PageSize", 200),
+            TestCase("GET", "User", "", "PAGE=2&pageSIZE=10", "Uppercase PAGE and mixed pageSIZE", 200),
             TestCase("GET", "User", "", "Sort=firstName&Filter=gender:female", "Mixed case Sort and Filter", 200),
             TestCase("GET", "User", "", "SORT=lastName,-dob&FILTER=networth:gte:1000", "Uppercase SORT and FILTER", 200),
-            TestCase("GET", "User", "", "Page=1&Page_Size=3&Sort=netWorth&Filter=gender:female", "All mixed case parameters", 200),
+            TestCase("GET", "User", "", "Page=1&PageSize=3&Sort=netWorth&Filter=gender:female", "All mixed case parameters", 200),
             
             # Test complex combinations
-            TestCase("GET", "User", "", "page=1&page_size=5&sort=firstname&filter=gender:female", "Combined parameters", 200),
-            TestCase("GET", "User", "", "sort=lastname,-dob&filter=isaccountowner:true,gender:female", "Complex combination", 200),
-            TestCase("GET", "User", "", "page=2&page_size=10&sort=networth&filter=dob:gte:1990-01-01", "Complex pagination with ranges", 200),
+            TestCase("GET", "User", "", "page=1&pagesize=5&sort=firstname&filter=gender:female", "Combined parameters", 200),
+            TestCase("GET", "User", "", "sort=lastname,dob:desc&filter=isaccountowner:true,gender:female", "Complex combination", 200),
+            TestCase("GET", "User", "", "page=2&pagesize=10&sort=networth&filter=dob:gte:1990-01-01", "Complex pagination with ranges", 200),
             
             # Test invalid field names (should generate application errors)
             # Todo: remove expected_response for bad fields - handled by generate_expected_response

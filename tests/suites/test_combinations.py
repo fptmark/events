@@ -31,14 +31,14 @@ class CombinationTester:
         return [
             # View + Single Sort
             TestCase("GET", "User", "", "view=account(id)&sort=username", "View with single sort (username asc)", 200),
-            TestCase("GET", "User", "", "view=account(id)&sort=-firstName", "View with single sort (firstName desc)", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=firstName:desc", "View with single sort (firstName desc)", 200),
             TestCase("GET", "User", "", "view=account(id)&sort=dob", "View with date sort", 200),
             TestCase("GET", "User", "", "view=account(id)&sort=netWorth", "View with currency sort", 200),
             
             # View + Multiple Sort
             TestCase("GET", "User", "", "view=account(id)&sort=firstName,lastName", "View with multiple sort (names)", 200),
-            TestCase("GET", "User", "", "view=account(id)&sort=-dob,firstName", "View with date desc then name sort", 200),
-            TestCase("GET", "User", "", "view=account(id)&sort=gender,-netWorth", "View with enum then currency desc sort", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=dob:desc,firstName", "View with date desc then name sort", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=gender,netWorth:desc", "View with enum then currency desc sort", 200),
             
             # View + Single Filter
             TestCase("GET", "User", "", "view=account(id)&filter=gender:male", "View with single filter (gender)", 200),
@@ -53,11 +53,11 @@ class CombinationTester:
             
             # Pagination + Single Sort
             TestCase("GET", "User", "", "sort=username&pageSize=3", "Pagination with single sort", 200),
-            TestCase("GET", "User", "", "sort=-dob&page=1&pageSize=5", "Pagination with date sort desc", 200),
+            TestCase("GET", "User", "", "sort=dob:desc&page=1&pageSize=5", "Pagination with date sort desc", 200),
             
             # Pagination + Multiple Sort
             TestCase("GET", "User", "", "sort=firstName,netWorth&pageSize=2", "Pagination with multiple sort", 200),
-            TestCase("GET", "User", "", "sort=-gender,dob&page=2&pageSize=3", "Pagination with enum and date sort", 200),
+            TestCase("GET", "User", "", "sort=gender:desc,dob&page=2&pageSize=3", "Pagination with enum and date sort", 200),
             
             # Pagination + Single Filter
             TestCase("GET", "User", "", "filter=isAccountOwner:true&pageSize=3", "Pagination with boolean filter", 200),
@@ -69,21 +69,21 @@ class CombinationTester:
             
             # Sort + Single Filter
             TestCase("GET", "User", "", "sort=firstName&filter=gender:male", "Sort with single filter", 200),
-            TestCase("GET", "User", "", "sort=-netWorth&filter=isAccountOwner:true", "Currency sort desc with boolean filter", 200),
+            TestCase("GET", "User", "", "sort=netWorth:desc&filter=isAccountOwner:true", "Currency sort desc with boolean filter", 200),
             TestCase("GET", "User", "", "sort=dob&filter=netWorth:gte:0", "Date sort with currency filter", 200),
             
             # Sort + Multiple Filter
             TestCase("GET", "User", "", "sort=firstName&filter=gender:male,isAccountOwner:true", "Sort with multiple filters", 200),
-            TestCase("GET", "User", "", "sort=-dob&filter=netWorth:gte:0,gender:female", "Date sort desc with mixed filters", 200),
+            TestCase("GET", "User", "", "sort=dob:desc&filter=netWorth:gte:0,gender:female", "Date sort desc with mixed filters", 200),
             
             # Multiple Sort + Multiple Filter
             TestCase("GET", "User", "", "sort=firstName,netWorth&filter=gender:male,isAccountOwner:true", "Multiple sort with multiple filters", 200),
-            TestCase("GET", "User", "", "sort=-dob,firstName&filter=netWorth:gte:50000,gender:female", "Complex sort with complex filters", 200),
+            TestCase("GET", "User", "", "sort=dob:desc,firstName&filter=netWorth:gte:50000,gender:female", "Complex sort with complex filters", 200),
             
             # All 4 parameters combined
             TestCase("GET", "User", "", "view=account(id)&sort=firstName&filter=gender:male&pageSize=3", "All parameters: view + sort + filter + pagination", 200),
-            TestCase("GET", "User", "", "view=account(id)&sort=-dob,firstName&filter=isAccountOwner:true,netWorth:gte:0&page=1&pageSize=2", "All parameters with multiple sort/filter", 200),
-            TestCase("GET", "User", "", "view=account(id)&sort=gender,-netWorth&filter=dob:gte:1960-01-01,dob:lt:2000-01-01&pageSize=5", "All parameters with date range filtering", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=dob:desc,firstName&filter=isAccountOwner:true,netWorth:gte:0&page=1&pageSize=2", "All parameters with multiple sort/filter", 200),
+            TestCase("GET", "User", "", "view=account(id)&sort=gender,netWorth:desc&filter=dob:gte:1960-01-01,dob:lt:2000-01-01&pageSize=5", "All parameters with date range filtering", 200),
             
             # Edge case combinations
             TestCase("GET", "User", "", "sort=firstName&filter=firstName:Valid", "Sort and filter by same field", 200),
