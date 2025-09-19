@@ -18,6 +18,8 @@ class Warning:
     UNIQUE_VIOLATION = 'unique_violation'
     DATA_VALIDATION = 'validation'
     REQUEST = 'request'     # e.g. - bad sort field
+    BAD_NAME = 'bad_name'   # unknown entity or field
+    MISSING = 'missing'
 
 
 class DuplicateConstraintError(Exception):
@@ -114,6 +116,10 @@ class Notification:
             
             raise StopWorkError(message, status_code, stop_type)
     
+    @classmethod
+    def request_warning(cls, message:str = '', entity:str = '', field:str = '', value:str = '', parameter:str = ''):
+        cls.warning(Warning.REQUEST, message=message, entity_type=entity, field=field, value=value, parameter=parameter)
+
     @classmethod
     def warning(cls, warning_type: str, message: str = '', entity_type:str = '', entity_id:str = '', field:str = '', value = None, parameter:str = '') -> None:
         """Add warning"""

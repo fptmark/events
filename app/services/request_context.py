@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List, Tuple, Union
 from urllib.parse import unquote
 from app.services.metadata import MetadataService
-from app.services.notify import Notification, Error, Warning
+from app.services.notify import Notification, Error
 from app.utils import parse_url_path
 
 
@@ -126,8 +126,8 @@ class RequestContext:
     def _parse_url_query_params(query_params: Dict[str, str]) -> None:
         """Parse query parameters and set context attributes."""
         
-        # Convert query params to lowercase for case-insensitive handling
-        normalized_params = {key.lower(): value for key, value in query_params.items()}
+        # Query params are already normalized to lowercase upstream
+        normalized_params = query_params
         
         # Parse each query parameter
         for key, value in normalized_params.items():
@@ -136,27 +136,27 @@ class RequestContext:
                     try:
                         page_val = int(value)
                         if page_val < 1:
-                            Notification.warning(Warning.REQUEST, "Page number must be >= 1. Using page=1", value=value, parameter='page')
+                            Notification.request_warning("Page number must be >= 1. Using page=1", value=value, parameter='page')
                             RequestContext.page = 1
                         else:
                             RequestContext.page = page_val
                     except ValueError:
-                        Notification.warning(Warning.REQUEST, "Invalid page number. Using page=1", value=value, parameter='page')
+                        Notification.request_warning("Invalid page number. Using page=1", value=value, parameter='page')
                         RequestContext.page = 1
                         
                 elif key == 'pagesize':  # URL param is pageSize but gets lowercased
                     try:
                         size_val = int(value)
                         if size_val < 1:
-                            Notification.warning(Warning.REQUEST, "pageSize must be >= 1. Using pageSize=25", value=value, parameter='pageSize')
+                            Notification.request_warning("pageSize must be >= 1. Using pageSize=25", value=value, parameter='pageSize')
                             RequestContext.pageSize = 25
                         elif size_val > 1000:
-                            Notification.warning(Warning.REQUEST, "pageSize cannot exceed 1000. Using pageSize=1000", value=value, parameter='pageSize')
+                            Notification.request_warning("pageSize cannot exceed 1000. Using pageSize=1000", value=value, parameter='pageSize')
                             RequestContext.pageSize = 1000
                         else:
                             RequestContext.pageSize = size_val
                     except ValueError:
-                        Notification.warning(Warning.REQUEST, "Invalid pageSize. Using pageSize=25", value=value, parameter='pageSize')
+                        Notification.request_warning("Invalid pageSize. Using pageSize=25", value=value, parameter='pageSize')
                         RequestContext.pageSize = 25
                         
                 elif key == 'sort':
@@ -171,10 +171,10 @@ class RequestContext:
                 else:
                     # Unknown parameter - ignore and continue
                     valid_params = ['page', 'pageSize', 'sort', 'filter', 'view']
-                    Notification.warning(Warning.REQUEST, "Unknown query parameter. Valid parameters: page, pageSize, sort, filter, view", parameter=key)
+                    Notification.request_warning("Unknown query parameter. Valid parameters: page, pageSize, sort, filter, view", parameter=key)
                     
             except ValueError as e:
-                Notification.warning(Warning.REQUEST, "Invalid parameter value", value=value, parameter=key)
+                Notification.request_warning("Invalid parameter value", value=value, parameter=key)
     
     @staticmethod
     def to_dict() -> Dict[str, Any]:
@@ -226,15 +226,15 @@ class RequestContext:
                 direction = "asc"
                 
             if not field_name:
-                Notification.warning(Warning.REQUEST, "Empty field name in sort", value=field_spec, parameter='sort')
+                Notification.request_warning("Empty field name in sort", value=field_spec, parameter='sort')
                 continue
 
             if not MetadataService.get(entity_name, field_name):
-                Notification.warning(Warning.REQUEST, "Unknown sort field", value=field_name, parameter='sort')
+                Notification.request_warning("Unknown sort field", value=field_name, parameter='sort')
                 continue
             
             if direction not in ['asc', 'desc']:
-                Notification.warning(Warning.REQUEST, "Invalid sort direction. Use 'asc' or 'desc'", value=f"{field_name}:{direction}", parameter='sort')
+                Notification.request_warning("Invalid sort direction. Use 'asc' or 'desc'", value=f"{field_name}:{direction}", parameter='sort')
                 direction = 'asc'
             
             # Use lowercase field name - proper casing handled by database driver
@@ -272,16 +272,16 @@ class RequestContext:
                 # Split by colon - minimum 2 parts (field:value)
                 parts = filter_part.split(':', 2)
                 if len(parts) < 2:
-                    Notification.warning(Warning.REQUEST, "Invalid filter format. Use field:value", value=filter_part, parameter='filter')
+                    Notification.request_warning("Invalid filter format. Use field:value", value=filter_part, parameter='filter')
                     continue
                     
                 field_name = parts[0].strip()
                 if not field_name:
-                    Notification.warning(Warning.REQUEST, "Empty field name in filter", value=filter_part, parameter='filter')
+                    Notification.request_warning("Empty field name in filter", value=filter_part, parameter='filter')
                     continue
                 
                 if not MetadataService.get(entity_name, field_name):
-                    Notification.warning(Warning.REQUEST, "Unknown filter field", value=field_name, parameter='filter')
+                    Notification.request_warning("Unknown filter field", value=field_name, parameter='filter')
                     continue
                 
                 if len(parts) == 2:
@@ -309,7 +309,7 @@ class RequestContext:
                         filters[field_name] = parsed_filter
                         
         except Exception as e:
-            Notification.warning(Warning.REQUEST, "Error parsing filter parameter", parameter='filter')
+            Notification.request_warning("Error parsing filter parameter", parameter='filter')
             
         return filters
 
@@ -339,11 +339,11 @@ class RequestContext:
                 return {"$lte": typed_value}
                 
             else:
-                Notification.warning(Warning.REQUEST, "Unknown filter operator. Supported: eq, gt, gte, lt, lte", value=f"{field_name}:{operator}", parameter='filter')
+                Notification.request_warning("Unknown filter operator. Supported: eq, gt, gte, lt, lte", value=f"{field_name}:{operator}", parameter='filter')
                 return None
                 
         except Exception as e:
-            Notification.warning(Warning.REQUEST, "Error parsing filter", value=f"{field_name}:{operator}:{value}", parameter='filter')
+            Notification.request_warning("Error parsing filter", value=f"{field_name}:{operator}:{value}", parameter='filter')
             return None
             
         return None  # Should never reach here due to request_error() exceptions
@@ -373,13 +373,13 @@ class RequestContext:
             matches = re.findall(pattern, view_str)
             
             if not matches:
-                Notification.warning(Warning.REQUEST, "Invalid view format. Use format: fk_name(field1,field2)", value=view_str, parameter='view')
+                Notification.request_warning("Invalid view format. Use format: fk_name(field1,field2)", value=view_str, parameter='view')
                 return {}
             
             for fk_name, fields_str in matches:
                 # First validate the foreign entity exists
                 if not MetadataService.get(fk_name):
-                    Notification.warning(Warning.REQUEST, "Unknown entity in view", entity_type=fk_name, parameter='view')
+                    Notification.request_warning("Unknown entity in view", entity=fk_name, parameter='view')
                     continue
                 
                 field_names = []
@@ -388,7 +388,7 @@ class RequestContext:
                     if field:
                         # Check if field exists in the FOREIGN entity, not current entity
                         if not MetadataService.get(fk_name, field):
-                            Notification.warning(Warning.REQUEST, "Unknown field in view", entity_type=fk_name, field=field, parameter='view')
+                            Notification.request_warning("Unknown field in view", entity=fk_name, field=field, parameter='view')
                             continue
                         field_names.append(field)
                 
@@ -398,7 +398,7 @@ class RequestContext:
             return view_spec if view_spec else {}
             
         except Exception as e:
-            Notification.warning(Warning.REQUEST, "Error parsing view parameter", parameter='view')
+            Notification.request_warning("Error parsing view parameter", parameter='view')
             return {}
             
         return {}  # Should never reach here due to request_error() exceptions
@@ -418,21 +418,21 @@ class RequestContext:
                 elif value.lower() in ('false', '0', 'no'):
                     return False
                 else:
-                    Notification.warning(Warning.REQUEST, "Invalid boolean value. Use true/false", value=f"{field_name}:{value}", parameter='filter')
+                    Notification.request_warning("Invalid boolean value. Use true/false", value=f"{field_name}:{value}", parameter='filter')
                     return None
                     
             elif field_type in ('Currency', 'Number'):
                 try:
                     return float(value)
                 except ValueError:
-                    Notification.warning(Warning.REQUEST, f"Invalid {field_type.lower()} value", value=f"{field_name}:{value}", parameter='filter')
+                    Notification.request_warning(f"Invalid {field_type.lower()} value", value=f"{field_name}:{value}", parameter='filter')
                     return None
                     
             elif field_type == 'Integer':
                 try:
                     return int(value)
                 except ValueError:
-                    Notification.warning(Warning.REQUEST, "Invalid integer value", value=f"{field_name}:{value}", parameter='filter')
+                    Notification.request_warning("Invalid integer value", value=f"{field_name}:{value}", parameter='filter')
                     return None
                     
             elif field_type in ('Date', 'Datetime'):
@@ -445,7 +445,7 @@ class RequestContext:
                 return value
                 
         except Exception as e:
-            Notification.warning(Warning.REQUEST, f"Error converting {field_type.lower()} value", value=f"{field_name}:{value}", parameter='filter')
+            Notification.request_warning(f"Error converting {field_type.lower()} value", value=f"{field_name}:{value}", parameter='filter')
             return None
             
         return None  # Should never reach here due to request_error() exceptions
