@@ -135,7 +135,7 @@ class DatabaseFactory:
         return documents, total_count
 
     @classmethod
-    async def get(cls, doc_id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
+    async def get(cls, entity_type: str, doc_id: str) -> Tuple[Dict[str, Any], int]:
         """Get document by ID. Returns (document, count)."""
         db = cls.get_instance()
         document, count = await db.documents.get(
