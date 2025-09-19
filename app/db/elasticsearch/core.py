@@ -88,27 +88,27 @@ class ElasticsearchCore(CoreManager):
                                 "filter": ["lowercase"]
                             }
                         }
-                    },
-                    "mappings": {
-                        "dynamic_templates": [
-                            {
-                                "strings_as_text_with_raw": {
-                                    "match_mapping_type": "string",
-                                    "unmatch": "id",  # Don't apply to id fields  
-                                    "mapping": {
-                                        "type": "text",
-                                        "fields": {
-                                            "raw": {
-                                                "type": "keyword",
-                                                "normalizer": "lc", 
-                                                "ignore_above": 1024
-                                            }
+                    }
+                },
+                "mappings": {
+                    "dynamic_templates": [
+                        {
+                            "strings_as_text_with_raw": {
+                                "match_mapping_type": "string",
+                                "unmatch": "id",  # Don't apply to id fields
+                                "mapping": {
+                                    "type": "text",
+                                    "fields": {
+                                        "raw": {
+                                            "type": "keyword",
+                                            "normalizer": "lc",
+                                            "ignore_above": 1024
                                         }
                                     }
                                 }
                             }
-                        ]
-                    }
+                        }
+                    ]
                 }
             }
         }
@@ -127,27 +127,27 @@ class ElasticsearchEntities(EntityManager):
         """Check if index exists"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
-        
-        return await es.indices.exists(index=entity_type)
+
+        return await es.indices.exists(index=entity_type.lower())
     
     async def create(self, entity_type: str, unique_constraints: List[List[str]]) -> bool:
         """Create index (Elasticsearch doesn't enforce unique constraints natively)"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
-        
-        if await es.indices.exists(index=entity_type):
+
+        if await es.indices.exists(index=entity_type.lower()):
             return True
-            
-        await es.indices.create(index=entity_type)
+
+        await es.indices.create(index=entity_type.lower())
         return True
     
     async def delete(self, entity_type: str) -> bool:
         """Delete index"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
-        
-        if await es.indices.exists(index=entity_type):
-            await es.indices.delete(index=entity_type)
+
+        if await es.indices.exists(index=entity_type.lower()):
+            await es.indices.delete(index=entity_type.lower())
         return True
     
     async def get_all(self) -> List[str]:
@@ -181,8 +181,8 @@ class ElasticsearchIndexes(IndexManager):
         properties: Dict[str, Any] = {}
         
         # Ensure index exists
-        if not await es.indices.exists(index=entity_type):
-            await es.indices.create(index=entity_type)
+        if not await es.indices.exists(index=entity_type.lower()):
+            await es.indices.create(index=entity_type.lower())
         
         if len(fields) == 1:
             # Single field unique constraint - ensure it has .raw subfield for exact matching
@@ -220,7 +220,7 @@ class ElasticsearchIndexes(IndexManager):
         
         # Update mapping
         await es.indices.put_mapping(
-            index=entity_type,
+            index=entity_type.lower(),
             properties=properties
         )
     
@@ -229,13 +229,13 @@ class ElasticsearchIndexes(IndexManager):
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
-        if not await es.indices.exists(index=entity_type):
+        if not await es.indices.exists(index=entity_type.lower()):
             return []
         
         # For Elasticsearch, we look for hash fields that represent unique constraints
         # Hash fields follow pattern: _hash_field1_field2_... for multi-field constraints
-        response = await es.indices.get_mapping(index=entity_type)
-        mapping = response.get(entity_type, {}).get("mappings", {}).get("properties", {})
+        response = await es.indices.get_mapping(index=entity_type.lower())
+        mapping = response.get(entity_type.lower(), {}).get("mappings", {}).get("properties", {})
         
         unique_constraints = []
         processed_fields = set()

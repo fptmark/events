@@ -20,9 +20,13 @@ class MongoDocuments(DocumentManager):
     
     def __init__(self, parent):
         self.parent = parent
+
+    def isInternallyCaseSensitive(self) -> bool:
+        """MongoDB is case-sensitive for field names"""
+        return True
     
-    async def get_all(
-        self, 
+    async def _get_all_impl(
+        self,
         entity_type: str,
         sort: Optional[List[Tuple[str, str]]] = None,
         filter: Optional[Dict[str, Any]] = None,
@@ -59,7 +63,7 @@ class MongoDocuments(DocumentManager):
         
         return documents, total_count
     
-    async def get(self, id: str, entity_type: str, viewspec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    async def _get_impl(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
         """Get single document by ID"""
         self.parent._ensure_initialized()
         db = self.parent.core.get_connection()
@@ -84,7 +88,7 @@ class MongoDocuments(DocumentManager):
 
         return {}, 0
 
-    async def delete(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
+    async def _delete_impl(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
         """Delete document by ID"""
         self.parent._ensure_initialized()
         db = self.parent.core.get_connection()
@@ -129,7 +133,7 @@ class MongoDocuments(DocumentManager):
             Notification.warning(Warning.NOT_FOUND, "Document not found for update", entity_type=entity_type, entity_id=id)
             return False
     
-    async def _create_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _create_impl(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create document in MongoDB"""
         db = self.parent.core.get_connection()
         
@@ -159,7 +163,7 @@ class MongoDocuments(DocumentManager):
 
         return {}
 
-    async def _update_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _update_impl(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update existing document in MongoDB"""
         db = self.parent.core.get_connection()
         

@@ -17,15 +17,18 @@ class ElasticsearchDocuments(DocumentManager):
     
     def __init__(self, parent):
         self.parent = parent
+
+    def isInternallyCaseSensitive(self) -> bool:
+        """Elasticsearch is case-insensitive for field names"""
+        return False
     
-    async def get_all(
-        self, 
-        entity_type: str, 
+    async def _get_all_impl(
+        self,
+        entity_type: str,
         sort: Optional[List[Tuple[str, str]]] = None,
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
-        pageSize: int = 25,
-        process_fks: bool = True
+        pageSize: int = 25
     ) -> Tuple[List[Dict[str, Any]], int]:
         """Get paginated list of documents"""
         self.parent._ensure_initialized()
@@ -59,22 +62,21 @@ class ElasticsearchDocuments(DocumentManager):
         
         return documents, total_count
     
-    async def get(
-        self, 
+    async def _get_impl(
+        self,
         id: str,
         entity_type: str,
-        viewspec: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], int]:
         """Get single document by ID"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
-        
-        index = entity_type
-        
+
+        index = entity_type.lower()
+
         if not await es.indices.exists(index=index):
             Notification.warning(Warning.NOT_FOUND, "Index does not exist", entity_type=entity_type, entity_id=id)
             return {}, 0
-        
+
         try:
             response = await es.get(index=index, id=id)
             doc = self._normalize_document(response["_source"])
@@ -84,22 +86,22 @@ class ElasticsearchDocuments(DocumentManager):
                 Notification.error(Error.DATABASE, f"Elasticsearch get error: {str(e)}")
             return {}, 0
     
-    async def delete(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
+    async def _delete_impl(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
         """Delete document by ID"""
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
-        
-        index = entity_type
-        
+
+        index = entity_type.lower()
+
         if not await es.indices.exists(index=index):
             return {}, 0
-        
+
         # Elasticsearch doesn't return deleted doc automatically, so fetch it first
         try:
             # Get document before deleting
             get_response = await es.get(index=index, id=id)
             doc = self._normalize_document(get_response["_source"])
-            
+
             # Now delete it
             delete_response = await es.delete(index=index, id=id)
             if delete_response.get("result") == "deleted":
@@ -116,7 +118,7 @@ class ElasticsearchDocuments(DocumentManager):
         self.parent._ensure_initialized()
         es = self.parent.core.get_connection()
         
-        index = entity_type
+        index = entity_type.lower()
         
         if not await es.indices.exists(index=index):
             Notification.warning(Warning.NOT_FOUND, "Index does not exist", entity_type=entity_type, entity_id=id)
@@ -129,11 +131,11 @@ class ElasticsearchDocuments(DocumentManager):
             Notification.warning(Warning.NOT_FOUND, "Document not found for update", entity_type=entity_type, entity_id=id)
             return False
     
-    async def _create_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _create_impl(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create document in Elasticsearch. If data contains 'id', use it as _id, otherwise auto-generate."""
         es = self.parent.core.get_connection()
         
-        index = entity_type
+        index = entity_type.lower()
         create_data = data.copy()
         
         # If data contains 'id', use it as Elasticsearch _id
@@ -150,11 +152,11 @@ class ElasticsearchDocuments(DocumentManager):
         
         return saved_doc
 
-    async def _update_document(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _update_impl(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update existing document in Elasticsearch. Extracts id from data['id']."""
         es = self.parent.core.get_connection()
         
-        index = entity_type
+        index = entity_type.lower()
         id = data['id']  # Extract id from data
         
         # Create update data without 'id' field
@@ -280,14 +282,14 @@ class ElasticsearchDocuments(DocumentManager):
             if metadata:
                 unique_constraints = metadata.get('unique_constraints', [])
             else:
-                Notification.warning(Warning.DATA_VALIDATION, "Unknown entity", entity_type=entity_type)
+                Notification.warning(Warning.BAD_NAME, "Unknown entity", entity_type=entity_type)
                 return False
         
         if not unique_constraints:
             return True
             
         es = self.parent.core.get_connection()
-        index = entity_type
+        index = entity_type.lower()
         
         if not await es.indices.exists(index=index):
             return True  # No existing docs to check against
@@ -299,8 +301,6 @@ class ElasticsearchDocuments(DocumentManager):
                 if field in data and data[field] is not None:
                     # Use .raw field for exact string matching if it's a text field
                     type = MetadataService.get(entity_type, field, 'type')
-                    if type == None:
-                        Notification.warning(Warning.DATA_VALIDATION, "No type found", entity_type=entity_type, entity_id=data.get(self.parent.core.id_field, ''), field=field)
                     
                     if type == 'String':
                         # Use .raw subfield for exact matching on strings

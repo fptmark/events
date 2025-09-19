@@ -121,7 +121,7 @@ class DatabaseFactory:
 
     
     @classmethod
-    async def get_all(cls, entity_type: str, sort: List[Tuple[str, str]], filter: Optional[Dict[str, Any]], page: int, pageSize: int) -> tuple[List[Dict[str, Any]], int]:
+    async def get_all(cls, entity_type: str, sort: Optional[List[Tuple[str, str]]] = None, filter: Optional[Dict[str, Any]] = None, page: int=1, pageSize: int=25) -> tuple[List[Dict[str, Any]], int]:
         
         db = cls.get_instance()
         documents, total_count = await db.documents.get_all(
@@ -135,13 +135,12 @@ class DatabaseFactory:
         return documents, total_count
 
     @classmethod
-    async def get(cls, doc_id: str, entity_type: str, viewspec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    async def get(cls, doc_id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
         """Get document by ID. Returns (document, count)."""
         db = cls.get_instance()
         document, count = await db.documents.get(
-            id=doc_id,
             entity_type=entity_type,
-            viewspec=viewspec
+            id=doc_id
         )
         
         return document, count
