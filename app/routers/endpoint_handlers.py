@@ -39,7 +39,13 @@ def parse_request_context(handler: Callable) -> Callable:
         
         # Parse and normalize URL using RequestContext
         if request:
-            RequestContext.parse_request(str(request.url.path), dict(request.query_params))
+            # Convert entire query string to lowercase for case-insensitive handling
+            lowercase_params = {}
+            for key, value in request.query_params.items():
+                lowercase_params[key.lower()] = value.lower()
+            # Convert URL path to lowercase for case-insensitive handling
+            lowercase_path = str(request.url.path).lower()
+            RequestContext.parse_request(lowercase_path, lowercase_params)
         
         return await handler(*args, **kwargs)
     return wrapper
