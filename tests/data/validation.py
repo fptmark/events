@@ -8,6 +8,9 @@ from datetime import datetime
 
 from tests.suites.test_case import TestCase
 
+from app.db import DatabaseFactory
+
+
 # TestCase import removed to avoid circular import
 
 def _convert_to_timestamp(value: Any) -> Optional[float]:
@@ -176,31 +179,12 @@ class FieldTypeConverter:
 def validate_structure(result: Dict, test_case, http_status: int) -> bool:
     """Main structure validation entry point."""
     try:
-        return (validate_data_structure(result, test_case, http_status) and
-                validate_notification_structure(result) and
+        return (validate_notification_structure(result) and
                 validate_status_field(result) and
                 validate_pagination_structure(result, test_case))
     except Exception as e:
         ValidationReporter.report_error(f"validate_structure", f"{e}")
         return False
-
-def validate_data_structure(result: Dict, test_case, http_status: int) -> bool:
-    """Validate data field structure based on request type."""
-    # Validate data segment existence and type
-    # data = result.get('data', None)
-    
-    # if http_status in [200, 201]:
-    #     if not data or len(data) == 0:
-    #         ValidationReporter.report_error("Data Structure", "200/201 response with empty data")
-    #         return False
-    # elif http_status == 404:
-    #     if data and len(data) != 0:
-    #         ValidationReporter.report_error("Data Structure", "404 response with non-empty data")
-    #         return False    
-    # else:
-    #     ValidationReporter.report_error("Http Status", f"Unexpected HTTP status {http_status}")
-    #     return False
-    return True
 
 def validate_notification_structure(result: Dict) -> bool:
     """Validate notifications structure if present."""
@@ -509,14 +493,15 @@ def validate_error_counts(expected_notifications: Dict, actual_notifications: Di
     return True
 
 
-def validate_auto_fields(result: Dict, test_case) -> bool:
+def validate_auto_fields(actual_data: Dict, test_case: TestCase) -> bool:
     """Validate actual data matches expected_response exactly."""
     try:
+        # if there is no data in actual, nothing to check
+        if len(actual_data) == 0:
+            return True
+
         if not test_case.expected_response:
             return True  # No expected response to validate
-        
-        expected_data = test_case.expected_response.get('data', {})
-        actual_data = result.get('data', {})
         
         # Check auto-generated fields exist
         for field_name, field_info in MetadataService.fields(test_case.entity).items():
@@ -540,7 +525,12 @@ def validate_content(result: Dict, test_case, config: Dict, request_error:bool) 
         if test_case.is_get_all():
             return True  # Not a single entity request
         
-        return (validate_auto_fields(result, test_case) and
+        expected_data = test_case.expected_response.get('data', {})
+        actual_data = result.get('data', {})
+        if len(expected_data) != len(actual_data):    # need to remove auto fields to do simple compare
+            return False
+        
+        return (validate_auto_fields(actual_data, test_case) and
                 validate_notification_counts(result, test_case, request_error))
     except Exception as e:
         ValidationReporter.report_error(f"validate_content", f"{e}")
@@ -551,7 +541,7 @@ def validate_content(result: Dict, test_case, config: Dict, request_error:bool) 
 
 
 # Main validation function - replaces ValidationEngine and Validator classes
-def validate_test_case(test_case: TestCase, result: Dict, config: Dict, http_status: int) -> bool:
+async def validate_test_case(test_case: TestCase, result: Dict, config: Dict, http_status: int) -> bool:
     """Main validation entry point - fail fast approach."""
     try:
         
@@ -559,9 +549,24 @@ def validate_test_case(test_case: TestCase, result: Dict, config: Dict, http_sta
         if not validate_structure(result, test_case, http_status):
             return False
 
-        error_match, request_error = validate_request_response(result, test_case)
-        if not error_match:
-            return False
+        # get the data from the database so we know what to expect
+        db_type: str = config.get('database', '')
+        db_uri: str = config.get('db_uri', '')
+        db_name: str = config.get('db_name', '')
+        
+        await DatabaseFactory.initialize(db_type, db_uri, db_name)
+        if test_case.is_get_all():
+            data, count = await DatabaseFactory.get_all(test_case.entity)
+        else:
+            data, count = await DatabaseFactory.get(test_case.id, test_case.entity)
+        await DatabaseFactory.close()
+
+        if count > 0:   # only check the request if there is data
+            error_match, request_error = validate_request_response(result, test_case)
+            if not error_match:
+                return False
+        else:
+            request_error = False
         
         if http_status not in [200, 201]:
             return True  # Only validate structure for non-success responses

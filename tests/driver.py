@@ -314,6 +314,7 @@ async def test_connection(config_data: dict, verbose: bool = False) -> bool:
 
 async def validate_curl_results(test_cases: Dict[str, Tuple[str, type]], config_data: dict, url: str = None, results_data: dict = None, verbose: bool = False) -> bool:
     """Validate curl results data"""
+    first_error = None
     results = results_data
 
     total_counter = TestCounter()
@@ -366,17 +367,20 @@ async def validate_curl_results(test_cases: Dict[str, Tuple[str, type]], config_
                 status = http_status == test.expected_status
 
                 if status and result:
-                    if validate_test_case(test, result, config, http_status):
+                    if await validate_test_case(test, result, config, http_status):
                         print(f"  ✅ {test.description} passed")
                         suite_counter.pass_test()
                     else:
+                        first_error = test.url if not first_error else first_error
                         ValidationReporter.report_error("Test execution", f"{test.description} failed - validation mismatch", header="    ")
                         suite_counter.fail_test()
                 else:
+                    first_error = test.url if not first_error else first_error
                     ValidationReporter.report_error("Test execution", f"{test.description} failed", header="    ")
                     suite_counter.fail_test()
                     
             except Exception as e:
+                first_error = test.url if not first_error else first_error
                 ValidationReporter.report_error("Test execution", f"{test.description} failed: {e}", header="    ")
                 suite_counter.fail_test()
         
@@ -386,7 +390,7 @@ async def validate_curl_results(test_cases: Dict[str, Tuple[str, type]], config_
             print(f"  {suite_counter.summary(test_description)}")
     
     # Print overall summary
-    print(f"\n{total_counter.summary('FINAL SUMMARY')}")
+    print(f"\n{total_counter.summary('FINAL SUMMARY')}.  First Error = {first_error}")
     
     return total_counter.failed == 0
     
