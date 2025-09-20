@@ -13,18 +13,20 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             },
-            "args" : ["es.json"]
+            "args" : ["mongo.json"]
         },
          {
-            "name": "CT",
+            "name": "Tester",
             "type": "debugpy",
             "request": "launch",
-            "program": "tests/comprehensive_test.py",
+            "program": "tests/driver.py",
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             },
-            "args" : ["--curl", "results.json", "--config", "es.json", "--url", "/api/user?sort=invalidField"] // validate tests against script output (curl.sh -> results.json)
+            // "args" : ["--verbose", "--curl", "results.json", "--config", "mongo.json"] //, "--url", "/api/User?page=2&pageSize=3"]
+            "args" : ["--verbose", "--curl", "results.json", "--config", "mongo.json", "--url", "/api/User/valid_all_user_123456?filter=gender:male"]
+            // "args": ["--verbose", "--newdata", "--config", "mongo.json"]
         },
         {
           "name": "Angular",
