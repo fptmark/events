@@ -2,18 +2,14 @@ from contextlib import asynccontextmanager
 import sys
 import argparse
 from pathlib import Path
-from fastapi.exception_handlers import request_validation_exception_handler
-from fastapi.exceptions import RequestValidationError
-import app.utils as utils
 from app.config import Config
 from app.db import DatabaseFactory
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.services.notify import StopWorkError 
 from app.services.metadata import MetadataService
 from app.services.model import ModelService
-from app.services.notify import Notification, Warning, Error
+from app.services.notify import StopWorkError
 from app.routers.router import get_all_dynamic_routers
 
 from app.services.auth.cookies.redis_provider import CookiesAuth as Auth
@@ -272,7 +268,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     )
 
 # All validation and system errors now handled by StopWorkError via notification system
- 
+
 @app.get('')
 def read_root():
     return {'message': f'Welcome to the {project} Management System'}
