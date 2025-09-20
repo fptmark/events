@@ -72,9 +72,10 @@ class MongoDocuments(DocumentManager):
             collection = entity_type
             
             # Convert string ID to ObjectId for MongoDB
-            object_id = ObjectId(id) if ObjectId.is_valid(id) else id
+            # But it only works as a string.  Strange but true!
+            # object_id = ObjectId(id) if ObjectId.is_valid(id) else id
             
-            doc = await db[collection].find_one({"_id": object_id})
+            doc = await db[collection].find_one({"_id": id})
             
             if doc:
                 normalized_doc = self._normalize_document(doc)
