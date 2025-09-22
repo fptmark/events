@@ -6,6 +6,8 @@ Creates and manages database instances with clean manager separation.
 import logging
 from typing import Optional, Dict, Any, List, Tuple
 
+from app.services.notify import Notification, Error
+
 from .base import DatabaseInterface
 from .mongodb import MongoDatabase
 from .elasticsearch import ElasticsearchDatabase
@@ -148,6 +150,12 @@ class DatabaseFactory:
     @classmethod
     async def create(cls, entity_type: str, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
         """Create document. Returns (document, count)."""
+        # clean the input  -insure a valid id is passed and it is a string
+        if 'id' in data:
+            id = data.get('id', '').strip()
+            if not id:
+                data.pop('id')  # Remove empty id to allow auto-generation
+
         db = cls.get_instance()
         document, count = await db.documents.create(
             entity_type=entity_type,
@@ -160,6 +168,11 @@ class DatabaseFactory:
     @classmethod
     async def update(cls, entity_type: str, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
         """Update document. Returns (document, count)."""
+        id = data.get('id', '').strip()
+        if not id:
+            Notification.error(stop_type=Error.REQUEST, message=f"Missing or empty 'id' field = ({id}) for update operation", entity_type=entity_type, field="id")
+            return {}, 0
+
         db = cls.get_instance()
         document, count = await db.documents.update(
             entity_type=entity_type,

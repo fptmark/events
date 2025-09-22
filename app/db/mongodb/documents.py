@@ -97,11 +97,8 @@ class MongoDocuments(DocumentManager):
         try:
             collection = entity_type
             
-            # Convert string ID to ObjectId for MongoDB
-            object_id = ObjectId(id) if ObjectId.is_valid(id) else id
-            
             # Use findOneAndDelete for atomic operation that returns deleted document
-            deleted_doc = await db[collection].find_one_and_delete({"_id": object_id})
+            deleted_doc = await db[collection].find_one_and_delete({"_id": id})
             
             if deleted_doc:
                 normalized_doc = self._normalize_document(deleted_doc)
@@ -140,17 +137,17 @@ class MongoDocuments(DocumentManager):
         
         try:
             collection = entity_type
-            create_data = data.copy()
             
             # If data contains 'id', use it as MongoDB _id
-            if 'id' in create_data:
-                create_data["_id"] = create_data.pop('id')
+            if 'id' in data and data['id']:
+                data["_id"] = data.pop('id')
             
-            result = await db[collection].insert_one(create_data)
-            saved_doc = create_data.copy()
-            if "_id" not in saved_doc:
-                saved_doc["_id"] = result.inserted_id
-            return saved_doc
+            result = await db[collection].insert_one(data)
+            if "_id" in data:
+                data["id"] = result.inserted_id
+            else:
+                Notification.error(Error.DATABASE, "MongoDB insert error: {result}")
+            return data
             
         except DuplicateKeyError as e:
             field, value = self._parse_duplicate_key_error(e)
@@ -170,16 +167,12 @@ class MongoDocuments(DocumentManager):
         
         try:
             collection = entity_type
-            id = data['id']
-            mongo_id = ObjectId(id) if ObjectId.is_valid(id) else id
+            # If data contains 'id', use it as MongoDB _id ... and it better.
+            if 'id' in data and data['id']:
+                data["_id"] = data.pop('id')
             
-            # Create update data without 'id' field
-            update_data = data.copy()
-            del update_data['id']
-            update_data["_id"] = mongo_id
-            
-            await db[collection].replace_one({"_id": mongo_id}, update_data, upsert=False)
-            return update_data
+            await db[collection].replace_one({"_id": id}, data, upsert=False)
+            return data
                 
         except DuplicateKeyError as e:
             field, value = self._parse_duplicate_key_error(e)
