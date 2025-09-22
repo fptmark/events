@@ -189,6 +189,7 @@ class User(BaseModel):
         return await DatabaseFactory.delete("User", id)
 
 class UserCreate(BaseModel):
+    id: str | None = Field(default=None)
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9](.?[a-zA-Z0-9_+%-])*@[a-zA-Z0-9-]+(.[a-zA-Z0-9-]+)*.[a-zA-Z]{2,}$")
     password: str = Field(..., min_length=8)
@@ -208,6 +209,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    id: str | None = Field(default=None)
     username: str | None = Field(default=None, min_length=3, max_length=50)
     email: str | None = Field(default=None, min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9](.?[a-zA-Z0-9_+%-])*@[a-zA-Z0-9-]+(.[a-zA-Z0-9-]+)*.[a-zA-Z]{2,}$")
     password: str | None = Field(default=None, min_length=8)

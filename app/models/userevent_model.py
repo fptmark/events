@@ -140,6 +140,7 @@ class UserEvent(BaseModel):
         return await DatabaseFactory.delete("UserEvent", id)
 
 class UserEventCreate(BaseModel):
+    id: str | None = Field(default=None)
     attended: bool | None = Field(default=None)
     rating: int | None = Field(default=None, ge=1, le=5)
     note: str | None = Field(default=None, max_length=500)
@@ -154,6 +155,7 @@ class UserEventCreate(BaseModel):
 
 
 class UserEventUpdate(BaseModel):
+    id: str | None = Field(default=None)
     attended: bool | None = Field(default=None)
     rating: int | None = Field(default=None, ge=1, le=5)
     note: str | None = Field(default=None, max_length=500)

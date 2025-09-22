@@ -135,6 +135,7 @@ class Crawl(BaseModel):
         return await DatabaseFactory.delete("Crawl", id)
 
 class CrawlCreate(BaseModel):
+    id: str | None = Field(default=None)
     lastParsedDate: datetime | None = Field(default=None)
     parseStatus: Dict[str, Any] | None = Field(default=None)
     errorsEncountered: List[str] | None = Field(default=None)
@@ -148,6 +149,7 @@ class CrawlCreate(BaseModel):
 
 
 class CrawlUpdate(BaseModel):
+    id: str | None = Field(default=None)
     lastParsedDate: datetime | None = Field(default=None)
     parseStatus: Dict[str, Any] | None = Field(default=None)
     errorsEncountered: List[str] | None = Field(default=None)

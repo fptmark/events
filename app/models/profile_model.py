@@ -146,6 +146,7 @@ class Profile(BaseModel):
         return await DatabaseFactory.delete("Profile", id)
 
 class ProfileCreate(BaseModel):
+    id: str | None = Field(default=None)
     name: str = Field(..., max_length=100)
     preferences: str | None = Field(default=None)
     radiusMiles: int | None = Field(default=None, ge=0)
@@ -159,6 +160,7 @@ class ProfileCreate(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
+    id: str | None = Field(default=None)
     name: str | None = Field(default=None, max_length=100)
     preferences: str | None = Field(default=None)
     radiusMiles: int | None = Field(default=None, ge=0)

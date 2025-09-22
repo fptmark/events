@@ -127,6 +127,7 @@ class Account(BaseModel):
         return await DatabaseFactory.delete("Account", id)
 
 class AccountCreate(BaseModel):
+    id: str | None = Field(default=None)
     expiredAt: datetime | None = Field(default=None)
 
     model_config = ConfigDict(
@@ -137,6 +138,7 @@ class AccountCreate(BaseModel):
 
 
 class AccountUpdate(BaseModel):
+    id: str | None = Field(default=None)
     expiredAt: datetime | None = Field(default=None)
 
     model_config = ConfigDict(

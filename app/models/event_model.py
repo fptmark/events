@@ -167,6 +167,7 @@ class Event(BaseModel):
         return await DatabaseFactory.delete("Event", id)
 
 class EventCreate(BaseModel):
+    id: str | None = Field(default=None)
     url: str = Field(..., pattern=r"^https?://[^s]+$")
     title: str = Field(..., max_length=200)
     dateTime: datetime = Field(...)
@@ -184,6 +185,7 @@ class EventCreate(BaseModel):
 
 
 class EventUpdate(BaseModel):
+    id: str | None = Field(default=None)
     url: str | None = Field(default=None, pattern=r"^https?://[^s]+$")
     title: str | None = Field(default=None, max_length=200)
     dateTime: datetime | None = Field(default=None)

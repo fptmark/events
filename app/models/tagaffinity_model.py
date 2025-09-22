@@ -133,6 +133,7 @@ class TagAffinity(BaseModel):
         return await DatabaseFactory.delete("TagAffinity", id)
 
 class TagAffinityCreate(BaseModel):
+    id: str | None = Field(default=None)
     tag: str = Field(..., max_length=50)
     affinity: int = Field(..., ge=-100, le=100)
     profileId: str = Field(...)
@@ -145,6 +146,7 @@ class TagAffinityCreate(BaseModel):
 
 
 class TagAffinityUpdate(BaseModel):
+    id: str | None = Field(default=None)
     tag: str | None = Field(default=None, max_length=50)
     affinity: int | None = Field(default=None, ge=-100, le=100)
     profileId: str | None = Field(default=None)

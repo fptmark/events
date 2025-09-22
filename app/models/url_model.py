@@ -133,6 +133,7 @@ class Url(BaseModel):
         return await DatabaseFactory.delete("Url", id)
 
 class UrlCreate(BaseModel):
+    id: str | None = Field(default=None)
     url: str = Field(..., pattern=r"main.url")
     params: Dict[str, Any] | None = Field(default=None)
 
@@ -144,6 +145,7 @@ class UrlCreate(BaseModel):
 
 
 class UrlUpdate(BaseModel):
+    id: str | None = Field(default=None)
     url: str | None = Field(default=None, pattern=r"main.url")
     params: Dict[str, Any] | None = Field(default=None)
 
