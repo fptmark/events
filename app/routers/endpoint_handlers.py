@@ -133,7 +133,7 @@ def update_response(data: Any, records: Optional[int] = None) -> Dict[str, Any]:
     notifications = notification_response.get("notifications", {})
     result["notifications"] = notifications
 
-    errors = notifications.get('errors', [])
-    warnings = notifications.get('warnings', {})
+    # errors = notifications.get('errors', [])
+    # warnings = notifications.get('warnings', {})
     result["status"] = notification_response.get('status', "missing")
     return result

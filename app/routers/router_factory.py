@@ -37,34 +37,3 @@ import importlib
 
 logger = logging.getLogger(__name__)
 
-
-# def get_entity_names(schema_path: Path) -> List[str]:
-#     """
-#     Get entity names directly from schema.yaml.
-    
-#     Returns:
-#         List of entity names (e.g., ['User', 'Account', 'Event'])
-#     """
-    
-#     try:
-#         with open(schema_path, 'r') as f:
-#             schema = yaml.safe_load(f)
-        
-#         entity_names = [ 
-#             name for name, attrs in schema.get('_entities', {}).items()
-#             if not attrs.get('abstract', False) 
-#         ]
-#         logger.info(f"Found {len(entity_names)} entities in schema.yaml: {entity_names}")
-#         return entity_names
-        
-#     except FileNotFoundError:
-#         logger.error(f"schema.yaml not found at {schema_path}")
-#         return []
-#     except yaml.YAMLError as e:
-#         logger.error(f"Invalid YAML in schema.yaml: {e}")
-#         return []
-#     except Exception as e:
-#         logger.error(f"Failed to read schema.yaml: {e}")
-#         return []
-
-

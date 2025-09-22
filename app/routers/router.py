@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Generic response models for OpenAPI
 def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[BaseModel], Type[BaseModel]]:
     """Create response models dynamically for any entity"""
-    entity_name = entity_cls.__name__
+    entity_type = entity_cls.__name__
     
     # Create response models using class-based approach for better type safety
     class EntityResponse(BaseModel):
@@ -40,8 +40,8 @@ def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[
         pagination: Optional[Dict[str, Any]]
     
     # Dynamically set the class names for better OpenAPI docs
-    EntityResponse.__name__ = f"{entity_name}Response"
-    EntityAllResponse.__name__ = f"{entity_name}AllResponse"
+    EntityResponse.__name__ = f"{entity_type}Response"
+    EntityAllResponse.__name__ = f"{entity_type}AllResponse"
     
     return EntityResponse, EntityAllResponse
 
@@ -50,33 +50,33 @@ class SimpleDynamicRouterFactory:
     """Factory for creating entity-specific routers from schema.yaml entity names."""
     
     @classmethod
-    def create_entity_router(cls, entity_name: str) -> APIRouter:
+    def create_entity_router(cls, entity_type: str) -> APIRouter:
         """
         Create a complete CRUD router for an entity.
         
         Args:
-            entity_name: The entity name (e.g., "User", "Account")
+            entity_type: The entity name (e.g., "User", "Account")
             
         Returns:
             FastAPI router with all CRUD endpoints for the entity
         """
         # Create router with lowercase prefix but also register uppercase route
         router = APIRouter(
-            prefix=f"/{entity_name.lower()}", 
-            tags=[entity_name]
+            prefix=f"/{entity_type.lower()}", 
+            tags=[entity_type]
         )
         
         # Dynamic model imports using cached factory
         try:
-            entity_cls = ModelService.get_model_class(entity_name)
-            create_cls = ModelService.get_create_class(entity_name)  # type: ignore
-            update_cls = ModelService.get_update_class(entity_name)  # type: ignore
+            entity_cls = ModelService.get_model_class(entity_type)
+            create_cls = ModelService.get_create_class(entity_type)  # type: ignore
+            update_cls = ModelService.get_update_class(entity_type)  # type: ignore
         except ImportError as e:
-            logger.error(f"Failed to import classes for {entity_name}: {e}")
+            logger.error(f"Failed to import classes for {entity_type}: {e}")
             # Return empty router if imports fail
             return router
         
-        entity_lower = entity_name
+        entity_lower = entity_type
         
         # Create response models for OpenAPI documentation
         EntityResponse, EntityAllResponse = create_response_models(entity_cls) # type: ignore
@@ -103,7 +103,7 @@ class SimpleDynamicRouterFactory:
             response_model=EntityResponse,
             responses={
                 200: {"description": f"Successfully retrieved {entity_lower}"},
-                404: {"description": f"{entity_name} not found"},
+                404: {"description": f"{entity_type} not found"},
                 500: {"description": "Server error"}
             }
         )
@@ -132,7 +132,7 @@ class SimpleDynamicRouterFactory:
             response_model=EntityResponse,
             responses={
                 200: {"description": f"Successfully updated {entity_lower}"},
-                404: {"description": f"{entity_name} not found"},
+                404: {"description": f"{entity_type} not found"},
                 422: {"description": "Validation error"},
                 409: {"description": "Duplicate entry"},
                 500: {"description": "Server error"}
@@ -148,14 +148,14 @@ class SimpleDynamicRouterFactory:
             response_model=EntityResponse,
             responses={
                 200: {"description": f"Successfully deleted {entity_lower}"},
-                404: {"description": f"{entity_name} not found"},
+                404: {"description": f"{entity_type} not found"},
                 500: {"description": "Server error"}
             }
         )
         async def delete_entity(entity_id: str) -> Dict[str, Any]:  # noqa: F811
             return await delete_entity_handler(entity_cls, entity_id)
         
-        # logger.info(f"Created dynamic router for entity: {entity_name}")
+        # logger.info(f"Created dynamic router for entity: {entity_type}")
         return router
     
     @classmethod
@@ -166,19 +166,19 @@ class SimpleDynamicRouterFactory:
         Returns:
             List of FastAPI routers, one for each entity
         """
-        entity_names = ModelService.get_available_models()
+        entity_types = ModelService.get_available_models()
         routers = []
-        
-        for entity_name in entity_names:
+
+        for entity_type in entity_types:
             try:
-                router = cls.create_entity_router(entity_name)
+                router = cls.create_entity_router(entity_type)
                 routers.append(router)
-                # logger.info(f"Successfully created router for: {entity_name}")
+                # logger.info(f"Successfully created router for: {entity_type}")
             except Exception as e:
-                logger.warning(f"Skipping {entity_name} - failed to create router: {e}")
+                logger.warning(f"Skipping {entity_type} - failed to create router: {e}")
                 continue
         
-        logger.info(f"Created {len(routers)} dynamic routers from {len(entity_names)} entities")
+        logger.info(f"Created {len(routers)} dynamic routers from {len(entity_type)} entities")
         return routers
 
 
