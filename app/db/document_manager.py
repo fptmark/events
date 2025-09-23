@@ -41,7 +41,10 @@ class DocumentManager(ABC):
             sort = self._get_proper_sort_fields(sort, entity_type)
             filter = self._get_proper_filter_fields(filter, entity_type)
 
-        return await self._get_all_impl(entity_type, sort, filter, page, pageSize)
+        docs, count = await self._get_all_impl(entity_type, sort, filter, page, pageSize)
+        for i in range(0, len(docs) - 1):
+            docs[i] = self._remove_sub_objects(entity_type, docs[i])    # ignore sub-objs in the db (should not be there anyway)
+        return docs, count
 
     @abstractmethod
     async def _get_all_impl(
@@ -75,7 +78,8 @@ class DocumentManager(ABC):
         if self.isInternallyCaseSensitive():
             entity_type = MetadataService.get_proper_name(entity_type)
 
-        return await self._get_impl(id, entity_type)
+        doc, count = await self._get_impl(id, entity_type)
+        return self._remove_sub_objects(entity_type, doc), count # remove sub-objects in the db (should not be there anyway)
 
     @abstractmethod
     async def _get_impl(
@@ -109,6 +113,9 @@ class DocumentManager(ABC):
 
         # Prepare data for database storage (database-specific)
         prepared_data = self._prepare_datetime_fields(entity_type, data)
+
+        # Remove any sub-objects so we don't store them in the db
+        prepared_data = self._remove_sub_objects(entity_type, prepared_data)
 
         # Create in database (database-specific implementation)
         doc = await self._create_impl(entity_type, prepared_data)
@@ -152,6 +159,9 @@ class DocumentManager(ABC):
 
         # Prepare data for database storage (database-specific)
         prepared_data = self._prepare_datetime_fields(entity_type, data)
+
+        # Remove any sub-objects so we don't store them in the db
+        prepared_data = self._remove_sub_objects(entity_type, prepared_data)
 
         # Update in database (database-specific implementation)
         doc = await self._update_impl(entity_type, prepared_data)
@@ -307,3 +317,13 @@ class DocumentManager(ABC):
             True if constraints are valid, False if constraint violations detected
         """
         pass
+
+    def _remove_sub_objects(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Remove any sub-objects from the data before storing in the database"""
+        # look for any <field>id that are ObjectId types and remove the corresponding <field> sub-object
+        cleaned_data = data.copy()
+        for field in data:
+            if MetadataService.get(entity_type, field + "id", 'type') == 'ObjectId':
+                cleaned_data.pop(field)
+
+        return cleaned_data
