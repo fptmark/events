@@ -143,6 +143,14 @@ func runCommands(cmd *cobra.Command, args []string) {
 			if targetAccounts > maxAccounts { maxAccounts = targetAccounts }
 
 		case arg == "curl":
+			fmt.Printf("Generating curl.sh test script (ensuring minimum %d users, %d accounts)...\n", maxUsers, maxAccounts)
+
+			// Ensure static test data exists first
+			if err := generator.EnsureStaticTestData(config); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to ensure static test data: %v\n", err)
+				os.Exit(1)
+			}
+
 			// Ensure adequate records for meaningful curl.sh, then generate
 			curlSpec := fmt.Sprintf("%d,%d", maxUsers, maxAccounts)
 			if err := generator.EnsureMinRecords(config, curlSpec); err != nil {
@@ -153,9 +161,7 @@ func runCommands(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(os.Stderr, "Failed to generate curl.sh: %v\n", err)
 				os.Exit(1)
 			}
-			if verbose {
-				fmt.Println("✅ curl.sh generation completed successfully")
-			}
+			fmt.Println("✅ curl.sh generation completed successfully")
 
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown command: %s\n", arg)

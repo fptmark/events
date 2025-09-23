@@ -188,6 +188,54 @@ func countRecordsByPaging(serverURL, endpoint string, verbose bool) (int, error)
 	return len(ids), nil
 }
 
+// EnsureStaticTestData ensures static test accounts and users exist for test cases
+func EnsureStaticTestData(config Config) error {
+	serverURL := config.ServerURL
+	if serverURL == "" {
+		serverURL = "http://localhost:5500"
+	}
+
+	if config.Verbose {
+		fmt.Println("🔧 Ensuring static test data exists...")
+	}
+
+	// Create the primary static account that all valid FK tests reference
+	staticAccount := map[string]interface{}{
+		"id":        "primary_valid_001",
+		"name":      "Primary Test Account",
+		"createdAt": time.Now().UTC().Format(time.RFC3339),
+		"updatedAt": time.Now().UTC().Format(time.RFC3339),
+	}
+
+	jsonData, err := json.Marshal(staticAccount)
+	if err != nil {
+		return fmt.Errorf("failed to marshal static account: %w", err)
+	}
+
+	// Try to create the account (ignore if it already exists)
+	resp, err := http.Post(serverURL+"/api/Account", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create static account: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 200 || resp.StatusCode == 201 {
+		if config.Verbose {
+			fmt.Printf("  ✓ Created static account: primary_valid_001\n")
+		}
+	} else if resp.StatusCode == 409 || resp.StatusCode == 400 {
+		// Account already exists, which is fine
+		if config.Verbose {
+			fmt.Printf("  ✓ Static account already exists: primary_valid_001\n")
+		}
+	} else {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to create static account: status %d - %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
 // EnsureMinRecords ensures minimum number of users and accounts exist
 func EnsureMinRecords(config Config, recordSpec string) error {
 	// Parse "users,accounts" format

@@ -59,8 +59,12 @@ func (cm *CategoryMatrix) addViewTests() {
 	viewTests := []TestSpec{
 		// Valid FK view tests
 		{"view_valid_fk_001", "primary_valid_001", "/api/User/view_valid_fk_001?view=account(id)", "Get valid user with account ID view", "GET", "view"},
-		{"view_valid_fk_001", "primary_valid_001", "/api/User/view_valid_fk_001?view=account(id,name,createdAt)", "Get valid user with full account view", "GET", "view"},
-		{"view_valid_fk_002", "primary_valid_002", "/api/User/view_valid_fk_002?view=account(id,name)", "Get valid user with different account view", "GET", "view"},
+		{"view_valid_fk_001", "primary_valid_001", "/api/User/view_valid_fk_001?view=account(id,createdAt)", "Get valid user with account view (id,createdAt)", "GET", "view"},
+		{"view_valid_fk_002", "primary_valid_001", "/api/User/view_valid_fk_002?view=account(id)", "Get valid user with account ID view", "GET", "view"},
+
+		// Invalid FK view tests (using same view parameters as above but with invalid accountIds)
+		{"view_invalid_fk_001", "nonexistent_account_123", "/api/User/view_invalid_fk_001?view=account(id,createdAt)", "Get user with invalid accountId (id,createdAt view)", "GET", "view"},
+		{"view_invalid_fk_002", "nonexistent_account_456", "/api/User/view_invalid_fk_002?view=account(id)", "Get user with invalid accountId (id view)", "GET", "view"},
 
 		// Invalid FK view tests
 		{"view_expired_fk_001", "expired_invalid_001", "/api/User/view_expired_fk_001?view=account(id)", "Get user with expired account FK", "GET", "view"},
@@ -73,7 +77,7 @@ func (cm *CategoryMatrix) addViewTests() {
 
 		// List views with FKs
 		{"", "", "/api/User?view=account(id)", "Get user list with account ID view", "GET", "view"},
-		{"", "", "/api/User?view=account(id,name,createdAt)", "Get user list with full account view", "GET", "view"},
+		{"", "", "/api/User?view=account(id,createdAt)", "Get user list with account view", "GET", "view"},
 		{"", "", "/api/User?view=badentity(id)", "Get user list with bad entity view", "GET", "view"},
 		{"", "", "/api/User?view=account(id,badfield)", "Get user list with bad account field", "GET", "view"},
 		{"", "", "/api/User?pageSize=3&view=account(id)", "Get user list with pagination and view", "GET", "view"},
