@@ -62,6 +62,11 @@ func LoadTestCase(testID int, resultsFile string) (*types.TestCase, error) {
 		testCase.Description = descVal
 	}
 
+	// Extract HTTP status code
+	if statusVal, ok := rawTest["status"].(float64); ok {
+		testCase.Status = int(statusVal)
+	}
+
 	// Parse URL parameters
 	params, err := ParseTestURL(testCase.URL)
 	if err != nil {

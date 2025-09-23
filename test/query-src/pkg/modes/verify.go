@@ -100,6 +100,10 @@ mainLoop:
 		case "quit":
 			fmt.Println("\nVerification session ended by user.")
 			break mainLoop
+		case "data":
+			interactiveDisplay.ShowData(testCase)
+		case "notify":
+			interactiveDisplay.ShowNotifications(testCase)
 		case "next":
 			if currentID < totalTests {
 				currentID++

@@ -50,9 +50,6 @@ func (d *InteractiveDisplay) GetNavigation() string {
 	// Read line input
 	line, _ := d.reader.ReadString('\n')
 	line = strings.ToLower(strings.TrimSpace(line))
-	// if len(line) == 0 {
-	// 	return "next" // Default to next on empty input
-	// }
 
 	switch {
 	case len(line) == 0:
@@ -61,6 +58,10 @@ func (d *InteractiveDisplay) GetNavigation() string {
 		return "quit"
 	case line[0] == '-':
 		return "previous"
+	case strings.ToLower(line) == "data":
+		return "data"
+	case strings.ToLower(line) == "notify":
+		return "notify"
 	default:
 		// Check if it's a number for goto specific test
 		if testID, parseErr := strconv.Atoi(line); parseErr == nil && testID > 0 {

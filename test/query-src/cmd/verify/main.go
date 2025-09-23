@@ -19,6 +19,7 @@ var (
 	showNotifications bool
 	verifyMode      bool
 	listMode        bool
+	allMode         bool
 )
 
 func main() {
@@ -33,16 +34,18 @@ Usage examples:
   query-verify 81 --data          # Show test 81 with all data
   query-verify 81 --notify        # Show test 81 with all notifications
   query-verify --verify           # Interactive verification starting from test 1
-  query-verify --verify 81        # Interactive verification starting from test 81`,
+  query-verify --verify 81        # Interactive verification starting from test 81
+  query-verify --all              # Run verification on all tests and show summary table`,
 		Args: cobra.MaximumNArgs(1),
 		Run:  runCommand,
 	}
 
 	rootCmd.Flags().StringVarP(&resultsFile, "results", "r", "results.json", "Path to results.json file")
-	rootCmd.Flags().BoolVar(&showAllData, "data", false, "Show all data records (default: first record only for arrays)")
-	rootCmd.Flags().BoolVar(&showNotifications, "notify", false, "Show all notifications (default: truncated for arrays)")
+	rootCmd.Flags().BoolVarP(&showAllData, "data", "d", false, "Show all data records (default: first record only for arrays)")
+	rootCmd.Flags().BoolVarP(&showNotifications, "notify", "n", false, "Show all notifications (default: truncated for arrays)")
 	rootCmd.Flags().BoolVarP(&verifyMode, "verify", "v", false, "Enable verification mode")
-	rootCmd.Flags().BoolVar(&listMode, "list", false, "List all URLs with indices")
+	rootCmd.Flags().BoolVarP(&listMode, "list", "l", false, "List all URLs with indices")
+	rootCmd.Flags().BoolVarP(&allMode, "all", "a", false, "Run verification on all tests and show summary table")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -91,7 +94,10 @@ func runCommand(cmd *cobra.Command, args []string) {
 	}
 
 	// Execute the appropriate mode
-	if verifyMode {
+	if allMode {
+		// All mode - run verification on all tests and show summary table
+		modes.RunAllMode(absResultsFile)
+	} else if verifyMode {
 		// Verification mode (interactive or single test)
 		modes.RunVerifyMode(absResultsFile, testID)
 	} else if listMode || testID == 0 {

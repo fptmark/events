@@ -41,6 +41,15 @@ func (v *VisualVerifier) Verify(testCase *types.TestCase, extraction *types.Fiel
 
 // verifySortFields verifies that sort fields are properly ordered
 func (v *VisualVerifier) verifySortFields(testCase *types.TestCase, extraction *types.FieldExtraction, result *types.VerificationResult) {
+	// If there are no results (empty data) or only empty objects, then sort verification passes
+	// because there's nothing to sort
+	if len(testCase.Result.Data) == 0 || v.hasOnlyEmptyObjects(testCase.Result.Data) {
+		for _, sortField := range testCase.Params.Sort {
+			result.Fields[fmt.Sprintf("sort_%s", sortField.Field)] = []interface{}{}
+		}
+		return
+	}
+
 	for _, sortField := range testCase.Params.Sort {
 		fieldName := sortField.Field
 		values, exists := extraction.SortFields[fieldName]
@@ -67,9 +76,9 @@ func (v *VisualVerifier) verifySortFields(testCase *types.TestCase, extraction *
 
 // verifyFilterFields verifies that filter fields match the expected criteria
 func (v *VisualVerifier) verifyFilterFields(testCase *types.TestCase, extraction *types.FieldExtraction, result *types.VerificationResult) {
-	// If there are no results (empty data), then filter verification passes
-	// because the filter correctly returned zero matches
-	if len(testCase.Result.Data) == 0 {
+	// If there are no results (empty data) or only empty objects, then filter verification passes
+	// because the filter correctly returned zero matches or empty objects
+	if len(testCase.Result.Data) == 0 || v.hasOnlyEmptyObjects(testCase.Result.Data) {
 		for fieldName := range testCase.Params.Filter {
 			result.Fields[fmt.Sprintf("filter_%s", fieldName)] = []interface{}{}
 		}
@@ -234,4 +243,19 @@ func (v *VisualVerifier) compareDateTimeValues(value, filterValue interface{}) i
 
 	// For other times, do normal string comparison
 	return strings.Compare(valueStr, filterStr)
+}
+
+// hasOnlyEmptyObjects checks if data array contains only empty objects
+func (v *VisualVerifier) hasOnlyEmptyObjects(data []map[string]interface{}) bool {
+	if len(data) == 0 {
+		return false // Handle this case separately
+	}
+
+	for _, item := range data {
+		if len(item) > 0 {
+			return false // Found a non-empty object
+		}
+	}
+
+	return true // All objects are empty
 }

@@ -41,6 +41,7 @@ type TestCase struct {
 	URL         string     `json:"url"`
 	Method      string     `json:"method"`
 	Description string     `json:"description"`
+	Status      int        `json:"status"`      // HTTP status code
 	Params      TestParams `json:"params"`
 	Result      TestResult `json:"result"`
 }
