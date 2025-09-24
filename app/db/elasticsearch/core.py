@@ -4,6 +4,7 @@ Contains ElasticsearchCore, ElasticsearchEntities, and ElasticsearchIndexes clas
 """
 
 import logging
+import sys
 from typing import Any, Dict, List, Optional
 from elasticsearch import AsyncElasticsearch
 
@@ -33,14 +34,17 @@ class ElasticsearchCore(CoreManager):
 
         self._client = AsyncElasticsearch([connection_str])
         self._database_name = database_name
-        
+
         # Test connection
         await self._client.ping()
         self.parent._initialized = True
         logging.info(f"ElasticsearchDatabase: Connected to {database_name}")
-        
-        # Create index template for .raw subfields on all new indices
+
+        # Create index template for simplified keyword approach
         await self._ensure_index_template()
+
+        # Validate existing mappings and set health state
+        await self._validate_mappings_and_set_health()
     
     async def close(self) -> None:
         """Close Elasticsearch connection"""
@@ -69,12 +73,22 @@ class ElasticsearchCore(CoreManager):
         return self._client
     
     async def _ensure_index_template(self) -> None:
-        """Create composable index template for .raw subfields with high priority."""
+        """Create composable index template for simplified keyword approach with high priority."""
+        # Check for conflicting templates first
+        try:
+            conflicting_templates = await self._client.indices.get_index_template(name="app-text-raw-template", ignore=[404])
+            if conflicting_templates.get("index_templates"):
+                raise RuntimeError("Conflicting template 'app-text-raw-template' exists. Use /api/db/init to clean up old templates.")
+        except Exception as e:
+            if "Conflicting template" in str(e):
+                raise
+            # Other errors (like 404) are fine - template doesn't exist
+
         # Get entity names from metadata service to determine index patterns
         entities = MetadataService.list_entities()
         index_patterns = [entity.lower() for entity in entities] if entities else ["*"]
-        
-        template_name = "app-text-raw-template"
+
+        template_name = "app-keyword-template"
         template_body = {
             "index_patterns": index_patterns,
             "priority": 1000,  # Higher priority than default templates
@@ -93,18 +107,12 @@ class ElasticsearchCore(CoreManager):
                 "mappings": {
                     "dynamic_templates": [
                         {
-                            "strings_as_text_with_raw": {
+                            "strings_as_keyword": {
                                 "match_mapping_type": "string",
                                 "unmatch": "id",  # Don't apply to id fields
                                 "mapping": {
-                                    "type": "text",
-                                    "fields": {
-                                        "raw": {
-                                            "type": "keyword",
-                                            "normalizer": "lc",
-                                            "ignore_above": 1024
-                                        }
-                                    }
+                                    "type": "keyword",
+                                    "normalizer": "lc"
                                 }
                             }
                         }
@@ -112,9 +120,73 @@ class ElasticsearchCore(CoreManager):
                 }
             }
         }
-        
+
         await self._client.indices.put_index_template(name=template_name, body=template_body) # type: ignore
         logging.info(f"Created index template: {template_name}")
+
+    async def _validate_mappings_and_set_health(self) -> None:
+        """Validate mappings and template state, set health accordingly without terminating."""
+        try:
+            # Check for template conflicts first
+            template_conflict = False
+            try:
+                old_template = await self._client.indices.get_index_template(name="app-text-raw-template", ignore=[404])
+                if old_template.get("index_templates"):
+                    template_conflict = True
+                    logging.warning("Old template 'app-text-raw-template' exists alongside new template")
+            except:
+                pass
+
+            # Get all current indices for mapping validation
+            try:
+                indices_response = await self._client.cat.indices(format="json")
+                index_names = [idx["index"] for idx in indices_response if not idx["index"].startswith(".")]
+            except Exception as e:
+                logging.warning(f"Could not list indices for validation: {e}")
+                self.parent._health_state = "degraded"
+                return
+
+            violations = []
+
+            for index_name in index_names:
+                try:
+                    # Get mapping for this index
+                    response = await self._client.indices.get_mapping(index=index_name)
+                    properties = response.get(index_name, {}).get("mappings", {}).get("properties", {})
+
+                    # Check each field follows our template rules
+                    for field_name, field_mapping in properties.items():
+                        # Skip ID fields (not covered by our template)
+                        if field_name in ["id", "_id"]:
+                            continue
+
+                        # Check if this is a string field that should follow our template
+                        if field_mapping.get("type") == "text" and "fields" in field_mapping:
+                            violations.append(f"{index_name}.{field_name}: uses old text+.raw mapping")
+                        elif field_mapping.get("type") == "keyword" and field_mapping.get("normalizer") != "lc":
+                            violations.append(f"{index_name}.{field_name}: keyword field missing 'lc' normalizer")
+
+                except Exception as e:
+                    logging.warning(f"Could not validate mapping for {index_name}: {e}")
+                    continue
+
+            # Set health state based on findings
+            if template_conflict:
+                self.parent._health_state = "conflict"
+                logging.warning(f"DATABASE HEALTH: CONFLICT - Template conflicts detected")
+            elif len(violations) > 0:
+                self.parent._health_state = "degraded"
+                logging.warning(f"DATABASE HEALTH: DEGRADED - Found {len(violations)} mapping violations:")
+                for violation in violations:
+                    logging.warning(f"  {violation}")
+                logging.warning("Use /api/db/init to recreate indices with correct mappings")
+            else:
+                self.parent._health_state = "healthy"
+                logging.info("DATABASE HEALTH: HEALTHY - All mappings compatible with template")
+
+        except Exception as e:
+            logging.error(f"Health validation failed: {e}")
+            self.parent._health_state = "degraded"
 
 
 class ElasticsearchEntities(EntityManager):

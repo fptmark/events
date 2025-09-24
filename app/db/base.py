@@ -28,6 +28,7 @@ class DatabaseInterface(ABC):
     def __init__(self, case_sensitive_sorting: bool = False):
         self.case_sensitive_sorting = case_sensitive_sorting
         self._initialized = False
+        self._health_state = "unknown"  # unknown, healthy, degraded, conflict
         
         # Get manager classes from concrete implementation
         manager_classes = self._get_manager_classes()
@@ -48,6 +49,14 @@ class DatabaseInterface(ABC):
         """Ensure database is initialized"""
         if not self._initialized:
             raise RuntimeError(f"{self.__class__.__name__} not initialized")
+
+    def is_healthy(self) -> bool:
+        """Check if database is in healthy state (no conflicts/violations)"""
+        return self._health_state == "healthy"
+
+    def get_health_state(self) -> str:
+        """Get current database health state"""
+        return self._health_state
     
     def _normalize_id(self, doc_id: str) -> str:
         """Normalize document ID for consistent cross-database behavior"""
@@ -59,4 +68,15 @@ class DatabaseInterface(ABC):
     @abstractmethod
     async def supports_native_indexes(self) -> bool:
         """Check if database supports native unique indexes"""
+        pass
+
+    # Admin operations
+    @abstractmethod
+    async def wipe_and_reinit(self) -> bool:
+        """Completely wipe database and reinitialize with proper mappings/schema"""
+        pass
+
+    @abstractmethod
+    async def get_status_report(self) -> dict:
+        """Get database status report including mapping validation"""
         pass

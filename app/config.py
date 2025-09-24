@@ -4,31 +4,31 @@ import json
 from app.utils import load_settings
 
 class Config:
+    """Static configuration class - no instances, only class methods"""
     _config: Dict[str, Any] = {}
-
-    def __new__(cls) -> 'Config':
-        if not hasattr(cls, '_instance'):
-            cls._instance = super(Config, cls).__new__(cls)
-        return cls._instance
 
     @classmethod
     def initialize(cls, config_file: str) -> Dict[str, Any]:
-        """Initialize the config singleton with values from config file"""
+        """Initialize the config with values from config file"""
         cls._config = cls._load_system_config(config_file)
         return cls._config
 
-    @staticmethod
-    def get_db_params(config_data: dict) -> Tuple[str, str, str]:
+    @classmethod
+    def get(cls, key: str, default: Any = None) -> Any:
+        """Get a configuration value by key"""
+        return cls._config.get(key, default)
+
+    @classmethod
+    def get_db_params(cls) -> Tuple[str, str, str]:
         """Get database parameters from config data"""
         return (
-            config_data.get('database', ''),
-            config_data.get('db_uri', ''), 
-            config_data.get('db_name', '')
+            cls._config.get('database', ''),
+            cls._config.get('db_uri', ''),
+            cls._config.get('db_name', '')
         )
 
-
-    @staticmethod
-    def _load_system_config(config_file: str) -> Dict[str, Any]:
+    @classmethod
+    def _load_system_config(cls, config_file: str) -> Dict[str, Any]:
         """
         Load and return the configuration from config.json.
         If the file is not found, return default configuration values.
@@ -37,7 +37,7 @@ class Config:
             config_path = Path(config_file)
             if config_path.exists():
                 return load_settings(config_path)
-        print(f'Warning: Configuration file \"{config_file}\" not found. Using defaults.')
+        print(f'Warning: Configuration file "{config_file}" not found. Using defaults.')
         return {
             'server_url' : 'http://localhost:5500',
             'mongo_uri': 'mongodb://localhost:27017',
@@ -49,10 +49,10 @@ class Config:
             'case_sensitive': False
         }
 
-    @staticmethod
-    def validation(get_multiple: bool) -> bool:
+    @classmethod
+    def validation(cls, get_multiple: bool) -> bool:
         """Get the current validation type from config
-        
+
         Rules:
         - validation="single|multiple" : validate on single get (get) or multiple gets (get_all, list)
         - Any other value: No validation
@@ -61,8 +61,8 @@ class Config:
         - get/get_all validates fk only
         - get with view does selective fk validation based on view spec
         """
-        validation = Config._config.get('validation', '')
-        
+        validation = cls._config.get('validation', '')
+
         if validation == 'multiple':
             # multiple setting applies to ALL operations (both single get and get_all)
             return True

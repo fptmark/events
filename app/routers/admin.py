@@ -122,7 +122,11 @@ async def db_report():
         # Get database report
         report = await db_instance.get_status_report()
 
+        # Extract database type and put it first
+        database_type = report.pop("database", "unknown")
+
         return {
+            "database": database_type,
             "status": "success",
             "report": report
         }
