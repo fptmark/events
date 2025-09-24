@@ -52,11 +52,12 @@ class MongoDocuments(DocumentManager):
         skip_count = (page - 1) * pageSize
         cursor = db[collection].find(query).sort(sort_spec).skip(skip_count).limit(pageSize)
         
-        # Apply case-insensitive collation if configured
-        if not self.parent.case_sensitive_sorting:
-            cursor = cursor.collation({"locale": "en", "strength": 2})
+        # Apply case-insensitive collation 
+        strength = 3 if self.parent.case_sensitive_sorting else 1
+        cursor = cursor.collation({"locale": "simple", "strength": strength})
         
         raw_documents = await cursor.to_list(length=pageSize)
+        # print(raw_documents)
         
         # Normalize documents
         documents = [self._normalize_document(doc) for doc in raw_documents]
