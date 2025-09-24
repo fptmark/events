@@ -45,7 +45,7 @@ func (d *InteractiveDisplay) ShowVerificationWithSummary(summaryOutput string, r
 // GetNavigation prompts user and waits for navigation command
 // Returns: "next", "previous", "quit", or a number as string (e.g. "123")
 func (d *InteractiveDisplay) GetNavigation() string {
-	fmt.Print("\nPress SPACE to continue, '-' for previous, number for specific test, 'q' to quit, 'h' for help: ")
+	fmt.Print("\nPress SPACE to continue, '-' for previous, 'data'/'notify' for details, number for specific test, 'q' to quit, 'h' for help: ")
 
 	// Read line input
 	line, _ := d.reader.ReadString('\n')
@@ -257,6 +257,38 @@ func (d *InteractiveDisplay) wrapText(text string, width int) string {
 	return result
 }
 
+// ShowData displays the test case with all data records (like --data flag)
+func (d *InteractiveDisplay) ShowData(testCase *types.TestCase) {
+	options := DisplayOptions{
+		ShowAllData:       true,
+		ShowNotifications: false,
+	}
+	output, err := FormatTestResponse(testCase, options)
+	if err != nil {
+		fmt.Printf("Error formatting response: %v\n", err)
+		return
+	}
+	d.clearScreen()
+	fmt.Print(output)
+	d.WaitForEnter()
+}
+
+// ShowNotifications displays the test case with all notifications (like --notify flag)
+func (d *InteractiveDisplay) ShowNotifications(testCase *types.TestCase) {
+	options := DisplayOptions{
+		ShowAllData:       false,
+		ShowNotifications: true,
+	}
+	output, err := FormatTestResponse(testCase, options)
+	if err != nil {
+		fmt.Printf("Error formatting response: %v\n", err)
+		return
+	}
+	d.clearScreen()
+	fmt.Print(output)
+	d.WaitForEnter()
+}
+
 // ShowHelp displays help information
 func (d *InteractiveDisplay) ShowHelp() {
 	fmt.Printf("\n┌─ HELP ───────────────────────────────────────────────────────────────────────┐\n")
@@ -264,6 +296,8 @@ func (d *InteractiveDisplay) ShowHelp() {
 	fmt.Printf("│   SPACE - Continue to next test                                             │\n")
 	fmt.Printf("│   -     - Go back to previous test                                          │\n")
 	fmt.Printf("│   123   - Go to specific test number (e.g., 123)                           │\n")
+	fmt.Printf("│   data  - Show all data records for current test                           │\n")
+	fmt.Printf("│   notify- Show all notifications for current test                          │\n")
 	fmt.Printf("│   q     - Quit the verification session                                     │\n")
 	fmt.Printf("│   h     - Show this help message                                            │\n")
 	fmt.Printf("│                                                                              │\n")

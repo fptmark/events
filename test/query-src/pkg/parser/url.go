@@ -18,7 +18,7 @@ func ParseTestURL(urlStr string) (*types.TestParams, error) {
 
 	params := &types.TestParams{
 		Sort:     []types.SortField{},
-		Filter:   make(map[string]types.FilterValue),
+		Filter:   make(map[string][]types.FilterValue),
 		View:     make(map[string][]string),
 		Page:     1,
 		PageSize: 25,
@@ -92,8 +92,8 @@ func parseSortParam(sortStr string) []types.SortField {
 }
 
 // parseFilterParam parses filter parameter like "lastName:Smith,age:gte:21"
-func parseFilterParam(filterStr string) map[string]types.FilterValue {
-	filters := make(map[string]types.FilterValue)
+func parseFilterParam(filterStr string) map[string][]types.FilterValue {
+	filters := make(map[string][]types.FilterValue)
 
 	for _, filterPart := range strings.Split(filterStr, ",") {
 		filterPart = strings.TrimSpace(filterPart)
@@ -135,10 +135,10 @@ func parseFilterParam(filterStr string) map[string]types.FilterValue {
 			typedValue = boolVal
 		}
 
-		filters[field] = types.FilterValue{
+		filters[field] = append(filters[field], types.FilterValue{
 			Operator: operator,
 			Value:    typedValue,
-		}
+		})
 	}
 
 	return filters

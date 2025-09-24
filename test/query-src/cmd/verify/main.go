@@ -20,6 +20,7 @@ var (
 	verifyMode      bool
 	listMode        bool
 	allMode         bool
+	summaryMode     bool
 )
 
 func main() {
@@ -35,7 +36,8 @@ Usage examples:
   query-verify 81 --notify        # Show test 81 with all notifications
   query-verify --verify           # Interactive verification starting from test 1
   query-verify --verify 81        # Interactive verification starting from test 81
-  query-verify --all              # Run verification on all tests and show summary table`,
+  query-verify --all              # Run verification on all tests and show summary table
+  query-verify --summary          # Show only summary statistics`,
 		Args: cobra.MaximumNArgs(1),
 		Run:  runCommand,
 	}
@@ -46,6 +48,7 @@ Usage examples:
 	rootCmd.Flags().BoolVarP(&verifyMode, "verify", "v", false, "Enable verification mode")
 	rootCmd.Flags().BoolVarP(&listMode, "list", "l", false, "List all URLs with indices")
 	rootCmd.Flags().BoolVarP(&allMode, "all", "a", false, "Run verification on all tests and show summary table")
+	rootCmd.Flags().BoolVarP(&summaryMode, "summary", "s", false, "Show only summary statistics")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -94,7 +97,10 @@ func runCommand(cmd *cobra.Command, args []string) {
 	}
 
 	// Execute the appropriate mode
-	if allMode {
+	if summaryMode {
+		// Summary mode - show only summary statistics
+		modes.RunSummaryOnlyMode(absResultsFile)
+	} else if allMode {
 		// All mode - run verification on all tests and show summary table
 		modes.RunAllMode(absResultsFile)
 	} else if verifyMode {

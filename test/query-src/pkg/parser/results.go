@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"events-shared/schema"
 	"query-verify/pkg/types"
 )
 
@@ -153,17 +154,37 @@ func ExtractVerificationFields(testCase *types.TestCase) *types.FieldExtraction 
 		ViewFields:   make(map[string][]interface{}),
 	}
 
+	// Try to load schema for canonical field name lookup
+	var schemaCache *schema.SchemaCache
+	if schemaPath, err := schema.FindSchemaFile(); err == nil {
+		if cache, err := schema.NewSchemaCache(schemaPath); err == nil {
+			schemaCache = cache
+		}
+	}
+
 	// Extract sort fields
 	for _, sortField := range testCase.Params.Sort {
 		fieldName := sortField.Field
-		values := extractFieldValues(testCase.Result.Data, fieldName)
-		extraction.SortFields[fieldName] = values
+		values := extractFieldValuesWithSchema(testCase.Result.Data, fieldName, schemaCache)
+
+		// Store under canonical field name if available
+		canonicalName := fieldName
+		if schemaCache != nil {
+			canonicalName = schemaCache.GetCanonicalFieldName("User", fieldName)
+		}
+		extraction.SortFields[canonicalName] = values
 	}
 
 	// Extract filter fields
 	for fieldName := range testCase.Params.Filter {
-		values := extractFieldValues(testCase.Result.Data, fieldName)
-		extraction.FilterFields[fieldName] = values
+		values := extractFieldValuesWithSchema(testCase.Result.Data, fieldName, schemaCache)
+
+		// Store under canonical field name if available
+		canonicalName := fieldName
+		if schemaCache != nil {
+			canonicalName = schemaCache.GetCanonicalFieldName("User", fieldName)
+		}
+		extraction.FilterFields[canonicalName] = values
 	}
 
 	// Extract view fields
@@ -171,9 +192,8 @@ func ExtractVerificationFields(testCase *types.TestCase) *types.FieldExtraction 
 		for _, fieldName := range fields {
 			// Look for the field in the main data or in nested objects
 			values := extractNestedFieldValues(testCase.Result.Data, entity, fieldName)
-			if len(values) > 0 {
-				extraction.ViewFields[fmt.Sprintf("%s.%s", entity, fieldName)] = values
-			}
+			// Always add the field to extraction, even if empty (for invalid field detection)
+			extraction.ViewFields[fmt.Sprintf("%s.%s", entity, fieldName)] = values
 		}
 	}
 
@@ -187,6 +207,35 @@ func extractFieldValues(data []map[string]interface{}, fieldName string) []inter
 	for _, item := range data {
 		if value, exists := item[fieldName]; exists {
 			values = append(values, value)
+		}
+	}
+
+	return values
+}
+
+// extractFieldValuesWithSchema extracts field values using schema-aware case-insensitive lookup
+func extractFieldValuesWithSchema(data []map[string]interface{}, fieldName string, schemaCache *schema.SchemaCache) []interface{} {
+	var values []interface{}
+
+	// Try to get canonical field name from schema (assuming User entity for now)
+	canonicalFieldName := fieldName
+	if schemaCache != nil {
+		canonicalFieldName = schemaCache.GetCanonicalFieldName("User", fieldName)
+	}
+
+	for _, item := range data {
+		// First try the canonical field name
+		if value, exists := item[canonicalFieldName]; exists {
+			values = append(values, value)
+			continue
+		}
+
+		// Fallback: try case-insensitive lookup by iterating through all keys
+		for key, value := range item {
+			if strings.EqualFold(key, fieldName) {
+				values = append(values, value)
+				break
+			}
 		}
 	}
 

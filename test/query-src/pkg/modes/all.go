@@ -13,19 +13,26 @@ import (
 
 // TestResult represents the result of a single test verification
 type TestResult struct {
-	TestID         int
-	URL            string
-	Description    string
-	HTTPStatus     int
-	WarningsCount  int
-	ErrorsCount    int
-	Passed         bool
-	FailureReason  string
+	TestID              int
+	URL                 string
+	Description         string
+	HTTPStatus          int
+	WarningsCount       int
+	RequestWarningsCount int
+	ErrorsCount         int
+	Passed              bool
+	FailureReason       string
+}
+
+// RunSummaryOnlyMode runs verification on all tests and shows only summary statistics
+func RunSummaryOnlyMode(resultsFile string) {
+	results := collectAllResults(resultsFile)
+	printSummaryStatistics(results)
 }
 
 // RunAllMode runs verification on all tests and displays a summary table
 func RunAllMode(resultsFile string) {
-	// Count total tests
+	// Count total tests for progress message
 	totalTests, err := parser.CountTests(resultsFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error counting tests: %v\n", err)
@@ -33,6 +40,20 @@ func RunAllMode(resultsFile string) {
 	}
 
 	fmt.Printf("Running verification on all %d tests...\n\n", totalTests)
+
+	results := collectAllResults(resultsFile)
+	// Display summary table
+	displaySummaryTable(results)
+}
+
+// collectAllResults runs verification on all tests and returns the results
+func collectAllResults(resultsFile string) []TestResult {
+	// Count total tests
+	totalTests, err := parser.CountTests(resultsFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error counting tests: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Initialize verifier
 	visualVerifier := verifier.NewVisualVerifier()
@@ -54,8 +75,8 @@ func RunAllMode(resultsFile string) {
 		// Perform verification
 		verificationResult := visualVerifier.Verify(testCase, extraction)
 
-		// Count warnings and errors
-		warningsCount, errorsCount := countWarningsAndErrors(testCase)
+		// Count warnings, request warnings, and errors
+		warningsCount, requestWarningsCount, errorsCount := countWarningsAndErrors(testCase)
 
 		// Format URL to show path after /api/
 		displayURL := formatDisplayURL(testCase.URL)
@@ -73,36 +94,37 @@ func RunAllMode(resultsFile string) {
 
 		// Create test result
 		result := TestResult{
-			TestID:        testID,
-			URL:           displayURL,
-			Description:   testCase.Description,
-			HTTPStatus:    testCase.Status,
-			WarningsCount: warningsCount,
-			ErrorsCount:   errorsCount,
-			Passed:        verificationResult.Passed,
-			FailureReason: failureReason,
+			TestID:              testID,
+			URL:                 displayURL,
+			Description:         testCase.Description,
+			HTTPStatus:          testCase.Status,
+			WarningsCount:       warningsCount,
+			RequestWarningsCount: requestWarningsCount,
+			ErrorsCount:         errorsCount,
+			Passed:              verificationResult.Passed,
+			FailureReason:       failureReason,
 		}
 
 		results = append(results, result)
 	}
 
-	// Display summary table
-	displaySummaryTable(results)
+	return results
 }
 
-// countWarningsAndErrors counts warnings and errors in the test case response
-func countWarningsAndErrors(testCase *types.TestCase) (int, int) {
+// countWarningsAndErrors counts warnings, request warnings, and errors in the test case response
+func countWarningsAndErrors(testCase *types.TestCase) (int, int, int) {
 	warningsCount := 0
+	requestWarningsCount := 0
 	errorsCount := 0
 
 	// The notifications field is interface{}, need to type assert to map
 	if notifications, ok := testCase.Result.Notifications.(map[string]interface{}); ok {
-		// Count request warnings
+		// Count request warnings separately
 		if requestWarnings, ok := notifications["request_warnings"].([]interface{}); ok {
-			warningsCount += len(requestWarnings)
+			requestWarningsCount = len(requestWarnings)
 		}
 
-		// Count entity warnings
+		// Count entity warnings (not including request warnings)
 		if warnings, ok := notifications["warnings"].(map[string]interface{}); ok {
 			for _, entityMap := range warnings {
 				if entityWarnings, ok := entityMap.(map[string]interface{}); ok {
@@ -129,7 +151,7 @@ func countWarningsAndErrors(testCase *types.TestCase) (int, int) {
 		}
 	}
 
-	return warningsCount, errorsCount
+	return warningsCount, requestWarningsCount, errorsCount
 }
 
 // formatDisplayURL formats URL to show path after /api/
@@ -184,7 +206,7 @@ func displaySummaryTable(results []TestResult) {
 		strings.Repeat("─", maxFailureWidth))
 
 	fmt.Printf("│ %-3s │ %-*s │ %-*s │ %-6s │ %-7s │ %-4s │ %-*s │\n",
-		"ID", maxURLWidth, "URL", maxDescWidth, "Description", "Status", "W/E", "Pass", maxFailureWidth, "Failure Reason")
+		"ID", maxURLWidth, "URL", maxDescWidth, "Description", "Status", "W/RW/E", "Pass", maxFailureWidth, "Failure Reason")
 
 	fmt.Printf("├─────┼─%s─┼─%s─┼────────┼─────────┼──────┼─%s─┤\n",
 		strings.Repeat("─", maxURLWidth),
@@ -215,8 +237,24 @@ func displaySummaryTable(results []TestResult) {
 			passStatus = "\033[32mPASS\033[0m" // Green for PASS
 		}
 
-		// Format warnings/errors with fixed width (5 characters: "XX YY")
-		warnErrStr := fmt.Sprintf("%2d %2d", result.WarningsCount, result.ErrorsCount)
+		// Format warnings/request warnings/errors with proper spacing
+		// Regular warnings: 3 chars, Request warnings: 1 char, Errors: 1 char
+		wStr := "-"
+		if result.WarningsCount > 0 {
+			wStr = fmt.Sprintf("%d", result.WarningsCount)
+		}
+
+		rwStr := "-"
+		if result.RequestWarningsCount > 0 {
+			rwStr = fmt.Sprintf("%d", result.RequestWarningsCount)
+		}
+
+		eStr := "-"
+		if result.ErrorsCount > 0 {
+			eStr = fmt.Sprintf("%d", result.ErrorsCount)
+		}
+
+		warnErrStr := fmt.Sprintf("%3s %s %s", wStr, rwStr, eStr)
 
 		fmt.Printf("│ %-3d │ %-*s │ %-*s │ %-6d │ %-7s │ %-4s │ %-*s │\n",
 			result.TestID,
@@ -235,9 +273,15 @@ func displaySummaryTable(results []TestResult) {
 		strings.Repeat("─", maxFailureWidth))
 
 	// Print summary statistics
+	printSummaryStatistics(results)
+}
+
+// printSummaryStatistics prints only the summary statistics
+func printSummaryStatistics(results []TestResult) {
 	totalTests := len(results)
 	passedTests := 0
 	totalWarnings := 0
+	totalRequestWarnings := 0
 	totalErrors := 0
 
 	for _, result := range results {
@@ -245,11 +289,12 @@ func displaySummaryTable(results []TestResult) {
 			passedTests++
 		}
 		totalWarnings += result.WarningsCount
+		totalRequestWarnings += result.RequestWarningsCount
 		totalErrors += result.ErrorsCount
 	}
 
-	fmt.Printf("\n")
 	fmt.Printf("Summary: %d/%d tests passed (%.1f%%)\n",
 		passedTests, totalTests, float64(passedTests)/float64(totalTests)*100)
-	fmt.Printf("Total warnings: %d, Total errors: %d\n", totalWarnings, totalErrors)
+	fmt.Printf("Total warnings: %d, Total request warnings: %d, Total errors: %d\n",
+		totalWarnings, totalRequestWarnings, totalErrors)
 }

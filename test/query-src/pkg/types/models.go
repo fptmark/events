@@ -17,7 +17,7 @@ type Notification struct {
 // TestParams represents parsed URL parameters from a test
 type TestParams struct {
 	Sort   []SortField            `json:"sort"`
-	Filter map[string]FilterValue `json:"filter"`
+	Filter map[string][]FilterValue `json:"filter"`
 	View   map[string][]string    `json:"view"`
 	Page   int                    `json:"page"`
 	PageSize int                  `json:"pageSize"`
