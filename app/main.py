@@ -11,6 +11,7 @@ from app.services.metadata import MetadataService
 from app.services.model import ModelService
 from app.services.notify import StopWorkError
 from app.routers.router import get_all_dynamic_routers
+from app.routers.admin import router as admin_router
 
 from app.services.auth.cookies.redis_provider import CookiesAuth as Auth
 
@@ -31,6 +32,9 @@ def setup_routers(yaml_file: str):
     # --- Dynamic Registration of Routers for Entities --- #
     for router in get_all_dynamic_routers(Path(yaml_file)):
         app.include_router(router, prefix="/api")
+
+    # --- Register Admin Router --- #
+    app.include_router(admin_router)
 
 def parse_args():
     """Parse command line arguments"""
@@ -276,10 +280,10 @@ def read_root():
 @app.get('/api/metadata')
 def get_entities_metadata():
     entities = {}
-    
+
     for entity in ENTITIES:
         entities[entity] = MetadataService.get(entity)
-    
+
     return {
         "projectName": project,
         "database": db_type,
