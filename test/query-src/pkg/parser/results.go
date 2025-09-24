@@ -162,29 +162,17 @@ func ExtractVerificationFields(testCase *types.TestCase) *types.FieldExtraction 
 		}
 	}
 
-	// Extract sort fields
+	// Extract sort fields (field names already normalized by URL parser)
 	for _, sortField := range testCase.Params.Sort {
 		fieldName := sortField.Field
 		values := extractFieldValuesWithSchema(testCase.Result.Data, fieldName, schemaCache)
-
-		// Store under canonical field name if available
-		canonicalName := fieldName
-		if schemaCache != nil {
-			canonicalName = schemaCache.GetCanonicalFieldName("User", fieldName)
-		}
-		extraction.SortFields[canonicalName] = values
+		extraction.SortFields[fieldName] = values
 	}
 
-	// Extract filter fields
+	// Extract filter fields (field names already normalized by URL parser)
 	for fieldName := range testCase.Params.Filter {
 		values := extractFieldValuesWithSchema(testCase.Result.Data, fieldName, schemaCache)
-
-		// Store under canonical field name if available
-		canonicalName := fieldName
-		if schemaCache != nil {
-			canonicalName = schemaCache.GetCanonicalFieldName("User", fieldName)
-		}
-		extraction.FilterFields[canonicalName] = values
+		extraction.FilterFields[fieldName] = values
 	}
 
 	// Extract view fields

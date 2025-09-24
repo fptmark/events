@@ -68,17 +68,10 @@ func (v *VisualVerifier) verifySortFields(testCase *types.TestCase, extraction *
 		return
 	}
 
-	// Add all sort fields to display
+	// Add all sort fields to display (field names already normalized)
 	for _, sortField := range testCase.Params.Sort {
 		fieldName := sortField.Field
-
-		// Get canonical field name for lookup
-		canonicalName := fieldName
-		if v.schemaCache != nil {
-			canonicalName = v.schemaCache.GetCanonicalFieldName("User", fieldName)
-		}
-
-		values, exists := extraction.SortFields[canonicalName]
+		values, exists := extraction.SortFields[fieldName]
 
 		if !exists || len(values) == 0 {
 			// Check if this is an invalid field that should have generated a warning
@@ -115,13 +108,7 @@ func (v *VisualVerifier) verifyFilterFields(testCase *types.TestCase, extraction
 	}
 
 	for fieldName, filterValues := range testCase.Params.Filter {
-		// Get canonical field name for lookup
-		canonicalName := fieldName
-		if v.schemaCache != nil {
-			canonicalName = v.schemaCache.GetCanonicalFieldName("User", fieldName)
-		}
-
-		values, exists := extraction.FilterFields[canonicalName]
+		values, exists := extraction.FilterFields[fieldName]
 
 		if !exists || len(values) == 0 {
 			// Check if this is an invalid field that should have generated a warning
