@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"data-generator/pkg/testcases"
+	"events-shared/schema"
 )
 
 // Config holds configuration for data generation
@@ -393,26 +395,178 @@ func generateRandomAccountData(id string) map[string]interface{} {
 	}
 }
 
-// generateRandomUserData creates user data for API calls
+// Random data pools for generating varied test data
+var (
+	firstNames = []string{
+		"James", "Mary", "John", "Patricia", "Robert", "Jennifer", "Michael", "Linda",
+		"William", "Elizabeth", "David", "Barbara", "Richard", "Susan", "Joseph", "Jessica",
+		"Thomas", "Sarah", "Christopher", "Karen", "Charles", "Nancy", "Daniel", "Lisa",
+		"Matthew", "Betty", "Anthony", "Helen", "Mark", "Sandra", "Donald", "Donna",
+		"Steven", "Carol", "Paul", "Ruth", "Andrew", "Sharon", "Joshua", "Michelle",
+		"Kenneth", "Laura", "Kevin", "Sarah", "Brian", "Kimberly", "George", "Deborah",
+	}
+
+	lastNames = []string{
+		"Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis",
+		"Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas",
+		"Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White",
+		"Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson", "Walker", "Young",
+		"Allen", "King", "Wright", "Scott", "Torres", "Nguyen", "Hill", "Flores",
+		"Green", "Adams", "Nelson", "Baker", "Hall", "Rivera", "Campbell", "Mitchell",
+	}
+
+	emailDomains = []string{
+		"gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "company.com",
+		"business.org", "test.net", "example.com", "mail.com", "email.co",
+	}
+)
+
+// generateRandomString creates a random string of specified length
+func generateRandomString(r *rand.Rand, length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	result := make([]byte, length)
+	for i := range result {
+		result[i] = charset[r.Intn(len(charset))]
+	}
+	return string(result)
+}
+
+// generateRandomUserData creates user data for API calls using schema constraints
 func generateRandomUserData(id string) map[string]interface{} {
 	now := time.Now().UTC()
-	genders := []string{"male", "female", "other"}
+
+	// Create a more varied random source using current time and ID
+	source := rand.NewSource(time.Now().UnixNano() + int64(len(id)))
+	r := rand.New(source)
+
+	// Try to load schema for constraints
+	var schemaCache *schema.SchemaCache
+	if schemaPath, err := schema.FindSchemaFile(); err == nil {
+		if cache, err := schema.NewSchemaCache(schemaPath); err == nil {
+			schemaCache = cache
+		}
+	}
+
+	// Generate username with constraints (min: 3, max: 50)
+	username := generateConstrainedString(r, schemaCache, "User", "username", strings.ToLower(firstNames[r.Intn(len(firstNames))]))
+
+	// Generate email with constraints (min: 8, max: 50)
+	firstName := firstNames[r.Intn(len(firstNames))]
+	lastName := lastNames[r.Intn(len(lastNames))]
+	emailDomain := emailDomains[r.Intn(len(emailDomains))]
+	baseEmail := fmt.Sprintf("%s.%s@%s", strings.ToLower(firstName), strings.ToLower(lastName), emailDomain)
+	email := generateConstrainedString(r, schemaCache, "User", "email", baseEmail)
+
+	// Generate firstName with constraints (min: 3, max: 100)
+	firstName = generateConstrainedString(r, schemaCache, "User", "firstName", firstName)
+
+	// Generate lastName with constraints (min: 3, max: 100)
+	lastName = generateConstrainedString(r, schemaCache, "User", "lastName", lastName)
+
+	// Generate password with constraints (min: 8)
+	password := generateConstrainedString(r, schemaCache, "User", "password", "TestPass"+generateRandomString(r, 6)+"!")
+
+	// Generate gender from enum constraints
+	gender := generateConstrainedEnum(r, schemaCache, "User", "gender", []string{"male", "female", "other"})
+
+	// Generate netWorth with numeric constraints (ge: 0, le: 10000000)
+	netWorth := generateConstrainedNumber(r, schemaCache, "User", "netWorth", 0, 10000000)
+
+	// Calculate birth year range (current year - 65 to current year - 25)
+	currentYear := now.Year()
+	minBirthYear := currentYear - 65
+	maxBirthYear := currentYear - 25
+
+	// Generate random birth date
+	birthYear := minBirthYear + r.Intn(maxBirthYear-minBirthYear+1)
+	birthMonth := time.Month(r.Intn(12) + 1)
+	birthDay := r.Intn(28) + 1 // Use 28 to avoid month-specific day issues
+
+	dob := time.Date(birthYear, birthMonth, birthDay, 0, 0, 0, 0, time.UTC)
 
 	return map[string]interface{}{
 		"id":             id,
-		"username":       id,
-		"email":          fmt.Sprintf("%s@generated.com", id),
-		"firstName":      "Generated",
-		"lastName":       "User",
-		"password":       "GeneratedPass123!",
+		"username":       username,
+		"email":          email,
+		"firstName":      firstName,
+		"lastName":       lastName,
+		"password":       password,
 		"accountId":      "primary_valid_001", // Use a known good account ID
-		"gender":         genders[len(id)%len(genders)],
-		"netWorth":       float64((len(id)%100 + 1) * 1000),
-		"isAccountOwner": len(id)%2 == 0,
-		"dob":            time.Date(1980+(len(id)%30), time.Month((len(id)%12)+1), (len(id)%28)+1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339),
+		"gender":         gender,
+		"netWorth":       netWorth,
+		"isAccountOwner": r.Intn(2) == 0, // 50/50 chance
+		"dob":            dob.Format(time.RFC3339),
 		"createdAt":      now.Format(time.RFC3339),
 		"updatedAt":      now.Format(time.RFC3339),
 	}
+}
+
+// generateConstrainedString generates a string respecting schema length constraints
+func generateConstrainedString(r *rand.Rand, schemaCache *schema.SchemaCache, entityType, fieldName, baseValue string) string {
+	if schemaCache == nil {
+		return baseValue
+	}
+
+	constraints, exists := schemaCache.GetFieldConstraints(entityType, fieldName)
+	if !exists {
+		return baseValue
+	}
+
+	// Ensure minimum length
+	if constraints.MinLength != nil && len(baseValue) < *constraints.MinLength {
+		// Pad with random characters
+		needed := *constraints.MinLength - len(baseValue)
+		baseValue += generateRandomString(r, needed)
+	}
+
+	// Ensure maximum length
+	if constraints.MaxLength != nil && len(baseValue) > *constraints.MaxLength {
+		// Truncate but keep it meaningful
+		if *constraints.MaxLength > 3 {
+			baseValue = baseValue[:*constraints.MaxLength-3] + "..."
+		} else {
+			baseValue = baseValue[:*constraints.MaxLength]
+		}
+	}
+
+	return baseValue
+}
+
+// generateConstrainedEnum generates a value from enum constraints
+func generateConstrainedEnum(r *rand.Rand, schemaCache *schema.SchemaCache, entityType, fieldName string, defaultValues []string) string {
+	if schemaCache == nil {
+		return defaultValues[r.Intn(len(defaultValues))]
+	}
+
+	constraints, exists := schemaCache.GetFieldConstraints(entityType, fieldName)
+	if !exists || constraints.Enum == nil || len(constraints.Enum.Values) == 0 {
+		return defaultValues[r.Intn(len(defaultValues))]
+	}
+
+	return constraints.Enum.Values[r.Intn(len(constraints.Enum.Values))]
+}
+
+// generateConstrainedNumber generates a number respecting schema numeric constraints
+func generateConstrainedNumber(r *rand.Rand, schemaCache *schema.SchemaCache, entityType, fieldName string, defaultMin, defaultMax float64) float64 {
+	min := defaultMin
+	max := defaultMax
+
+	if schemaCache != nil {
+		if constraints, exists := schemaCache.GetFieldConstraints(entityType, fieldName); exists {
+			if constraints.Ge != nil {
+				min = *constraints.Ge
+			}
+			if constraints.Le != nil {
+				max = *constraints.Le
+			}
+		}
+	}
+
+	// Generate random value within range
+	if max > min {
+		return min + r.Float64()*(max-min)
+	}
+	return min
 }
 
 
