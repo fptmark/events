@@ -55,7 +55,7 @@ def parse_request_context(handler: Callable) -> Callable:
 async def get_all_handler(entity_cls: Type[EntityModelProtocol], request: Request) -> Dict[str, Any]:
     """Reusable handler for GET ALL endpoint (paginated version)."""
     # Notification.start(entity=entity_cls.__name__, operation="get_all")
-    
+
     # Model handles notifications internally, just call and return
     data, count = await entity_cls.get_all(
         RequestContext.sort_fields,
@@ -80,7 +80,7 @@ async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: s
 
 
 @parse_request_context
-async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_data: BaseModel) -> Dict[str, Any]:
+async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_data: BaseModel, request: Request) -> Dict[str, Any]:
     """Reusable handler for POST endpoint."""
     # Notification.start(entity=entity_cls.__name__, operation="create")
     
@@ -89,7 +89,7 @@ async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_da
     return update_response(response)   
 
 @parse_request_context
-async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_data: BaseModel) -> Dict[str, Any]:
+async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_data: BaseModel, request: Request) -> Dict[str, Any]:
     """Reusable handler for PUT endpoint - True PUT semantics (full replacement)."""
     # Notification.start(entity=entity_cls.__name__, operation="update")
 

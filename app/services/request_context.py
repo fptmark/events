@@ -34,6 +34,8 @@ class RequestContext:
     # View/expansion
     view_spec: Dict[str, Any] = {}
     
+    novalidate: bool = False
+
     @staticmethod
     def parse_request(path: str, query_params: Dict[str, str]) -> None:
         """
@@ -66,6 +68,7 @@ class RequestContext:
         RequestContext.page = 1
         RequestContext.pageSize = 25
         RequestContext.view_spec = {}
+        RequestContext.novalidate = False
 
     
     @staticmethod
@@ -167,6 +170,9 @@ class RequestContext:
                     
                 elif key == 'view':
                     RequestContext.view_spec = RequestContext._parse_view_parameter(value, RequestContext.entity_type)
+                        
+                elif key == 'novalidate':
+                    RequestContext.novalidate = True
                         
                 else:
                     # Unknown parameter - ignore and continue

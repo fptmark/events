@@ -122,8 +122,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def create_entity(entity_data: create_cls) -> Dict[str, Any]:  # type: ignore # noqa: F811
-            return await create_entity_handler(entity_cls, entity_data)
+        async def create_entity(entity_data: create_cls, request: Request) -> Dict[str, Any]:  # type: ignore # noqa: F811
+            return await create_entity_handler(entity_cls, entity_data, request)
         
         @router.put(
             "/{entity_id}",
@@ -138,8 +138,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def update_entity(entity_id: str, entity_data: update_cls) -> Dict[str, Any]:  # type: ignore # noqa: F811
-            return await update_entity_handler(entity_cls, entity_data)
+        async def update_entity(entity_id: str, entity_data: update_cls, request: Request) -> Dict[str, Any]:  # type: ignore # noqa: F811
+            return await update_entity_handler(entity_cls, entity_data, request)
         
         @router.delete(
             "/{entity_id}",
