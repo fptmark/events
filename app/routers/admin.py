@@ -86,7 +86,7 @@ async def db_init_confirmed():
         db_instance = DatabaseFactory.get_instance()
 
         # Call the wipe and reinit method
-        success = await db_instance.wipe_and_reinit()
+        success = await db_instance.core.wipe_and_reinit()
 
         if success:
             return {
@@ -120,14 +120,13 @@ async def db_report():
         db_instance = DatabaseFactory.get_instance()
 
         # Get database report
-        report = await db_instance.get_status_report()
+        report = await db_instance.core.get_status_report()
 
         # Extract database type and put it first
         database_type = report.pop("database", "unknown")
 
         return {
             "database": database_type,
-            "status": "success",
             "report": report
         }
 
