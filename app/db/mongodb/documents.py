@@ -21,9 +21,6 @@ class MongoDocuments(DocumentManager):
     def __init__(self, parent):
         self.parent = parent
 
-    def isInternallyCaseSensitive(self) -> bool:
-        """MongoDB is case-sensitive for field names"""
-        return True
     
     async def _get_all_impl(
         self,

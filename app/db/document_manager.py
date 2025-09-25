@@ -35,12 +35,6 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (documents, total_count)
         """
-        # Convert names to proper case if database is case-sensitive
-        if self.isInternallyCaseSensitive():
-            entity_type = MetadataService.get_proper_name(entity_type)
-            sort = self._get_proper_sort_fields(sort, entity_type)
-            filter = self._get_proper_filter_fields(filter, entity_type)
-
         docs, count = await self._get_all_impl(entity_type, sort, filter, page, pageSize)
         for i in range(0, len(docs) - 1):
             docs[i] = self._remove_sub_objects(entity_type, docs[i])    # ignore sub-objs in the db (should not be there anyway)
@@ -74,10 +68,6 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (document, count) where count is 1 if found, 0 if not found
         """
-        # Convert names to proper case if database is case-sensitive
-        if self.isInternallyCaseSensitive():
-            entity_type = MetadataService.get_proper_name(entity_type)
-
         doc, count = await self._get_impl(id, entity_type)
         return self._remove_sub_objects(entity_type, doc), count # remove sub-objects in the db (should not be there anyway)
 
@@ -107,10 +97,6 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (saved_document, count) where count is 1 if created, 0 if failed
         """
-        # Convert entity name to proper case if database is case-sensitive
-        if self.isInternallyCaseSensitive():
-            entity_type = MetadataService.get_proper_name(entity_type)
-
         # Prepare data for database storage (database-specific)
         prepared_data = self._prepare_datetime_fields(entity_type, data)
 
@@ -143,10 +129,6 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (saved_document, count) where count is 1 if updated, 0 if failed
         """
-        # Convert entity name to proper case if database is case-sensitive
-        if self.isInternallyCaseSensitive():
-            entity_type = MetadataService.get_proper_name(entity_type)
-
         # ID validation - must exist for update
         if 'id' not in data or not data['id']:
             Notification.error(Error.REQUEST, "Missing 'id' field or value for update operation")
@@ -183,10 +165,6 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (deleted_document, count) where count is 1 if deleted, 0 if not found
         """
-        # Convert entity name to proper case if database is case-sensitive
-        if self.isInternallyCaseSensitive():
-            entity_type = MetadataService.get_proper_name(entity_type)
-
         return await self._delete_impl(id, entity_type)
 
     @abstractmethod
@@ -210,14 +188,6 @@ class DocumentManager(ABC):
         """Get the core manager instance from the concrete implementation"""
         pass
 
-    @abstractmethod
-    def isInternallyCaseSensitive(self) -> bool:
-        """
-        Return True if the database is internally case-sensitive for field names.
-        If True, the base class will convert entity and field names to proper case.
-        If False, names will be passed to the driver as-is.
-        """
-        pass
     
     def _normalize_document(self, source: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -242,48 +212,6 @@ class DocumentManager(ABC):
                 
         return dest
 
-    def _get_proper_sort_fields(self, sort_fields: Optional[List[Tuple[str, str]]], entity_type: str) -> Optional[List[Tuple[str, str]]]:
-        """Get sort fields with proper case names if database is case-sensitive"""
-        if not sort_fields or not self.isInternallyCaseSensitive():
-            return sort_fields
-
-        proper_sort = []
-        for field_name, direction in sort_fields:
-            proper_field_name = MetadataService.get_proper_name(entity_type, field_name)
-            proper_sort.append((proper_field_name, direction))
-        return proper_sort
-
-    def _get_proper_filter_fields(self, filters: Optional[Dict[str, Any]], entity_type: str) -> Optional[Dict[str, Any]]:
-        """Get filter dict with proper case field names if database is case-sensitive"""
-        if not filters or not self.isInternallyCaseSensitive():
-            return filters
-
-        proper_filters = {}
-        for field_name, value in filters.items():
-            proper_field_name = MetadataService.get_proper_name(entity_type, field_name)
-            # Value is preserved as-is (operators like $gte, $lt, etc. are MongoDB-specific, not field names)
-            proper_filters[proper_field_name] = value
-        return proper_filters
-
-    def _get_proper_view_fields(self, view_spec: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
-        """Get view spec with proper case field names if database is case-sensitive"""
-        if not view_spec or not self.isInternallyCaseSensitive():
-            return view_spec
-
-        proper_view_spec = {}
-        for fk_entity_name, field_list in view_spec.items():
-            # Convert the foreign entity name to proper case
-            proper_fk_entity_name = MetadataService.get_proper_name(fk_entity_name)
-
-            # Convert each field name in the field list to proper case
-            proper_field_list = []
-            for field_name in field_list:
-                proper_field_name = MetadataService.get_proper_name(fk_entity_name, field_name)
-                proper_field_list.append(proper_field_name)
-
-            proper_view_spec[proper_fk_entity_name] = proper_field_list
-
-        return proper_view_spec
 
 
     # Abstract methods for database-specific logic

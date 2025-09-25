@@ -180,24 +180,3 @@ async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, vi
                 # Set FK field data (inside the loop for each FK)
                 if fk_data:
                     data[fk_name] = fk_data  
-
-
-    def _get_proper_view_fields(self, view_spec: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
-        """Get view spec with proper case field names if database is case-sensitive"""
-        if not view_spec or not self.isInternallyCaseSensitive():
-            return view_spec
-
-        proper_view_spec = {}
-        for fk_entity_name, field_list in view_spec.items():
-            # Convert the foreign entity name to proper case
-            proper_fk_entity_name = MetadataService.get_proper_name(fk_entity_name)
-
-            # Convert each field name in the field list to proper case
-            proper_field_list = []
-            for field_name in field_list:
-                proper_field_name = MetadataService.get_proper_name(fk_entity_name, field_name)
-                proper_field_list.append(proper_field_name)
-
-            proper_view_spec[proper_fk_entity_name] = proper_field_list
-
-        return proper_view_spec

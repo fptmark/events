@@ -70,13 +70,3 @@ class DatabaseInterface(ABC):
         """Check if database supports native unique indexes"""
         pass
 
-    # Admin operations
-    @abstractmethod
-    async def wipe_and_reinit(self) -> bool:
-        """Completely wipe database and reinitialize with proper mappings/schema"""
-        pass
-
-    @abstractmethod
-    async def get_status_report(self) -> dict:
-        """Get database status report including mapping validation"""
-        pass

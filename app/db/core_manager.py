@@ -38,9 +38,19 @@ class CoreManager(ABC):
 
     def _get_default_sort_field(self, entity_type: str) -> str:
         from app.services.metadata import MetadataService
-        
+
         fields = MetadataService.fields(entity_type)
         for field_name, field_info in fields.items():
             if field_info.get('autoGenerate', False):
                 return field_name
         return self.id_field
+
+    @abstractmethod
+    async def wipe_and_reinit(self) -> bool:
+        """Wipe all data and reinitialize database with correct structure"""
+        pass
+
+    @abstractmethod
+    async def get_status_report(self) -> dict:
+        """Get comprehensive database status report"""
+        pass

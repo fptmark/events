@@ -2,36 +2,77 @@
 
 ## Overview
 
-This document describes the simplified Elasticsearch template and query approach for column-based filtering with wildcard support and case-insensitive matching.
+This document describes the Elasticsearch template and query approach with shadow ID field management for consistent pagination and case-insensitive filtering.
 
 ## Template Structure
 
 ```json
 {
-  "index_patterns": ["*"],
-  "settings": {
-    "analysis": {
-      "normalizer": {
-        "lc": {
-          "type": "custom",
-          "char_filter": [],
-          "filter": ["lowercase"]
-        }
-      }
-    }
-  },
-  "mappings": {
-    "dynamic_templates": [
-      {
-        "strings": {
-          "match_mapping_type": "string",
-          "mapping": {
-            "type": "keyword",
-            "normalizer": "lc"
+  "index_patterns": ["account", "user", "profile", "tagaffinity", "event", "userevent", "url", "crawl"],
+  "priority": 1000,
+  "template": {
+    "settings": {
+      "index": {
+        "analysis": {
+          "normalizer": {
+            "lc": {
+              "type": "custom",
+              "char_filter": [],
+              "filter": ["lowercase"]
+            }
           }
         }
       }
-    ]
+    },
+    "mappings": {
+      "properties": {
+        "id": {
+          "type": "keyword"
+        }
+      },
+      "dynamic_templates": [
+        {
+          "strings_as_keyword": {
+            "match_mapping_type": "string",
+            "unmatch": "id",
+            "mapping": {
+              "type": "keyword",
+              "normalizer": "lc"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+## Shadow ID Field Strategy
+
+### Problem
+Elasticsearch `_id` field requires enabling `fielddata` for sorting, which has significant performance and memory implications in production environments.
+
+### Solution
+We implement a **shadow ID field** approach:
+- Documents have both `_id` (ES metadata) and `id` (document field)
+- Both contain the same value for consistency
+- The `id` field is used for sorting and pagination
+- The `_id` field is used for document retrieval operations
+
+### Implementation
+1. **Template**: Explicit `id` field mapping as `keyword` type (sortable)
+2. **Create**: Always populate both `_id` and `id` with same value
+3. **Update**: Maintain `id` field consistency
+4. **Pagination**: Sort by `id` field instead of `_id`
+
+```javascript
+// Document structure
+{
+  "_id": "gen_user_1758761526_0",      // ES metadata (not sortable without fielddata)
+  "_source": {
+    "username": "john",
+    "email": "john@example.com",
+    "id": "gen_user_1758761526_0"      // Shadow field (sortable keyword)
   }
 }
 ```
@@ -99,11 +140,13 @@ This document describes the simplified Elasticsearch template and query approach
 
 ## Performance Characteristics
 
-### Storage (10 columns, 8 strings)
-- **100K rows**: ~50% smaller than dual-field (text + keyword) approach
-- **1M rows**: Significant storage savings, faster indexing
+### Storage and Memory
+- **Shadow ID field**: Minimal overhead (~8-20 bytes per document)
+- **No fielddata required**: Avoids heap memory usage for `_id` sorting
+- **Keyword fields**: Optimized for exact matching and sorting
 
 ### Query Performance
+- **ID-based pagination**: Fast and consistent using shadow `id` field
 - **Exact matching**: Very fast (hash lookup)
 - **Prefix wildcards** (`jo*`): Fast (optimized in Lucene)
 - **Suffix wildcards** (`*son`): Slower but acceptable (<500ms at 1M rows)
@@ -111,9 +154,10 @@ This document describes the simplified Elasticsearch template and query approach
 - **Leading wildcards**: Inherently slower, avoid if possible
 
 ### Recommendations
+- Shadow ID approach provides consistent pagination without fielddata overhead
 - Use prefix wildcards when possible for best performance
 - Limit wildcard usage on very large text fields
-- Consider pagination for large result sets
+- ID field enables stable cursor-based pagination
 
 ## API Integration
 
