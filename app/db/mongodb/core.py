@@ -1,12 +1,13 @@
 """
 MongoDB core, entity, and index operations implementation.
-Contains MongoCore, MongoEntities, and MongoIndexes classes.
+Contains MongoCore, MongoEntities, MongoIndexes and MongoDatabase classes.
 """
 
 import logging
 from typing import Any, Dict, List, Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
+from ..base import DatabaseInterface
 from ..core_manager import CoreManager
 from ..entity_manager import EntityManager
 from ..index_manager import IndexManager
@@ -69,6 +70,81 @@ class MongoCore(CoreManager):
         if self._db is None:
             raise RuntimeError("MongoDB not initialized")
         return self._db
+
+    async def wipe_and_reinit(self) -> bool:
+        """Drop all collections and reinitialize (MongoDB doesn't have mapping issues)"""
+        try:
+            self.parent._ensure_initialized()
+            client = self._client
+            db = self._db
+
+            # Get all collection names
+            collection_names = await db.list_collection_names()
+
+            # Drop all collections
+            for collection_name in collection_names:
+                await db.drop_collection(collection_name)
+
+            return True
+
+        except Exception as e:
+            logging.error(f"MongoDB wipe and reinit failed: {e}")
+            return False
+
+    async def get_status_report(self) -> dict:
+        """Get MongoDB database status (no mapping validation needed)"""
+        try:
+            self.parent._ensure_initialized()
+            client = self._client
+            db = self._db
+
+            # Get server info
+            server_info = await client.server_info()
+
+            # Get database stats
+            db_stats = await db.command("dbStats")
+
+            # Get collection info
+            collection_names = await db.list_collection_names()
+            collections_details = {}
+
+            for collection_name in collection_names:
+                try:
+                    coll_stats = await db.command("collStats", collection_name)
+                    collections_details[collection_name] = {
+                        "doc_count": coll_stats.get("count", 0),
+                        "storage_size": coll_stats.get("storageSize", 0),
+                        "index_count": coll_stats.get("nindexes", 0)
+                    }
+                except Exception as e:
+                    collections_details[collection_name] = {
+                        "error": f"Could not get stats: {str(e)}"
+                    }
+
+            return {
+                "database": "mongodb",
+                "server": {
+                    "version": server_info.get("version", "unknown"),
+                    "host": getattr(client, "address", "unknown")
+                },
+                "db_info": {
+                    "name": db.name,
+                    "data_size": db_stats.get("dataSize", 0),
+                    "storage_size": db_stats.get("storageSize", 0)
+                },
+                "collections": {
+                    "total": len(collection_names),
+                    "details": collections_details
+                },
+                "status": "healthy"  # MongoDB doesn't have mapping validation issues
+            }
+
+        except Exception as e:
+            return {
+                "database": "mongodb",
+                "status": "error",
+                "error": str(e)
+            }
 
 
 class MongoEntities(EntityManager):
@@ -184,3 +260,22 @@ class MongoIndexes(IndexManager):
             await db[entity_type].drop_index(index_spec)
         except Exception as e:
             Notification.error(Error.DATABASE, f"MongoDB delete index error: {str(e)}")
+
+
+class MongoDatabase(DatabaseInterface):
+    """MongoDB implementation of DatabaseInterface"""
+
+    def _get_manager_classes(self) -> dict:
+        """Return MongoDB manager classes"""
+        from .documents import MongoDocuments
+
+        return {
+            'core': MongoCore,
+            'documents': MongoDocuments,
+            'entities': MongoEntities,
+            'indexes': MongoIndexes
+        }
+
+    async def supports_native_indexes(self) -> bool:
+        """MongoDB supports native unique indexes"""
+        return True
