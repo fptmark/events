@@ -363,7 +363,7 @@ func createUsersViaAPI(config Config, count int) error {
 			return fmt.Errorf("failed to marshal user data: %w", err)
 		}
 
-		resp, err := http.Post(serverURL+"/api/User", "application/json", bytes.NewBuffer(jsonData))
+		resp, err := http.Post(serverURL+"/api/User?novalidate", "application/json", bytes.NewBuffer(jsonData))
 		if err != nil {
 			return fmt.Errorf("failed to create user %d: %w", i+1, err)
 		}
