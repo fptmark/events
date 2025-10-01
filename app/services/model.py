@@ -59,23 +59,27 @@ class ModelService:
         logger.info(f"ModelService initialized with {len(cls._models)} model classes")
     
     @classmethod
-    def get_model_class(cls, entity_name: str) -> Type[Any] | None:
+    def get_model_class(cls, entity_name: str) -> Type[Any]:
         """Get pre-loaded model class by entity name.
-        
+
         Args:
             entity_name: Entity name (e.g., "User", "Account")
-            
+
         Returns:
-            Model class or None if not found
-            
+            Model class
+
         Raises:
-            RuntimeError: Only if ModelService not initialized
+            RuntimeError: If ModelService not initialized
+            ModelNotFound: If entity type is not found
         """
+        from app.db.exceptions import ModelNotFound
+
         # Case-insensitive lookup
         for name, model_class in cls._models.items():
             if name.lower() == entity_name.lower():
                 return model_class
-        return None
+
+        raise ModelNotFound(entity_name)
     
     @classmethod
     def get_create_class(cls, entity_name: str) -> Type[Any] | None:
