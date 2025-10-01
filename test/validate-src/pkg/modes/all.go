@@ -56,7 +56,7 @@ func collectAllResults() []TestResult {
 	}
 
 	// Initialize verifier
-	visualVerifier := verifier.NewVisualVerifier()
+	paramVerifier := verifier.NewVerifier()
 
 	// Collect results for all tests
 	var results []TestResult
@@ -70,10 +70,10 @@ func collectAllResults() []TestResult {
 		}
 
 		// Extract verification fields
-		extraction := parser.ExtractVerificationFields(testCase)
+		extraction := verifier.ExtractVerificationFields(testCase)
 
 		// Perform verification
-		verificationResult := visualVerifier.Verify(testCase, extraction)
+		verificationResult := paramVerifier.Verify(testCase, extraction)
 
 		// Count warnings, request warnings, and errors
 		warningsCount, requestWarningsCount, errorsCount := countWarningsAndErrors(testCase)
@@ -97,7 +97,7 @@ func collectAllResults() []TestResult {
 			TestID:              testID,
 			URL:                 displayURL,
 			Description:         testCase.Description,
-			HTTPStatus:          testCase.Status,
+			HTTPStatus:          testCase.ActualStatus,
 			WarningsCount:       warningsCount,
 			RequestWarningsCount: requestWarningsCount,
 			ErrorsCount:         errorsCount,

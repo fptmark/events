@@ -35,15 +35,20 @@ type FilterValue struct {
 	Value    interface{} `json:"value"`
 }
 
-// TestCase represents a single test case
+// TestCase represents a single test case with both static definition and runtime execution data
 type TestCase struct {
-	ID          int        `json:"id"`
-	URL         string     `json:"url"`
-	Method      string     `json:"method"`
-	Description string     `json:"description"`
-	Status      int        `json:"status"`      // HTTP status code
-	Params      TestParams `json:"params"`
-	Result      TestResult `json:"result"`
+	ID             int                    `json:"id"`
+	URL            string                 `json:"url"`             // Relative URL path (e.g., "/api/User")
+	Method         string                 `json:"method"`          // HTTP method (GET, POST, PUT, DELETE)
+	Description    string                 `json:"description"`
+	TestClass      string                 `json:"test_class"`      // Test category (basic, view, sort, etc.)
+	ExpectedStatus int                    `json:"expected_status"` // Expected HTTP status code
+	RequestBody    map[string]interface{} `json:"request_body,omitempty"` // Request payload for POST/PUT/DELETE
+
+	// Runtime execution data (populated during test execution)
+	ActualStatus   int        `json:"actual_status,omitempty"`   // Actual HTTP response status
+	Params         TestParams `json:"params,omitempty"`          // Parsed URL parameters
+	Result         TestResult `json:"result,omitempty"`          // API response data
 }
 
 // VerificationResult represents the outcome of verification

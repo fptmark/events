@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"validate/pkg/datagen"
 	statictestsuite "validate/pkg/static-test-suite"
 	"validate/pkg/types"
 )
@@ -31,9 +32,12 @@ func NewHTTPExecutor() *HTTPExecutor {
 }
 
 // ExecuteTest executes a single test case and returns a TestCase compatible with existing code
-func (e *HTTPExecutor) ExecuteTest(testID int, staticTest statictestsuite.TestCase) (*types.TestCase, error) {
+func (e *HTTPExecutor) ExecuteTest(testCase *types.TestCase) (*types.TestCase, error) {
+	// Build full URL using GlobalConfig.ServerURL
+	fullURL := datagen.GlobalConfig.ServerURL + testCase.URL
+
 	// Execute the HTTP request
-	req, err := http.NewRequest(staticTest.Verb, staticTest.URL, nil)
+	req, err := http.NewRequest(testCase.Method, fullURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -57,17 +61,11 @@ func (e *HTTPExecutor) ExecuteTest(testID int, staticTest statictestsuite.TestCa
 		responseData = string(body)
 	}
 
-	// Create TestCase structure compatible with existing code
-	testCase := &types.TestCase{
-		ID:          testID,
-		URL:         staticTest.URL,
-		Method:      staticTest.Verb,
-		Description: staticTest.Description,
-		Status:      resp.StatusCode,
-	}
+	// Update the test case with execution results
+	testCase.ActualStatus = resp.StatusCode
 
-	// Parse URL parameters
-	params, err := parseTestURL(staticTest.URL)
+	// Parse URL parameters from the full URL
+	params, err := parseTestURL(fullURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse URL parameters: %w", err)
 	}
@@ -130,7 +128,7 @@ func (e *HTTPExecutor) formatResponse(responseData interface{}, statusCode int) 
 }
 
 // GetAllTests returns all static test cases
-func (e *HTTPExecutor) GetAllTests() []statictestsuite.TestCase {
+func (e *HTTPExecutor) GetAllTests() []types.TestCase {
 	return statictestsuite.GetAllTestCases()
 }
 
@@ -141,18 +139,13 @@ func (e *HTTPExecutor) CountTests() int {
 
 // LoadTestCase loads and executes a specific test case by ID
 func (e *HTTPExecutor) LoadTestCase(testID int) (*types.TestCase, error) {
-	// Ensure database is reset before first test execution
-	if err := e.ensureDatabaseReset(); err != nil {
-		return nil, fmt.Errorf("failed to reset database: %w", err)
-	}
-
 	allTests := statictestsuite.GetAllTestCases()
 	if testID < 1 || testID > len(allTests) {
 		return nil, fmt.Errorf("test ID %d out of range (1-%d)", testID, len(allTests))
 	}
 
-	staticTest := allTests[testID-1]
-	return e.ExecuteTest(testID, staticTest)
+	testCase := allTests[testID-1]
+	return e.ExecuteTest(&testCase)
 }
 
 // parseTestURL extracts test parameters from a URL string (simplified version)
@@ -365,7 +358,7 @@ func (e *HTTPExecutor) ensureDatabaseReset() error {
 
 // callDatabaseReport calls api/db/report and displays only the counts
 func (e *HTTPExecutor) callDatabaseReport(stage string) error {
-	req, err := http.NewRequest("GET", "http://localhost:5500/api/db/report", nil)
+	req, err := http.NewRequest("GET", datagen.GlobalConfig.ServerURL+"/api/db/report", nil)
 	if err != nil {
 		return err
 	}
@@ -406,7 +399,7 @@ func (e *HTTPExecutor) callDatabaseReport(stage string) error {
 
 // callDatabaseInit calls api/db/init to clear all data
 func (e *HTTPExecutor) callDatabaseInit() error {
-	req, err := http.NewRequest("POST", "http://localhost:5500/api/db/init", nil)
+	req, err := http.NewRequest("POST", datagen.GlobalConfig.ServerURL+"/api/db/init", nil)
 	if err != nil {
 		return err
 	}

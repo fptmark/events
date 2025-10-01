@@ -207,3 +207,176 @@ func GetTestURL(resultsFile string, testID int) (string, error) {
 
 	return url, nil
 }
+
+// FormatTableRow formats a single test result as a table row
+func FormatTableRow(testCase *types.TestCase) TableRow {
+	// Extract URL path (handle both absolute and relative URLs)
+	urlPath := testCase.URL
+	if strings.HasPrefix(urlPath, "http://localhost:5500") {
+		urlPath = strings.TrimPrefix(urlPath, "http://localhost:5500/api/")
+	} else if strings.HasPrefix(urlPath, "/api/") {
+		urlPath = strings.TrimPrefix(urlPath, "/api/")
+	}
+
+	// Count warnings, request warnings, and errors from notifications
+	var warnings, requestWarnings, errors int
+	if testCase.Result.Notifications != nil {
+		if notifMap, ok := testCase.Result.Notifications.(map[string]interface{}); ok {
+			if warningsMap, ok := notifMap["warnings"].(map[string]interface{}); ok {
+				for _, entityWarnings := range warningsMap {
+					if entityMap, ok := entityWarnings.(map[string]interface{}); ok {
+						for _, entityErrors := range entityMap {
+							if errorsList, ok := entityErrors.([]interface{}); ok {
+								for _, errorItem := range errorsList {
+									if errorMap, ok := errorItem.(map[string]interface{}); ok {
+										if errorType, ok := errorMap["type"].(string); ok {
+											switch errorType {
+											case "warning":
+												warnings++
+											case "request_warning":
+												requestWarnings++
+											case "error":
+												errors++
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Determine pass/fail status
+	status := "\033[32mPASS\033[0m" // Green
+	failureReason := ""
+	if errors > 0 {
+		status = "\033[31mFAIL\033[0m" // Red
+		failureReason = "Validation errors detected"
+	}
+
+	// Format W/RW/E column
+	warningCol := fmt.Sprintf("%3d %d %d", warnings, requestWarnings, errors)
+	if len(testCase.Result.Data) == 0 {
+		warningCol = fmt.Sprintf("  - %d %d", requestWarnings, errors)
+	}
+
+	return TableRow{
+		ID:            testCase.ID,
+		URL:           urlPath,
+		Description:   testCase.Description,
+		Category:      testCase.TestClass,
+		Status:        testCase.ActualStatus,
+		WarningCol:    warningCol,
+		Pass:          status,
+		FailureReason: failureReason,
+	}
+}
+
+// TableRow represents a row in the test results table
+type TableRow struct {
+	ID            int
+	URL           string
+	Description   string
+	Category      string
+	Status        int
+	WarningCol    string
+	Pass          string
+	FailureReason string
+}
+
+// FormatTable formats multiple test results as a table
+func FormatTable(testCases []*types.TestCase) string {
+	if len(testCases) == 0 {
+		return "No test results to display.\n"
+	}
+
+	var rows []TableRow
+	passed := 0
+	totalWarnings := 0
+	totalRequestWarnings := 0
+	totalErrors := 0
+
+	for _, testCase := range testCases {
+		row := FormatTableRow(testCase)
+		rows = append(rows, row)
+
+		if strings.Contains(row.Pass, "PASS") {
+			passed++
+		}
+
+		// Count totals from notifications
+		if testCase.Result.Notifications != nil {
+			if notifMap, ok := testCase.Result.Notifications.(map[string]interface{}); ok {
+				if warningsMap, ok := notifMap["warnings"].(map[string]interface{}); ok {
+					for _, entityWarnings := range warningsMap {
+						if entityMap, ok := entityWarnings.(map[string]interface{}); ok {
+							for _, entityErrors := range entityMap {
+								if errorsList, ok := entityErrors.([]interface{}); ok {
+									for _, errorItem := range errorsList {
+										if errorMap, ok := errorItem.(map[string]interface{}); ok {
+											if errorType, ok := errorMap["type"].(string); ok {
+												switch errorType {
+												case "warning":
+													totalWarnings++
+												case "request_warning":
+													totalRequestWarnings++
+												case "error":
+													totalErrors++
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Build the table
+	var result strings.Builder
+
+	// Header
+	result.WriteString("┌─────┬──────────────────────────────────────────────────────────────┬─────────────────────────────────────┬──────────┬────────┬─────────┬──────┬──────────────────────────────────────────┐\n")
+	result.WriteString("│ ID  │ URL                                                          │ Description                         │ Category │ Status │ W/RW/E  │ Pass │ Failure Reason                           │\n")
+	result.WriteString("├─────┼──────────────────────────────────────────────────────────────┼─────────────────────────────────────┼──────────┼────────┼─────────┼──────┼──────────────────────────────────────────┤\n")
+
+	// Rows
+	for _, row := range rows {
+		result.WriteString(fmt.Sprintf("│ %-3d │ %-60s │ %-35s │ %-8s │ %-6d │ %-7s │ %-4s │ %-40s │\n",
+			row.ID,
+			truncateString(row.URL, 60),
+			truncateString(row.Description, 35),
+			truncateString(row.Category, 8),
+			row.Status,
+			row.WarningCol,
+			row.Pass,
+			truncateString(row.FailureReason, 40)))
+	}
+
+	// Footer
+	result.WriteString("└─────┴──────────────────────────────────────────────────────────────┴─────────────────────────────────────┴──────────┴────────┴─────────┴──────┴──────────────────────────────────────────┘\n")
+
+	// Summary
+	percentage := float64(passed) / float64(len(testCases)) * 100
+	result.WriteString(fmt.Sprintf("Summary: %d/%d tests passed (%.1f%%)\n", passed, len(testCases), percentage))
+	result.WriteString(fmt.Sprintf("Total warnings: %d, Total request warnings: %d, Total errors: %d\n", totalWarnings, totalRequestWarnings, totalErrors))
+
+	return result.String()
+}
+
+// truncateString truncates a string to the specified length with ellipsis
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
+}
