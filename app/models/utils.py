@@ -2,6 +2,7 @@ from typing import List, Dict, Any, Optional
 from pydantic import ValidationError as PydanticValidationError
 import warnings as python_warnings
 from app.config import Config
+from app.db.exceptions import DuplicateConstraintError
 from app.services.notify import Notification, Warning, Error
 from app.services.metadata import MetadataService
 from app.services.model import ModelService
@@ -92,7 +93,7 @@ async def validate_uniques(entity_type: str, data: Dict[str, Any], unique_constr
     # For MongoDB, this will always be True (relies on native database constraints)
     # For Elasticsearch, this returns False if synthetic validation finds duplicates
     if not constraint_success:
-        Notification.error(Error.SYSTEM, f"Unique constraint violation for {entity_type}")
+        raise DuplicateConstraintError(f"Unique constraint violation for {entity_type}")
         # Note: MongoDB will throw DuplicateKeyError, Elasticsearch handles in _validate_unique_constraints
 
 
@@ -116,14 +117,16 @@ def validate_model(cls, data: Dict[str, Any], entity_name: str):
         for error in e.errors():
             field_name = str(error['loc'][-1]) if error.get('loc') else 'unknown'
             Notification.warning(Warning.DATA_VALIDATION, "Validation error", entity_type=entity_name, entity_id=entity_id, field=field_name, value=error.get('msg', 'Validation error'))
+            success = False
         # Return unvalidated instance so API can continue
         return cls.model_construct(**data)
 
 
-async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, view_spec: Dict[str, Any] = {}) -> None:
+async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, view_spec: Dict[str, Any] = {}) -> Any:
     """
     Unified FK processing: validation + view population in single pass.
     Only makes DB calls when data is actually needed.
+    return bad FK name if validate mode or True
     """
     
     fk_data = None
@@ -178,5 +181,9 @@ async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, vi
                         Notification.warning(Warning.MISSING, "Missing fk ID", entity_type=entity_type, entity_id=data['id'], field=field_name)
                 
                 # Set FK field data (inside the loop for each FK)
-                if fk_data:
-                    data[fk_name] = fk_data  
+                data[fk_name] = fk_data  
+
+                # If validating and a specified FK does not exist, return False
+                if validate and not fk_data.get("exists"):
+                    return fk_name  # FK validation failed
+    return True  # All FKs valid or no validation needed

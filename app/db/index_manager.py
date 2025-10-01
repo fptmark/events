@@ -11,7 +11,8 @@ from app.services.metadata import MetadataService
 class IndexManager(ABC):
     """Template Method Pattern - concrete orchestration, abstract worker methods"""
     
-    def __init__(self):
+    def __init__(self, database):
+        self.database = database
         self.logger = logging.getLogger(__name__)
 
     async def initialize(self) -> bool:

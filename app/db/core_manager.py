@@ -9,6 +9,10 @@ from typing import Dict, Any, Optional, Union
 
 class CoreManager(ABC):
     """Core database operations - connection and ID management"""
+
+    def __init__(self, database):
+        """Initialize with database interface reference"""
+        self.database = database
     
     @abstractmethod
     async def init(self, connection_str: str, database_name: str) -> None:
@@ -24,13 +28,13 @@ class CoreManager(ABC):
     def get_id(self, document: Dict[str, Any]) -> Optional[str]:
         """Extract and normalize document ID"""
         return document.get(self.id_field)
-    
+
     @property
     @abstractmethod
     def id_field(self) -> str:
         """Get the ID field name for this database"""
         pass
-    
+
     @abstractmethod
     def get_connection(self) -> Any:
         """Get the database connection/client instance"""

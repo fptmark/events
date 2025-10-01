@@ -6,6 +6,7 @@ from app.db import DatabaseFactory
 from app.config import Config
 from app.services.metadata import MetadataService
 import app.models.utils as utils
+from app.services.request_context import RequestContext
 
 
 class Crawl(BaseModel):
@@ -49,7 +50,6 @@ class Crawl(BaseModel):
     def get_metadata(cls) -> Dict[str, Any]:
         return MetadataService.get("Crawl")
 
-
     @classmethod
     async def get_all(cls,
                       sort: List[Tuple[str, str]], 
@@ -58,76 +58,21 @@ class Crawl(BaseModel):
                       pageSize: int, 
                       view_spec: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int]:
         "Get paginated, sorted, and filtered list of entity." 
-        validate = Config.validation(True)
         
-        # Get filtered data from database - RequestContext provides the parameters
-        data_records, total_count = await DatabaseFactory.get_all("Crawl", sort, filter, page, pageSize)
+        return await DatabaseFactory.get_all("Crawl", sort, filter, page, pageSize, view_spec)
         
-        #if data_records:
-        for data in data_records:
-            # Always run Pydantic validation (required fields, types, ranges)
-            utils.validate_model(cls, data, "Crawl")
-            
-            if validate:
-                unique_constraints = cls._metadata.get('uniques', [])
-                await utils.validate_uniques("Crawl", data, unique_constraints, None)
-            
-            # Populate view data if requested and validate fks
-            await utils.process_fks("Crawl", data, validate, view_spec)
-        
-        return data_records, total_count
-
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        validate = Config.validation(False)
-        
-        data, record_count = await DatabaseFactory.get("Crawl", id)
-        if data:
-            
-            # Always run Pydantic validation (required fields, types, ranges)
-            utils.validate_model(cls, data, "Crawl")
-            
-            if validate:
-                unique_constraints = cls._metadata.get('uniques', [])
-                await utils.validate_uniques("Crawl", data, unique_constraints, None)
-            
-            # Populate view data if requested and validate fks
-            await utils.process_fks("Crawl", data, validate, view_spec)
-        
-        return data, record_count
-
+        return await DatabaseFactory.get("Crawl", id)
 
     @classmethod
     async def create(cls, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
         data['updatedAt'] = datetime.now(timezone.utc)
-        
-        if validate:
-            validated_instance = utils.validate_model(cls, data, "Crawl")
-            data = validated_instance.model_dump(mode='python')
-            
-            unique_constraints = cls._metadata.get('uniques', [])
-            await utils.validate_uniques("Crawl", data, unique_constraints, None)
-
-            # Validate fks
-            await utils.process_fks("Crawl", data, True)
-        
-        # Create new document
         return await DatabaseFactory.create("Crawl", data)
 
     @classmethod
     async def update(cls, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         data['updatedAt'] = datetime.now(timezone.utc)
-
-        validated_instance = utils.validate_model(cls, data, "Crawl")
-        data = validated_instance.model_dump(mode='python')
-        
-        unique_constraints = cls._metadata.get('uniques', [])
-        await utils.validate_uniques("Crawl", data, unique_constraints, data['id'])
-
-        # Validate fks
-        await utils.process_fks("Crawl", data, True)
-    
-        # Update existing document
         return await DatabaseFactory.update("Crawl", data)
 
     @classmethod

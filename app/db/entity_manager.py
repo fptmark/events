@@ -9,6 +9,10 @@ from typing import Dict, Any, List
 
 class EntityManager(ABC):
     """Entity/Collection management operations"""
+
+    def __init__(self, database):
+        """Initialize with database interface reference"""
+        self.database = database
     
     @abstractmethod
     async def exists(self, entity_type: str) -> bool:
