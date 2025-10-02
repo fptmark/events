@@ -3,10 +3,7 @@ from typing import Optional, List, Dict, Any, Self, ClassVar, Tuple
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
 from app.db import DatabaseFactory
-from app.config import Config
 from app.services.metadata import MetadataService
-import app.models.utils as utils
-from app.services.request_context import RequestContext
 
 class GenderEnum(str, Enum):
     MALE = 'male'
@@ -104,24 +101,23 @@ class User(BaseModel):
     def get_metadata(cls) -> Dict[str, Any]:
         return MetadataService.get("User")
 
-
     @classmethod
     async def get_all(cls,
-                      sort: List[Tuple[str, str]],
-                      filter: Optional[Dict[str, Any]],
-                      page: int,
-                      pageSize: int,
+                      sort: List[Tuple[str, str]], 
+                      filter: Optional[Dict[str, Any]], 
+                      page: int, 
+                      pageSize: int, 
                       view_spec: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int]:
-        "Get paginated, sorted, and filtered list of entity."
+        "Get paginated, sorted, and filtered list of entity." 
+        
         return await DatabaseFactory.get_all("User", sort, filter, page, pageSize, view_spec)
-
+        
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         return await DatabaseFactory.get("User", id)
 
-
     @classmethod
-    async def create(cls, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    async def create(cls, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
         data['updatedAt'] = datetime.now(timezone.utc)
         return await DatabaseFactory.create("User", data)
 
