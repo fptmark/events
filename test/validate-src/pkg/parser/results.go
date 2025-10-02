@@ -146,47 +146,6 @@ func CountTestsFromFile(resultsFile string) (int, error) {
 	return count, nil
 }
 
-// ExtractVerificationFields extracts relevant fields from test results based on parameters
-func ExtractVerificationFields(testCase *types.TestCase) *types.FieldExtraction {
-	extraction := &types.FieldExtraction{
-		SortFields:   make(map[string][]interface{}),
-		FilterFields: make(map[string][]interface{}),
-		ViewFields:   make(map[string][]interface{}),
-	}
-
-	// Try to load schema for canonical field name lookup
-	var schemaCache *schema.SchemaCache
-	if schemaPath, err := schema.FindSchemaFile(); err == nil {
-		if cache, err := schema.NewSchemaCache(schemaPath); err == nil {
-			schemaCache = cache
-		}
-	}
-
-	// Extract sort fields (field names already normalized by URL parser)
-	for _, sortField := range testCase.Params.Sort {
-		fieldName := sortField.Field
-		values := extractFieldValuesWithSchema(testCase.Result.Data, fieldName, schemaCache)
-		extraction.SortFields[fieldName] = values
-	}
-
-	// Extract filter fields (field names already normalized by URL parser)
-	for fieldName := range testCase.Params.Filter {
-		values := extractFieldValuesWithSchema(testCase.Result.Data, fieldName, schemaCache)
-		extraction.FilterFields[fieldName] = values
-	}
-
-	// Extract view fields
-	for entity, fields := range testCase.Params.View {
-		for _, fieldName := range fields {
-			// Look for the field in the main data or in nested objects
-			values := extractNestedFieldValues(testCase.Result.Data, entity, fieldName)
-			// Always add the field to extraction, even if empty (for invalid field detection)
-			extraction.ViewFields[fmt.Sprintf("%s.%s", entity, fieldName)] = values
-		}
-	}
-
-	return extraction
-}
 
 // extractFieldValues extracts all values for a specific field from the data array
 func extractFieldValues(data []map[string]interface{}, fieldName string) []interface{} {

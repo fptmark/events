@@ -9,11 +9,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"validate/pkg/datagen"
-	"validate/pkg/display"
 	"validate/pkg/modes"
 	"validate/pkg/parser"
 	statictestsuite "validate/pkg/static-test-suite"
-	"validate/pkg/types"
 )
 
 const DefaultServerURL = "http://localhost:5500"
@@ -99,7 +97,6 @@ func runCommand(cmd *cobra.Command, args []string) {
 		id, err := strconv.Atoi(args[0])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Invalid test ID '%s' (must be a number)\n", args[0])
-			cmd.Help()
 			os.Exit(1)
 		}
 		testID = id
@@ -108,7 +105,6 @@ func runCommand(cmd *cobra.Command, args []string) {
 	// Validate flag combinations and execute appropriate mode
 	if err := validateAndExecute(cmd, testID); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		cmd.Help()
 		os.Exit(1)
 	}
 }
@@ -150,6 +146,11 @@ func validateAndExecute(cmd *cobra.Command, testID int) error {
 		testNums = getAllTestNumbers()
 	}
 
+	// Auto-enable write mode if data/notify flags are used
+	if (showData || showNotify) && !writeMode {
+		writeMode = true
+	}
+
 	// Validate run mode combinations
 	runModeCount := 0
 	if interactiveMode {
@@ -165,7 +166,7 @@ func validateAndExecute(cmd *cobra.Command, testID int) error {
 		return fmt.Errorf("only one run mode allowed")
 	}
 
-	// Write mode requires test number
+	// Write mode (including data/notify modes) requires test number
 	if writeMode && testID == 0 {
 		return fmt.Errorf("write mode requires a test number")
 	}
@@ -174,7 +175,7 @@ func validateAndExecute(cmd *cobra.Command, testID int) error {
 	parser.InitHTTPMode()
 
 	// Execute tests based on mode
-	if !resetDB && !writeMode { // display initial record counts if not resetting DB
+	if !resetDB && !(writeMode || showData || showNotify) { // display initial record counts if not resetting DB or in single-output modes
 		initialUsers, initialAccounts, err := datagen.GetRecordCounts(datagen.Config{DefaultServerURL, verbose})
 		if err != nil {
 			return fmt.Errorf("failed to get initial record counts: %w", err)
@@ -217,103 +218,25 @@ func getAllTestNumbers() []int {
 	return testNums
 }
 
-// Low-level function that executes a test and returns formatted results
-func executeTest(testID int, showAllData, showAllNotify bool) (string, error) {
-	// Validate test ID
-	totalTests, err := parser.CountTests()
-	if err != nil {
-		return "", fmt.Errorf("error counting tests: %w", err)
-	}
-	if testID > totalTests {
-		return "", fmt.Errorf("invalid test ID %d (max: %d)", testID, totalTests)
-	}
-
-	// Create display options based on flags
-	// Default: ShowAllData=false, ShowNotifications=false (truncated data)
-	options := display.DisplayOptions{
-		ShowAllData:       showAllData,
-		ShowNotifications: showAllNotify,
-	}
-
-	// Load and execute the test (this does the actual HTTP call)
-	testCase, err := parser.LoadTestCase(testID)
-	if err != nil {
-		return "", fmt.Errorf("error loading test case %d: %v", testID, err)
-	}
-
-	// Format the result and return it
-	output, err := display.FormatTestResponse(testCase, options)
-	if err != nil {
-		return "", fmt.Errorf("error formatting response: %v", err)
-	}
-
-	return output, nil
-}
 
 func runTests(testNums []int, startTestID int) error {
 	if writeMode {
-		output, err := executeTest(testNums[0], showData, showNotify)
-		if err != nil {
-			return err
+		// Write mode requires single test
+		if len(testNums) != 1 {
+			return fmt.Errorf("write mode requires exactly one test")
 		}
-		fmt.Print(output)
+		modes.RunWrite(testNums[0], showData, showNotify)
 		return nil
 	} else if interactiveMode {
-		return runInteractiveMode(testNums, startTestID)
+		modes.RunInteractive(startTestID)
+		return nil
 	} else if summaryMode {
-		return runSummaryMode(testNums)
+		modes.RunSummary()
+		return nil
 	} else {
-		return runTableMode(testNums)
+		modes.RunTable()
+		return nil
 	}
 }
 
-func runInteractiveMode(testNums []int, startTestID int) error {
-	// Use existing interactive functionality - it already handles data/notify commands
-	if startTestID > 0 {
-		modes.RunInteractiveVerify(startTestID)
-	} else if len(testNums) > 0 {
-		modes.RunInteractiveVerify(testNums[0])
-	} else {
-		modes.RunInteractiveVerify(1)
-	}
-	return nil
-}
 
-func runSummaryMode(testNums []int) error {
-	passed := 0
-	failed := 0
-
-	for _, testID := range testNums {
-		output, err := executeTest(testID, false, false)
-		if err != nil {
-			failed++
-		} else {
-			// Check if test passed (simple check for now)
-			if strings.Contains(output, "200") {
-				passed++
-			} else {
-				failed++
-			}
-		}
-	}
-
-	fmt.Printf("Summary: %d passed, %d failed, %d total\n", passed, failed, len(testNums))
-	return nil
-}
-
-func runTableMode(testNums []int) error {
-	var testCases []*types.TestCase
-
-	for _, testID := range testNums {
-		testCase, err := parser.LoadTestCase(testID)
-		if err != nil {
-			fmt.Printf("Error loading test %d: %v\n", testID, err)
-			continue
-		}
-		testCases = append(testCases, testCase)
-	}
-
-	tableOutput := display.FormatTable(testCases)
-	fmt.Print(tableOutput)
-	return nil
-}
