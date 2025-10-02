@@ -54,7 +54,8 @@ mainLoop:
 
 		validate := core.ValidateTest(currentID, result)
 
-		// Show summary and verification
+		// Clear screen and show summary and verification
+		fmt.Print("\033[2J\033[H") // Clear screen and move cursor to top
 		showInteractiveTest(result, validate, interactiveDisplay)
 
 		// Handle navigation
@@ -109,12 +110,13 @@ mainLoop:
 
 // showInteractiveTest displays test summary and verification for interactive mode
 func showInteractiveTest(result *core.TestResult, validate *core.ValidationResult, interactiveDisplay *display.InteractiveDisplay) {
-	// Format summary header
-	summaryHeader := fmt.Sprintf("══════════════════════════════════════════════════════════════════════════════\n")
-	summaryHeader += fmt.Sprintf("                              TEST SUMMARY                                   \n")
-	summaryHeader += fmt.Sprintf("══════════════════════════════════════════════════════════════════════════════\n\n")
+	// Display test number at the top
+	fmt.Printf("══════════════════════════════════════════════════════════════════════════════\n")
+	fmt.Printf("                              TEST %d                                        \n", result.ID)
+	fmt.Printf("══════════════════════════════════════════════════════════════════════════════\n\n")
 
-	// Use write mode formatting for summary
+	// Use write mode formatting for summary (truncated by default)
+	// The truncation messages will be shown by RunWrite
 	RunWrite(result.ID, false, false)
 
 	// Convert to old verification result format for display compatibility
@@ -126,9 +128,9 @@ func showInteractiveTest(result *core.TestResult, validate *core.ValidationResul
 	// Show verification results
 	fmt.Printf("\n=== VERIFICATION RESULTS ===\n")
 	if validate.OK {
-		fmt.Printf("Status: \033[32mPASS\033[0m\n")
+		fmt.Printf("Validation: \033[32mPASS\033[0m\n")
 	} else {
-		fmt.Printf("Status: \033[31mFAIL\033[0m\n")
+		fmt.Printf("Validation: \033[31mFAIL\033[0m\n")
 		for _, issue := range validate.Issues {
 			fmt.Printf("Issue: %s\n", issue)
 		}

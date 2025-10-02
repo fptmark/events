@@ -54,6 +54,9 @@ func (e *HTTPExecutor) ExecuteTest(testCase *types.TestCase) (*types.TestCase, e
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	// Store raw response body to preserve field order
+	testCase.RawResponseBody = json.RawMessage(body)
+
 	// Parse the response body as JSON
 	var responseData interface{}
 	if err := json.Unmarshal(body, &responseData); err != nil {

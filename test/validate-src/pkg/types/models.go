@@ -1,5 +1,9 @@
 package types
 
+import (
+	"encoding/json"
+)
+
 // TestResult represents the JSON response from an API test
 type TestResult struct {
 	Data          []map[string]interface{} `json:"data"`
@@ -46,9 +50,10 @@ type TestCase struct {
 	RequestBody    map[string]interface{} `json:"request_body,omitempty"` // Request payload for POST/PUT/DELETE
 
 	// Runtime execution data (populated during test execution)
-	ActualStatus   int        `json:"actual_status,omitempty"`   // Actual HTTP response status
-	Params         TestParams `json:"params,omitempty"`          // Parsed URL parameters
-	Result         TestResult `json:"result,omitempty"`          // API response data
+	ActualStatus    int             `json:"actual_status,omitempty"`    // Actual HTTP response status
+	RawResponseBody json.RawMessage `json:"raw_response_body,omitempty"` // Original HTTP response body preserving field order
+	Params          TestParams      `json:"params,omitempty"`           // Parsed URL parameters
+	Result          TestResult      `json:"result,omitempty"`           // API response data
 }
 
 // VerificationResult represents the outcome of verification

@@ -1,21 +1,24 @@
 package core
 
 import (
+	"encoding/json"
+
 	"validate/pkg/parser"
 	"validate/pkg/types"
 )
 
 // TestResult represents the raw result of executing a test
 type TestResult struct {
-	ID            int
-	URL           string
-	Description   string
-	TestClass     string
-	Data          []map[string]interface{}
-	Notifications interface{}
-	Status        string
-	StatusCode    int
-	Params        TestParams
+	ID              int
+	URL             string
+	Description     string
+	TestClass       string
+	Data            []map[string]interface{}
+	RawResponseBody json.RawMessage // Preserve original JSON order
+	Notifications   interface{}
+	Status          string
+	StatusCode      int
+	Params          TestParams
 }
 
 // TestParams represents the parameters extracted from the test URL
@@ -37,14 +40,15 @@ func RunTest(testNum int) (*TestResult, error) {
 
 	// Convert to clean result format
 	result := &TestResult{
-		ID:            testCase.ID,
-		URL:           testCase.URL,
-		Description:   testCase.Description,
-		TestClass:     testCase.TestClass,
-		Data:          testCase.Result.Data,
-		Notifications: testCase.Result.Notifications,
-		Status:        testCase.Result.Status,
-		StatusCode:    testCase.ActualStatus,
+		ID:              testCase.ID,
+		URL:             testCase.URL,
+		Description:     testCase.Description,
+		TestClass:       testCase.TestClass,
+		Data:            testCase.Result.Data,
+		RawResponseBody: testCase.RawResponseBody,
+		Notifications:   testCase.Result.Notifications,
+		Status:          testCase.Result.Status,
+		StatusCode:      testCase.ActualStatus,
 		Params: TestParams{
 			Sort:   testCase.Params.Sort,
 			Filter: testCase.Params.Filter,

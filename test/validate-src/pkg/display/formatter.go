@@ -60,17 +60,26 @@ func FormatTestResponse(testCase *types.TestCase, options DisplayOptions) (strin
 	// Use raw interface{} for notifications to preserve the complex nested structure
 	var notificationsForDisplay interface{} = displayResult.Notifications
 
-	// Format the JSON response
-	jsonBytes, err := json.MarshalIndent(map[string]interface{}{
-		"data":          displayResult.Data,
-		"notifications": notificationsForDisplay,
-		"status":        displayResult.Status,
-	}, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("error formatting JSON: %w", err)
+	// Format the JSON response preserving field order when possible
+	if len(testCase.RawResponseBody) > 0 {
+		// Use raw JSON and apply transformations with jq to preserve field order
+		jsonBytes, err := formatWithRawJSON(testCase.RawResponseBody, options, dataLength)
+		if err != nil {
+			return "", fmt.Errorf("error formatting with raw JSON: %w", err)
+		}
+		result.WriteString(string(jsonBytes))
+	} else {
+		// Fallback to Go JSON marshaling (will alphabetize fields)
+		jsonBytes, err := json.MarshalIndent(map[string]interface{}{
+			"data":          displayResult.Data,
+			"notifications": notificationsForDisplay,
+			"status":        displayResult.Status,
+		}, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("error formatting JSON: %w", err)
+		}
+		result.WriteString(string(jsonBytes))
 	}
-
-	result.WriteString(string(jsonBytes))
 	result.WriteString("\n\n")
 	result.WriteString(fmt.Sprintf("URL: %s\n", testCase.URL))
 	result.WriteString(fmt.Sprintf("Status: %s\n", displayResult.Status))
@@ -379,4 +388,31 @@ func truncateString(s string, maxLen int) string {
 		return s[:maxLen]
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// formatWithRawJSON formats raw JSON response while preserving field order
+func formatWithRawJSON(rawJSON json.RawMessage, options DisplayOptions, dataLength int) ([]byte, error) {
+	// Build jq filter to apply transformations while preserving field order
+	filter := "."
+
+	// Apply data truncation if needed
+	if !options.ShowAllData && dataLength > 1 {
+		filter += " | if .data | type == \"array\" then .data = [.data[0]] else . end"
+	}
+
+	// Apply notification truncation if needed
+	if !options.ShowNotifications && dataLength > 1 {
+		filter += " | if .notifications.warnings then .notifications.warnings = (.notifications.warnings | to_entries | map(.value = (.value | to_entries | .[0:1] | from_entries)) | from_entries) else . end"
+	}
+
+	// Use jq to process the JSON while preserving field order
+	cmd := exec.Command("jq", "--indent", "2", filter)
+	cmd.Stdin = strings.NewReader(string(rawJSON))
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("jq processing failed: %w", err)
+	}
+
+	return output, nil
 }
