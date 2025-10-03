@@ -117,33 +117,33 @@ class DocumentManager(ABC):
                                   unique_constraints : List[Any], validate: bool) -> Dict[str, Any]:
         """Normalize document by extracting internal id field and renaming to 'id'"""
         try:
-            doc = self._remove_sub_objects(entity_type, doc)    # should not be there anyway
+            # make sure the id is in the right plae
+            core = self._get_core_manager()
+            id = doc.pop(core.id_field, None)
+            the_doc: Dict[str, Any] = {'id': id, **doc} # ensure id is first field
+
+            the_doc = self._remove_sub_objects(entity_type, the_doc)    # should not be there anyway
 
             # Always run Pydantic validation (required fields, types, ranges)
-            validate_model(model_class, doc, entity_type)
+            validate_model(model_class, the_doc, entity_type)
 
             if validate:
-                await validate_uniques(entity_type, doc, unique_constraints, None)
+                await validate_uniques(entity_type, the_doc, unique_constraints, None)
 
             # Populate view data if requested and validate fks
             if view_spec is None:
                 view_spec = {}
-            await process_fks(entity_type, doc, validate, view_spec)
+            await process_fks(entity_type, the_doc, validate, view_spec)
 
         except DocumentNotFound as e:
             msg = str(e.message) if e.message else str(e.error)
-            Notification.warning(Warning.NOT_FOUND, message=msg, entity_type=entity_type, entity_id=doc.get('id', ''))
+            Notification.warning(Warning.NOT_FOUND, message=msg, entity_type=entity_type, entity_id=id)
             return {}
         except Exception as e:
-                Notification.error(Error.DATABASE, f"Database get error: {str(e)}")
+                Notification.error(Error.DATABASE, f"Database retrieve error: {str(e)}")
                 return {}
         
-        # move internal id to 'id' field
-        core = self._get_core_manager()
-        id = doc.pop(core.id_field, None)
-        out_doc: Dict[str, Any] = {'id': id, **doc}
-
-        return out_doc or {}
+        return the_doc or {}
 
                                     
     @abstractmethod
@@ -484,8 +484,10 @@ async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, vi
                                     elif field.lower() in field_map:
                                         actual_field = field_map[field.lower()]
                                         fk_data[actual_field] = related_data[actual_field]
-                                    else: # viewspec field not found in related entity
-                                        Notification.warning(Warning.BAD_NAME, "Field not found in related entity", entity_type=entity_type, entity_id=data['id'], field=field)
+                                    else :
+                                        attrs = MetadataService.get(fk_entity_type, field)
+                                        if 'required' in attrs and attrs['required'].lower() == 'true':
+                                            Notification.warning(Warning.BAD_NAME, "Field not found in related entity", entity_type=entity_type, entity_id=data['id'], field=field)
                                         
                         elif count == 0:
                             # FK record not found - validation warning if validating
