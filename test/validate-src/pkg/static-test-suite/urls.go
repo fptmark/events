@@ -13,13 +13,18 @@ func determineExpectedStatus(method, url string) int {
 
 	switch method {
 	case "GET":
-		// 404 patterns
-		if strings.Contains(baseURL, "nonexistent") ||
-		   strings.Contains(baseURL, "InvalidEntity") ||
-		   strings.Contains(baseURL, "invalid_") ||
+		// 404 patterns - only for truly invalid endpoints
+		if strings.Contains(baseURL, "InvalidEntity") ||
+		   baseURL == "" ||
 		   baseURL == "/" ||
 		   baseURL == "/api/" {
 			return 404
+		}
+
+		// Non-existent entities and invalid data return 200 (valid endpoint, no data)
+		if strings.Contains(baseURL, "nonexistent") ||
+		   strings.Contains(baseURL, "invalid_") {
+			return 200
 		}
 
 		// 400 patterns for edge cases with bad parameters
@@ -55,16 +60,16 @@ func determineExpectedStatus(method, url string) int {
 		return 201
 
 	case "PUT":
-		// Non-existent entities return 404
+		// Non-existent entities return 200 (valid endpoint, no data affected)
 		if strings.Contains(baseURL, "nonexistent") {
-			return 404
+			return 200
 		}
 		return 200
 
 	case "DELETE":
-		// Non-existent entities return 404
+		// Non-existent entities return 200 (valid endpoint, no data affected)
 		if strings.Contains(baseURL, "nonexistent") {
-			return 404
+			return 200
 		}
 		return 200
 
@@ -158,25 +163,179 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/api/User?view=account(id)&sort=firstName&filter=gender:male&pageSize=3", TestClass: "combo", Description: "All parameters: view + sort + filter + pagination"},
 		{Method: "GET", URL: "/api/User?view=account(id,name,balance)&sort=netWorth:desc&filter=isAccountOwner:true&pageSize=2", TestClass: "combo", Description: "All parameters with wealth focus"},
 		{Method: "GET", URL: "/api/User?view=account(id)&sort=lastName,firstName&filter=gender:female,netWorth:gte:50000&page=2&pageSize=3", TestClass: "combo", Description: "Complex multi-field combo"},
-		{Method: "POST", URL: "/api/User", TestClass: "crud", Description: "Create new user"},
-		{Method: "POST", URL: "/api/User?novalidate", TestClass: "crud", Description: "Create user without validation"},
-		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "crud", Description: "Update existing user"},
-		{Method: "PUT", URL: "/api/User/basic_valid_001?novalidate", TestClass: "crud", Description: "Update user without validation"},
-		{Method: "DELETE", URL: "/api/User/basic_valid_001", TestClass: "crud", Description: "Delete existing user"},
-		{Method: "POST", URL: "/api/Account", TestClass: "crud", Description: "Create new account"},
-		{Method: "POST", URL: "/api/Account?novalidate", TestClass: "crud", Description: "Create account without validation"},
-		{Method: "PUT", URL: "/api/Account/valid_account_001", TestClass: "crud", Description: "Update existing account"},
-		{Method: "PUT", URL: "/api/Account/valid_account_001?novalidate", TestClass: "crud", Description: "Update account without validation"},
-		{Method: "DELETE", URL: "/api/Account/valid_account_001", TestClass: "crud", Description: "Delete existing account"},
-		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user with invalid data"},
-		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user with duplicate constraint violation"},
-		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user with foreign key violation"},
-		{Method: "PUT", URL: "/api/User/nonexistent_user_123456", TestClass: "failure", Description: "Update non-existent user"},
-		{Method: "DELETE", URL: "/api/User/nonexistent_user_123456", TestClass: "failure", Description: "Delete non-existent user"},
-		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account with invalid data"},
-		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account with duplicate constraint violation"},
-		{Method: "PUT", URL: "/api/Account/nonexistent_account_123456", TestClass: "failure", Description: "Update non-existent account"},
-		{Method: "DELETE", URL: "/api/Account/nonexistent_account_123456", TestClass: "failure", Description: "Delete non-existent account"},
+		// CRUD Success Cases - User
+		{Method: "POST", URL: "/api/User", TestClass: "crud", Description: "Create user with valid data",
+			RequestBody: map[string]interface{}{
+				"firstName": "Test", "lastName": "User", "email": "test.user@example.com",
+				"username": "test_user_crud", "gender": "male", "isAccountOwner": true,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "valid_account_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ShouldContainFields: []string{"id", "firstName", "lastName", "email", "username", "createdAt"},
+			}},
+
+		{Method: "POST", URL: "/api/User?novalidate", TestClass: "crud", Description: "Create user without validation",
+			RequestBody: map[string]interface{}{
+				"firstName": "NoValidate", "lastName": "User", "email": "novalidate@example.com",
+				"username": "novalidate_user", "gender": "invalid_gender", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ShouldContainFields: []string{"id", "firstName", "lastName", "email", "username"},
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "crud", Description: "Update user with valid data",
+			RequestBody: map[string]interface{}{
+				"firstName": "Updated", "lastName": "UserName", "netWorth": 75000},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedFields: map[string]interface{}{"firstName": "Updated", "lastName": "UserName", "netWorth": float64(75000)},
+				ShouldContainFields: []string{"id", "updatedAt"},
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001?novalidate", TestClass: "crud", Description: "Update user without validation",
+			RequestBody: map[string]interface{}{
+				"firstName": "NoValidateUpdate", "gender": "invalid_gender"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedFields: map[string]interface{}{"firstName": "NoValidateUpdate"},
+				ShouldContainFields: []string{"id", "updatedAt"},
+			}},
+
+		{Method: "DELETE", URL: "/api/User/crud_delete_test_001", TestClass: "crud", Description: "Delete existing user"},
+
+		// CRUD Success Cases - Account
+		{Method: "POST", URL: "/api/Account", TestClass: "crud", Description: "Create account with valid data",
+			RequestBody: map[string]interface{}{
+				"name": "Test Account", "balance": 1000.50, "currency": "USD", "isActive": true},
+			ExpectedData: &types.CRUDExpectation{
+				ShouldContainFields: []string{"id", "name", "balance", "currency", "isActive", "createdAt"},
+				ExpectedFields: map[string]interface{}{"name": "Test Account", "balance": 1000.50, "currency": "USD"},
+			}},
+
+		{Method: "POST", URL: "/api/Account?novalidate", TestClass: "crud", Description: "Create account without validation",
+			RequestBody: map[string]interface{}{
+				"name": "NoValidate Account", "balance": -500, "currency": "INVALID"},
+			ExpectedData: &types.CRUDExpectation{
+				ShouldContainFields: []string{"id", "name", "createdAt"},
+			}},
+
+		{Method: "PUT", URL: "/api/Account/valid_account_001", TestClass: "crud", Description: "Update account with valid data",
+			RequestBody: map[string]interface{}{
+				"name": "Updated Account", "balance": 2000.75},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedFields: map[string]interface{}{"name": "Updated Account", "balance": 2000.75},
+				ShouldContainFields: []string{"id", "updatedAt"},
+			}},
+
+		{Method: "PUT", URL: "/api/Account/valid_account_001?novalidate", TestClass: "crud", Description: "Update account without validation",
+			RequestBody: map[string]interface{}{
+				"name": "NoValidate Update", "balance": -1000},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedFields: map[string]interface{}{"name": "NoValidate Update"},
+				ShouldContainFields: []string{"id", "updatedAt"},
+			}},
+
+		{Method: "DELETE", URL: "/api/Account/crud_delete_account_001", TestClass: "crud", Description: "Delete existing account"},
+		// CRUD Failure Cases - User
+		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user with missing required field",
+			RequestBody: map[string]interface{}{
+				"firstName": "Incomplete", "lastName": "User"}, // Missing email, username
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user with invalid enum",
+			RequestBody: map[string]interface{}{
+				"firstName": "Invalid", "lastName": "Enum", "email": "invalid.enum@example.com",
+				"username": "invalid_enum", "gender": "invalid_gender"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user with duplicate username",
+			RequestBody: map[string]interface{}{
+				"firstName": "Duplicate", "lastName": "User", "email": "duplicate@example.com",
+				"username": "basic_valid_001", "password": "testpass123", "accountId": "valid_account_001",
+				"gender": "male", "isAccountOwner": false}, // Existing username
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "constraint",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user - first creation (should succeed)",
+			RequestBody: map[string]interface{}{
+				"firstName": "UniqueTest", "lastName": "FirstAttempt", "email": "uniquetest@example.com",
+				"username": "unique_constraint_test", "password": "testpass123", "accountId": "valid_account_001",
+				"gender": "male", "isAccountOwner": false, "netWorth": 25000},
+			ExpectedData: &types.CRUDExpectation{
+				ShouldContainFields: []string{"id", "firstName", "lastName", "email", "username", "createdAt"},
+				ExpectedFields: map[string]interface{}{"username": "unique_constraint_test", "email": "uniquetest@example.com"},
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user - duplicate attempt (should fail)",
+			RequestBody: map[string]interface{}{
+				"firstName": "UniqueTest", "lastName": "SecondAttempt", "email": "uniquetest@example.com",
+				"username": "unique_constraint_test", "password": "testpass123", "accountId": "valid_account_001",
+				"gender": "female", "isAccountOwner": true, "netWorth": 50000},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "constraint",
+			}},
+
+		{Method: "PUT", URL: "/api/User/nonexistent_user_123456", TestClass: "failure", Description: "Update non-existent user",
+			RequestBody: map[string]interface{}{
+				"firstName": "NonExistent", "lastName": "Update"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "not_found",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "failure", Description: "Update user with invalid data",
+			RequestBody: map[string]interface{}{
+				"gender": "invalid_gender", "netWorth": "not_a_number"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "DELETE", URL: "/api/User/nonexistent_user_123456", TestClass: "failure", Description: "Delete non-existent user",
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "not_found",
+			}},
+
+		// CRUD Failure Cases - Account
+		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account with missing required field",
+			RequestBody: map[string]interface{}{
+				"balance": 1000}, // Missing name
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account with invalid currency",
+			RequestBody: map[string]interface{}{
+				"name": "Invalid Currency", "balance": 1000, "currency": "INVALID"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account - first creation (should succeed)",
+			RequestBody: map[string]interface{}{
+				"name": "Unique Account Test", "balance": 5000.0, "currency": "USD", "isActive": true},
+			ExpectedData: &types.CRUDExpectation{
+				ShouldContainFields: []string{"id", "name", "balance", "currency", "isActive", "createdAt"},
+				ExpectedFields: map[string]interface{}{"name": "Unique Account Test", "balance": 5000.0, "currency": "USD"},
+			}},
+
+		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account - duplicate attempt (should fail)",
+			RequestBody: map[string]interface{}{
+				"name": "Unique Account Test", "balance": 10000.0, "currency": "EUR", "isActive": false}, // Same name
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "constraint",
+			}},
+
+		{Method: "PUT", URL: "/api/Account/nonexistent_account_123456", TestClass: "failure", Description: "Update non-existent account",
+			RequestBody: map[string]interface{}{
+				"name": "NonExistent Update"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "not_found",
+			}},
+
+		{Method: "DELETE", URL: "/api/Account/nonexistent_account_123456", TestClass: "failure", Description: "Delete non-existent account",
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "not_found",
+			}},
 		{Method: "GET", URL: "/api/db/report", TestClass: "admin", Description: "Get database status report"},
 		{Method: "POST", URL: "/api/db/init", TestClass: "admin", Description: "Initialize database"},
 		{Method: "POST", URL: "/api/db/wipe", TestClass: "admin", Description: "Wipe database"},

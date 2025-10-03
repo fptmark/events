@@ -48,6 +48,7 @@ type TestCase struct {
 	TestClass      string                 `json:"test_class"`      // Test category (basic, view, sort, etc.)
 	ExpectedStatus int                    `json:"expected_status"` // Expected HTTP status code
 	RequestBody    map[string]interface{} `json:"request_body,omitempty"` // Request payload for POST/PUT/DELETE
+	ExpectedData   *CRUDExpectation       `json:"expected_data,omitempty"` // Expected result data for CRUD operations
 
 	// Runtime execution data (populated during test execution)
 	ActualStatus    int             `json:"actual_status,omitempty"`    // Actual HTTP response status
@@ -71,4 +72,19 @@ type FieldExtraction struct {
 	SortFields   map[string][]interface{} `json:"sort_fields"`
 	FilterFields map[string][]interface{} `json:"filter_fields"`
 	ViewFields   map[string][]interface{} `json:"view_fields"`
+}
+
+// CRUDExpectation represents expected data for CRUD operation validation
+type CRUDExpectation struct {
+	// For POST: expected fields in created record
+	// For PUT: expected fields after update
+	// For DELETE: nil (just check success)
+	ExpectedFields map[string]interface{} `json:"expected_fields,omitempty"`
+
+	// For validation of specific response patterns
+	ShouldContainFields []string `json:"should_contain_fields,omitempty"` // Fields that must be present
+	ShouldNotContainFields []string `json:"should_not_contain_fields,omitempty"` // Fields that must not be present
+
+	// For error validation
+	ExpectedErrorType string `json:"expected_error_type,omitempty"` // "validation", "not_found", "constraint", etc.
 }

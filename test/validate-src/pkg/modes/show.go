@@ -3,23 +3,24 @@ package modes
 import (
 	"fmt"
 	"sort"
-	"strings"
 
+	"validate/pkg/display"
 	statictestsuite "validate/pkg/static-test-suite"
 )
 
 // ShowURLList displays all URLs with test#, category, and /api/path
 func ShowURLList() {
-	fmt.Println("Available URLs:")
-	fmt.Printf("%-4s %-12s %s\n", "Test", "Category", "URL")
-	fmt.Println(strings.Repeat("-", 60))
-
 	testCases := statictestsuite.GetAllTestCases()
-	for i, testCase := range testCases {
-		// Extract /api/path from full URL
-		apiPath := extractAPIPath(testCase.URL)
-		fmt.Printf("%-4d %-12s %s\n", i+1, testCase.TestClass, apiPath)
+
+	// Create test numbers array
+	var testNumbers []int
+	for i := 1; i <= len(testCases); i++ {
+		testNumbers = append(testNumbers, i)
 	}
+
+	// Use unified UrlTable function
+	output := display.UrlTable(testNumbers, false) // runTests = false
+	fmt.Print(output)
 }
 
 // ShowTestCategories displays all available test categories
@@ -48,12 +49,3 @@ func ShowTestCategories() {
 	fmt.Println("\nUsage: validate --test=category1,category2 to run specific categories")
 }
 
-// extractAPIPath extracts the /api/path portion from a full URL
-func extractAPIPath(url string) string {
-	// Find the position of "/api/" and return everything from there
-	apiIndex := strings.Index(url, "/api/")
-	if apiIndex != -1 {
-		return url[apiIndex:] // Include "/api/"
-	}
-	return url // fallback to full URL if "/api/" not found
-}

@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"validate/pkg/core"
+	statictestsuite "validate/pkg/static-test-suite"
 	"validate/pkg/types"
 )
 
@@ -65,9 +67,19 @@ func FormatTestResponse(testCase *types.TestCase, options DisplayOptions) (strin
 		// Use raw JSON and apply transformations with jq to preserve field order
 		jsonBytes, err := formatWithRawJSON(testCase.RawResponseBody, options, dataLength)
 		if err != nil {
-			return "", fmt.Errorf("error formatting with raw JSON: %w", err)
+			// Fallback to standard formatting if jq fails
+			jsonBytes, err := json.MarshalIndent(map[string]interface{}{
+				"data":          displayResult.Data,
+				"notifications": notificationsForDisplay,
+				"status":        displayResult.Status,
+			}, "", "  ")
+			if err != nil {
+				return "", fmt.Errorf("error formatting JSON: %w", err)
+			}
+			result.WriteString(string(jsonBytes))
+		} else {
+			result.WriteString(string(jsonBytes))
 		}
-		result.WriteString(string(jsonBytes))
 	} else {
 		// Fallback to Go JSON marshaling (will alphabetize fields)
 		jsonBytes, err := json.MarshalIndent(map[string]interface{}{
@@ -218,19 +230,19 @@ func GetTestURL(resultsFile string, testID int) (string, error) {
 }
 
 // FormatTableRow formats a single test result as a table row
-func FormatTableRow(testCase *types.TestCase) TableRow {
+func FormatTableRow(test types.TestCase, result *core.TestResult, listMode bool) TableRow {
 	// Extract URL path (handle both absolute and relative URLs)
-	urlPath := testCase.URL
+	urlPath := test.URL
 	if strings.HasPrefix(urlPath, "http://localhost:5500") {
 		urlPath = strings.TrimPrefix(urlPath, "http://localhost:5500/api/")
 	} else if strings.HasPrefix(urlPath, "/api/") {
 		urlPath = strings.TrimPrefix(urlPath, "/api/")
 	}
 
-	// Count warnings, request warnings, and errors from notifications
+	// Count warnings, request warnings, and errors from notifications (only in table mode)
 	var warnings, requestWarnings, errors int
-	if testCase.Result.Notifications != nil {
-		if notifMap, ok := testCase.Result.Notifications.(map[string]interface{}); ok {
+	if !listMode && result != nil && result.Notifications != nil {
+		if notifMap, ok := result.Notifications.(map[string]interface{}); ok {
 			if warningsMap, ok := notifMap["warnings"].(map[string]interface{}); ok {
 				for _, entityWarnings := range warningsMap {
 					if entityMap, ok := entityWarnings.(map[string]interface{}); ok {
@@ -258,26 +270,59 @@ func FormatTableRow(testCase *types.TestCase) TableRow {
 		}
 	}
 
-	// Determine pass/fail status
+	// Determine pass/fail status (only in table mode)
 	status := "\033[32mPASS\033[0m" // Green
 	failureReason := ""
-	if errors > 0 {
-		status = "\033[31mFAIL\033[0m" // Red
-		failureReason = "Validation errors detected"
-	}
+	warningCol := ""
+	actualStatus := 0
 
-	// Format W/RW/E column
-	warningCol := fmt.Sprintf("%3d %d %d", warnings, requestWarnings, errors)
-	if len(testCase.Result.Data) == 0 {
-		warningCol = fmt.Sprintf("  - %d %d", requestWarnings, errors)
+	if !listMode {
+		if result == nil {
+			// Framework error - must have result in table mode
+			status = "\033[31mFAIL\033[0m" // Red
+			failureReason = "Framework error: no result"
+			warningCol = "  - - -"
+		} else {
+			actualStatus = result.StatusCode
+
+			// Use comprehensive validation from core
+			validation := core.ValidateTest(test.ID, result)
+
+			// Check if status codes match
+			statusMatch := actualStatus == test.ExpectedStatus
+
+			// Determine pass/fail using both status check and comprehensive validation
+			if !statusMatch {
+				status = "\033[31mFAIL\033[0m" // Red
+				failureReason = fmt.Sprintf("Expected %d, got %d", test.ExpectedStatus, actualStatus)
+			} else if !validation.OK {
+				status = "\033[31mFAIL\033[0m" // Red
+				if len(validation.Issues) > 0 {
+					failureReason = validation.Issues[0] // Show first validation issue
+				} else {
+					failureReason = "Validation failed"
+				}
+			} else if errors > 0 {
+				status = "\033[31mFAIL\033[0m" // Red
+				failureReason = "Validation errors detected"
+			}
+
+			// Format W/RW/E column
+			warningCol = fmt.Sprintf("%3d %d %d", warnings, requestWarnings, errors)
+			if len(result.Data) == 0 {
+				warningCol = fmt.Sprintf("  - %d %d", requestWarnings, errors)
+			}
+		}
 	}
 
 	return TableRow{
-		ID:            testCase.ID,
+		ID:            test.ID,
+		Category:      test.TestClass,
 		URL:           urlPath,
-		Description:   testCase.Description,
-		Category:      testCase.TestClass,
-		Status:        testCase.ActualStatus,
+		Method:        test.Method,
+		Expected:      test.ExpectedStatus,
+		Description:   test.Description,
+		Status:        actualStatus,
 		WarningCol:    warningCol,
 		Pass:          status,
 		FailureReason: failureReason,
@@ -287,9 +332,11 @@ func FormatTableRow(testCase *types.TestCase) TableRow {
 // TableRow represents a row in the test results table
 type TableRow struct {
 	ID            int
-	URL           string
-	Description   string
 	Category      string
+	URL           string
+	Method        string
+	Expected      int
+	Description   string
 	Status        int
 	WarningCol    string
 	Pass          string
@@ -297,10 +344,16 @@ type TableRow struct {
 }
 
 // FormatTable formats multiple test results as a table
-func FormatTable(testCases []*types.TestCase) string {
-	if len(testCases) == 0 {
+func FormatTable(testNumbers []int, results []*core.TestResult) string {
+	if len(testNumbers) == 0 {
 		return "No test results to display.\n"
 	}
+
+	// Get test case definitions
+	allTestCases := statictestsuite.GetAllTestCases()
+
+	// Determine if we're in list mode (results is nil)
+	listMode := results == nil
 
 	var rows []TableRow
 	passed := 0
@@ -308,17 +361,27 @@ func FormatTable(testCases []*types.TestCase) string {
 	totalRequestWarnings := 0
 	totalErrors := 0
 
-	for _, testCase := range testCases {
-		row := FormatTableRow(testCase)
+	for i, testNum := range testNumbers {
+		if testNum < 1 || testNum > len(allTestCases) {
+			continue // Skip invalid test numbers
+		}
+
+		test := allTestCases[testNum-1]
+		var result *core.TestResult
+		if !listMode && i < len(results) {
+			result = results[i]
+		}
+
+		row := FormatTableRow(test, result, listMode)
 		rows = append(rows, row)
 
-		if strings.Contains(row.Pass, "PASS") {
+		if !listMode && strings.Contains(row.Pass, "PASS") {
 			passed++
 		}
 
-		// Count totals from notifications
-		if testCase.Result.Notifications != nil {
-			if notifMap, ok := testCase.Result.Notifications.(map[string]interface{}); ok {
+		// Count totals from notifications (only in table mode)
+		if !listMode && result != nil && result.Notifications != nil {
+			if notifMap, ok := result.Notifications.(map[string]interface{}); ok {
 				if warningsMap, ok := notifMap["warnings"].(map[string]interface{}); ok {
 					for _, entityWarnings := range warningsMap {
 						if entityMap, ok := entityWarnings.(map[string]interface{}); ok {
@@ -350,30 +413,55 @@ func FormatTable(testCases []*types.TestCase) string {
 	// Build the table
 	var result strings.Builder
 
-	// Header
-	result.WriteString("┌─────┬──────────────────────────────────────────────────────────────┬─────────────────────────────────────┬──────────┬────────┬─────────┬──────┬──────────────────────────────────────────┐\n")
-	result.WriteString("│ ID  │ URL                                                          │ Description                         │ Category │ Status │ W/RW/E  │ Pass │ Failure Reason                           │\n")
-	result.WriteString("├─────┼──────────────────────────────────────────────────────────────┼─────────────────────────────────────┼──────────┼────────┼─────────┼──────┼──────────────────────────────────────────┤\n")
+	if listMode {
+		// List mode: [ID, Category, URL, Method, Expected, Description]
+		result.WriteString("┌─────┬──────────┬─────────────────────────────────────┬────────┬──────────┬─────────────────────────────────────┐\n")
+		result.WriteString("│ ID  │ Category │ URL                                 │ Method │ Expected │ Description                         │\n")
+		result.WriteString("├─────┼──────────┼─────────────────────────────────────┼────────┼──────────┼─────────────────────────────────────┤\n")
 
-	// Rows
-	for _, row := range rows {
-		result.WriteString(fmt.Sprintf("│ %-3d │ %-60s │ %-35s │ %-8s │ %-6d │ %-7s │ %-4s │ %-40s │\n",
-			row.ID,
-			truncateString(row.URL, 60),
-			truncateString(row.Description, 35),
-			truncateString(row.Category, 8),
-			row.Status,
-			row.WarningCol,
-			row.Pass,
-			truncateString(row.FailureReason, 40)))
+		// Rows
+		for _, row := range rows {
+			result.WriteString(fmt.Sprintf("│ %-3d │ %-8s │ %-35s │ %-6s │ %-8d │ %-35s │\n",
+				row.ID,
+				truncateString(row.Category, 8),
+				truncateString(row.URL, 35),
+				row.Method,
+				row.Expected,
+				truncateString(row.Description, 35)))
+		}
+
+		// Footer
+		result.WriteString("└─────┴──────────┴─────────────────────────────────────┴────────┴──────────┴─────────────────────────────────────┘\n")
+	} else {
+		// Table mode: [ID, Category, URL, Method, Expected, Description, Actual, W/RW/E, Pass, Failure]
+		result.WriteString("┌─────┬──────────┬─────────────────────────────────────┬────────┬──────────┬─────────────────────────────────────┬────────┬─────────┬──────┬──────────────────────────────────────────┐\n")
+		result.WriteString("│ ID  │ Category │ URL                                 │ Method │ Expected │ Description                         │ Actual │ W/RW/E  │ Pass │ Failure Reason                           │\n")
+		result.WriteString("├─────┼──────────┼─────────────────────────────────────┼────────┼──────────┼─────────────────────────────────────┼────────┼─────────┼──────┼──────────────────────────────────────────┤\n")
+
+		// Rows
+		for _, row := range rows {
+			result.WriteString(fmt.Sprintf("│ %-3d │ %-8s │ %-35s │ %-6s │ %-8d │ %-35s │ %-6d │ %-7s │ %-4s │ %-40s │\n",
+				row.ID,
+				truncateString(row.Category, 8),
+				truncateString(row.URL, 35),
+				row.Method,
+				row.Expected,
+				truncateString(row.Description, 35),
+				row.Status,
+				row.WarningCol,
+				row.Pass,
+				truncateString(row.FailureReason, 40)))
+		}
+
+		// Footer
+		result.WriteString("└─────┴──────────┴─────────────────────────────────────┴────────┴──────────┴─────────────────────────────────────┴────────┴─────────┴──────┴──────────────────────────────────────────┘\n")
 	}
 
-	// Footer
-	result.WriteString("└─────┴──────────────────────────────────────────────────────────────┴─────────────────────────────────────┴──────────┴────────┴─────────┴──────┴──────────────────────────────────────────┘\n")
-
-	// Summary
-	percentage := float64(passed) / float64(len(testCases)) * 100
-	result.WriteString(fmt.Sprintf("Summary: %d/%d tests passed (%.1f%%)\n", passed, len(testCases), percentage))
+	// Summary (only in table mode)
+	if !listMode {
+		percentage := float64(passed) / float64(len(rows)) * 100
+		result.WriteString(fmt.Sprintf("Summary: %d/%d tests passed (%.1f%%)\n", passed, len(rows), percentage))
+	}
 	result.WriteString(fmt.Sprintf("Total warnings: %d, Total request warnings: %d, Total errors: %d\n", totalWarnings, totalRequestWarnings, totalErrors))
 
 	return result.String()
@@ -416,3 +504,40 @@ func formatWithRawJSON(rawJSON json.RawMessage, options DisplayOptions, dataLeng
 
 	return output, nil
 }
+
+// UrlTable displays test information in table format, optionally running tests
+func UrlTable(testNumbers []int, runTests bool) string {
+	var results []*core.TestResult = nil
+
+	if runTests {
+		for _, testNum := range testNumbers {
+			result, _ := core.RunTest(testNum)
+			results = append(results, result)
+		}
+	}
+	return FormatTable(testNumbers, results)
+}
+
+// UrlTable displays test information in table format, optionally running tests
+// func UrlTable(testNumbers []int, runTests bool) string {
+// 	// Get test case definitions
+// 	allTestCases := statictestsuite.GetAllTestCases()
+
+// 	var tests []types.TestCase
+// 	var results []*core.TestResult
+
+// 	for _, testNum := range testNumbers {
+// 		if testNum >= 1 && testNum <= len(allTestCases) {
+// 			tests = append(tests, allTestCases[testNum-1])
+
+// 			if runTests {
+// 				result, _ := core.RunTest(testNum)
+// 				results = append(results, result)
+// 			} else {
+// 				results = append(results, nil)
+// 			}
+// 		}
+// 	}
+
+// 	return FormatTable(tests, results)
+// }

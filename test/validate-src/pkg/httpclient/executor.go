@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -36,10 +37,25 @@ func (e *HTTPExecutor) ExecuteTest(testCase *types.TestCase) (*types.TestCase, e
 	// Build full URL using GlobalConfig.ServerURL
 	fullURL := datagen.GlobalConfig.ServerURL + testCase.URL
 
+	// Prepare request body if present
+	var requestBody io.Reader
+	if testCase.RequestBody != nil {
+		jsonBody, err := json.Marshal(testCase.RequestBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		requestBody = bytes.NewReader(jsonBody)
+	}
+
 	// Execute the HTTP request
-	req, err := http.NewRequest(testCase.Method, fullURL, nil)
+	req, err := http.NewRequest(testCase.Method, fullURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set content type for POST/PUT requests with body
+	if testCase.RequestBody != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 
 	resp, err := e.client.Do(req)
