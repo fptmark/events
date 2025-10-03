@@ -5,46 +5,46 @@ import (
 	"os"
 
 	"validate/pkg/core"
-	"validate/pkg/parser"
+	"validate/pkg/httpclient"
+	statictestsuite "validate/pkg/static-test-suite"
 )
 
 // RunSummary runs all tests and shows summary statistics
-func RunSummary() {
-	totalTests, err := parser.CountTests()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error counting tests: %v\n", err)
-		os.Exit(1)
-	}
+func RunSummary(TestNumbers []int) {
+	allCategories := statictestsuite.GetAllCategories()
 
-	success := 0
-	failure := 0
-	failuresByCategory := make(map[string]int)
-	allCategories := make(map[string]bool)
-
-	for testNum := 1; testNum <= totalTests; testNum++ {
-		result, err := core.RunTest(testNum)
+	for i := 1; i <= len(TestNumbers); i++ {
+		testNum := TestNumbers[i-1]
+		result, err := httpclient.ExecuteTest(testNum)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error running test %d: %v\n", testNum, err)
 			continue
 		}
 
-		allCategories[result.TestClass] = true
+		testCategory := statictestsuite.GetTestCategory(testNum)
 		validate := core.ValidateTest(testNum, result)
 		if validate.OK {
-			success++
+			allCategories[testCategory].Success++
 		} else {
-			failure++
-			failuresByCategory[result.TestClass]++
+			allCategories[testCategory].Failed++
 		}
 	}
 
-	total := success + failure
-	percentage := float64(success) / float64(total) * 100
-	fmt.Printf("Summary: %d/%d tests passed (%.1f%%)\n", success, total, percentage)
+	// Calculate totals from categories
+	var totalSuccess, totalFailure int
+	for _, stats := range allCategories {
+		totalSuccess += stats.Success
+		totalFailure += stats.Failed
+	}
 
-	fmt.Printf("Failures by category:\n")
-	for category := range allCategories {
-		count := failuresByCategory[category] // defaults to 0 if not in map
-		fmt.Printf("  %s: %d\n", category, count)
+	total := totalSuccess + totalFailure
+	percentage := float64(totalSuccess) / float64(total) * 100
+	fmt.Printf("Summary: %d/%d tests passed (%.1f%%)\n", totalSuccess, total, percentage)
+
+	fmt.Printf("Results by category:\n")
+	for category, stats := range allCategories {
+		if stats.Success > 0 || stats.Failed > 0 { // Only show categories that were tested
+			fmt.Printf("  %s: %d passed, %d failed\n", category, stats.Success, stats.Failed)
+		}
 	}
 }

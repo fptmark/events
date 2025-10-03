@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"validate/pkg/core"
+	"validate/pkg/httpclient"
 	statictestsuite "validate/pkg/static-test-suite"
 	"validate/pkg/types"
 )
@@ -455,13 +456,11 @@ func FormatTable(testNumbers []int, results []*core.TestResult) string {
 
 		// Footer
 		result.WriteString("└─────┴──────────┴─────────────────────────────────────┴────────┴──────────┴─────────────────────────────────────┴────────┴─────────┴──────┴──────────────────────────────────────────┘\n")
-	}
 
-	// Summary (only in table mode)
-	if !listMode {
 		percentage := float64(passed) / float64(len(rows)) * 100
 		result.WriteString(fmt.Sprintf("Summary: %d/%d tests passed (%.1f%%)\n", passed, len(rows), percentage))
 	}
+
 	result.WriteString(fmt.Sprintf("Total warnings: %d, Total request warnings: %d, Total errors: %d\n", totalWarnings, totalRequestWarnings, totalErrors))
 
 	return result.String()
@@ -511,33 +510,9 @@ func UrlTable(testNumbers []int, runTests bool) string {
 
 	if runTests {
 		for _, testNum := range testNumbers {
-			result, _ := core.RunTest(testNum)
+			result, _ := httpclient.ExecuteTest(testNum)
 			results = append(results, result)
 		}
 	}
 	return FormatTable(testNumbers, results)
 }
-
-// UrlTable displays test information in table format, optionally running tests
-// func UrlTable(testNumbers []int, runTests bool) string {
-// 	// Get test case definitions
-// 	allTestCases := statictestsuite.GetAllTestCases()
-
-// 	var tests []types.TestCase
-// 	var results []*core.TestResult
-
-// 	for _, testNum := range testNumbers {
-// 		if testNum >= 1 && testNum <= len(allTestCases) {
-// 			tests = append(tests, allTestCases[testNum-1])
-
-// 			if runTests {
-// 				result, _ := core.RunTest(testNum)
-// 				results = append(results, result)
-// 			} else {
-// 				results = append(results, nil)
-// 			}
-// 		}
-// 	}
-
-// 	return FormatTable(tests, results)
-// }

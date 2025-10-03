@@ -7,16 +7,13 @@ import (
 
 	"validate/pkg/core"
 	"validate/pkg/display"
-	"validate/pkg/parser"
+	"validate/pkg/httpclient"
+	statictestsuite "validate/pkg/static-test-suite"
 )
 
 // RunInteractive runs tests in interactive verification mode
 func RunInteractive(startTestNum int) {
-	totalTests, err := parser.CountTests()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error counting tests: %v\n", err)
-		os.Exit(1)
-	}
+	totalTests := len(statictestsuite.GetAllTestCases())
 
 	// Determine starting test
 	currentID := 1
@@ -42,7 +39,7 @@ mainLoop:
 		}
 
 		// Run test and validation
-		result, err := core.RunTest(currentID)
+		result, err := httpclient.ExecuteTest(currentID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error running test %d: %v\n", currentID, err)
 			currentID++

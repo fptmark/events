@@ -5,14 +5,14 @@ import (
 	"os"
 	"strings"
 
-	"validate/pkg/core"
 	"validate/pkg/display"
+	"validate/pkg/httpclient"
 	"validate/pkg/types"
 )
 
 // RunWrite runs a single test and outputs formatted result
 func RunWrite(testNum int, fullData bool, fullNotifications bool) {
-	result, err := core.RunTest(testNum)
+	result, err := httpclient.ExecuteTest(testNum)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error running test %d: %v\n", testNum, err)
 		os.Exit(1)
@@ -29,7 +29,7 @@ func RunWrite(testNum int, fullData bool, fullNotifications bool) {
 		Result: types.TestResult{
 			Data:          result.Data,
 			Notifications: result.Notifications,
-			Status:        result.Status,
+			Status:        fmt.Sprintf("%d", result.StatusCode), // Use actual HTTP status code
 		},
 	}
 

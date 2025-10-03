@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"validate/pkg/datagen"
+	"validate/pkg/display"
 	"validate/pkg/modes"
-	"validate/pkg/parser"
 	statictestsuite "validate/pkg/static-test-suite"
 )
 
@@ -171,8 +171,6 @@ func validateAndExecute(cmd *cobra.Command, testID int) error {
 		return fmt.Errorf("write mode requires a test number")
 	}
 
-	// Initialize HTTP mode for execution
-	parser.InitHTTPMode()
 
 	// Execute tests based on mode
 	if !resetDB && !(writeMode || showData || showNotify) { // display initial record counts if not resetting DB or in single-output modes
@@ -182,7 +180,25 @@ func validateAndExecute(cmd *cobra.Command, testID int) error {
 		}
 		fmt.Printf("Initial records: %d users, %d accounts\n", initialUsers, initialAccounts)
 	}
+
+	// Validate all test numbers ONCE here
+	if err := validateTestNumbers(testNums); err != nil {
+		return err
+	}
+
 	return runTests(testNums, testID)
+}
+
+// validateTestNumbers checks that all test numbers are in valid range
+func validateTestNumbers(testNumbers []int) error {
+	allTests := statictestsuite.GetAllTestCases()
+	totalTests := len(allTests)
+	for _, testNum := range testNumbers {
+		if testNum < 1 || testNum > totalTests {
+			return fmt.Errorf("test ID %d out of range (1-%d)", testNum, totalTests)
+		}
+	}
+	return nil
 }
 
 // Helper functions for the simplified interface
@@ -231,10 +247,12 @@ func runTests(testNums []int, startTestID int) error {
 		modes.RunInteractive(startTestID)
 		return nil
 	} else if summaryMode {
-		modes.RunSummary()
+		modes.RunSummary(testNums)
 		return nil
 	} else {
-		modes.RunTable()
+		// Table mode - call UrlTable directly with provided testNums
+		output := display.UrlTable(testNums, true) // runTests = true
+		fmt.Print(output)
 		return nil
 	}
 }

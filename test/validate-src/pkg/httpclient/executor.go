@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"validate/pkg/core"
 	"validate/pkg/datagen"
 	statictestsuite "validate/pkg/static-test-suite"
 	"validate/pkg/types"
@@ -32,8 +33,43 @@ func NewHTTPExecutor() *HTTPExecutor {
 	}
 }
 
-// ExecuteTest executes a single test case and returns a TestCase compatible with existing code
-func (e *HTTPExecutor) ExecuteTest(testCase *types.TestCase) (*types.TestCase, error) {
+// ExecuteTest executes a test by number and returns TestResult
+func (e *HTTPExecutor) ExecuteTest(testNumber int) (*core.TestResult, error) {
+	// Get test definition from static test suite
+	allTests := statictestsuite.GetAllTestCases()
+	testCase := allTests[testNumber-1] // testNumber is 1-based
+
+	// Execute the test
+	executedTestCase, err := e.executeTestCase(&testCase)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to core.TestResult format
+	result := &core.TestResult{
+		ID:              executedTestCase.ID,
+		URL:             executedTestCase.URL,
+		Description:     executedTestCase.Description,
+		TestClass:       executedTestCase.TestClass,
+		Data:            executedTestCase.Result.Data,
+		RawResponseBody: executedTestCase.RawResponseBody,
+		Notifications:   executedTestCase.Result.Notifications,
+		Status:          executedTestCase.Result.Status,
+		StatusCode:      executedTestCase.ActualStatus,
+		Params: core.TestParams{
+			Sort:   executedTestCase.Params.Sort,
+			Filter: executedTestCase.Params.Filter,
+			Page:   executedTestCase.Params.Page,
+			Size:   executedTestCase.Params.PageSize,
+			View:   executedTestCase.Params.View,
+		},
+	}
+
+	return result, nil
+}
+
+// executeTestCase executes a single test case and returns a TestCase compatible with existing code
+func (e *HTTPExecutor) executeTestCase(testCase *types.TestCase) (*types.TestCase, error) {
 	// Build full URL using GlobalConfig.ServerURL
 	fullURL := datagen.GlobalConfig.ServerURL + testCase.URL
 
@@ -156,16 +192,6 @@ func (e *HTTPExecutor) CountTests() int {
 	return len(statictestsuite.GetAllTestCases())
 }
 
-// LoadTestCase loads and executes a specific test case by ID
-func (e *HTTPExecutor) LoadTestCase(testID int) (*types.TestCase, error) {
-	allTests := statictestsuite.GetAllTestCases()
-	if testID < 1 || testID > len(allTests) {
-		return nil, fmt.Errorf("test ID %d out of range (1-%d)", testID, len(allTests))
-	}
-
-	testCase := allTests[testID-1]
-	return e.ExecuteTest(&testCase)
-}
 
 // parseTestURL extracts test parameters from a URL string (simplified version)
 func parseTestURL(urlStr string) (*types.TestParams, error) {
@@ -342,6 +368,12 @@ func parseViewParam(viewStr string) map[string][]string {
 	}
 
 	return viewSpec
+}
+
+// ExecuteTest is a package-level function that creates an executor and runs a test
+func ExecuteTest(testNumber int) (*core.TestResult, error) {
+	executor := NewHTTPExecutor()
+	return executor.ExecuteTest(testNumber)
 }
 
 // ensureDatabaseReset ensures the database is reset exactly once per test session
