@@ -8,7 +8,7 @@ import (
 
 	"validate/pkg/core"
 	"validate/pkg/httpclient"
-	statictestsuite "validate/pkg/static-test-suite"
+	"validate/pkg/tests"
 	"validate/pkg/types"
 )
 
@@ -351,7 +351,7 @@ func FormatTable(testNumbers []int, results []*core.TestResult) string {
 	}
 
 	// Get test case definitions
-	allTestCases := statictestsuite.GetAllTestCases()
+	allTestCases := tests.GetAllTestCases()
 
 	// Determine if we're in list mode (results is nil)
 	listMode := results == nil

@@ -7,19 +7,21 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"validate/pkg/core"
 	"validate/pkg/datagen"
-	statictestsuite "validate/pkg/static-test-suite"
+	"validate/pkg/dynamic"
+	"validate/pkg/tests"
 	"validate/pkg/types"
 )
 
 // HTTPExecutor executes API tests in real-time
 type HTTPExecutor struct {
-	client *http.Client
+	client  *http.Client
 	dbReset bool // tracks if database has been reset for this session
 }
 
@@ -36,8 +38,18 @@ func NewHTTPExecutor() *HTTPExecutor {
 // ExecuteTest executes a test by number and returns TestResult
 func (e *HTTPExecutor) ExecuteTest(testNumber int) (*core.TestResult, error) {
 	// Get test definition from static test suite
-	allTests := statictestsuite.GetAllTestCases()
+	allTests := tests.GetAllTestCases()
 	testCase := allTests[testNumber-1] // testNumber is 1-based
+
+	if testCase.TestClass == "dynamic" {
+		function_if := dynamic.GetFunction(testCase.URL)
+		if function_if == nil {
+			fmt.Fprintf(os.Stderr, "no dynamic function found for URL: %s\n", testCase.URL)
+			os.Exit(1)
+		}
+		result, err := function_if()
+		return result, err
+	}
 
 	// Execute the test
 	executedTestCase, err := e.executeTestCase(&testCase)
@@ -73,51 +85,26 @@ func (e *HTTPExecutor) executeTestCase(testCase *types.TestCase) (*types.TestCas
 	// Build full URL using GlobalConfig.ServerURL
 	fullURL := datagen.GlobalConfig.ServerURL + testCase.URL
 
-	// Prepare request body if present
-	var requestBody io.Reader
-	if testCase.RequestBody != nil {
-		jsonBody, err := json.Marshal(testCase.RequestBody)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal request body: %w", err)
-		}
-		requestBody = bytes.NewReader(jsonBody)
-	}
-
-	// Execute the HTTP request
-	req, err := http.NewRequest(testCase.Method, fullURL, requestBody)
+	// Use the new executeUrl function to perform the HTTP request
+	resp, responseBody, err := executeUrl(fullURL, testCase.Method, testCase.RequestBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, err
 	}
 
-	// Set content type for POST/PUT requests with body
-	if testCase.RequestBody != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := e.client.Do(req)
+	// Reshape response to TestResult format
+	result, err := reshapeToTestResult(resp, responseBody, testCase.URL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, err
 	}
 
-	// Store raw response body to preserve field order
-	testCase.RawResponseBody = json.RawMessage(body)
-
-	// Parse the response body as JSON
-	var responseData interface{}
-	if err := json.Unmarshal(body, &responseData); err != nil {
-		// If JSON parsing fails, treat as error response
-		responseData = string(body)
+	// Convert the TestResult back to TestCase format for compatibility
+	testCase.ActualStatus = result.StatusCode
+	testCase.RawResponseBody = result.RawResponseBody
+	testCase.Result = types.TestResult{
+		Status:        result.Status,
+		Data:         result.Data,
+		Notifications: result.Notifications,
 	}
-
-	// Update the test case with execution results
-	testCase.ActualStatus = resp.StatusCode
 
 	// Parse URL parameters from the full URL
 	params, err := parseTestURL(fullURL)
@@ -125,9 +112,6 @@ func (e *HTTPExecutor) executeTestCase(testCase *types.TestCase) (*types.TestCas
 		return nil, fmt.Errorf("failed to parse URL parameters: %w", err)
 	}
 	testCase.Params = *params
-
-	// Format the result to match results.json structure
-	testCase.Result = e.formatResponse(responseData, resp.StatusCode)
 
 	return testCase, nil
 }
@@ -184,14 +168,13 @@ func (e *HTTPExecutor) formatResponse(responseData interface{}, statusCode int) 
 
 // GetAllTests returns all static test cases
 func (e *HTTPExecutor) GetAllTests() []types.TestCase {
-	return statictestsuite.GetAllTestCases()
+	return tests.GetAllTestCases()
 }
 
 // CountTests returns the total number of tests
 func (e *HTTPExecutor) CountTests() int {
-	return len(statictestsuite.GetAllTestCases())
+	return len(tests.GetAllTestCases())
 }
-
 
 // parseTestURL extracts test parameters from a URL string (simplified version)
 func parseTestURL(urlStr string) (*types.TestParams, error) {
@@ -370,6 +353,107 @@ func parseViewParam(viewStr string) map[string][]string {
 	return viewSpec
 }
 
+// executeUrl abstracts HTTP calls - hides all HTTP internals from callers
+func executeUrl(fullURL, method string, body interface{}) (*http.Response, []byte, error) {
+	// Use static HTTP client for performance
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// Prepare request body if present
+	var requestBody io.Reader
+	if body != nil {
+		jsonBody, err := json.Marshal(body)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		requestBody = bytes.NewReader(jsonBody)
+	}
+
+	// Execute the HTTP request
+	req, err := http.NewRequest(method, fullURL, requestBody)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set content type for POST/PUT requests with body
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	return resp, responseBody, nil
+}
+
+// reshapeToTestResult converts raw HTTP response to TestResult format
+func reshapeToTestResult(resp *http.Response, responseBody []byte, url string) (*core.TestResult, error) {
+	// Parse the response body as JSON
+	var responseData interface{}
+	if err := json.Unmarshal(responseBody, &responseData); err != nil {
+		// If JSON parsing fails, treat as error response
+		responseData = string(responseBody)
+	}
+
+	// Create base result
+	result := &core.TestResult{
+		URL:             url,
+		StatusCode:      resp.StatusCode,
+		RawResponseBody: json.RawMessage(responseBody),
+		Data:            []map[string]interface{}{},
+	}
+
+	// Handle different response types
+	if responseMap, ok := responseData.(map[string]interface{}); ok {
+		// Standard API response format
+		if dataVal, exists := responseMap["data"]; exists {
+			switch d := dataVal.(type) {
+			case []interface{}:
+				for _, item := range d {
+					if itemMap, ok := item.(map[string]interface{}); ok {
+						result.Data = append(result.Data, itemMap)
+					}
+				}
+			case map[string]interface{}:
+				result.Data = append(result.Data, d)
+			case nil:
+				result.Data = []map[string]interface{}{}
+			}
+		}
+
+		// Extract notifications
+		if notifVal, exists := responseMap["notifications"]; exists {
+			result.Notifications = notifVal
+		}
+
+		// Extract status from response if available
+		if statusVal, exists := responseMap["status"]; exists {
+			if statusStr, ok := statusVal.(string); ok {
+				result.Status = statusStr
+			}
+		}
+	} else {
+		// Non-standard response (error, plain text, etc.)
+		result.Status = fmt.Sprintf("%d", resp.StatusCode)
+		result.Data = []map[string]interface{}{}
+		result.Notifications = nil
+	}
+
+	if result.Status == "" {
+		result.Status = fmt.Sprintf("%d", resp.StatusCode)
+	}
+
+	return result, nil
+}
+
 // ExecuteTest is a package-level function that creates an executor and runs a test
 func ExecuteTest(testNumber int) (*core.TestResult, error) {
 	executor := NewHTTPExecutor()
@@ -468,4 +552,3 @@ func (e *HTTPExecutor) callDatabaseInit() error {
 
 	return nil
 }
-

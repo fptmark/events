@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	statictestsuite "validate/pkg/static-test-suite"
+	"validate/pkg/tests"
 	"validate/pkg/types"
 	"validate/pkg/verifier"
 )
@@ -20,6 +20,15 @@ type ValidationResult struct {
 // ValidateTest validates a test result and returns validation status
 func ValidateTest(testNum int, result *TestResult) *ValidationResult {
 	var allIssues []string
+
+	// Check for nil result
+	if result == nil {
+		return &ValidationResult{
+			OK:     false,
+			Issues: []string{"Test result is nil"},
+			Fields: make(map[string][]interface{}),
+		}
+	}
 
 	// First do existing verification
 	params := verifier.TestParams{
@@ -262,7 +271,7 @@ func valuesEqual(actual, expected interface{}) bool {
 
 // getTestCaseByID retrieves a test case by its ID (helper function)
 func getTestCaseByID(testID int) (*types.TestCase, error) {
-	allTests := statictestsuite.GetAllTestCases()
+	allTests := tests.GetAllTestCases()
 	if testID < 1 || testID > len(allTests) {
 		return nil, fmt.Errorf("test ID %d out of range", testID)
 	}

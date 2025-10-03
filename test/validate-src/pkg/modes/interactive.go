@@ -8,12 +8,12 @@ import (
 	"validate/pkg/core"
 	"validate/pkg/display"
 	"validate/pkg/httpclient"
-	statictestsuite "validate/pkg/static-test-suite"
+	"validate/pkg/tests"
 )
 
 // RunInteractive runs tests in interactive verification mode
 func RunInteractive(startTestNum int) {
-	totalTests := len(statictestsuite.GetAllTestCases())
+	totalTests := len(tests.GetAllTestCases())
 
 	// Determine starting test
 	currentID := 1

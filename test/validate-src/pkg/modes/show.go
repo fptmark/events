@@ -4,28 +4,12 @@ import (
 	"fmt"
 	"sort"
 
-	"validate/pkg/display"
-	statictestsuite "validate/pkg/static-test-suite"
+	"validate/pkg/tests"
 )
-
-// ShowURLList displays all URLs with test#, category, and /api/path
-func ShowURLList() {
-	testCases := statictestsuite.GetAllTestCases()
-
-	// Create test numbers array
-	var testNumbers []int
-	for i := 1; i <= len(testCases); i++ {
-		testNumbers = append(testNumbers, i)
-	}
-
-	// Use unified UrlTable function
-	output := display.UrlTable(testNumbers, false) // runTests = false
-	fmt.Print(output)
-}
 
 // ShowTestCategories displays all available test categories
 func ShowTestCategories() {
-	allTests := statictestsuite.GetAllTestCases()
+	allTests := tests.GetAllTestCases()
 	categoryMap := make(map[string]int)
 
 	// Count tests per category
@@ -48,4 +32,3 @@ func ShowTestCategories() {
 	fmt.Printf("\nTotal: %d tests across %d categories\n", len(allTests), len(categories))
 	fmt.Println("\nUsage: validate --test=category1,category2 to run specific categories")
 }
-

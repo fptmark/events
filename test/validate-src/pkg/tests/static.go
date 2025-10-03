@@ -1,4 +1,4 @@
-package statictestsuite
+package tests
 
 import (
 	"strings"
@@ -430,6 +430,7 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/api/User?filter=networth:gt:1000", TestClass: "case", Description: "Filter by networth (lowercase)"},
 		{Method: "GET", URL: "/api/User?filter=networth:gte:1000", TestClass: "case", Description: "Filter by networth gte (lowercase)"},
 		{Method: "GET", URL: "/api/User?filter=isaccountowner:true", TestClass: "case", Description: "Filter by isaccountowner (lowercase)"},
+		{Method: "GET", URL: "testPaginationAggregation", TestClass: "dynamic", Description: "Aggregate pagination test (tests 22-24)"},
 	}
 
 	// Add ID and ExpectedStatus to each test case

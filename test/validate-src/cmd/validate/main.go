@@ -11,7 +11,7 @@ import (
 	"validate/pkg/datagen"
 	"validate/pkg/display"
 	"validate/pkg/modes"
-	statictestsuite "validate/pkg/static-test-suite"
+	"validate/pkg/tests"
 )
 
 const DefaultServerURL = "http://localhost:5500"
@@ -112,9 +112,33 @@ func runCommand(cmd *cobra.Command, args []string) {
 func validateAndExecute(cmd *cobra.Command, testID int) error {
 	datagen.SetConfigDefaults(DefaultServerURL, verbose)
 
-	// Handle show modes first (terminate after showing)
+	// Get test categories if specified
+	var testNums []int
+	hasTestCategories := cmd.Flags().Changed("test") && testCategories != "show"
+
+	// Validate test number vs categories
+	if testID > 0 && hasTestCategories {
+		return fmt.Errorf("cannot combine --test=categories with test number")
+	}
+
+	// Get test numbers to run FIRST (before any mode handling)
+	if hasTestCategories {
+		testNums = getTestNumbers(testCategories)
+	} else if testID > 0 {
+		testNums = []int{testID}
+	} else {
+		testNums = getAllTestNumbers()
+	}
+
+	// Validate all test numbers ONCE here
+	if err := validateTestNumbers(testNums); err != nil {
+		return err
+	}
+
+	// Handle show modes (now with filtered testNums)
 	if listMode {
-		modes.ShowURLList()
+		output := display.UrlTable(testNums, false) // Use filtered testNums
+		fmt.Print(output)
 		return nil
 	} else if cmd.Flags().Changed("test") && testCategories == "show" {
 		modes.ShowTestCategories()
@@ -126,24 +150,6 @@ func validateAndExecute(cmd *cobra.Command, testID int) error {
 		if err := datagen.ResetAndPopulate(DefaultServerURL, 85, 31); err != nil {
 			return fmt.Errorf("database reset failed: %w", err)
 		}
-	}
-
-	// Get test categories if specified
-	var testNums []int
-	hasTestCategories := cmd.Flags().Changed("test") && testCategories != "show"
-
-	// Validate test number vs categories
-	if testID > 0 && hasTestCategories {
-		return fmt.Errorf("cannot combine --test=categories with test number")
-	}
-
-	// Get test numbers to run
-	if hasTestCategories {
-		testNums = getTestNumbers(testCategories)
-	} else if testID > 0 {
-		testNums = []int{testID}
-	} else {
-		testNums = getAllTestNumbers()
 	}
 
 	// Auto-enable write mode if data/notify flags are used
@@ -181,17 +187,12 @@ func validateAndExecute(cmd *cobra.Command, testID int) error {
 		fmt.Printf("Initial records: %d users, %d accounts\n", initialUsers, initialAccounts)
 	}
 
-	// Validate all test numbers ONCE here
-	if err := validateTestNumbers(testNums); err != nil {
-		return err
-	}
-
 	return runTests(testNums, testID)
 }
 
 // validateTestNumbers checks that all test numbers are in valid range
 func validateTestNumbers(testNumbers []int) error {
-	allTests := statictestsuite.GetAllTestCases()
+	allTests := tests.GetAllTestCases()
 	totalTests := len(allTests)
 	for _, testNum := range testNumbers {
 		if testNum < 1 || testNum > totalTests {
@@ -211,7 +212,7 @@ func getTestNumbers(categoriesStr string) []int {
 	}
 
 	var testNums []int
-	allTests := statictestsuite.GetAllTestCases()
+	allTests := tests.GetAllTestCases()
 
 	for i, test := range allTests {
 		for _, category := range categories {
@@ -226,7 +227,7 @@ func getTestNumbers(categoriesStr string) []int {
 }
 
 func getAllTestNumbers() []int {
-	allTests := statictestsuite.GetAllTestCases()
+	allTests := tests.GetAllTestCases()
 	testNums := make([]int, len(allTests))
 	for i := range allTests {
 		testNums[i] = i + 1 // testID is 1-based

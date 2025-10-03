@@ -6,12 +6,12 @@ import (
 
 	"validate/pkg/core"
 	"validate/pkg/httpclient"
-	statictestsuite "validate/pkg/static-test-suite"
+	"validate/pkg/tests"
 )
 
 // RunSummary runs all tests and shows summary statistics
 func RunSummary(TestNumbers []int) {
-	allCategories := statictestsuite.GetAllCategories()
+	allCategories := tests.GetAllCategories()
 
 	for i := 1; i <= len(TestNumbers); i++ {
 		testNum := TestNumbers[i-1]
@@ -21,7 +21,7 @@ func RunSummary(TestNumbers []int) {
 			continue
 		}
 
-		testCategory := statictestsuite.GetTestCategory(testNum)
+		testCategory := tests.GetTestCategory(testNum)
 		validate := core.ValidateTest(testNum, result)
 		if validate.OK {
 			allCategories[testCategory].Success++
