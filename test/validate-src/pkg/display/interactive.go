@@ -216,7 +216,7 @@ func (d *InteractiveDisplay) getStatusDisplay(passed bool) string {
 	if passed {
 		return "\033[32m✓ PASS\033[0m"
 	}
-	return "\033[31m✗ FAIL\033[0m"
+	return "\033[1;91m✗ FAIL\033[0m"
 }
 
 // wrapText wraps text to fit within the specified width

@@ -280,7 +280,7 @@ func FormatTableRow(test types.TestCase, result *core.TestResult, listMode bool)
 	if !listMode {
 		if result == nil {
 			// Framework error - must have result in table mode
-			status = "\033[31mFAIL\033[0m" // Red
+			status = "\033[1;91mFAIL\033[0m" // Bold bright red
 			failureReason = "Framework error: no result"
 			warningCol = "  - - -"
 		} else {
@@ -294,17 +294,17 @@ func FormatTableRow(test types.TestCase, result *core.TestResult, listMode bool)
 
 			// Determine pass/fail using both status check and comprehensive validation
 			if !statusMatch {
-				status = "\033[31mFAIL\033[0m" // Red
+				status = "\033[1;91mFAIL\033[0m" // Bold bright red
 				failureReason = fmt.Sprintf("Expected %d, got %d", test.ExpectedStatus, actualStatus)
 			} else if !validation.OK {
-				status = "\033[31mFAIL\033[0m" // Red
+				status = "\033[1;91mFAIL\033[0m" // Bold bright red
 				if len(validation.Issues) > 0 {
 					failureReason = validation.Issues[0] // Show first validation issue
 				} else {
 					failureReason = "Validation failed"
 				}
 			} else if errors > 0 {
-				status = "\033[31mFAIL\033[0m" // Red
+				status = "\033[1;91mFAIL\033[0m" // Bold bright red
 				failureReason = "Validation errors detected"
 			}
 

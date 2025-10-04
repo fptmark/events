@@ -127,7 +127,7 @@ func showInteractiveTest(result *core.TestResult, validate *core.ValidationResul
 	if validate.OK {
 		fmt.Printf("Validation: \033[32mPASS\033[0m\n")
 	} else {
-		fmt.Printf("Validation: \033[31mFAIL\033[0m\n")
+		fmt.Printf("Validation: \033[1;91mFAIL\033[0m\n")
 		for _, issue := range validate.Issues {
 			fmt.Printf("Issue: %s\n", issue)
 		}
