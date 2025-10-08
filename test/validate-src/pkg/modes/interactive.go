@@ -1,103 +1,91 @@
 package modes
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"validate/pkg/core"
-	"validate/pkg/display"
-	"validate/pkg/httpclient"
 	"validate/pkg/tests"
+	"validate/pkg/types"
 )
 
 // RunInteractive runs tests in interactive verification mode
 func RunInteractive(startTestNum int) {
-	totalTests := len(tests.GetAllTestCases())
+	allTests := tests.GetAllTestCases()
+	testNum := startTestNum
 
-	// Determine starting test
-	currentID := 1
-	if startTestNum > 0 {
-		if startTestNum > totalTests {
-			fmt.Fprintf(os.Stderr, "Test ID %d exceeds total tests (%d)\n", startTestNum, totalTests)
-			os.Exit(1)
-		}
-		currentID = startTestNum
-	}
-
-	interactiveDisplay := display.NewInteractiveDisplay()
-	fmt.Printf("Starting verification from test %d (total: %d tests)\n", currentID, totalTests)
+	fmt.Printf("Starting verification from test %d (total: %d tests)\n", testNum, len(allTests))
 
 mainLoop:
 	for {
-		// Validate bounds
-		if currentID < 1 {
-			currentID = 1
-		}
-		if currentID > totalTests {
-			currentID = totalTests
-		}
-
-		// Run test and validation
-		result, err := httpclient.ExecuteTest(currentID)
+		// Execute test
+		results, err := core.ExecuteTests([]int{testNum})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error running test %d: %v\n", currentID, err)
-			currentID++
-			if currentID > totalTests {
+			fmt.Fprintf(os.Stderr, "Unexpected error: %v\n", err)
+			break
+		}
+		result := results[0]
+		if result == nil {
+			fmt.Fprintf(os.Stderr, "Error running test %d: no result\n", testNum)
+			testNum++
+			if testNum > len(allTests) {
 				break
 			}
 			continue
 		}
 
-		validate := core.ValidateTest(currentID, result)
-
-		// Clear screen and show summary and verification
-		fmt.Print("\033[2J\033[H") // Clear screen and move cursor to top
-		showInteractiveTest(result, validate, interactiveDisplay)
+		// Clear screen and display test (default: truncated)
+		fmt.Print("\033[2J\033[H")
+		testCase := allTests[testNum-1]
+		output := formatResult(&testCase, result, false, false)
+		fmt.Print(output)
 
 		// Handle navigation
-		if currentID >= totalTests {
+		if testNum >= len(allTests) {
 			fmt.Println("\nReached end of test suite.")
 		}
 
-		action := interactiveDisplay.GetNavigation()
+		action := getNavigation()
 		switch action {
 		case "quit":
 			fmt.Println("\nVerification session ended by user.")
 			break mainLoop
 		case "data":
-			showTestData(result)
+			showTestData(result, &testCase)
 		case "notify":
-			showTestNotifications(result)
+			showTestNotifications(result, &testCase)
 		case "next":
-			if currentID < totalTests {
-				currentID++
+			if testNum < len(allTests) {
+				testNum++
 			} else {
 				fmt.Println("Already at last test.")
-				interactiveDisplay.WaitForEnter()
+				waitForEnter()
 			}
 		case "previous":
-			if currentID > 1 {
-				currentID--
+			if testNum > 1 {
+				testNum--
 			} else {
 				fmt.Println("Already at first test.")
-				interactiveDisplay.WaitForEnter()
+				waitForEnter()
 			}
 		case "help":
-			interactiveDisplay.ShowHelp()
-			interactiveDisplay.WaitForEnter()
+			showHelp()
+			waitForEnter()
 		default:
 			// Try to parse as test number
-			if testID, parseErr := strconv.Atoi(action); parseErr == nil {
-				if testID >= 1 && testID <= totalTests {
-					currentID = testID
+			if newTestNum, parseErr := strconv.Atoi(action); parseErr == nil {
+				if newTestNum >= 1 && newTestNum <= len(allTests) {
+					testNum = newTestNum
 				} else {
-					fmt.Printf("Invalid test ID: %d. Valid range: 1-%d\n", testID, totalTests)
-					interactiveDisplay.WaitForEnter()
+					fmt.Printf("Invalid test ID: %d. Valid range: 1-%d\n", newTestNum, len(allTests))
+					waitForEnter()
 				}
 			} else {
 				fmt.Printf("Unknown action: %s\n", action)
-				interactiveDisplay.WaitForEnter()
+				waitForEnter()
 			}
 		}
 	}
@@ -105,67 +93,70 @@ mainLoop:
 	fmt.Println("Verification complete.")
 }
 
-// showInteractiveTest displays test summary and verification for interactive mode
-func showInteractiveTest(result *core.TestResult, validate *core.ValidationResult, interactiveDisplay *display.InteractiveDisplay) {
-	// Display test number at the top
-	fmt.Printf("══════════════════════════════════════════════════════════════════════════════\n")
-	fmt.Printf("                              TEST %d                                        \n", result.ID)
-	fmt.Printf("══════════════════════════════════════════════════════════════════════════════\n\n")
-
-	// Use write mode formatting for summary (truncated by default)
-	// The truncation messages will be shown by RunWrite
-	RunWrite(result.ID, false, false)
-
-	// Convert to old verification result format for display compatibility
-	fields := make(map[string]interface{})
-	for key, values := range validate.Fields {
-		fields[key] = values
-	}
-
-	// Show verification results
-	fmt.Printf("\n=== VERIFICATION RESULTS ===\n")
-	if validate.OK {
-		fmt.Printf("Validation: \033[32mPASS\033[0m\n")
-	} else {
-		fmt.Printf("Validation: \033[1;91mFAIL\033[0m\n")
-		for _, issue := range validate.Issues {
-			fmt.Printf("Issue: %s\n", issue)
-		}
-	}
-
-	// Show extracted fields
-	if len(validate.Fields) > 0 {
-		fmt.Printf("\nExtracted Fields:\n")
-		for fieldName, values := range validate.Fields {
-			fmt.Printf("  %s: [", fieldName)
-			for i, value := range values {
-				if i > 0 {
-					fmt.Printf(", ")
-				}
-				if i >= 10 {
-					fmt.Printf("...")
-					break
-				}
-				fmt.Printf("%v", value)
-			}
-			fmt.Printf("]\n")
-		}
-	}
-	fmt.Println()
-}
-
 // showTestData displays full test data
-func showTestData(result *core.TestResult) {
+func showTestData(result *types.TestResult, testCase *types.TestCase) {
+	fmt.Print("\033[2J\033[H") // Clear screen
 	fmt.Printf("\n=== FULL DATA ===\n")
-	RunWrite(result.ID, true, false)
+	output := formatResult(testCase, result, true, false)
+	fmt.Print(output)
 	fmt.Printf("Press Enter to continue...")
 	fmt.Scanln()
 }
 
 // showTestNotifications displays full test notifications
-func showTestNotifications(result *core.TestResult) {
+func showTestNotifications(result *types.TestResult, testCase *types.TestCase) {
+	fmt.Print("\033[2J\033[H") // Clear screen
 	fmt.Printf("\n=== FULL NOTIFICATIONS ===\n")
-	RunWrite(result.ID, false, true)
+	output := formatResult(testCase, result, false, true)
+	fmt.Print(output)
 	fmt.Printf("Press Enter to continue...")
 	fmt.Scanln()
+}
+
+// getNavigation prompts user for navigation command
+func getNavigation() string {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("\nAction [enter=next, b/-/p=previous, d=data, n=notify, h=help, q=quit, #=goto]: ")
+	input, _ := reader.ReadString('\n')
+	action := strings.TrimSpace(input)
+
+	// Map shortcuts to full commands
+	switch action {
+	case "":
+		return "next"
+	case "p", "-", "b":
+		return "previous"
+	case "d":
+		return "data"
+	case "n":
+		return "notify"
+	case "h":
+		return "help"
+	case "q":
+		return "quit"
+	default:
+		return action
+	}
+}
+
+// waitForEnter waits for user to press Enter
+func waitForEnter() {
+	fmt.Print("Press Enter to continue...")
+	bufio.NewReader(os.Stdin).ReadBytes('\n')
+}
+
+// showHelp displays help information
+func showHelp() {
+	fmt.Print("\033[2J\033[H") // Clear screen
+	fmt.Println("=== INTERACTIVE MODE HELP ===")
+	fmt.Println()
+	fmt.Println("Navigation commands:")
+	fmt.Println("  enter        - Go to next test")
+	fmt.Println("  p            - Go to previous test")
+	fmt.Println("  d            - Show full data for current test")
+	fmt.Println("  n            - Show full notifications for current test")
+	fmt.Println("  h            - Show this help")
+	fmt.Println("  q            - Exit interactive mode")
+	fmt.Println("  <number>     - Go to specific test number")
+	fmt.Println()
 }

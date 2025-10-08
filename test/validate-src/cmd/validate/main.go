@@ -14,7 +14,11 @@ import (
 	"validate/pkg/tests"
 )
 
-const DefaultServerURL = "http://localhost:5500"
+const (
+	DefaultServerURL    = "http://localhost:5500"
+	DefaultUserCount    = 85
+	DefaultAccountCount = 31
+)
 
 var (
 	// Show modes (informational only)
@@ -91,54 +95,44 @@ Database reset (applies to all run modes):
 }
 
 func runCommand(cmd *cobra.Command, args []string) {
-	// Parse test number if provided
-	var testID int
-	if len(args) > 0 {
-		id, err := strconv.Atoi(args[0])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Invalid test ID '%s' (must be a number)\n", args[0])
-			os.Exit(1)
-		}
-		testID = id
-	}
-
 	// Validate flag combinations and execute appropriate mode
-	if err := validateAndExecute(cmd, testID); err != nil {
+	if err := validateAndExecute(cmd, args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
 }
 
-func validateAndExecute(cmd *cobra.Command, testID int) error {
+func validateAndExecute(cmd *cobra.Command, args []string) error {
 	datagen.SetConfigDefaults(DefaultServerURL, verbose)
 
 	// Get test categories if specified
 	var testNums []int
 	hasTestCategories := cmd.Flags().Changed("test") && testCategories != "show"
 
+	// Parse test number from args if provided
+	if len(args) > 0 {
+		testNum, err := strconv.Atoi(args[0])
+		if err != nil {
+			return fmt.Errorf("invalid test number '%s' (must be a number)", args[0])
+		}
+		testNums = []int{testNum}
+	}
+
 	// Validate test number vs categories
-	if testID > 0 && hasTestCategories {
+	if len(testNums) > 0 && hasTestCategories {
 		return fmt.Errorf("cannot combine --test=categories with test number")
 	}
 
-	// Get test numbers to run FIRST (before any mode handling)
+	// Get test numbers to run
 	if hasTestCategories {
 		testNums = getTestNumbers(testCategories)
-	} else if testID > 0 {
-		testNums = []int{testID}
-	} else {
+	} else if len(testNums) == 0 {
 		testNums = getAllTestNumbers()
-	}
-
-	// Validate all test numbers ONCE here
-	if err := validateTestNumbers(testNums); err != nil {
-		return err
 	}
 
 	// Handle show modes (now with filtered testNums)
 	if listMode {
-		output := display.UrlTable(testNums, false) // Use filtered testNums
-		fmt.Print(output)
+		display.ListTests(testNums) // Use filtered testNums, nil means list mode
 		return nil
 	} else if cmd.Flags().Changed("test") && testCategories == "show" {
 		modes.ShowTestCategories()
@@ -147,7 +141,7 @@ func validateAndExecute(cmd *cobra.Command, testID int) error {
 
 	// Handle database reset if requested (standalone CLI operation)
 	if resetDB {
-		if err := datagen.ResetAndPopulate(DefaultServerURL, 85, 31); err != nil {
+		if err := datagen.ResetAndPopulate(DefaultServerURL, DefaultUserCount, DefaultAccountCount); err != nil {
 			return fmt.Errorf("database reset failed: %w", err)
 		}
 	}
@@ -172,34 +166,24 @@ func validateAndExecute(cmd *cobra.Command, testID int) error {
 		return fmt.Errorf("only one run mode allowed")
 	}
 
-	// Write mode (including data/notify modes) requires test number
-	if writeMode && testID == 0 {
-		return fmt.Errorf("write mode requires a test number")
+	// Write and interactive modes require exactly one test
+	if writeMode && len(testNums) != 1 {
+		return fmt.Errorf("write mode requires exactly one test number")
 	}
-
+	if interactiveMode && len(testNums) != 1 {
+		return fmt.Errorf("interactive mode requires exactly one test number")
+	}
 
 	// Execute tests based on mode
 	if !resetDB && !(writeMode || showData || showNotify) { // display initial record counts if not resetting DB or in single-output modes
-		initialUsers, initialAccounts, err := datagen.GetRecordCounts(datagen.Config{DefaultServerURL, verbose})
+		initialUsers, initialAccounts, err := datagen.GetRecordCounts()
 		if err != nil {
 			return fmt.Errorf("failed to get initial record counts: %w", err)
 		}
 		fmt.Printf("Initial records: %d users, %d accounts\n", initialUsers, initialAccounts)
 	}
 
-	return runTests(testNums, testID)
-}
-
-// validateTestNumbers checks that all test numbers are in valid range
-func validateTestNumbers(testNumbers []int) error {
-	allTests := tests.GetAllTestCases()
-	totalTests := len(allTests)
-	for _, testNum := range testNumbers {
-		if testNum < 1 || testNum > totalTests {
-			return fmt.Errorf("test ID %d out of range (1-%d)", testNum, totalTests)
-		}
-	}
-	return nil
+	return runTests(testNums)
 }
 
 // Helper functions for the simplified interface
@@ -235,27 +219,19 @@ func getAllTestNumbers() []int {
 	return testNums
 }
 
-
-func runTests(testNums []int, startTestID int) error {
+func runTests(testNums []int) error {
 	if writeMode {
-		// Write mode requires single test
-		if len(testNums) != 1 {
-			return fmt.Errorf("write mode requires exactly one test")
-		}
 		modes.RunWrite(testNums[0], showData, showNotify)
 		return nil
 	} else if interactiveMode {
-		modes.RunInteractive(startTestID)
+		modes.RunInteractive(testNums[0])
 		return nil
 	} else if summaryMode {
 		modes.RunSummary(testNums)
 		return nil
 	} else {
-		// Table mode - call UrlTable directly with provided testNums
-		output := display.UrlTable(testNums, true) // runTests = true
-		fmt.Print(output)
+		// Table mode
+		modes.RunTable(testNums)
 		return nil
 	}
 }
-
-

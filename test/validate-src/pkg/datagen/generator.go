@@ -34,18 +34,54 @@ func SetConfigDefaults(serverURL string, verbose bool) {
 	GlobalConfig.Verbose = verbose
 }
 
-// GetRecordCounts returns current user and account counts via API calls, paging through all data
-func GetRecordCounts(config Config) (int, int, error) {
-	// Count users by paging through all data 10 at a time
-	userCount, err := countRecordsByPaging("/api/User")
+// GetEntityCountFromReport fetches entity count from /api/db/report endpoint
+func GetEntityCountFromReport(entityName string) (int, error) {
+	url := GlobalConfig.ServerURL + "/api/db/report"
+	resp, err := http.Get(url)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to count users: %w", err)
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
 	}
 
-	// Count accounts by paging through all data 10 at a time
-	accountCount, err := countRecordsByPaging("/api/Account")
+	var reportData map[string]interface{}
+	if err := json.Unmarshal(body, &reportData); err != nil {
+		return 0, err
+	}
+
+	// Extract entity count from report.entities.EntityName
+	report, ok := reportData["report"].(map[string]interface{})
+	if !ok {
+		return 0, fmt.Errorf("invalid report structure")
+	}
+
+	entities, ok := report["entities"].(map[string]interface{})
+	if !ok {
+		return 0, fmt.Errorf("invalid entities structure")
+	}
+
+	count, ok := entities[entityName].(float64)
+	if !ok {
+		return 0, fmt.Errorf("%s count not found in report", entityName)
+	}
+
+	return int(count), nil
+}
+
+// GetRecordCounts returns current user and account counts from /api/db/report
+func GetRecordCounts() (int, int, error) {
+	userCount, err := GetEntityCountFromReport("User")
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to count accounts: %w", err)
+		return 0, 0, fmt.Errorf("failed to get user count: %w", err)
+	}
+
+	accountCount, err := GetEntityCountFromReport("Account")
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get account count: %w", err)
 	}
 
 	return userCount, accountCount, nil
@@ -131,15 +167,6 @@ func getAllRecordsByPaging(endpoint string) ([]string, error) {
 	return allIDs, nil
 }
 
-// countRecordsByPaging pages through API data 10 records at a time and returns total count
-func countRecordsByPaging(endpoint string) (int, error) {
-	ids, err := getAllRecordsByPaging(endpoint)
-	if err != nil {
-		return 0, err
-	}
-	return len(ids), nil
-}
-
 // EnsureStaticTestData ensures static test accounts and users exist for test cases
 func EnsureStaticTestData(config Config) error {
 	if GlobalConfig.Verbose {
@@ -206,7 +233,7 @@ func EnsureMinRecords(config Config, recordSpec string) error {
 	}
 
 	// Get current counts
-	currentUsers, currentAccounts, err := GetRecordCounts(config)
+	currentUsers, currentAccounts, err := GetRecordCounts()
 	if err != nil {
 		return fmt.Errorf("failed to get current record counts: %w", err)
 	}
@@ -718,7 +745,7 @@ func ResetAndPopulate(serverURL string, userCount, accountCount int) error {
 
 	// Step 1: Get initial counts
 	fmt.Println("Getting initial database counts...")
-	initialUsers, initialAccounts, err := GetRecordCounts(config)
+	initialUsers, initialAccounts, err := GetRecordCounts()
 	if err != nil {
 		return fmt.Errorf("failed to get initial record counts: %w", err)
 	}
@@ -732,7 +759,7 @@ func ResetAndPopulate(serverURL string, userCount, accountCount int) error {
 
 	// Step 3: Get counts after clearing
 	fmt.Println("Getting database counts after clearing...")
-	afterUsers, afterAccounts, err := GetRecordCounts(config)
+	afterUsers, afterAccounts, err := GetRecordCounts()
 	if err != nil {
 		return fmt.Errorf("failed to get record counts after clearing: %w", err)
 	}
@@ -747,7 +774,7 @@ func ResetAndPopulate(serverURL string, userCount, accountCount int) error {
 
 	// Step 5: Get final counts
 	fmt.Println("Getting final database counts...")
-	finalUsers, finalAccounts, err := GetRecordCounts(config)
+	finalUsers, finalAccounts, err := GetRecordCounts()
 	if err != nil {
 		return fmt.Errorf("failed to get final record counts: %w", err)
 	}

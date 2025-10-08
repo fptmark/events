@@ -4,18 +4,19 @@ import (
 	"encoding/json"
 )
 
-// TestResult represents the JSON response from an API test
+// TestResult represents the result of executing a test
 type TestResult struct {
-	Data          []map[string]interface{} `json:"data"`
-	Notifications interface{}              `json:"notifications"` // Keep raw structure for complex nested warnings
-	Status        string                   `json:"status"`
-}
-
-// Notification represents a notification in the API response
-type Notification struct {
-	Type    string                 `json:"type"`
-	Message string                 `json:"message"`
-	Details map[string]interface{} `json:"details,omitempty"`
+	TestNum         int                      // Test number (1-based) - use to look up TestCase
+	URL             string                   // URL for this test (needed for validation)
+	Data            []map[string]interface{}
+	RawResponseBody json.RawMessage
+	Notifications   interface{}
+	StatusCode      int
+	Params          TestParams
+	Passed          bool                     // Overall pass/fail determined by ExecuteTests
+	Warnings        int                      // Count of warnings in notifications
+	RequestWarnings int                      // Count of request warnings in notifications
+	Errors          int                      // Count of errors in notifications
 }
 
 // TestParams represents parsed URL parameters from a test
@@ -39,7 +40,7 @@ type FilterValue struct {
 	Value    interface{} `json:"value"`
 }
 
-// TestCase represents a single test case with both static definition and runtime execution data
+// TestCase represents a single test case static definition
 type TestCase struct {
 	ID             int                    `json:"id"`
 	URL            string                 `json:"url"`             // Relative URL path (e.g., "/api/User")
@@ -49,29 +50,6 @@ type TestCase struct {
 	ExpectedStatus int                    `json:"expected_status"` // Expected HTTP status code
 	RequestBody    map[string]interface{} `json:"request_body,omitempty"` // Request payload for POST/PUT/DELETE
 	ExpectedData   *CRUDExpectation       `json:"expected_data,omitempty"` // Expected result data for CRUD operations
-
-	// Runtime execution data (populated during test execution)
-	ActualStatus    int             `json:"actual_status,omitempty"`    // Actual HTTP response status
-	RawResponseBody json.RawMessage `json:"raw_response_body,omitempty"` // Original HTTP response body preserving field order
-	Params          TestParams      `json:"params,omitempty"`           // Parsed URL parameters
-	Result          TestResult      `json:"result,omitempty"`           // API response data
-}
-
-// VerificationResult represents the outcome of verification
-type VerificationResult struct {
-	TestID      int                    `json:"test_id"`
-	URL         string                 `json:"url"`
-	Description string                 `json:"description"`
-	Fields      map[string]interface{} `json:"fields"`
-	Passed      bool                   `json:"passed"`
-	Issues      []string               `json:"issues,omitempty"`
-}
-
-// FieldExtraction represents extracted field data for verification
-type FieldExtraction struct {
-	SortFields   map[string][]interface{} `json:"sort_fields"`
-	FilterFields map[string][]interface{} `json:"filter_fields"`
-	ViewFields   map[string][]interface{} `json:"view_fields"`
 }
 
 // CRUDExpectation represents expected data for CRUD operation validation

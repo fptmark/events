@@ -18,7 +18,7 @@ type ValidationResult struct {
 }
 
 // ValidateTest validates a test result and returns validation status
-func ValidateTest(testNum int, result *TestResult) *ValidationResult {
+func ValidateTest(testNum int, result *types.TestResult) *ValidationResult {
 	var allIssues []string
 
 	// Check for nil result
@@ -31,14 +31,7 @@ func ValidateTest(testNum int, result *TestResult) *ValidationResult {
 	}
 
 	// First do existing verification
-	params := verifier.TestParams{
-		Sort:   result.Params.Sort,
-		Filter: result.Params.Filter,
-		Page:   result.Params.Page,
-		Size:   result.Params.Size,
-		View:   result.Params.View,
-	}
-	verifyResult := verifier.Verifier.Verify(result.Data, params)
+	verifyResult := verifier.Verifier.Verify(result.Data, result.Params)
 	allIssues = append(allIssues, verifyResult.Issues...)
 
 	// Add pagination validation for collection requests
@@ -57,7 +50,7 @@ func ValidateTest(testNum int, result *TestResult) *ValidationResult {
 }
 
 // validatePagination validates pagination data for collection requests
-func validatePagination(testNum int, result *TestResult) []string {
+func validatePagination(testNum int, result *types.TestResult) []string {
 	var issues []string
 
 	// Skip pagination validation for non-GET requests
@@ -159,7 +152,7 @@ func min(a, b int) int {
 }
 
 // validateCRUDResult validates CRUD operation results if expected data is specified
-func validateCRUDResult(testNum int, result *TestResult) []string {
+func validateCRUDResult(testNum int, result *types.TestResult) []string {
 	var issues []string
 
 	// Get the test case to check for expected data
@@ -211,11 +204,11 @@ func validateCRUDResult(testNum int, result *TestResult) []string {
 }
 
 // validateErrorResponse validates that the response indicates the expected error type
-func validateErrorResponse(result *TestResult, expectedErrorType string) []string {
+func validateErrorResponse(result *types.TestResult, expectedErrorType string) []string {
 	var issues []string
 
 	// Check if response indicates an error
-	if result.Status == "200" || result.Status == "201" {
+	if result.StatusCode == 200 || result.StatusCode == 201 {
 		issues = append(issues, fmt.Sprintf("Expected %s error but got success response", expectedErrorType))
 		return issues
 	}
@@ -223,16 +216,16 @@ func validateErrorResponse(result *TestResult, expectedErrorType string) []strin
 	// Validate specific error types based on status and response content
 	switch expectedErrorType {
 	case "validation":
-		if result.Status != "422" && result.Status != "400" {
-			issues = append(issues, fmt.Sprintf("Expected validation error (422/400) but got status %s", result.Status))
+		if result.StatusCode != 422 && result.StatusCode != 400 {
+			issues = append(issues, fmt.Sprintf("Expected validation error (422/400) but got status %d", result.StatusCode))
 		}
 	case "not_found":
-		if result.Status != "404" {
-			issues = append(issues, fmt.Sprintf("Expected not found error (404) but got status %s", result.Status))
+		if result.StatusCode != 404 {
+			issues = append(issues, fmt.Sprintf("Expected not found error (404) but got status %d", result.StatusCode))
 		}
 	case "constraint":
-		if result.Status != "409" && result.Status != "422" {
-			issues = append(issues, fmt.Sprintf("Expected constraint error (409/422) but got status %s", result.Status))
+		if result.StatusCode != 409 && result.StatusCode != 422 {
+			issues = append(issues, fmt.Sprintf("Expected constraint error (409/422) but got status %d", result.StatusCode))
 		}
 	}
 

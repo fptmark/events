@@ -3,36 +3,45 @@ package modes
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"validate/pkg/core"
-	"validate/pkg/httpclient"
 	"validate/pkg/tests"
+	"validate/pkg/types"
 )
 
 // RunSummary runs all tests and shows summary statistics
-func RunSummary(TestNumbers []int) {
-	allCategories := tests.GetAllCategories()
+func RunSummary(testNums []int) {
+	results, err := core.ExecuteTests(testNums)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
-	for i := 1; i <= len(TestNumbers); i++ {
-		testNum := TestNumbers[i-1]
-		result, err := httpclient.ExecuteTest(testNum)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error running test %d: %v\n", testNum, err)
+	ShowSummary(testNums, results)
+}
+
+func ShowSummary(testNumbers []int, results []*types.TestResult) {
+	allTests := tests.GetAllTestCases()
+	categoryStats := tests.GetAllCategories()
+
+	for i, result := range results {
+		if result == nil {
 			continue
 		}
+		testNum := testNumbers[i]
+		testCase := allTests[testNum-1]
+		category := testCase.TestClass
 
-		testCategory := tests.GetTestCategory(testNum)
-		validate := core.ValidateTest(testNum, result)
-		if validate.OK {
-			allCategories[testCategory].Success++
+		if result.Passed {
+			categoryStats[category].Success++
 		} else {
-			allCategories[testCategory].Failed++
+			categoryStats[category].Failed++
 		}
 	}
 
-	// Calculate totals from categories
 	var totalSuccess, totalFailure int
-	for _, stats := range allCategories {
+	for _, stats := range categoryStats {
 		totalSuccess += stats.Success
 		totalFailure += stats.Failed
 	}
@@ -42,9 +51,23 @@ func RunSummary(TestNumbers []int) {
 	fmt.Printf("Summary: %d/%d tests passed (%.1f%%)\n", totalSuccess, total, percentage)
 
 	fmt.Printf("Results by category:\n")
-	for category, stats := range allCategories {
-		if stats.Success > 0 || stats.Failed > 0 { // Only show categories that were tested
-			fmt.Printf("  %s: %d passed, %d failed\n", category, stats.Success, stats.Failed)
+
+	// Sort categories alphabetically for consistent output
+	var categories []string
+	for category := range categoryStats {
+		categories = append(categories, category)
+	}
+	sort.Strings(categories)
+
+	for _, category := range categories {
+		stats := categoryStats[category]
+		if stats.Success > 0 || stats.Failed > 0 {
+			out := fmt.Sprintf("  %s: %d passed, %d failed\n", category, stats.Success, stats.Failed)
+			if stats.Failed == 0 {
+				fmt.Printf("\033[32m%s\033[0m", out)
+			} else {
+				fmt.Printf("\033[1;91m%s\033[0m", out)
+			}
 		}
 	}
 }

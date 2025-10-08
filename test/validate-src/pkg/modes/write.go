@@ -3,51 +3,29 @@ package modes
 import (
 	"fmt"
 	"os"
-	"strings"
 
-	"validate/pkg/display"
-	"validate/pkg/httpclient"
-	"validate/pkg/types"
+	"validate/pkg/core"
+	"validate/pkg/tests"
 )
 
 // RunWrite runs a single test and outputs formatted result
 func RunWrite(testNum int, fullData bool, fullNotifications bool) {
-	result, err := httpclient.ExecuteTest(testNum)
+	results, err := core.ExecuteTests([]int{testNum})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error running test %d: %v\n", testNum, err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Create TestCase for display compatibility (same pattern as interactive mode)
-	testCase := &types.TestCase{
-		ID:              result.ID,
-		URL:             result.URL,
-		Description:     result.Description,
-		TestClass:       result.TestClass,
-		ActualStatus:    result.StatusCode,
-		RawResponseBody: result.RawResponseBody,
-		Result: types.TestResult{
-			Data:          result.Data,
-			Notifications: result.Notifications,
-			Status:        fmt.Sprintf("%d", result.StatusCode), // Use actual HTTP status code
-		},
-	}
-
-	// Use existing display formatter with options
-	options := display.DisplayOptions{
-		ShowAllData:       fullData,
-		ShowNotifications: fullNotifications,
-	}
-
-	output, err := display.FormatTestResponse(testCase, options)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error formatting response: %v\n", err)
+	result := results[0]
+	if result == nil {
+		fmt.Fprintf(os.Stderr, "Error running test %d: no result returned\n", testNum)
 		os.Exit(1)
 	}
 
-	// Replace "Status:" with "HTTP Status:" to match our format
-	output = strings.Replace(output, "Status: ", "HTTP Status: ", 1)
+	allTests := tests.GetAllTestCases()
+	testCase := allTests[testNum-1]
 
+	output := formatResult(&testCase, result, fullData, fullNotifications)
 	fmt.Print(output)
 }
 

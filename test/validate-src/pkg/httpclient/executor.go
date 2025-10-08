@@ -12,17 +12,19 @@ import (
 	"strings"
 	"time"
 
-	"validate/pkg/core"
 	"validate/pkg/datagen"
-	"validate/pkg/dynamic"
 	"validate/pkg/tests"
 	"validate/pkg/types"
 )
 
+// defaultClient is a shared HTTP client for all requests (enables connection pooling)
+var defaultClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
+
 // HTTPExecutor executes API tests in real-time
 type HTTPExecutor struct {
-	client  *http.Client
-	dbReset bool // tracks if database has been reset for this session
+	client *http.Client
 }
 
 // NewHTTPExecutor creates a new HTTP executor
@@ -31,18 +33,17 @@ func NewHTTPExecutor() *HTTPExecutor {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		dbReset: false,
 	}
 }
 
 // ExecuteTest executes a test by number and returns TestResult
-func (e *HTTPExecutor) ExecuteTest(testNumber int) (*core.TestResult, error) {
+func (e *HTTPExecutor) ExecuteTest(testNumber int) (*types.TestResult, error) {
 	// Get test definition from static test suite
 	allTests := tests.GetAllTestCases()
 	testCase := allTests[testNumber-1] // testNumber is 1-based
 
 	if testCase.TestClass == "dynamic" {
-		function_if := dynamic.GetFunction(testCase.URL)
+		function_if := tests.GetDynamicTest(testCase.URL)
 		if function_if == nil {
 			fmt.Fprintf(os.Stderr, "no dynamic function found for URL: %s\n", testCase.URL)
 			os.Exit(1)
@@ -52,36 +53,20 @@ func (e *HTTPExecutor) ExecuteTest(testNumber int) (*core.TestResult, error) {
 	}
 
 	// Execute the test
-	executedTestCase, err := e.executeTestCase(&testCase)
+	result, err := e.executeTestCase(&testCase)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert to core.TestResult format
-	result := &core.TestResult{
-		ID:              executedTestCase.ID,
-		URL:             executedTestCase.URL,
-		Description:     executedTestCase.Description,
-		TestClass:       executedTestCase.TestClass,
-		Data:            executedTestCase.Result.Data,
-		RawResponseBody: executedTestCase.RawResponseBody,
-		Notifications:   executedTestCase.Result.Notifications,
-		Status:          executedTestCase.Result.Status,
-		StatusCode:      executedTestCase.ActualStatus,
-		Params: core.TestParams{
-			Sort:   executedTestCase.Params.Sort,
-			Filter: executedTestCase.Params.Filter,
-			Page:   executedTestCase.Params.Page,
-			Size:   executedTestCase.Params.PageSize,
-			View:   executedTestCase.Params.View,
-		},
-	}
+	// Set the test number and URL
+	result.TestNum = testNumber
+	result.URL = testCase.URL
 
 	return result, nil
 }
 
-// executeTestCase executes a single test case and returns a TestCase compatible with existing code
-func (e *HTTPExecutor) executeTestCase(testCase *types.TestCase) (*types.TestCase, error) {
+// executeTestCase executes a single test case and returns a TestResult
+func (e *HTTPExecutor) executeTestCase(testCase *types.TestCase) (*types.TestResult, error) {
 	// Build full URL using GlobalConfig.ServerURL
 	fullURL := datagen.GlobalConfig.ServerURL + testCase.URL
 
@@ -97,83 +82,14 @@ func (e *HTTPExecutor) executeTestCase(testCase *types.TestCase) (*types.TestCas
 		return nil, err
 	}
 
-	// Convert the TestResult back to TestCase format for compatibility
-	testCase.ActualStatus = result.StatusCode
-	testCase.RawResponseBody = result.RawResponseBody
-	testCase.Result = types.TestResult{
-		Status:        result.Status,
-		Data:         result.Data,
-		Notifications: result.Notifications,
-	}
-
 	// Parse URL parameters from the full URL
 	params, err := parseTestURL(fullURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse URL parameters: %w", err)
 	}
-	testCase.Params = *params
+	result.Params = *params
 
-	return testCase, nil
-}
-
-// formatResponse formats the HTTP response to match the results.json structure
-func (e *HTTPExecutor) formatResponse(responseData interface{}, statusCode int) types.TestResult {
-	result := types.TestResult{
-		Data:          []map[string]interface{}{},
-		Notifications: nil,
-		Status:        fmt.Sprintf("%d", statusCode),
-	}
-
-	// Handle different response types
-	if responseMap, ok := responseData.(map[string]interface{}); ok {
-		// Standard API response format
-		if dataVal, exists := responseMap["data"]; exists {
-			switch d := dataVal.(type) {
-			case []interface{}:
-				// Array of objects (collection response)
-				for _, item := range d {
-					if itemMap, ok := item.(map[string]interface{}); ok {
-						result.Data = append(result.Data, itemMap)
-					}
-				}
-			case map[string]interface{}:
-				// Single object (individual resource response)
-				result.Data = append(result.Data, d)
-			case nil:
-				// Handle null data
-				result.Data = []map[string]interface{}{}
-			}
-		}
-
-		// Extract notifications
-		if notifVal, exists := responseMap["notifications"]; exists {
-			result.Notifications = notifVal
-		}
-
-		// Extract status from response if available
-		if statusVal, exists := responseMap["status"]; exists {
-			if statusStr, ok := statusVal.(string); ok {
-				result.Status = statusStr
-			}
-		}
-	} else {
-		// Non-standard response (error, plain text, etc.)
-		result.Status = fmt.Sprintf("%d %v", statusCode, responseData)
-		result.Data = []map[string]interface{}{}
-		result.Notifications = nil
-	}
-
-	return result
-}
-
-// GetAllTests returns all static test cases
-func (e *HTTPExecutor) GetAllTests() []types.TestCase {
-	return tests.GetAllTestCases()
-}
-
-// CountTests returns the total number of tests
-func (e *HTTPExecutor) CountTests() int {
-	return len(tests.GetAllTestCases())
+	return result, nil
 }
 
 // parseTestURL extracts test parameters from a URL string (simplified version)
@@ -355,8 +271,8 @@ func parseViewParam(viewStr string) map[string][]string {
 
 // executeUrl abstracts HTTP calls - hides all HTTP internals from callers
 func executeUrl(fullURL, method string, body interface{}) (*http.Response, []byte, error) {
-	// Use static HTTP client for performance
-	client := &http.Client{Timeout: 10 * time.Second}
+	// Use shared HTTP client for connection pooling
+	client := defaultClient
 
 	// Prepare request body if present
 	var requestBody io.Reader
@@ -395,7 +311,7 @@ func executeUrl(fullURL, method string, body interface{}) (*http.Response, []byt
 }
 
 // reshapeToTestResult converts raw HTTP response to TestResult format
-func reshapeToTestResult(resp *http.Response, responseBody []byte, url string) (*core.TestResult, error) {
+func reshapeToTestResult(resp *http.Response, responseBody []byte, url string) (*types.TestResult, error) {
 	// Parse the response body as JSON
 	var responseData interface{}
 	if err := json.Unmarshal(responseBody, &responseData); err != nil {
@@ -404,8 +320,8 @@ func reshapeToTestResult(resp *http.Response, responseBody []byte, url string) (
 	}
 
 	// Create base result
-	result := &core.TestResult{
-		URL:             url,
+	result := &types.TestResult{
+		TestNum:         0, // Will be set by caller if needed
 		StatusCode:      resp.StatusCode,
 		RawResponseBody: json.RawMessage(responseBody),
 		Data:            []map[string]interface{}{},
@@ -433,122 +349,17 @@ func reshapeToTestResult(resp *http.Response, responseBody []byte, url string) (
 		if notifVal, exists := responseMap["notifications"]; exists {
 			result.Notifications = notifVal
 		}
-
-		// Extract status from response if available
-		if statusVal, exists := responseMap["status"]; exists {
-			if statusStr, ok := statusVal.(string); ok {
-				result.Status = statusStr
-			}
-		}
 	} else {
 		// Non-standard response (error, plain text, etc.)
-		result.Status = fmt.Sprintf("%d", resp.StatusCode)
 		result.Data = []map[string]interface{}{}
 		result.Notifications = nil
-	}
-
-	if result.Status == "" {
-		result.Status = fmt.Sprintf("%d", resp.StatusCode)
 	}
 
 	return result, nil
 }
 
 // ExecuteTest is a package-level function that creates an executor and runs a test
-func ExecuteTest(testNumber int) (*core.TestResult, error) {
+func ExecuteTest(testNumber int) (*types.TestResult, error) {
 	executor := NewHTTPExecutor()
 	return executor.ExecuteTest(testNumber)
-}
-
-// ensureDatabaseReset ensures the database is reset exactly once per test session
-func (e *HTTPExecutor) ensureDatabaseReset() error {
-	if e.dbReset {
-		return nil // Already reset
-	}
-
-	fmt.Println("Resetting database...")
-
-	// Step 1: Call api/db/report to get initial counts
-	fmt.Println("Getting initial database counts...")
-	if err := e.callDatabaseReport("Initial"); err != nil {
-		return fmt.Errorf("failed to get initial database report: %w", err)
-	}
-
-	// Step 2: Call api/db/init to clear all data
-	fmt.Println("Clearing database...")
-	if err := e.callDatabaseInit(); err != nil {
-		return fmt.Errorf("failed to initialize database: %w", err)
-	}
-
-	// Step 3: Call api/db/report again to confirm clearing
-	fmt.Println("Getting database counts after clearing...")
-	if err := e.callDatabaseReport("After clearing"); err != nil {
-		return fmt.Errorf("failed to get database report after clearing: %w", err)
-	}
-
-	e.dbReset = true
-	fmt.Println("Database reset complete.\n")
-	return nil
-}
-
-// callDatabaseReport calls api/db/report and displays only the counts
-func (e *HTTPExecutor) callDatabaseReport(stage string) error {
-	req, err := http.NewRequest("GET", datagen.GlobalConfig.ServerURL+"/api/db/report", nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	var reportData map[string]interface{}
-	if err := json.Unmarshal(body, &reportData); err == nil {
-		// Extract counts from report.entities
-		if report, exists := reportData["report"]; exists {
-			if reportMap, ok := report.(map[string]interface{}); ok {
-				if entities, exists := reportMap["entities"]; exists {
-					if entitiesMap, ok := entities.(map[string]interface{}); ok {
-						fmt.Printf("%s counts: ", stage)
-						for table, count := range entitiesMap {
-							fmt.Printf("%s=%v ", table, count)
-						}
-						fmt.Println()
-					}
-				}
-			}
-		}
-	} else {
-		fmt.Printf("%s counts: (parse error)\n", stage)
-	}
-
-	return nil
-}
-
-// callDatabaseInit calls api/db/init to clear all data
-func (e *HTTPExecutor) callDatabaseInit() error {
-	req, err := http.NewRequest("POST", datagen.GlobalConfig.ServerURL+"/api/db/init", nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("database init failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return nil
 }
