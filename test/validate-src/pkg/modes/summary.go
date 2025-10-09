@@ -48,7 +48,7 @@ func ShowSummary(testNumbers []int, results []*types.TestResult) {
 
 	total := totalSuccess + totalFailure
 	percentage := float64(totalSuccess) / float64(total) * 100
-	fmt.Printf("Summary: %d/%d tests passed (%.1f%%)\n", totalSuccess, total, percentage)
+	fmt.Printf("Summary: %d/%d/%d tests passed/failed/total (%.1f%%)\n", totalSuccess, totalFailure, total, percentage)
 
 	fmt.Printf("Results by category:\n")
 

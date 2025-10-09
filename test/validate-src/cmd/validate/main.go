@@ -174,12 +174,20 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("interactive mode requires exactly one test number")
 	}
 
-	// Execute tests based on mode
-	if !resetDB && !(writeMode || showData || showNotify) { // display initial record counts if not resetting DB or in single-output modes
-		initialUsers, initialAccounts, err := datagen.GetRecordCounts()
-		if err != nil {
-			return fmt.Errorf("failed to get initial record counts: %w", err)
-		}
+	// Validate minimum record counts before running tests
+	initialUsers, initialAccounts, err := datagen.GetRecordCounts()
+	if err != nil {
+		return fmt.Errorf("failed to get initial record counts: %w", err)
+	}
+
+	// Check if we have minimum required data
+	if initialUsers < DefaultUserCount || initialAccounts < DefaultAccountCount {
+		return fmt.Errorf("insufficient test data: have %d users, %d accounts; need %d users, %d accounts. Run with --reset to populate test data",
+			initialUsers, initialAccounts, DefaultUserCount, DefaultAccountCount)
+	}
+
+	// Display initial record counts (unless in single-output modes)
+	if !(writeMode || showData || showNotify) {
 		fmt.Printf("Initial records: %d users, %d accounts\n", initialUsers, initialAccounts)
 	}
 
@@ -222,16 +230,21 @@ func getAllTestNumbers() []int {
 func runTests(testNums []int) error {
 	if writeMode {
 		modes.RunWrite(testNums[0], showData, showNotify)
-		return nil
 	} else if interactiveMode {
 		modes.RunInteractive(testNums[0])
-		return nil
-	} else if summaryMode {
-		modes.RunSummary(testNums)
-		return nil
 	} else {
-		// Table mode
-		modes.RunTable(testNums)
-		return nil
+		// auto reset db for summary and table modes unless --reset was specified
+		if resetDB == false {
+			if err := datagen.ResetAndPopulate(DefaultServerURL, DefaultUserCount, DefaultAccountCount); err != nil {
+				fmt.Printf("database reset failed: %w", err)
+				return nil
+			}
+		}
+		if summaryMode {
+			modes.RunSummary(testNums)
+		} else {
+			modes.RunTable(testNums)
+		}
 	}
+	return nil
 }

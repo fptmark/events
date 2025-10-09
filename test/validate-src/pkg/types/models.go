@@ -14,6 +14,7 @@ type TestResult struct {
 	StatusCode      int
 	Params          TestParams
 	Passed          bool                     // Overall pass/fail determined by ExecuteTests
+	Alert           bool                     // True if CREATE test got 409 (record already exists)
 	Warnings        int                      // Count of warnings in notifications
 	RequestWarnings int                      // Count of request warnings in notifications
 	Errors          int                      // Count of errors in notifications

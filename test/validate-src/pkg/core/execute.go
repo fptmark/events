@@ -33,6 +33,17 @@ func ExecuteTests(testNumbers []int) ([]*types.TestResult, error) {
 
 		testCase := allTestCases[testNum-1]
 
+		if result.StatusCode >= 400 {
+			// Special case: CREATE test expecting 201 but got 409 (already exists)
+			if testCase.Method == "POST" && testCase.ExpectedStatus == 201 && result.StatusCode == 409 {
+				result.Alert = true
+				result.Passed = false
+			} else {
+				result.Passed = result.StatusCode == testCase.ExpectedStatus
+			}
+			continue
+		}
+
 		// Count warnings, request warnings, and errors in notifications
 		if result.Notifications != nil {
 			if notifMap, ok := result.Notifications.(map[string]interface{}); ok {
@@ -73,4 +84,3 @@ func ExecuteTests(testNumbers []int) ([]*types.TestResult, error) {
 
 	return results, nil
 }
-

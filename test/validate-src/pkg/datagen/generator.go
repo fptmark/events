@@ -64,9 +64,10 @@ func GetEntityCountFromReport(entityName string) (int, error) {
 		return 0, fmt.Errorf("invalid entities structure")
 	}
 
+	// If entity doesn't exist in the map, it means count is 0
 	count, ok := entities[entityName].(float64)
 	if !ok {
-		return 0, fmt.Errorf("%s count not found in report", entityName)
+		return 0, nil
 	}
 
 	return int(count), nil
@@ -173,38 +174,47 @@ func EnsureStaticTestData(config Config) error {
 		fmt.Println("🔧 Ensuring static test data exists...")
 	}
 
-	// Create the primary static account that all valid FK tests reference
-	staticAccount := map[string]interface{}{
-		"id":        "primary_valid_001",
-		"name":      "Primary Test Account",
-		"createdAt": time.Now().UTC().Format(time.RFC3339),
-		"updatedAt": time.Now().UTC().Format(time.RFC3339),
+	// Create multiple static accounts for test cases to reference
+	staticAccountIDs := []string{
+		"primary_valid_001",
+		"primary_valid_002",
+		"primary_valid_003",
+		"primary_valid_004",
+		"primary_valid_005",
 	}
 
-	jsonData, err := json.Marshal(staticAccount)
-	if err != nil {
-		return fmt.Errorf("failed to marshal static account: %w", err)
-	}
-
-	// Try to create the account (ignore if it already exists)
-	resp, err := http.Post(GlobalConfig.ServerURL+"/api/Account", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create static account: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 200 || resp.StatusCode == 201 {
-		if GlobalConfig.Verbose {
-			fmt.Printf("  ✓ Created static account: primary_valid_001\n")
+	for _, accountID := range staticAccountIDs {
+		staticAccount := map[string]interface{}{
+			"id":        accountID,
+			"createdAt": time.Now().UTC().Format(time.RFC3339),
+			"updatedAt": time.Now().UTC().Format(time.RFC3339),
 		}
-	} else if resp.StatusCode == 409 || resp.StatusCode == 400 {
-		// Account already exists, which is fine
-		if GlobalConfig.Verbose {
-			fmt.Printf("  ✓ Static account already exists: primary_valid_001\n")
+
+		jsonData, err := json.Marshal(staticAccount)
+		if err != nil {
+			return fmt.Errorf("failed to marshal static account %s: %w", accountID, err)
 		}
-	} else {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to create static account: status %d - %s", resp.StatusCode, string(body))
+
+		// Try to create the account (ignore if it already exists)
+		resp, err := http.Post(GlobalConfig.ServerURL+"/api/Account", "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			return fmt.Errorf("failed to create static account %s: %w", accountID, err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 200 || resp.StatusCode == 201 {
+			if GlobalConfig.Verbose {
+				fmt.Printf("  ✓ Created static account: %s\n", accountID)
+			}
+		} else if resp.StatusCode == 409 || resp.StatusCode == 400 {
+			// Account already exists, which is fine
+			if GlobalConfig.Verbose {
+				fmt.Printf("  ✓ Static account already exists: %s\n", accountID)
+			}
+		} else {
+			body, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("failed to create static account %s: status %d - %s", accountID, resp.StatusCode, string(body))
+		}
 	}
 
 	return nil
@@ -257,7 +267,12 @@ func EnsureMinRecords(config Config, recordSpec string) error {
 		fmt.Printf("➕ Creating %d additional accounts and %d additional users\n", needAccounts, needUsers)
 	}
 
-	// Create accounts first (users reference them)
+	// Create static test accounts first (always, these are required for CRUD tests)
+	if err := EnsureStaticTestData(config); err != nil {
+		return fmt.Errorf("failed to create static test data: %w", err)
+	}
+
+	// Create additional dynamic accounts (users reference them)
 	if needAccounts > 0 {
 		if err := createAccountsViaAPI(config, needAccounts); err != nil {
 			return fmt.Errorf("failed to create accounts: %w", err)
@@ -368,7 +383,6 @@ func generateRandomAccountData(id string) map[string]interface{} {
 	now := time.Now().UTC()
 	return map[string]interface{}{
 		"id":        id,
-		"name":      fmt.Sprintf("Generated Account %s", id),
 		"createdAt": now.Format(time.RFC3339),
 		"updatedAt": now.Format(time.RFC3339),
 	}
@@ -765,7 +779,7 @@ func ResetAndPopulate(serverURL string, userCount, accountCount int) error {
 	}
 	fmt.Printf("After clearing: %d users, %d accounts\n", afterUsers, afterAccounts)
 
-	// Step 4: Populate with specified counts using the working EnsureMinRecords function
+	// Step 4: Populate with specified counts (includes static test accounts)
 	fmt.Printf("Populating database with %d users and %d accounts...\n", userCount, accountCount)
 	recordSpec := fmt.Sprintf("%d,%d", userCount, accountCount)
 	if err := EnsureMinRecords(config, recordSpec); err != nil {
