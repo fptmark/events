@@ -38,14 +38,25 @@ class MongoDocuments(DocumentManager):
 
         collection = entity_type
 
+        # Mongo is case sensitive for field names
+        case_filter = {}
+        for key, value in (filter.items() if filter else []):
+            case_key = MetadataService.get_proper_name(entity_type, key)  # Get correct case from metadata
+            case_filter[case_key] = value
+
+        case_sort = []
+        for key, value in (sort if sort else []):
+            case_key = MetadataService.get_proper_name(entity_type, key)  # Get correct case from metadata
+            case_sort.append((case_key, value))
+
         # Build query filter
-        query = self._build_query_filter(filter, entity_type) if filter else {}
+        query = self._build_query_filter(case_filter, entity_type) if filter else {}
 
         # Get total count
         total_count = await db[collection].count_documents(query)
 
         # Build sort specification
-        sort_spec = self._build_sort_spec(sort, entity_type)
+        sort_spec = self._build_sort_spec(case_sort, entity_type)
 
         # Execute paginated query
         skip_count = (page - 1) * pageSize
