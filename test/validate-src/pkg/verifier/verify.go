@@ -222,6 +222,16 @@ func (v *verifier) checkFilterMatch(value interface{}, filter types.FilterValue,
 		return v.compareDateTimeValues(value, filter.Value) == 0
 	}
 
+	// For "eq" operator on strings, use case-insensitive comparison
+	if filter.Operator == "eq" {
+		valueStr, valueIsString := value.(string)
+		filterStr, filterIsString := filter.Value.(string)
+
+		if valueIsString && filterIsString {
+			return strings.EqualFold(valueStr, filterStr)
+		}
+	}
+
 	comparison := v.compareValues(value, filter.Value, "User", fieldName)
 
 	switch filter.Operator {
