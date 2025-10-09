@@ -7,7 +7,6 @@ from abc import ABC, abstractmethod
 from typing import Type, TYPE_CHECKING
 from .core_manager import CoreManager
 from .document_manager import DocumentManager
-from .entity_manager import EntityManager
 from .index_manager import IndexManager
 
 if TYPE_CHECKING:
@@ -36,7 +35,6 @@ class DatabaseInterface(ABC):
         # Create composed managers using template method pattern
         self.core: CoreManager = manager_classes['core'](self)
         self.documents: DocumentManager = manager_classes['documents'](self)
-        self.entities: EntityManager = manager_classes['entities'](self)
         self.indexes: IndexManager = manager_classes['indexes'](self)
     
     @abstractmethod

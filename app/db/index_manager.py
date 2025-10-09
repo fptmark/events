@@ -54,12 +54,12 @@ class IndexManager(ABC):
     async def get_all(self, entity_type: str) -> List[List[str]]:
         """Get all unique constraint field lists for entity"""
         pass
-    
+
     @abstractmethod
     async def create(self, entity_type: str, fields: List[str], unique: bool = True, name: Optional[str] = None) -> None:
         """Create unique index on entity"""
         pass
-    
+
     @abstractmethod
     async def delete(self, entity_type: str, fields: List[str]) -> None:
         """Delete index by field names"""
