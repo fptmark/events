@@ -9,7 +9,6 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from ..base import DatabaseInterface
 from ..core_manager import CoreManager
-from ..entity_manager import EntityManager
 from ..index_manager import IndexManager
 from app.services.notify import Notification, Error
 
@@ -72,7 +71,7 @@ class MongoCore(CoreManager):
         return self._db
 
     async def wipe_and_reinit(self) -> bool:
-        """Drop all collections and reinitialize (MongoDB doesn't have mapping issues)"""
+        """Drop all collections and reinitialize indexes"""
         db = self._db
         if db is not None:
             try:
@@ -85,6 +84,9 @@ class MongoCore(CoreManager):
                 # Drop all collections
                 for collection_name in collection_names:
                     await db.drop_collection(collection_name)
+
+                # Recreate all indexes from schema
+                await self.database.indexes.initialize()
 
                 return True
 
@@ -162,54 +164,6 @@ class MongoCore(CoreManager):
                 }
         return {}
 
-class MongoEntities(EntityManager):
-    """MongoDB implementation of entity operations"""
-
-    def __init__(self, database):
-        super().__init__(database)
-    
-    async def exists(self, entity_type: str) -> bool:
-        """Check if collection exists"""
-        self.database._ensure_initialized()
-        db = self.database.core.get_connection()
-        
-        collection_names = await db.list_collection_names()
-        return entity_type in collection_names
-    
-    async def create(self, entity_type: str, unique_constraints: List[List[str]]) -> bool:
-        """Create collection with unique indexes"""
-        self.database._ensure_initialized()
-        db = self.database.core.get_connection()
-        
-        try:
-            for constraint_fields in unique_constraints:
-                index_spec = [(field, 1) for field in constraint_fields]
-                await db[entity_type].create_index(index_spec, unique=True)
-            return True
-        except Exception as e:
-            Notification.error(Error.DATABASE, f"MongoDB create entity error: {str(e)}")
-        return False
-
-    async def delete(self, entity_type: str) -> bool:
-        """Drop collection"""
-        self.database._ensure_initialized()
-        db = self.database.core.get_connection()
-        
-        try:
-            await db[entity_type].drop()
-            return True
-        except Exception as e:
-            Notification.error(Error.DATABASE, f"MongoDB delete entity error: {str(e)}")
-        return False
-    
-    async def get_all(self) -> List[str]:
-        """Get all collection names"""
-        self.database._ensure_initialized()
-        db = self.database.core.get_connection()
-        
-        return await db.list_collection_names()
-
-
 class MongoIndexes(IndexManager):
     """MongoDB implementation of index operations"""
 
@@ -217,22 +171,28 @@ class MongoIndexes(IndexManager):
         super().__init__(database)
     
     async def create(
-        self, 
-        entity_type: str, 
+        self,
+        entity_type: str,
         fields: List[str],
         unique: bool = False,
         name: Optional[str] = None
     ) -> None:
-        """Create index on collection"""
+        """Create index on collection (creates collection if it doesn't exist)"""
         self.database._ensure_initialized()
         db = self.database.core.get_connection()
-        
+
         try:
+            # Ensure collection exists - MongoDB creates it implicitly on first index
+            # but we explicitly create it to handle the case where no documents exist
+            collection_names = await db.list_collection_names()
+            if entity_type not in collection_names:
+                await db.create_collection(entity_type)
+
             index_spec = [(field, 1) for field in fields]
             kwargs: Dict[str, Any] = {"unique": unique}
             if name:
                 kwargs["name"] = name
-                
+
             await db[entity_type].create_index(index_spec, **kwargs)
         except Exception as e:
             Notification.error(Error.DATABASE, f"MongoDB create index error: {str(e)}")
@@ -287,7 +247,6 @@ class MongoDatabase(DatabaseInterface):
         return {
             'core': MongoCore,
             'documents': MongoDocuments,
-            'entities': MongoEntities,
             'indexes': MongoIndexes
         }
 

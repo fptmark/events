@@ -10,7 +10,6 @@ from elasticsearch import AsyncElasticsearch
 
 from ..base import DatabaseInterface
 from ..core_manager import CoreManager
-from ..entity_manager import EntityManager
 from ..index_manager import IndexManager
 from app.services.metadata import MetadataService
 
@@ -461,48 +460,6 @@ class ElasticsearchCore(CoreManager):
             }
 
 
-class ElasticsearchEntities(EntityManager):
-    """Elasticsearch implementation of entity operations"""
-
-    def __init__(self, database):
-        super().__init__(database)
-    
-    async def exists(self, entity_type: str) -> bool:
-        """Check if index exists"""
-        self.database._ensure_initialized()
-        es = self.database.core.get_connection()
-
-        return await es.indices.exists(index=entity_type.lower())
-    
-    async def create(self, entity_type: str, unique_constraints: List[List[str]]) -> bool:
-        """Create index (Elasticsearch doesn't enforce unique constraints natively)"""
-        self.database._ensure_initialized()
-        es = self.database.core.get_connection()
-
-        if await es.indices.exists(index=entity_type.lower()):
-            return True
-
-        await es.indices.create(index=entity_type.lower())
-        return True
-    
-    async def delete(self, entity_type: str) -> bool:
-        """Delete index"""
-        self.database._ensure_initialized()
-        es = self.database.core.get_connection()
-
-        if await es.indices.exists(index=entity_type.lower()):
-            await es.indices.delete(index=entity_type.lower())
-        return True
-    
-    async def get_all(self) -> List[str]:
-        """Get all index names"""
-        self.database._ensure_initialized()
-        es = self.database.core.get_connection()
-        
-        response = await es.cat.indices(format="json")
-        return [index["index"] for index in response]
-
-
 class ElasticsearchIndexes(IndexManager):
     """Elasticsearch implementation of index operations (limited functionality)"""
 
@@ -630,7 +587,6 @@ class ElasticsearchDatabase(DatabaseInterface):
         return {
             'core': ElasticsearchCore,
             'documents': ElasticsearchDocuments,
-            'entities': ElasticsearchEntities,
             'indexes': ElasticsearchIndexes
         }
 
