@@ -115,8 +115,9 @@ class SimpleDynamicRouterFactory:
             summary=f"Create a new {entity_lower}",
             response_description=f"The created {entity_lower}",
             response_model=EntityResponse,
+            status_code=201,
             responses={
-                200: {"description": f"Successfully created {entity_lower}"},
+                201: {"description": f"Successfully created {entity_lower}"},
                 422: {"description": "Validation error"},
                 409: {"description": "Duplicate entry"},
                 500: {"description": "Server error"}
