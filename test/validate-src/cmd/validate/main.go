@@ -29,6 +29,7 @@ var (
 	interactiveMode bool
 	writeMode       bool
 	summaryMode     bool
+	curlMode        bool
 	testCategories  string
 
 	// Output expansion (for interactive and write modes)
@@ -79,6 +80,7 @@ Database reset (applies to all run modes):
 	rootCmd.Flags().BoolVarP(&interactiveMode, "interactive", "i", false, "Interactive verification mode")
 	rootCmd.Flags().BoolVarP(&writeMode, "write", "w", false, "Write single test output to stdout and terminate (requires test number)")
 	rootCmd.Flags().BoolVarP(&summaryMode, "summary", "s", false, "Show summary statistics only")
+	rootCmd.Flags().BoolVarP(&curlMode, "curl", "c", false, "Generate and execute curl command (requires test number)")
 
 	// Output expansion (for interactive and write modes)
 	rootCmd.Flags().BoolVarP(&showData, "data", "d", false, "Show full data records")
@@ -162,16 +164,22 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 	if summaryMode {
 		runModeCount++
 	}
+	if curlMode {
+		runModeCount++
+	}
 	if runModeCount > 1 {
 		return fmt.Errorf("only one run mode allowed")
 	}
 
-	// Write and interactive modes require exactly one test
+	// Write, interactive, and curl modes require exactly one test
 	if writeMode && len(testNums) != 1 {
 		return fmt.Errorf("write mode requires exactly one test number")
 	}
 	if interactiveMode && len(testNums) != 1 {
 		return fmt.Errorf("interactive mode requires exactly one test number")
+	}
+	if curlMode && len(testNums) != 1 {
+		return fmt.Errorf("curl mode requires exactly one test number")
 	}
 
 	// Validate minimum record counts before running tests
@@ -228,7 +236,9 @@ func getAllTestNumbers() []int {
 }
 
 func runTests(testNums []int) error {
-	if writeMode {
+	if curlMode {
+		modes.RunCurl(testNums[0])
+	} else if writeMode {
 		modes.RunWrite(testNums[0], showData, showNotify)
 	} else if interactiveMode {
 		modes.RunInteractive(testNums[0])

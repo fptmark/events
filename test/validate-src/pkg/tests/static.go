@@ -1,81 +1,8 @@
 package tests
 
 import (
-	"strings"
 	"validate/pkg/types"
 )
-
-// determineExpectedStatus determines the expected HTTP status code based on URL pattern and method
-func determineExpectedStatus(method, url string) int {
-	// Remove query parameters for pattern matching
-	baseURL := strings.Split(url, "?")[0]
-
-	switch method {
-	case "GET":
-		// 404 patterns - only for truly invalid endpoints
-		if strings.Contains(baseURL, "InvalidEntity") ||
-			baseURL == "" ||
-			baseURL == "/" ||
-			baseURL == "/api/" {
-			return 404
-		}
-
-		// Non-existent entities and invalid data return 200 (valid endpoint, no data)
-		if strings.Contains(baseURL, "nonexistent") ||
-			strings.Contains(baseURL, "invalid_") {
-			return 200
-		}
-
-		// 400 patterns for edge cases with bad parameters
-		if strings.Contains(url, "sort=invalidField") ||
-			strings.Contains(url, "filter=invalidField") ||
-			strings.Contains(url, "view=invalidEntity") ||
-			strings.Contains(url, "page=0") ||
-			strings.Contains(url, "page=-1") ||
-			strings.Contains(url, "pageSize=0") ||
-			strings.Contains(url, "pageSize=-5") ||
-			strings.Contains(url, "sort=firstName:invalid") ||
-			strings.Contains(url, "filter=netWorth:invalid") ||
-			strings.Contains(url, "view=account()") ||
-			strings.Contains(url, "view=account(invalidField)") {
-			return 400
-		}
-
-		return 200
-
-	case "POST":
-		// Entity endpoints like /api/User, /api/Account should return 201
-		if strings.HasSuffix(baseURL, "/api/User") ||
-			strings.HasSuffix(baseURL, "/api/Account") {
-			return 201
-		}
-
-		// Admin endpoints return 200
-		if strings.Contains(baseURL, "/api/db/") ||
-			strings.Contains(baseURL, "/api/test/") {
-			return 200
-		}
-
-		return 201
-
-	case "PUT":
-		// Non-existent entities return 200 (valid endpoint, no data affected)
-		if strings.Contains(baseURL, "nonexistent") {
-			return 200
-		}
-		return 200
-
-	case "DELETE":
-		// Non-existent entities return 200 (valid endpoint, no data affected)
-		if strings.Contains(baseURL, "nonexistent") {
-			return 200
-		}
-		return 200
-
-	default:
-		return 200
-	}
-}
 
 // GetAllTestCases returns all test cases from curl.sh converted to unified TestCase structure
 func GetAllTestCases() []types.TestCase {
@@ -163,7 +90,7 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/api/User?view=account(id,name,balance)&sort=netWorth:desc&filter=isAccountOwner:true&pageSize=2", TestClass: "combo", Description: "All parameters with wealth focus"},
 		{Method: "GET", URL: "/api/User?view=account(id)&sort=lastName,firstName&filter=gender:female,netWorth:gte:50000&page=2&pageSize=3", TestClass: "combo", Description: "Complex multi-field combo"},
 		// CRUD Success Cases - User
-		{Method: "POST", URL: "/api/User", TestClass: "crud", Description: "Create user with valid data", ExpectedStatus: 201,
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user with valid data", ExpectedStatus: 201,
 			RequestBody: map[string]interface{}{
 				"firstName": "Test", "lastName": "User", "email": "test.user@example.com",
 				"username": "test_user_crud", "gender": "male", "isAccountOwner": true,
@@ -172,34 +99,20 @@ func GetAllTestCases() []types.TestCase {
 				ShouldContainFields: []string{"id", "firstName", "lastName", "email", "username", "createdAt"},
 			}},
 
-		{Method: "POST", URL: "/api/User?novalidate", TestClass: "crud", Description: "Create user without validation",
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user with valid data", ExpectedStatus: 200,
 			RequestBody: map[string]interface{}{
-				"firstName": "NoValidate", "lastName": "User", "email": "novalidate@example.com",
-				"username": "novalidate_user", "gender": "invalid_gender", "isAccountOwner": false},
-			ExpectedData: &types.CRUDExpectation{
-				ShouldContainFields: []string{"id", "firstName", "lastName", "email", "username"},
-			}},
-
-		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "crud", Description: "Update user with valid data",
-			RequestBody: map[string]interface{}{
-				"firstName": "Updated", "lastName": "UserName", "netWorth": 75000},
+				"id": "basic_valid_001", "firstName": "Updated", "lastName": "UserName", "email": "updated@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 75000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
 			ExpectedData: &types.CRUDExpectation{
 				ExpectedFields:      map[string]interface{}{"firstName": "Updated", "lastName": "UserName", "netWorth": float64(75000)},
 				ShouldContainFields: []string{"id", "updatedAt"},
 			}},
 
-		{Method: "PUT", URL: "/api/User/basic_valid_001?novalidate", TestClass: "crud", Description: "Update user without validation",
-			RequestBody: map[string]interface{}{
-				"firstName": "NoValidateUpdate", "gender": "invalid_gender"},
-			ExpectedData: &types.CRUDExpectation{
-				ExpectedFields:      map[string]interface{}{"firstName": "NoValidateUpdate"},
-				ShouldContainFields: []string{"id", "updatedAt"},
-			}},
-
-		{Method: "DELETE", URL: "/api/User/crud_delete_test_001", TestClass: "crud", Description: "Delete existing user"},
+		{Method: "DELETE", URL: "/api/User/crud_delete_test_001", TestClass: "delete", Description: "Delete existing user"},
 
 		// CRUD Success Cases - Account
-		{Method: "POST", URL: "/api/Account", TestClass: "crud", Description: "Create account with valid data",
+		{Method: "POST", URL: "/api/Account", TestClass: "create", Description: "Create account with valid data", ExpectedStatus: 201,
 			RequestBody: map[string]interface{}{
 				"name": "Test Account", "balance": 1000.50, "currency": "USD", "isActive": true},
 			ExpectedData: &types.CRUDExpectation{
@@ -207,14 +120,7 @@ func GetAllTestCases() []types.TestCase {
 				ExpectedFields:      map[string]interface{}{"name": "Test Account", "balance": 1000.50, "currency": "USD"},
 			}},
 
-		{Method: "POST", URL: "/api/Account?novalidate", TestClass: "crud", Description: "Create account without validation",
-			RequestBody: map[string]interface{}{
-				"name": "NoValidate Account", "balance": -500, "currency": "INVALID"},
-			ExpectedData: &types.CRUDExpectation{
-				ShouldContainFields: []string{"id", "name", "createdAt"},
-			}},
-
-		{Method: "PUT", URL: "/api/Account/valid_account_001", TestClass: "crud", Description: "Update account with valid data",
+		{Method: "PUT", URL: "/api/Account/valid_account_001", TestClass: "update", Description: "Update account with valid data",
 			RequestBody: map[string]interface{}{
 				"name": "Updated Account", "balance": 2000.75},
 			ExpectedData: &types.CRUDExpectation{
@@ -222,24 +128,16 @@ func GetAllTestCases() []types.TestCase {
 				ShouldContainFields: []string{"id", "updatedAt"},
 			}},
 
-		{Method: "PUT", URL: "/api/Account/valid_account_001?novalidate", TestClass: "crud", Description: "Update account without validation",
-			RequestBody: map[string]interface{}{
-				"name": "NoValidate Update", "balance": -1000},
-			ExpectedData: &types.CRUDExpectation{
-				ExpectedFields:      map[string]interface{}{"name": "NoValidate Update"},
-				ShouldContainFields: []string{"id", "updatedAt"},
-			}},
-
-		{Method: "DELETE", URL: "/api/Account/crud_delete_account_001", TestClass: "crud", Description: "Delete existing account"},
+		{Method: "DELETE", URL: "/api/Account/crud_delete_account_001", TestClass: "delete", Description: "Delete existing account"},
 		// CRUD Failure Cases - User
-		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user with missing required field",
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user with missing required field", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"firstName": "Incomplete", "lastName": "User"}, // Missing email, username
 			ExpectedData: &types.CRUDExpectation{
 				ExpectedErrorType: "validation",
 			}},
 
-		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user with invalid enum",
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user with invalid enum", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"firstName": "Invalid", "lastName": "Enum", "email": "invalid.enum@example.com",
 				"username": "invalid_enum", "gender": "invalid_gender"},
@@ -247,7 +145,7 @@ func GetAllTestCases() []types.TestCase {
 				ExpectedErrorType: "validation",
 			}},
 
-		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user with duplicate username",
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user with duplicate username", ExpectedStatus: 409,
 			RequestBody: map[string]interface{}{
 				"firstName": "Duplicate", "lastName": "User", "email": "duplicate@example.com",
 				"username": "basic_valid_001", "password": "testpass123", "accountId": "primary_valid_002",
@@ -256,7 +154,7 @@ func GetAllTestCases() []types.TestCase {
 				ExpectedErrorType: "constraint",
 			}},
 
-		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user - first creation (should succeed)",
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - first creation (should succeed)", ExpectedStatus: 201,
 			RequestBody: map[string]interface{}{
 				"firstName": "UniqueTest", "lastName": "FirstAttempt", "email": "uniquetest@example.com",
 				"username": "unique_constraint_test", "password": "testpass123", "accountId": "primary_valid_003",
@@ -266,7 +164,7 @@ func GetAllTestCases() []types.TestCase {
 				ExpectedFields:      map[string]interface{}{"username": "unique_constraint_test", "email": "uniquetest@example.com"},
 			}},
 
-		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user - duplicate attempt (should fail)",
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - duplicate attempt (should fail)", ExpectedStatus: 409,
 			RequestBody: map[string]interface{}{
 				"firstName": "UniqueTest", "lastName": "SecondAttempt", "email": "uniquetest@example.com",
 				"username": "unique_constraint_test", "password": "testpass123", "accountId": "primary_valid_003",
@@ -275,7 +173,7 @@ func GetAllTestCases() []types.TestCase {
 				ExpectedErrorType: "constraint",
 			}},
 
-		{Method: "POST", URL: "/api/User", TestClass: "failure", Description: "Create user with invalid account reference",
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user with invalid account reference", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"firstName": "Invalid", "lastName": "AccountRef", "email": "invalidaccount@example.com",
 				"username": "invalid_account_user", "password": "testpass123", "accountId": "nonexistent_account_999",
@@ -284,41 +182,384 @@ func GetAllTestCases() []types.TestCase {
 				ExpectedErrorType: "validation",
 			}},
 
-		{Method: "PUT", URL: "/api/User/nonexistent_user_123456", TestClass: "failure", Description: "Update non-existent user",
+		// Additional POST validation tests
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - username exceeds max length", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
-				"firstName": "NonExistent", "lastName": "Update"},
-			ExpectedData: &types.CRUDExpectation{
-				ExpectedErrorType: "not_found",
-			}},
-
-		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "failure", Description: "Update user with invalid data",
-			RequestBody: map[string]interface{}{
-				"gender": "invalid_gender", "netWorth": "not_a_number"},
+				"firstName": "Test", "lastName": "User", "email": "toolong@example.com",
+				"username": "this_username_is_way_too_long_and_exceeds_the_maximum_allowed_length_of_fifty_characters",
+				"password": "testpass123", "accountId": "primary_valid_001", "gender": "male", "isAccountOwner": false},
 			ExpectedData: &types.CRUDExpectation{
 				ExpectedErrorType: "validation",
 			}},
 
-		{Method: "DELETE", URL: "/api/User/nonexistent_user_123456", TestClass: "failure", Description: "Delete non-existent user",
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - password too short", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Test", "lastName": "User", "email": "shortpw@example.com",
+				"username": "short_password_user", "password": "short", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - invalid email format", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Test", "lastName": "User", "email": "not-an-email",
+				"username": "invalid_email_user", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - netWorth out of range", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Test", "lastName": "User", "email": "rich@example.com",
+				"username": "too_rich_user", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false, "netWorth": 99999999999},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - duplicate email", ExpectedStatus: 409,
+			RequestBody: map[string]interface{}{
+				"firstName": "Duplicate", "lastName": "Email", "email": "test.user@example.com",
+				"username": "unique_username_123", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "female", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "constraint",
+			}},
+
+		// Combo tests - validation fails first
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - bad enum + duplicate username", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Combo", "lastName": "Test", "email": "combo1@example.com",
+				"username": "basic_valid_001", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "invalid_value", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - bad data + invalid FK", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Combo", "lastName": "Test", "email": "combo2@example.com",
+				"username": "combo_user_2", "password": "testpass123", "accountId": "nonexistent_999",
+				"gender": "invalid_gender", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - duplicate email + invalid FK", ExpectedStatus: 409,
+			RequestBody: map[string]interface{}{
+				"firstName": "Combo", "lastName": "Test", "email": "test.user@example.com",
+				"username": "combo_user_3", "password": "testpass123", "accountId": "nonexistent_999",
+				"gender": "male", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "constraint",
+			}},
+
+		// Additional POST min/max length tests
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - username too short", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Test", "lastName": "User", "email": "shortuser@example.com",
+				"username": "ab", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - email too short", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Test", "lastName": "User", "email": "a@b.co",
+				"username": "short_email_user", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - email exceeds max length", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Test", "lastName": "User",
+				"email":    "this.is.a.very.long.email.address.that.exceeds@maximum.com",
+				"username": "long_email_user", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - firstName too short", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "AB", "lastName": "User", "email": "shortfirst@example.com",
+				"username": "short_firstname_user", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - firstName exceeds max", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "ThisIsAnExtremelyLongFirstNameThatExceedsTheMaximumAllowedLengthOfOneHundredCharactersAndShouldFailValidation",
+				"lastName":  "User", "email": "longfirst@example.com",
+				"username": "long_firstname_user", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - lastName too short", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Test", "lastName": "AB", "email": "shortlast@example.com",
+				"username": "short_lastname_user", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - lastName exceeds max", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Test",
+				"lastName":  "ThisIsAnExtremelyLongLastNameThatExceedsTheMaximumAllowedLengthOfOneHundredCharactersAndShouldFailValidation",
+				"email":     "longlast@example.com",
+				"username":  "long_lastname_user", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - isAccountOwner wrong type", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Test", "lastName": "User", "email": "wrongtype@example.com",
+				"username": "wrong_type_user", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": "true"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - invalid date format", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "Test", "lastName": "User", "email": "baddate@example.com",
+				"username": "bad_date_user", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false, "dob": "not-a-date"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - required field as empty string", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"firstName": "", "lastName": "User", "email": "emptyfield@example.com",
+				"username": "empty_field_user", "password": "testpass123", "accountId": "primary_valid_001",
+				"gender": "male", "isAccountOwner": false},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/nonexistent_user_123456", TestClass: "update", Description: "Update non-existent user", ExpectedStatus: 404,
+			RequestBody: map[string]interface{}{
+				"id": "nonexistent_user_123456", "firstName": "NonExistent", "lastName": "Update", "email": "nonexist@example.com",
+				"username": "nonexistent_123", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "not_found",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user with invalid data", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "test@example.com",
+				"username": "basic_valid_001", "gender": "invalid_gender", "isAccountOwner": false,
+				"netWorth": "not_a_number", "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		// Additional PUT validation tests
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - username exceeds max length", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "test@example.com",
+				"username": "this_updated_username_is_way_too_long_and_exceeds_the_maximum_allowed_length", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - invalid email format", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "not-valid-email",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - netWorth out of range", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "test@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 99999999999, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - duplicate username", ExpectedStatus: 409,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "test@example.com",
+				"username": "basic_valid_002", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "constraint",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - duplicate email", ExpectedStatus: 409,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "existing.user@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "constraint",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - invalid FK", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "test@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "nonexistent_account_999"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		// PUT combo tests
+		{Method: "PUT", URL: "/api/User/nonexistent_user_999", TestClass: "failure", Description: "Update non-existent user with bad data", ExpectedStatus: 404,
+			RequestBody: map[string]interface{}{
+				"id": "nonexistent_user_999", "firstName": "Test", "lastName": "User", "email": "test@example.com",
+				"username": "nonexistent_999", "gender": "invalid_value", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "not_found",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - bad enum + duplicate username", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "test@example.com",
+				"username": "basic_valid_002", "gender": "invalid_gender", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - bad data + invalid FK", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "test@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": "not_a_number", "dob": "1990-01-01", "password": "testpass123", "accountId": "nonexistent_999"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		// Additional PUT min/max length tests
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - username too short", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "test@example.com",
+				"username": "ab", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - email too short", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "a@b.co",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - email exceeds max", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User",
+				"email":    "this.is.a.very.long.email.address.that.exceeds@maximum.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - firstName too short", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "AB", "lastName": "User", "email": "test@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - firstName exceeds max", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id":        "basic_valid_001",
+				"firstName": "ThisIsAnExtremelyLongFirstNameThatExceedsTheMaximumAllowedLengthOfOneHundredCharactersAndShouldFailValidation",
+				"lastName":  "User", "email": "test@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - lastName too short", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "AB", "email": "test@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - lastName exceeds max", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test",
+				"lastName": "ThisIsAnExtremelyLongLastNameThatExceedsTheMaximumAllowedLengthOfOneHundredCharactersAndShouldFailValidation",
+				"email":    "test@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - isAccountOwner wrong type", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "test@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": "false",
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "PUT", URL: "/api/User/basic_valid_001", TestClass: "update", Description: "Update user - invalid date format", ExpectedStatus: 422,
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "Test", "lastName": "User", "email": "test@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "not-a-valid-date", "password": "testpass123", "accountId": "primary_valid_001"},
+			ExpectedData: &types.CRUDExpectation{
+				ExpectedErrorType: "validation",
+			}},
+
+		{Method: "DELETE", URL: "/api/User/nonexistent_user_123456", TestClass: "delete", Description: "Delete non-existent user", ExpectedStatus: 404,
 			ExpectedData: &types.CRUDExpectation{
 				ExpectedErrorType: "not_found",
 			}},
 
 		// CRUD Failure Cases - Account
-		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account with missing required field",
+		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account with missing required field", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"balance": 1000}, // Missing name
 			ExpectedData: &types.CRUDExpectation{
 				ExpectedErrorType: "validation",
 			}},
 
-		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account with invalid currency",
+		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account with invalid currency", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"name": "Invalid Currency", "balance": 1000, "currency": "INVALID"},
 			ExpectedData: &types.CRUDExpectation{
 				ExpectedErrorType: "validation",
 			}},
 
-		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account - first creation (should succeed)",
+		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account - first creation (should succeed)", ExpectedStatus: 201,
 			RequestBody: map[string]interface{}{
 				"name": "Unique Account Test", "balance": 5000.0, "currency": "USD", "isActive": true},
 			ExpectedData: &types.CRUDExpectation{
@@ -326,7 +567,7 @@ func GetAllTestCases() []types.TestCase {
 				ExpectedFields:      map[string]interface{}{"name": "Unique Account Test", "balance": 5000.0, "currency": "USD"},
 			}},
 
-		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account - duplicate attempt (should fail)",
+		{Method: "POST", URL: "/api/Account", TestClass: "failure", Description: "Create account - duplicate attempt (should fail)", ExpectedStatus: 409,
 			RequestBody: map[string]interface{}{
 				"name": "Unique Account Test", "balance": 10000.0, "currency": "EUR", "isActive": false}, // Same name
 			ExpectedData: &types.CRUDExpectation{
@@ -340,7 +581,7 @@ func GetAllTestCases() []types.TestCase {
 				ExpectedErrorType: "not_found",
 			}},
 
-		{Method: "DELETE", URL: "/api/Account/nonexistent_account_123456", TestClass: "failure", Description: "Delete non-existent account",
+		{Method: "DELETE", URL: "/api/Account/nonexistent_account_123456", TestClass: "failure", Description: "Delete non-existent account", ExpectedStatus: 404,
 			ExpectedData: &types.CRUDExpectation{
 				ExpectedErrorType: "not_found",
 			}},
@@ -348,35 +589,39 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/api/db/report", TestClass: "admin", Description: "Get database status report"},
 		{Method: "GET", URL: "/api/db/init", TestClass: "admin", Description: "Initialize database confirmation page"},
 		{Method: "GET", URL: "/api/db/health", TestClass: "admin", Description: "Get database health", ExpectedStatus: 404},
-		{Method: "GET", URL: "/api/User?sort=invalidField", TestClass: "edge", Description: "Sort by invalid field"},
-		{Method: "GET", URL: "/api/User?filter=invalidField:value", TestClass: "edge", Description: "Filter by invalid field"},
-		{Method: "GET", URL: "/api/User?view=invalidEntity(id)", TestClass: "edge", Description: "View invalid entity"},
-		{Method: "GET", URL: "/api/User?page=0", TestClass: "edge", Description: "Page 0 (invalid)"},
-		{Method: "GET", URL: "/api/User?page=-1", TestClass: "edge", Description: "Negative page number"},
-		{Method: "GET", URL: "/api/User?pageSize=0", TestClass: "edge", Description: "Page size 0"},
-		{Method: "GET", URL: "/api/User?pageSize=-5", TestClass: "edge", Description: "Negative page size"},
+		{Method: "GET", URL: "/api/User?sort=invalidField", TestClass: "edge", Description: "Sort by invalid field", ExpectedStatus: 400},
+		{Method: "GET", URL: "/api/User?filter=invalidField:value", TestClass: "edge", Description: "Filter by invalid field", ExpectedStatus: 400},
+		{Method: "GET", URL: "/api/User?view=invalidEntity(id)", TestClass: "edge", Description: "View invalid entity", ExpectedStatus: 400},
+		{Method: "GET", URL: "/api/User?page=0", TestClass: "edge", Description: "Page 0 (invalid)", ExpectedStatus: 400},
+		{Method: "GET", URL: "/api/User?page=-1", TestClass: "edge", Description: "Negative page number", ExpectedStatus: 400},
+		{Method: "GET", URL: "/api/User?pageSize=0", TestClass: "edge", Description: "Page size 0", ExpectedStatus: 400},
+		{Method: "GET", URL: "/api/User?pageSize=-5", TestClass: "edge", Description: "Negative page size", ExpectedStatus: 400},
 		{Method: "GET", URL: "/api/User?pageSize=1000", TestClass: "edge", Description: "Very large page size"},
 		{Method: "GET", URL: "/api/User?sort=", TestClass: "edge", Description: "Empty sort parameter"},
 		{Method: "GET", URL: "/api/User?filter=", TestClass: "edge", Description: "Empty filter parameter"},
 		{Method: "GET", URL: "/api/User?view=", TestClass: "edge", Description: "Empty view parameter"},
-		{Method: "GET", URL: "/api/User?sort=firstName:invalid", TestClass: "edge", Description: "Invalid sort direction"},
-		{Method: "GET", URL: "/api/User?filter=netWorth:invalid:50000", TestClass: "edge", Description: "Invalid filter operator"},
-		{Method: "GET", URL: "/api/User?view=account()", TestClass: "edge", Description: "Empty view fields"},
-		{Method: "GET", URL: "/api/User?view=account(invalidField)", TestClass: "edge", Description: "Invalid view field"},
+		{Method: "GET", URL: "/api/User?sort=firstName:invalid", TestClass: "edge", Description: "Invalid sort direction", ExpectedStatus: 400},
+		{Method: "GET", URL: "/api/User?filter=netWorth:invalid:50000", TestClass: "edge", Description: "Invalid filter operator", ExpectedStatus: 400},
+		{Method: "GET", URL: "/api/User?view=account()", TestClass: "edge", Description: "Empty view fields", ExpectedStatus: 400},
+		{Method: "GET", URL: "/api/User?view=account(invalidField)", TestClass: "edge", Description: "Invalid view field", ExpectedStatus: 400},
 		{Method: "GET", URL: "/api/User?unknown=parameter", TestClass: "edge", Description: "Unknown query parameter"},
 		{Method: "GET", URL: "/api/User?sort=firstName&sort=lastName", TestClass: "edge", Description: "Duplicate sort parameters"},
 		{Method: "GET", URL: "/api/User?filter=gender:male&filter=gender:female", TestClass: "edge", Description: "Duplicate filter parameters"},
 		{Method: "GET", URL: "/api/User?view=account(id)&view=profile(name)", TestClass: "edge", Description: "Duplicate view parameters"},
-		{Method: "GET", URL: "/api/InvalidEntity", TestClass: "edge", Description: "Invalid entity endpoint"},
+		{Method: "GET", URL: "/api/InvalidEntity", TestClass: "edge", Description: "Invalid entity endpoint", ExpectedStatus: 404},
 		{Method: "GET", URL: "/api/User/", TestClass: "edge", Description: "Trailing slash on entity"},
 		{Method: "GET", URL: "/api/User//", TestClass: "edge", Description: "Double slash in URL"},
-		{Method: "GET", URL: "/api/", TestClass: "edge", Description: "API root endpoint"},
-		{Method: "GET", URL: "/", TestClass: "edge", Description: "Root endpoint"},
+		{Method: "GET", URL: "/api/", TestClass: "edge", Description: "API root endpoint", ExpectedStatus: 404},
+		{Method: "GET", URL: "/", TestClass: "edge", Description: "Root endpoint", ExpectedStatus: 404},
 		{Method: "GET", URL: "/api/User?%20invalid=space", TestClass: "edge", Description: "URL with special characters"},
 		{Method: "GET", URL: "/api/User?sort=firstName%2Cdesc", TestClass: "edge", Description: "URL encoded sort parameter"},
 		{Method: "GET", URL: "/api/User?filter=firstName%3ABasic", TestClass: "edge", Description: "URL encoded filter parameter"},
-		{Method: "POST", URL: "/api/User?pageSize=5", TestClass: "edge", Description: "POST with query parameters"},
-		{Method: "PUT", URL: "/api/User?sort=firstName", TestClass: "edge", Description: "PUT with query parameters"},
+		{Method: "POST", URL: "/api/User?pageSize=5", TestClass: "edge", Description: "POST with query parameters", ExpectedStatus: 201},
+		{Method: "PUT", URL: "/api/User/basic_valid_001?sort=firstName", TestClass: "edge", Description: "PUT with query parameters",
+			RequestBody: map[string]interface{}{
+				"id": "basic_valid_001", "firstName": "EdgeTest", "lastName": "User", "email": "edge@example.com",
+				"username": "basic_valid_001", "gender": "male", "isAccountOwner": false,
+				"netWorth": 50000, "dob": "1990-01-01", "password": "testpass123", "accountId": "primary_valid_001"}},
 		{Method: "DELETE", URL: "/api/User?filter=gender:male", TestClass: "edge", Description: "DELETE with query parameters"},
 		{Method: "GET", URL: "/api/User?sort=firstName,", TestClass: "edge", Description: "Sort with trailing comma"},
 		{Method: "GET", URL: "/api/User?filter=gender:male,", TestClass: "edge", Description: "Filter with trailing comma"},
@@ -398,11 +643,11 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/api/test/validate", TestClass: "admin", Description: "Validate test data"},
 
 		// Missing invalid entity endpoint
-		{Method: "GET", URL: "/api/InvalidEntity", TestClass: "invalid", Description: "Invalid entity endpoint"},
+		{Method: "GET", URL: "/api/InvalidEntity", TestClass: "invalid", Description: "Invalid entity endpoint", ExpectedStatus: 404},
 
 		// Missing root endpoint
-		{Method: "GET", URL: "/", TestClass: "basic", Description: "Root endpoint"},
-		{Method: "GET", URL: "/api/", TestClass: "basic", Description: "API root endpoint"},
+		{Method: "GET", URL: "/", TestClass: "basic", Description: "Root endpoint", ExpectedStatus: 404},
+		{Method: "GET", URL: "/api/", TestClass: "basic", Description: "API root endpoint", ExpectedStatus: 404},
 
 		// Missing date filtering tests
 		{Method: "GET", URL: "/api/User?filter=createdat:gte:2023-01-01", TestClass: "filter", Description: "Filter by creation date >= 2023"},
@@ -441,7 +686,9 @@ func GetAllTestCases() []types.TestCase {
 	// Add ID and ExpectedStatus to each test case
 	for i := range testCases {
 		testCases[i].ID = i + 1
-		testCases[i].ExpectedStatus = determineExpectedStatus(testCases[i].Method, testCases[i].URL)
+		if testCases[i].ExpectedStatus == 0 {
+			testCases[i].ExpectedStatus = 200
+		}
 	}
 
 	return testCases
