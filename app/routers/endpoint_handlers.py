@@ -82,26 +82,16 @@ async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: s
 @parse_request_context
 async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_data: BaseModel, request: Request) -> Dict[str, Any]:
     """Reusable handler for POST endpoint."""
-    # Notification.start(entity=entity_cls.__name__, operation="create")
-    
     # Model handles notifications internally, just call and return
-    response, _ = await entity_cls.create(entity_data.model_dump())
+    response, _ = await entity_cls.create(entity_data)
     return update_response(response)   
 
 @parse_request_context
-async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_data: BaseModel, request: Request) -> Dict[str, Any]:
+async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str, entity_data: BaseModel, request: Request) -> Dict[str, Any]:
     """Reusable handler for PUT endpoint - True PUT semantics (full replacement)."""
-    # Notification.start(entity=entity_cls.__name__, operation="update")
-
-    # id MUST exist in the payload for update - moved to docmgr
-    # data = entity_data.model_dump()
-    # if 'id' not in data or not data['id']:
-    #     validation_warning(message="Missing 'id' field or value for update operation", 
-    #                     entity="User", 
-    #                     field="id")
-
     # Model handles notifications internally, just call and return
-    response, _ = await entity_cls.update(entity_data.model_dump())
+    setattr(entity_data, 'id', entity_id)  # Ensure ID is set from path param
+    response, _ = await entity_cls.update(entity_data)
     return update_response(response)
 
 

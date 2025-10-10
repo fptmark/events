@@ -140,7 +140,7 @@ class SimpleDynamicRouterFactory:
             }
         )
         async def update_entity(entity_id: str, entity_data: update_cls, request: Request) -> Dict[str, Any]:  # type: ignore # noqa: F811
-            return await update_entity_handler(entity_cls, entity_data, request)
+            return await update_entity_handler(entity_cls, entity_id, entity_data, request)
         
         @router.delete(
             "/{entity_id}",
