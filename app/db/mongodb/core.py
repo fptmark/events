@@ -115,10 +115,12 @@ class MongoCore(CoreManager):
                 for collection_name in collection_names:
                     try:
                         coll_stats = await db.command("collStats", collection_name)
+                        indexes = await self.database.indexes.get_all_detailed(collection_name)
                         collections_details[collection_name] = {
                             "doc_count": coll_stats.get("count", 0),
                             "storage_size": coll_stats.get("storageSize", 0),
-                            "index_count": coll_stats.get("nindexes", 0)
+                            "index_count": coll_stats.get("nindexes", 0),
+                            "indexes": indexes
                         }
                     except Exception as e:
                         collections_details[collection_name] = {
@@ -201,29 +203,56 @@ class MongoIndexes(IndexManager):
         """Get all unique indexes for collection as field lists"""
         self.database._ensure_initialized()
         db = self.database.core.get_connection()
-        
+
         try:
             field_lists = []
             cursor = db[entity_type].list_indexes()
-            
+
             async for index_info in cursor:
                 if index_info.get("name") == "_id_":
                     continue
-                    
+
                 if not index_info.get("unique", False):
                     continue
-                
+
                 fields = []
                 for field_spec in index_info.get("key", {}).items():
                     fields.append(field_spec[0])
-                
+
                 if fields:
                     field_lists.append(fields)
-            
+
             return field_lists
         except Exception as e:
             Notification.error(Error.DATABASE, f"MongoDB get indexes error: {str(e)}")
         return []
+
+    async def get_all_detailed(self, entity_type: str) -> dict:
+        """Get all indexes with full details as dict[index_name, index_info]"""
+        self.database._ensure_initialized()
+        db = self.database.core.get_connection()
+
+        try:
+            indexes = {}
+            cursor = db[entity_type].list_indexes()
+
+            async for index_info in cursor:
+                index_name = index_info.get("name")
+                if index_name == "_id_":
+                    continue
+
+                fields = list(index_info.get("key", {}).keys())
+                indexes[index_name] = {
+                    "fields": fields,
+                    "unique": index_info.get("unique", False),
+                    "sparse": index_info.get("sparse", False),
+                    "type": "native"
+                }
+
+            return indexes
+        except Exception as e:
+            Notification.error(Error.DATABASE, f"MongoDB get detailed indexes error: {str(e)}")
+        return {}
     
     async def delete(self, entity_type: str, fields: List[str]) -> None:
         """Delete index by field names"""

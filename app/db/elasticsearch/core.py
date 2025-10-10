@@ -391,10 +391,12 @@ class ElasticsearchCore(CoreManager):
                             "is_enum": is_enum
                         }
 
+                    indexes = await self.database.indexes.get_all_detailed(index_name.capitalize())
                     indices_details[index_name] = {
                         "doc_count": doc_count,
                         "store_size": store_size,
-                        "fields": fields
+                        "fields": fields,
+                        "indexes": indexes
                     }
 
                 except Exception as e:
@@ -562,7 +564,29 @@ class ElasticsearchIndexes(IndexManager):
                     unique_constraints.append([field_name])
         
         return unique_constraints
-    
+
+    async def get_all_detailed(self, entity_type: str) -> dict:
+        """Get all synthetic unique constraints from metadata"""
+        from app.services.metadata import MetadataService
+
+        indexes = {}
+        try:
+            metadata = MetadataService.get(entity_type)
+            uniques = metadata.get('uniques', [])
+
+            for fields in uniques:
+                index_name = "_".join(fields) + "_unique"
+                indexes[index_name] = {
+                    "fields": fields,
+                    "unique": True,
+                    "sparse": False,
+                    "type": "synthetic"
+                }
+        except Exception as e:
+            self.logger.error(f"Elasticsearch get detailed indexes error: {str(e)}")
+
+        return indexes
+
     async def delete(self, entity_type: str, fields: List[str]) -> None:
         """Delete synthetic unique constraint (limited in Elasticsearch)"""
         # Elasticsearch doesn't allow removing fields from existing mappings

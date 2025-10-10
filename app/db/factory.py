@@ -191,5 +191,3 @@ class DatabaseFactory:
         )
         
         return deleted_document, count
-
-    @classmethod
