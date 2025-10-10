@@ -6,6 +6,34 @@ from app.db import DatabaseFactory
 from app.services.metadata import MetadataService
 
 
+class ProfileCreate(BaseModel):
+    id: str | None = Field(default=None)
+    name: str = Field(..., max_length=100)
+    preferences: str | None = Field(default=None)
+    radiusMiles: int | None = Field(default=None, ge=0)
+    userId: str = Field(...)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+class ProfileUpdate(BaseModel):
+    id: str | None = Field(default=None)
+    name: str = Field(..., max_length=100)
+    preferences: str | None = Field(default=None)
+    radiusMiles: int | None = Field(default=None, ge=0)
+    userId: str = Field(...)
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+
 class Profile(BaseModel):
     id: str | None = Field(default=None)
     name: str = Field(..., max_length=100)
@@ -71,45 +99,16 @@ class Profile(BaseModel):
         
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.get("Profile", id)
+        return await DatabaseFactory.get("Profile", id, view_spec)
 
     @classmethod
-    async def create(cls, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.create("Profile", data)
+    async def create(cls, data: ProfileCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.create("Profile", data.model_dump())
 
     @classmethod
-    async def update(cls, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.update("Profile", data)
+    async def update(cls, data: ProfileUpdate) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.update("Profile", data.model_dump())
 
     @classmethod
     async def delete(cls, id: str) -> Tuple[Dict[str, Any], int]:
         return await DatabaseFactory.delete("Profile", id)
-
-class ProfileCreate(BaseModel):
-    id: str | None = Field(default=None)
-    name: str = Field(..., max_length=100)
-    preferences: str | None = Field(default=None)
-    radiusMiles: int | None = Field(default=None, ge=0)
-    userId: str = Field(...)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )
-
-
-class ProfileUpdate(BaseModel):
-    id: str | None = Field(default=None)
-    name: str | None = Field(default=None, max_length=100)
-    preferences: str | None = Field(default=None)
-    radiusMiles: int | None = Field(default=None, ge=0)
-    userId: str | None = Field(default=None)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )

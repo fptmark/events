@@ -11,6 +11,46 @@ class GenderEnum(str, Enum):
     OTHER = 'other'
  
 
+class UserCreate(BaseModel):
+    id: str | None = Field(default=None)
+    username: str = Field(..., min_length=3, max_length=50)
+    email: str = Field(..., min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9](.?[a-zA-Z0-9_+%-])*@[a-zA-Z0-9-]+(.[a-zA-Z0-9-]+)*.[a-zA-Z]{2,}$")
+    password: str = Field(..., min_length=8)
+    firstName: str = Field(..., min_length=3, max_length=100)
+    lastName: str = Field(..., min_length=3, max_length=100)
+    gender: GenderEnum | None = Field(default=None)
+    dob: datetime | None = Field(default=None)
+    isAccountOwner: bool = Field(...)
+    netWorth: float | None = Field(default=None, ge=0, le=10000000)
+    accountId: str = Field(...)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+class UserUpdate(BaseModel):
+    id: str | None = Field(default=None)
+    username: str = Field(..., min_length=3, max_length=50)
+    email: str = Field(..., min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9](.?[a-zA-Z0-9_+%-])*@[a-zA-Z0-9-]+(.[a-zA-Z0-9-]+)*.[a-zA-Z]{2,}$")
+    password: str = Field(..., min_length=8)
+    firstName: str = Field(..., min_length=3, max_length=100)
+    lastName: str = Field(..., min_length=3, max_length=100)
+    gender: GenderEnum | None = Field(default=None)
+    dob: datetime | None = Field(default=None)
+    isAccountOwner: bool = Field(...)
+    netWorth: float | None = Field(default=None, ge=0, le=10000000)
+    accountId: str = Field(...)
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+
 class User(BaseModel):
     id: str | None = Field(default=None)
     username: str = Field(..., min_length=3, max_length=50)
@@ -114,57 +154,16 @@ class User(BaseModel):
         
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.get("User", id)
+        return await DatabaseFactory.get("User", id, view_spec)
 
     @classmethod
-    async def create(cls, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.create("User", data)
+    async def create(cls, data: UserCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.create("User", data.model_dump())
 
     @classmethod
-    async def update(cls, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.update("User", data)
+    async def update(cls, data: UserUpdate) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.update("User", data.model_dump())
 
     @classmethod
     async def delete(cls, id: str) -> Tuple[Dict[str, Any], int]:
         return await DatabaseFactory.delete("User", id)
-
-class UserCreate(BaseModel):
-    id: str | None = Field(default=None)
-    username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(..., min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9](.?[a-zA-Z0-9_+%-])*@[a-zA-Z0-9-]+(.[a-zA-Z0-9-]+)*.[a-zA-Z]{2,}$")
-    password: str = Field(..., min_length=8)
-    firstName: str = Field(..., min_length=3, max_length=100)
-    lastName: str = Field(..., min_length=3, max_length=100)
-    gender: GenderEnum | None = Field(default=None)
-    dob: datetime | None = Field(default=None)
-    isAccountOwner: bool = Field(...)
-    netWorth: float | None = Field(default=None, ge=0, le=10000000)
-    accountId: str = Field(...)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )
-
-
-class UserUpdate(BaseModel):
-    id: str | None = Field(default=None)
-    username: str | None = Field(default=None, min_length=3, max_length=50)
-    email: str | None = Field(default=None, min_length=8, max_length=50, pattern=r"^[a-zA-Z0-9](.?[a-zA-Z0-9_+%-])*@[a-zA-Z0-9-]+(.[a-zA-Z0-9-]+)*.[a-zA-Z]{2,}$")
-    password: str | None = Field(default=None, min_length=8)
-    firstName: str | None = Field(default=None, min_length=3, max_length=100)
-    lastName: str | None = Field(default=None, min_length=3, max_length=100)
-    gender: GenderEnum | None = Field(default=None)
-    dob: datetime | None = Field(default=None)
-    isAccountOwner: bool | None = Field(default=None)
-    netWorth: float | None = Field(default=None, ge=0, le=10000000)
-    accountId: str | None = Field(default=None)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )

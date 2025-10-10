@@ -6,6 +6,28 @@ from app.db import DatabaseFactory
 from app.services.metadata import MetadataService
 
 
+class AccountCreate(BaseModel):
+    id: str | None = Field(default=None)
+    expiredAt: datetime | None = Field(default=None)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+class AccountUpdate(BaseModel):
+    id: str | None = Field(default=None)
+    expiredAt: datetime | None = Field(default=None)
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+
 class Account(BaseModel):
     id: str | None = Field(default=None)
     expiredAt: datetime | None = Field(default=None)
@@ -52,39 +74,16 @@ class Account(BaseModel):
         
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.get("Account", id)
+        return await DatabaseFactory.get("Account", id, view_spec)
 
     @classmethod
-    async def create(cls, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.create("Account", data)
+    async def create(cls, data: AccountCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.create("Account", data.model_dump())
 
     @classmethod
-    async def update(cls, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.update("Account", data)
+    async def update(cls, data: AccountUpdate) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.update("Account", data.model_dump())
 
     @classmethod
     async def delete(cls, id: str) -> Tuple[Dict[str, Any], int]:
         return await DatabaseFactory.delete("Account", id)
-
-class AccountCreate(BaseModel):
-    id: str | None = Field(default=None)
-    expiredAt: datetime | None = Field(default=None)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )
-
-
-class AccountUpdate(BaseModel):
-    id: str | None = Field(default=None)
-    expiredAt: datetime | None = Field(default=None)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )

@@ -6,6 +6,30 @@ from app.db import DatabaseFactory
 from app.services.metadata import MetadataService
 
 
+class UrlCreate(BaseModel):
+    id: str | None = Field(default=None)
+    url: str = Field(..., pattern=r"main.url")
+    params: Dict[str, Any] | None = Field(default=None)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+class UrlUpdate(BaseModel):
+    id: str | None = Field(default=None)
+    url: str = Field(..., pattern=r"main.url")
+    params: Dict[str, Any] | None = Field(default=None)
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+
 class Url(BaseModel):
     id: str | None = Field(default=None)
     url: str = Field(..., pattern=r"main.url")
@@ -58,41 +82,16 @@ class Url(BaseModel):
         
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.get("Url", id)
+        return await DatabaseFactory.get("Url", id, view_spec)
 
     @classmethod
-    async def create(cls, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.create("Url", data)
+    async def create(cls, data: UrlCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.create("Url", data.model_dump())
 
     @classmethod
-    async def update(cls, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.update("Url", data)
+    async def update(cls, data: UrlUpdate) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.update("Url", data.model_dump())
 
     @classmethod
     async def delete(cls, id: str) -> Tuple[Dict[str, Any], int]:
         return await DatabaseFactory.delete("Url", id)
-
-class UrlCreate(BaseModel):
-    id: str | None = Field(default=None)
-    url: str = Field(..., pattern=r"main.url")
-    params: Dict[str, Any] | None = Field(default=None)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )
-
-
-class UrlUpdate(BaseModel):
-    id: str | None = Field(default=None)
-    url: str | None = Field(default=None, pattern=r"main.url")
-    params: Dict[str, Any] | None = Field(default=None)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )

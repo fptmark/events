@@ -6,6 +6,34 @@ from app.db import DatabaseFactory
 from app.services.metadata import MetadataService
 
 
+class CrawlCreate(BaseModel):
+    id: str | None = Field(default=None)
+    lastParsedDate: datetime | None = Field(default=None)
+    parseStatus: Dict[str, Any] | None = Field(default=None)
+    errorsEncountered: List[str] | None = Field(default=None)
+    urlId: str = Field(...)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+class CrawlUpdate(BaseModel):
+    id: str | None = Field(default=None)
+    lastParsedDate: datetime | None = Field(default=None)
+    parseStatus: Dict[str, Any] | None = Field(default=None)
+    errorsEncountered: List[str] | None = Field(default=None)
+    urlId: str = Field(...)
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+
 class Crawl(BaseModel):
     id: str | None = Field(default=None)
     lastParsedDate: datetime | None = Field(default=None)
@@ -60,45 +88,16 @@ class Crawl(BaseModel):
         
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.get("Crawl", id)
+        return await DatabaseFactory.get("Crawl", id, view_spec)
 
     @classmethod
-    async def create(cls, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.create("Crawl", data)
+    async def create(cls, data: CrawlCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.create("Crawl", data.model_dump())
 
     @classmethod
-    async def update(cls, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.update("Crawl", data)
+    async def update(cls, data: CrawlUpdate) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.update("Crawl", data.model_dump())
 
     @classmethod
     async def delete(cls, id: str) -> Tuple[Dict[str, Any], int]:
         return await DatabaseFactory.delete("Crawl", id)
-
-class CrawlCreate(BaseModel):
-    id: str | None = Field(default=None)
-    lastParsedDate: datetime | None = Field(default=None)
-    parseStatus: Dict[str, Any] | None = Field(default=None)
-    errorsEncountered: List[str] | None = Field(default=None)
-    urlId: str = Field(...)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )
-
-
-class CrawlUpdate(BaseModel):
-    id: str | None = Field(default=None)
-    lastParsedDate: datetime | None = Field(default=None)
-    parseStatus: Dict[str, Any] | None = Field(default=None)
-    errorsEncountered: List[str] | None = Field(default=None)
-    urlId: str | None = Field(default=None)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )

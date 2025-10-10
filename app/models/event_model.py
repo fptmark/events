@@ -12,6 +12,42 @@ class RecurrenceEnum(str, Enum):
     YEARLY = 'yearly'
  
 
+class EventCreate(BaseModel):
+    id: str | None = Field(default=None)
+    url: str = Field(..., pattern=r"^https?://[^s]+$")
+    title: str = Field(..., max_length=200)
+    dateTime: datetime = Field(...)
+    location: str | None = Field(default=None, max_length=200)
+    cost: float | None = Field(default=None, ge=0)
+    numOfExpectedAttendees: int | None = Field(default=None, ge=0)
+    recurrence: RecurrenceEnum | None = Field(default=None)
+    tags: List[str] | None = Field(default=None)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+class EventUpdate(BaseModel):
+    id: str | None = Field(default=None)
+    url: str = Field(..., pattern=r"^https?://[^s]+$")
+    title: str = Field(..., max_length=200)
+    dateTime: datetime = Field(...)
+    location: str | None = Field(default=None, max_length=200)
+    cost: float | None = Field(default=None, ge=0)
+    numOfExpectedAttendees: int | None = Field(default=None, ge=0)
+    recurrence: RecurrenceEnum | None = Field(default=None)
+    tags: List[str] | None = Field(default=None)
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+
 class Event(BaseModel):
     id: str | None = Field(default=None)
     url: str = Field(..., pattern=r"^https?://[^s]+$")
@@ -92,53 +128,16 @@ class Event(BaseModel):
         
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.get("Event", id)
+        return await DatabaseFactory.get("Event", id, view_spec)
 
     @classmethod
-    async def create(cls, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.create("Event", data)
+    async def create(cls, data: EventCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.create("Event", data.model_dump())
 
     @classmethod
-    async def update(cls, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.update("Event", data)
+    async def update(cls, data: EventUpdate) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.update("Event", data.model_dump())
 
     @classmethod
     async def delete(cls, id: str) -> Tuple[Dict[str, Any], int]:
         return await DatabaseFactory.delete("Event", id)
-
-class EventCreate(BaseModel):
-    id: str | None = Field(default=None)
-    url: str = Field(..., pattern=r"^https?://[^s]+$")
-    title: str = Field(..., max_length=200)
-    dateTime: datetime = Field(...)
-    location: str | None = Field(default=None, max_length=200)
-    cost: float | None = Field(default=None, ge=0)
-    numOfExpectedAttendees: int | None = Field(default=None, ge=0)
-    recurrence: RecurrenceEnum | None = Field(default=None)
-    tags: List[str] | None = Field(default=None)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )
-
-
-class EventUpdate(BaseModel):
-    id: str | None = Field(default=None)
-    url: str | None = Field(default=None, pattern=r"^https?://[^s]+$")
-    title: str | None = Field(default=None, max_length=200)
-    dateTime: datetime | None = Field(default=None)
-    location: str | None = Field(default=None, max_length=200)
-    cost: float | None = Field(default=None, ge=0)
-    numOfExpectedAttendees: int | None = Field(default=None, ge=0)
-    recurrence: RecurrenceEnum | None = Field(default=None)
-    tags: List[str] | None = Field(default=None)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )

@@ -6,6 +6,32 @@ from app.db import DatabaseFactory
 from app.services.metadata import MetadataService
 
 
+class TagAffinityCreate(BaseModel):
+    id: str | None = Field(default=None)
+    tag: str = Field(..., max_length=50)
+    affinity: int = Field(..., ge=-100, le=100)
+    profileId: str = Field(...)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+class TagAffinityUpdate(BaseModel):
+    id: str | None = Field(default=None)
+    tag: str = Field(..., max_length=50)
+    affinity: int = Field(..., ge=-100, le=100)
+    profileId: str = Field(...)
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model_config = ConfigDict(
+        from_attributes=True,
+        validate_by_name=True,
+        use_enum_values=True
+    )
+
+
 class TagAffinity(BaseModel):
     id: str | None = Field(default=None)
     tag: str = Field(..., max_length=50)
@@ -58,43 +84,16 @@ class TagAffinity(BaseModel):
         
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.get("TagAffinity", id)
+        return await DatabaseFactory.get("TagAffinity", id, view_spec)
 
     @classmethod
-    async def create(cls, data: Dict[str, Any], validate: bool = True) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.create("TagAffinity", data)
+    async def create(cls, data: TagAffinityCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.create("TagAffinity", data.model_dump())
 
     @classmethod
-    async def update(cls, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        data['updatedAt'] = datetime.now(timezone.utc)
-        return await DatabaseFactory.update("TagAffinity", data)
+    async def update(cls, data: TagAffinityUpdate) -> Tuple[Dict[str, Any], int]:
+        return await DatabaseFactory.update("TagAffinity", data.model_dump())
 
     @classmethod
     async def delete(cls, id: str) -> Tuple[Dict[str, Any], int]:
         return await DatabaseFactory.delete("TagAffinity", id)
-
-class TagAffinityCreate(BaseModel):
-    id: str | None = Field(default=None)
-    tag: str = Field(..., max_length=50)
-    affinity: int = Field(..., ge=-100, le=100)
-    profileId: str = Field(...)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )
-
-
-class TagAffinityUpdate(BaseModel):
-    id: str | None = Field(default=None)
-    tag: str | None = Field(default=None, max_length=50)
-    affinity: int | None = Field(default=None, ge=-100, le=100)
-    profileId: str | None = Field(default=None)
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        validate_by_name=True,
-        use_enum_values=True
-    )
