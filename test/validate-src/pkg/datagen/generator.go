@@ -346,7 +346,7 @@ func createUsers(config Config, count int, valid_data bool, valid_account_id boo
 	for i := 0; i < count; i++ {
 		// Round-robin assign account ID
 		accountID := accountIds[i%len(accountIds)]
-		user := generateRandomUserDataWithAccountID(fmt.Sprintf("gen_user_%d_%d", time.Now().Unix(), i), accountID, valid_data)
+		user := generateRandomUserDataWithAccountID(fmt.Sprintf("gen_user_%d_%d", time.Now().Unix(), i), accountID, valid_data, i)
 
 		jsonData, err := json.Marshal(user)
 		if err != nil {
@@ -425,14 +425,14 @@ func generateRandomString(r *rand.Rand, length int) string {
 }
 
 // generateRandomUserDataWithAccountID creates user data for API calls with specified account ID
-func generateRandomUserDataWithAccountID(id string, accountID string, valid_data bool) map[string]interface{} {
-	userData := generateRandomUserData(id, valid_data)
+func generateRandomUserDataWithAccountID(id string, accountID string, valid_data bool, index int) map[string]interface{} {
+	userData := generateRandomUserData(id, valid_data, index)
 	userData["accountId"] = accountID
 	return userData
 }
 
 // generateRandomUserData creates user data for API calls using schema constraints
-func generateRandomUserData(id string, valid_data bool) map[string]interface{} {
+func generateRandomUserData(id string, valid_data bool, index int) map[string]interface{} {
 	now := time.Now().UTC()
 
 	// Create a more varied random source using current time and ID
@@ -447,20 +447,18 @@ func generateRandomUserData(id string, valid_data bool) map[string]interface{} {
 		}
 	}
 
-	// Generate username with constraints (min: 3, max: 50)
-	username := generateConstrainedString(r, schemaCache, "User", "username", strings.ToLower(firstNames[r.Intn(len(firstNames))]))
+	// Generate username with constraints (min: 3, max: 50) - use index to ensure uniqueness
+	username := fmt.Sprintf("username_%d", index)
 
-	// Generate email with constraints (min: 8, max: 50)
-	firstName := firstNames[r.Intn(len(firstNames))]
-	lastName := lastNames[r.Intn(len(lastNames))]
-	emailDomain := emailDomains[r.Intn(len(emailDomains))]
-	baseEmail := fmt.Sprintf("%s.%s@%s", strings.ToLower(firstName), strings.ToLower(lastName), emailDomain)
-	email := generateConstrainedString(r, schemaCache, "User", "email", baseEmail)
+	// Generate email with constraints (min: 8, max: 50) - use index to ensure uniqueness
+	email := fmt.Sprintf("user%d@example.com", index)
 
 	// Generate firstName with constraints (min: 3, max: 100)
+	firstName := firstNames[r.Intn(len(firstNames))]
 	firstName = generateConstrainedString(r, schemaCache, "User", "firstName", firstName)
 
 	// Generate lastName with constraints (min: 3, max: 100)
+	lastName := lastNames[r.Intn(len(lastNames))]
 	lastName = generateConstrainedString(r, schemaCache, "User", "lastName", lastName)
 
 	// Generate password with constraints (min: 8)
