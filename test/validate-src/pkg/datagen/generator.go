@@ -1,15 +1,13 @@
 package datagen
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
+	"validate/pkg/core"
 
 	"events-shared/schema"
 )
@@ -20,373 +18,101 @@ type TestCategory struct {
 	Description string
 }
 
-// Config holds configuration for data generation
-type Config struct {
-	ServerURL string `json:"server_url,omitempty"` // API server URL, defaults to localhost:5500
-	Verbose   bool   `json:"-"`                    // Not from config file
-}
-
-// Global config instance
-var GlobalConfig Config
-
-func SetConfigDefaults(serverURL string, verbose bool) {
-	GlobalConfig.ServerURL = serverURL
-	GlobalConfig.Verbose = verbose
-}
-
-// GetEntityCountFromReport fetches entity count from /api/db/report endpoint
-func GetEntityCountFromReport(entityName string) (int, error) {
-	url := GlobalConfig.ServerURL + "/api/db/report"
-	resp, err := http.Get(url)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
+// CreateTestData creates static test accounts and users for test cases
+// Accounts will be account_1, account_2, etc.
+// Users will be user_1, user_2, etc. with username <firstname>_<lastname>_xx
+func CreateTestData(numAccounts int, numUsers int) error {
+	if core.Verbose {
+		fmt.Println("🔧 Creating test data...")
 	}
 
-	var reportData map[string]interface{}
-	if err := json.Unmarshal(body, &reportData); err != nil {
-		return 0, err
-	}
+	// Generate random number for domain variability (1 to max accounts)
+	y := rand.Intn(numAccounts) + 1
 
-	// Extract entity count from report.entities.EntityName
-	report, ok := reportData["report"].(map[string]interface{})
-	if !ok {
-		return 0, fmt.Errorf("invalid report structure")
-	}
-
-	entities, ok := report["entities"].(map[string]interface{})
-	if !ok {
-		return 0, fmt.Errorf("invalid entities structure")
-	}
-
-	// If entity doesn't exist in the map, it means count is 0
-	count, ok := entities[entityName].(float64)
-	if !ok {
-		return 0, nil
-	}
-
-	return int(count), nil
-}
-
-// GetRecordCounts returns current user and account counts from /api/db/report
-func GetRecordCounts() (int, int, error) {
-	userCount, err := GetEntityCountFromReport("User")
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to get user count: %w", err)
-	}
-
-	accountCount, err := GetEntityCountFromReport("Account")
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to get account count: %w", err)
-	}
-
-	return userCount, accountCount, nil
-}
-
-// getAllRecordsByPaging pages through API data 10 records at a time and returns all IDs
-func getAllRecordsByPaging(endpoint string) ([]string, error) {
-	var allIDs []string
-	page := 1
-	pageSize := 10
-
-	for {
-		// Build URL with pagination parameters
-		url := fmt.Sprintf("%s%s?page=%d&pageSize=%d", GlobalConfig.ServerURL, endpoint, page, pageSize)
-
-		if GlobalConfig.Verbose {
-			fmt.Printf("  📄 Fetching %s page %d...\n", endpoint, page)
-		}
-
-		resp, err := http.Get(url)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch page %d: %w", page, err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != 200 {
-			return nil, fmt.Errorf("server error on page %d: %d", page, resp.StatusCode)
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read page %d response: %w", page, err)
-		}
-
-		// DEBUG: Print raw response
-		// fmt.Printf("DEBUG: URL=%s, Status=%d, BodyLen=%d\n", url, resp.StatusCode, len(body))
-		// fmt.Printf("DEBUG: Raw body: %s\n", string(body))
-
-		var response map[string]interface{}
-		if err := json.Unmarshal(body, &response); err != nil {
-			return nil, fmt.Errorf("failed to parse page %d response: %w", page, err)
-		}
-
-		// Extract IDs from this page
-		pageCount := 0
-		if data, ok := response["data"].([]interface{}); ok {
-			for _, item := range data {
-				if record, ok := item.(map[string]interface{}); ok {
-					if id, ok := record["id"].(string); ok {
-						allIDs = append(allIDs, id)
-					}
-				}
-			}
-			pageCount = len(data)
-		}
-
-		if GlobalConfig.Verbose {
-			fmt.Printf("    ✓ Page %d: %d records (total so far: %d)\n", page, pageCount, len(allIDs))
-		}
-
-		// Check if we have pagination info to determine if there are more pages
-		if pagination, ok := response["pagination"].(map[string]interface{}); ok {
-			if totalPages, ok := pagination["totalPages"].(float64); ok {
-				if page >= int(totalPages) {
-					break // No more pages
-				}
-			} else {
-				// No totalPages field, check if we got less than pageSize records
-				if pageCount < pageSize {
-					break // Last page
-				}
-			}
-		} else {
-			// No pagination info, check if we got less than pageSize records
-			if pageCount < pageSize {
-				break // Last page
-			}
-		}
-
-		page++
-	}
-
-	return allIDs, nil
-}
-
-// EnsureStaticTestData ensures static test accounts and users exist for test cases
-func EnsureStaticTestData(config Config) error {
-	if GlobalConfig.Verbose {
-		fmt.Println("🔧 Ensuring static test data exists...")
-	}
-
-	// Create multiple static accounts for test cases to reference
-	staticAccountIDs := []string{
-		"primary_valid_001",
-		"primary_valid_002",
-		"primary_valid_003",
-		"primary_valid_004",
-		"primary_valid_005",
-	}
-
-	for _, accountID := range staticAccountIDs {
-		staticAccount := map[string]interface{}{
+	// Create accounts
+	for i := 1; i <= numAccounts; i++ {
+		accountID := fmt.Sprintf("account_%d", i)
+		account := map[string]interface{}{
 			"id":        accountID,
 			"createdAt": time.Now().UTC().Format(time.RFC3339),
 			"updatedAt": time.Now().UTC().Format(time.RFC3339),
 		}
 
-		jsonData, err := json.Marshal(staticAccount)
-		if err != nil {
-			return fmt.Errorf("failed to marshal static account %s: %w", accountID, err)
+		if err := core.CreateEntity("Account", account); err != nil {
+			return fmt.Errorf("failed to create account %s: %w", accountID, err)
 		}
 
-		// Try to create the account (ignore if it already exists)
-		resp, err := http.Post(GlobalConfig.ServerURL+"/api/Account", "application/json", bytes.NewBuffer(jsonData))
-		if err != nil {
-			return fmt.Errorf("failed to create static account %s: %w", accountID, err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == 200 || resp.StatusCode == 201 {
-			if GlobalConfig.Verbose {
-				fmt.Printf("  ✓ Created static account: %s\n", accountID)
-			}
-		} else if resp.StatusCode == 409 || resp.StatusCode == 400 {
-			// Account already exists, which is fine
-			if GlobalConfig.Verbose {
-				fmt.Printf("  ✓ Static account already exists: %s\n", accountID)
-			}
-		} else {
-			body, _ := io.ReadAll(resp.Body)
-			return fmt.Errorf("failed to create static account %s: status %d - %s", accountID, resp.StatusCode, string(body))
+		if core.Verbose {
+			fmt.Printf("  ✓ Created account: %s\n", accountID)
 		}
 	}
 
-	return nil
-}
-
-// EnsureMinRecords ensures minimum number of users and accounts exist
-func EnsureMinRecords(config Config, recordSpec string) error {
-	// Parse "users,accounts" format
-	parts := strings.Split(recordSpec, ",")
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid format for records, expected 'users,accounts' got '%s'", recordSpec)
-	}
-
-	minUsers, err := strconv.Atoi(strings.TrimSpace(parts[0]))
-	if err != nil {
-		return fmt.Errorf("invalid user count '%s': %w", parts[0], err)
-	}
-
-	minAccounts, err := strconv.Atoi(strings.TrimSpace(parts[1]))
-	if err != nil {
-		return fmt.Errorf("invalid account count '%s': %w", parts[1], err)
-	}
-
-	if GlobalConfig.Verbose {
-		fmt.Printf("🔍 Ensuring minimum records: %d users, %d accounts\n", minUsers, minAccounts)
-	}
-
-	// Get current counts
-	currentUsers, currentAccounts, err := GetRecordCounts()
-	if err != nil {
-		return fmt.Errorf("failed to get current record counts: %w", err)
-	}
-
-	if GlobalConfig.Verbose {
-		fmt.Printf("📊 Current records: %d users, %d accounts\n", currentUsers, currentAccounts)
-	}
-
-	// Calculate how many we need to create
-	needUsers := max(0, minUsers-currentUsers)
-	needAccounts := max(0, minAccounts-currentAccounts)
-
-	if needUsers == 0 && needAccounts == 0 {
-		if GlobalConfig.Verbose {
-			fmt.Printf("✅ Already have minimum records: %d users, %d accounts\n", currentUsers, currentAccounts)
-		}
-		return nil
-	}
-
-	if GlobalConfig.Verbose {
-		fmt.Printf("➕ Creating %d additional accounts and %d additional users\n", needAccounts, needUsers)
-	}
-
-	// Create static test accounts first (always, these are required for CRUD tests)
-	if err := EnsureStaticTestData(config); err != nil {
-		return fmt.Errorf("failed to create static test data: %w", err)
-	}
-
-	// Create additional dynamic accounts (users reference them)
-	if needAccounts > 0 {
-		if err := createAccountsViaAPI(config, needAccounts); err != nil {
-			return fmt.Errorf("failed to create accounts: %w", err)
+	// Load schema for constraints
+	var schemaCache *schema.SchemaCache
+	if schemaPath, err := schema.FindSchemaFile(); err == nil {
+		if cache, err := schema.NewSchemaCache(schemaPath); err == nil {
+			schemaCache = cache
 		}
 	}
 
-	// Create users
-	if needUsers > 0 {
-		if err := createUsers(config, needUsers, true, true); err != nil {
-			return fmt.Errorf("failed to create users: %w", err)
+	// Create users (some with random violations for testing)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 1; i <= numUsers; i++ {
+		userID := fmt.Sprintf("user_%d", i)
+
+		// Pick random first and last names
+		firstName := firstNames[rand.Intn(len(firstNames))]
+		lastName := lastNames[rand.Intn(len(lastNames))]
+
+		// Apply schema constraints to names
+		firstName = generateConstrainedString(r, schemaCache, "User", "firstName", firstName)
+		lastName = generateConstrainedString(r, schemaCache, "User", "lastName", lastName)
+
+		// Username is <firstname>_<lastname>_xx with round-robin domain
+		domain := emailDomains[(i-1)%len(emailDomains)]
+		username := fmt.Sprintf("%s_%s_%s", firstName, lastName, domain)
+		email := fmt.Sprintf("%s@%s", username, domain)
+
+		// Account ID using round-robin with yy component
+		accountID := fmt.Sprintf("account_%d", ((i-1)%y)+1)
+
+		// Generate gender from schema enum
+		gender := generateConstrainedEnum(r, schemaCache, "User", "gender", []string{"male", "female", "other"})
+
+		// Generate netWorth with schema constraints
+		netWorth := generateConstrainedNumber(r, schemaCache, "User", "netWorth", 0, 10000000)
+
+		// Generate password with constraints
+		password := generateConstrainedString(r, schemaCache, "User", "password", "TestPass"+generateRandomString(r, 6)+"!")
+
+		user := map[string]interface{}{
+			"id":             userID,
+			"firstName":      firstName,
+			"lastName":       lastName,
+			"username":       username,
+			"email":          email,
+			"accountId":      accountID,
+			"gender":         gender,
+			"isAccountOwner": false,
+			"netWorth":       netWorth,
+			"dob":            "1990-01-01",
+			"password":       password,
+			"createdAt":      time.Now().UTC().Format(time.RFC3339),
+			"updatedAt":      time.Now().UTC().Format(time.RFC3339),
 		}
-	}
 
-	if GlobalConfig.Verbose {
-		fmt.Printf("✅ Successfully ensured minimum records: %d users, %d accounts\n", minUsers, minAccounts)
-	}
-
-	return nil
-}
-
-// createAccountsViaAPI creates accounts via REST API calls
-func createAccountsViaAPI(config Config, count int) error {
-	for i := 0; i < count; i++ {
-		account := generateRandomAccountData(fmt.Sprintf("gen_account_%d_%d", time.Now().Unix(), i))
-
-		jsonData, err := json.Marshal(account)
-		if err != nil {
-			return fmt.Errorf("failed to marshal account data: %w", err)
+		if err := core.CreateEntity("User", user); err != nil {
+			return fmt.Errorf("failed to create user %s: %w", userID, err)
 		}
 
-		resp, err := http.Post(GlobalConfig.ServerURL+"/api/Account", "application/json", bytes.NewBuffer(jsonData))
-		if err != nil {
-			return fmt.Errorf("failed to create account %d: %w", i+1, err)
-		}
-
-		if resp.StatusCode != 200 && resp.StatusCode != 201 {
-			// Read the response body to see the error details
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return fmt.Errorf("server error creating account %d: %d - Payload: %s - Response: %s", i+1, resp.StatusCode, string(jsonData), string(body))
-		}
-		resp.Body.Close()
-
-		if GlobalConfig.Verbose {
-			fmt.Printf("  ✓ Created account %s\n", account["id"])
+		if core.Verbose {
+			fmt.Printf("  ✓ Created user: %s (username: %s, account: %s)\n", userID, username, accountID)
 		}
 	}
 
 	return nil
 }
 
-// createUsers creates users via REST API calls
-func createUsers(config Config, count int, valid_data bool, valid_account_id bool) error {
-	accountIds := []string{}
-	err := error(nil)
-
-	// Get list of account IDs to use for FK relationships
-	if valid_account_id {
-		accountIds, err = getAllRecordsByPaging("/api/Account")
-		if err != nil {
-			return fmt.Errorf("failed to get account IDs: %w", err)
-		}
-		if len(accountIds) == 0 {
-			return fmt.Errorf("no accounts available for user creation")
-		}
-	} else {
-		// Use some invalid account IDs for testing
-		accountIds = []string{"invalid_acc_001", "invalid_acc_002", "invalid_acc_003"}
-	}
-
-	for i := 0; i < count; i++ {
-		// Round-robin assign account ID
-		accountID := accountIds[i%len(accountIds)]
-		user := generateRandomUserDataWithAccountID(fmt.Sprintf("gen_user_%d_%d", time.Now().Unix(), i), accountID, valid_data, i)
-
-		jsonData, err := json.Marshal(user)
-		if err != nil {
-			return fmt.Errorf("failed to marshal user data: %w", err)
-		}
-
-		url := GlobalConfig.ServerURL + "/api/User"
-		if !valid_data || !valid_account_id {
-			url += "?novalidate"
-		}
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-		if err != nil {
-			return fmt.Errorf("failed to create user %d: %w", i+1, err)
-		}
-
-		if resp.StatusCode != 200 && resp.StatusCode != 201 {
-			// Read the response body to see the error details
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return fmt.Errorf("server error creating user %d: %d - Payload: %s - Response: %s", i+1, resp.StatusCode, string(jsonData), string(body))
-		}
-		resp.Body.Close()
-
-		if GlobalConfig.Verbose {
-			fmt.Printf("  ✓ Created user %s\n", user["id"])
-		}
-	}
-
-	return nil
-}
-
-// generateRandomAccountData creates account data for API calls
-func generateRandomAccountData(id string) map[string]interface{} {
-	now := time.Now().UTC()
-	return map[string]interface{}{
-		"id":        id,
-		"createdAt": now.Format(time.RFC3339),
-		"updatedAt": now.Format(time.RFC3339),
-	}
-}
 
 // Random data pools for generating varied test data
 var (
@@ -422,88 +148,6 @@ func generateRandomString(r *rand.Rand, length int) string {
 		result[i] = charset[r.Intn(len(charset))]
 	}
 	return string(result)
-}
-
-// generateRandomUserDataWithAccountID creates user data for API calls with specified account ID
-func generateRandomUserDataWithAccountID(id string, accountID string, valid_data bool, index int) map[string]interface{} {
-	userData := generateRandomUserData(id, valid_data, index)
-	userData["accountId"] = accountID
-	return userData
-}
-
-// generateRandomUserData creates user data for API calls using schema constraints
-func generateRandomUserData(id string, valid_data bool, index int) map[string]interface{} {
-	now := time.Now().UTC()
-
-	// Create a more varied random source using current time and ID
-	source := rand.NewSource(time.Now().UnixNano() + int64(len(id)))
-	r := rand.New(source)
-
-	// Try to load schema for constraints
-	var schemaCache *schema.SchemaCache
-	if schemaPath, err := schema.FindSchemaFile(); err == nil {
-		if cache, err := schema.NewSchemaCache(schemaPath); err == nil {
-			schemaCache = cache
-		}
-	}
-
-	// Generate username with constraints (min: 3, max: 50) - use index to ensure uniqueness
-	username := fmt.Sprintf("username_%d", index)
-
-	// Generate email with constraints (min: 8, max: 50) - use index to ensure uniqueness
-	email := fmt.Sprintf("user%d@example.com", index)
-
-	// Generate firstName with constraints (min: 3, max: 100)
-	firstName := firstNames[r.Intn(len(firstNames))]
-	firstName = generateConstrainedString(r, schemaCache, "User", "firstName", firstName)
-
-	// Generate lastName with constraints (min: 3, max: 100)
-	lastName := lastNames[r.Intn(len(lastNames))]
-	lastName = generateConstrainedString(r, schemaCache, "User", "lastName", lastName)
-
-	// Generate password with constraints (min: 8)
-	password := generateConstrainedString(r, schemaCache, "User", "password", "TestPass"+generateRandomString(r, 6)+"!")
-
-	// Generate gender from enum constraints
-	gender := generateConstrainedEnum(r, schemaCache, "User", "gender", []string{"male", "female", "other"})
-
-	// Generate netWorth with numeric constraints (ge: 0, le: 10000000)
-	netWorth := generateConstrainedNumber(r, schemaCache, "User", "netWorth", 0, 10000000)
-
-	// Calculate birth year range (current year - 65 to current year - 25)
-	currentYear := now.Year()
-	minBirthYear := currentYear - 65
-	maxBirthYear := currentYear - 25
-
-	// Generate random birth date
-	birthYear := minBirthYear + r.Intn(maxBirthYear-minBirthYear+1)
-	birthMonth := time.Month(r.Intn(12) + 1)
-	birthDay := r.Intn(28) + 1 // Use 28 to avoid month-specific day issues
-
-	dob := time.Date(birthYear, birthMonth, birthDay, 0, 0, 0, 0, time.UTC)
-
-	userData := map[string]interface{}{
-		"id":             id,
-		"username":       username,
-		"email":          email,
-		"firstName":      firstName,
-		"lastName":       lastName,
-		"password":       password,
-		"accountId":      "primary_valid_001", // Use a known good account ID
-		"gender":         gender,
-		"netWorth":       netWorth,
-		"isAccountOwner": r.Intn(2) == 0, // 50/50 chance
-		"dob":            dob.Format(time.RFC3339),
-		"createdAt":      now.Format(time.RFC3339),
-		"updatedAt":      now.Format(time.RFC3339),
-	}
-
-	// If valid_data is false, introduce random violations
-	if !valid_data {
-		userData = introduceRandomViolations(r, userData)
-	}
-
-	return userData
 }
 
 // introduceRandomViolations randomly violates field constraints to generate invalid test data
@@ -711,13 +355,13 @@ func generateConstrainedNumber(r *rand.Rand, schemaCache *schema.SchemaCache, en
 }
 
 // CleanDatabase cleans all data via the db/init/confirmed endpoint
-func CleanDatabase(config Config) error {
-	if GlobalConfig.Verbose {
+func CleanDatabase() error {
+	if core.Verbose {
 		fmt.Println("🧹 Cleaning database via API...")
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", GlobalConfig.ServerURL+"/api/db/init/confirmed", nil)
+	req, err := http.NewRequest("POST", core.ServerURL+"/api/db/init/confirmed", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create database init request: %w", err)
 	}
@@ -733,7 +377,7 @@ func CleanDatabase(config Config) error {
 		return fmt.Errorf("database init failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	if GlobalConfig.Verbose {
+	if core.Verbose {
 		fmt.Println("✅ Database cleaning completed via /api/db/init/confirmed")
 	}
 
@@ -748,50 +392,15 @@ func max(a, b int) int {
 	return b
 }
 
-// ResetAndPopulate performs the complete database reset and population sequence using working data-src code
-func ResetAndPopulate(serverURL string, userCount, accountCount int) error {
-	config := Config{
-		ServerURL: serverURL,
-		Verbose:   true,
+// ResetAndPopulate performs the complete database reset and population sequence
+func ResetAndPopulate(numUsers, numAccounts int) error {
+	if err := CleanDatabase(); err != nil {
+		return fmt.Errorf("failed to clean database: %w", err)
 	}
 
-	// Step 1: Get initial counts
-	fmt.Println("Getting initial database counts...")
-	initialUsers, initialAccounts, err := GetRecordCounts()
-	if err != nil {
-		return fmt.Errorf("failed to get initial record counts: %w", err)
-	}
-	fmt.Printf("Initial counts: %d users, %d accounts\n", initialUsers, initialAccounts)
-
-	// Step 2: Clear database using the working CleanDatabase function
-	fmt.Println("Clearing database...")
-	if err := CleanDatabase(config); err != nil {
-		return fmt.Errorf("failed to clear database: %w", err)
+	if err := CreateTestData(numAccounts, numUsers); err != nil {
+		return fmt.Errorf("failed to create test data: %w", err)
 	}
 
-	// Step 3: Get counts after clearing
-	fmt.Println("Getting database counts after clearing...")
-	afterUsers, afterAccounts, err := GetRecordCounts()
-	if err != nil {
-		return fmt.Errorf("failed to get record counts after clearing: %w", err)
-	}
-	fmt.Printf("After clearing: %d users, %d accounts\n", afterUsers, afterAccounts)
-
-	// Step 4: Populate with specified counts (includes static test accounts)
-	fmt.Printf("Populating database with %d users and %d accounts...\n", userCount, accountCount)
-	recordSpec := fmt.Sprintf("%d,%d", userCount, accountCount)
-	if err := EnsureMinRecords(config, recordSpec); err != nil {
-		return fmt.Errorf("failed to populate database: %w", err)
-	}
-
-	// Step 5: Get final counts
-	fmt.Println("Getting final database counts...")
-	finalUsers, finalAccounts, err := GetRecordCounts()
-	if err != nil {
-		return fmt.Errorf("failed to get final record counts: %w", err)
-	}
-	fmt.Printf("Final counts: %d users, %d accounts\n", finalUsers, finalAccounts)
-
-	fmt.Println("Database reset and population complete!")
 	return nil
 }

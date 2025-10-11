@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"validate/pkg/datagen"
+	"validate/pkg/core"
 	"validate/pkg/types"
 )
 
@@ -30,10 +30,7 @@ func testPaginationAggregation() (*types.TestResult, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	// Step 1: Get total user count from db/report endpoint
-	totalUsers, err := datagen.GetEntityCountFromReport("User")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get total user count: %w", err)
-	}
+	totalUsers, _ := core.GetEntityCountsFromReport()
 
 	// Step 2: Fetch all pages with pageSize=8
 	pageSize := 8
@@ -97,7 +94,7 @@ func fetchAllPages(client *http.Client, pageSize int) ([]map[string]interface{},
 	totalPages := 0
 
 	for {
-		url := fmt.Sprintf("%s/api/User?page=%d&pageSize=%d", datagen.GlobalConfig.ServerURL, page, pageSize)
+		url := fmt.Sprintf("%s/api/User?page=%d&pageSize=%d", core.ServerURL, page, pageSize)
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			return nil, 0, err

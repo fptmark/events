@@ -1,86 +1,146 @@
 package core
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
-
-	"validate/pkg/httpclient"
-	"validate/pkg/tests"
-	"validate/pkg/types"
+	"io"
+	"net/http"
+	"os"
 )
 
-// ExecuteTests runs all tests and returns results
-func ExecuteTests(testNumbers []int) ([]*types.TestResult, error) {
-	allTestCases := tests.GetAllTestCases()
-	totalTests := len(allTestCases)
+// Global config for all packages
+var (
+	ServerURL   string
+	Verbose     bool
+	NumUsers    int
+	NumAccounts int
+)
 
-	// Validate all test numbers first
-	for _, testNum := range testNumbers {
-		if testNum < 1 || testNum > totalTests {
-			return nil, fmt.Errorf("test number %d out of range (1-%d)", testNum, totalTests)
+// SetConfig sets the global configuration
+func SetConfig(serverURL string, verbose bool, numUsers int, numAccounts int) {
+	ServerURL = serverURL
+	Verbose = verbose
+	NumUsers = numUsers
+	NumAccounts = numAccounts
+}
+
+func GetEntityCountsFromReport() (int, int) {
+	users := 0
+	accounts := 0
+	response, err := ExecuteGet("/api/db/report", "report.entities")
+	if err == nil {
+		// Extract entity count from report.entities.EntityName
+		// GetFromResponse navigates: response -> report -> entities -> Users (with default "0")
+		if val := GetFromResponse(response, "report", "entities", "Users", "0"); val != "0" {
+			if numVal, ok := val.(float64); ok {
+				users = int(numVal)
+			}
+		}
+		if val := GetFromResponse(response, "report", "entities", "Accounts", "0"); val != "0" {
+			if numVal, ok := val.(float64); ok {
+				accounts = int(numVal)
+			}
+		}
+	}
+	return users, accounts
+}
+
+// ExecuteGet makes a GET request and returns the parsed JSON response
+// Prints errors to stderr and returns nil on failure
+func ExecuteGet(endpoint string, jsonPath string) (interface{}, error) {
+	url := ServerURL + endpoint
+
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to GET %s: %v\n", url, err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to read response body: %v\n", err)
+		return nil, err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		fmt.Fprintf(os.Stderr, "Error: GET %s returned status %d: %s\n", url, resp.StatusCode, string(body))
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	var responseData interface{}
+	if err := json.Unmarshal(body, &responseData); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to parse JSON response: %v\n", err)
+		return nil, err
+	}
+
+	return responseData, nil
+}
+
+// GetFromResponse extracts a nested value from a JSON response
+// The last argument can be a default value if the path doesn't exist
+// Example: GetFromResponse(response, "Users", "0") - returns Users value or "0" if not found
+// Example: GetFromResponse(response, "report", "entities", "Users", "0")
+func GetFromResponse(response interface{}, keys ...string) interface{} {
+	if len(keys) == 0 {
+		return response
+	}
+
+	// Last key might be a default value - check if we can navigate to second-to-last
+	defaultValue := keys[len(keys)-1]
+	pathKeys := keys[:len(keys)-1]
+
+	current := response
+
+	// Navigate through the path
+	for _, key := range pathKeys {
+		if current == nil {
+			return defaultValue
+		}
+
+		switch v := current.(type) {
+		case map[string]interface{}:
+			val, exists := v[key]
+			if !exists {
+				return defaultValue
+			}
+			current = val
+		default:
+			return defaultValue
 		}
 	}
 
-	results := make([]*types.TestResult, len(testNumbers))
+	return current
+}
 
-	for i, testNum := range testNumbers {
-		// Execute test
-		result, err := httpclient.ExecuteTest(testNum)
-		results[i] = result
+// CreateEntity creates an entity via POST to the API
+// Takes a payload and entity type, issues a POST request
+// Prints errors to stderr and returns error on failure
+func CreateEntity(entityType string, payload map[string]interface{}) error {
+	url := ServerURL + "/api/" + entityType
 
-		if err != nil || result == nil {
-			continue
-		}
-
-		testCase := allTestCases[testNum-1]
-
-		if result.StatusCode >= 400 {
-			// Special case: CREATE test expecting 201 but got 409 (already exists)
-			if testCase.Method == "POST" && testCase.ExpectedStatus == 201 && result.StatusCode == 409 {
-				result.Alert = true
-				result.Passed = false
-			} else {
-				result.Passed = result.StatusCode == testCase.ExpectedStatus
-			}
-			continue
-		}
-
-		// Count warnings, request warnings, and errors in notifications
-		if result.Notifications != nil {
-			if notifMap, ok := result.Notifications.(map[string]interface{}); ok {
-				if warningsMap, ok := notifMap["warnings"].(map[string]interface{}); ok {
-					for _, entityWarnings := range warningsMap {
-						if entityMap, ok := entityWarnings.(map[string]interface{}); ok {
-							for _, entityErrors := range entityMap {
-								if errorsList, ok := entityErrors.([]interface{}); ok {
-									for _, errorItem := range errorsList {
-										if errorMap, ok := errorItem.(map[string]interface{}); ok {
-											if errorType, ok := errorMap["type"].(string); ok {
-												switch errorType {
-												case "warning":
-													result.Warnings++
-												case "request_warning":
-													result.RequestWarnings++
-												case "error":
-													result.Errors++
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-
-		// Determine pass/fail
-		validation := ValidateTest(testNum, result)
-		statusMatch := result.StatusCode == testCase.ExpectedStatus
-
-		// Store pass/fail in result
-		result.Passed = statusMatch && validation.OK && result.Errors == 0
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to marshal %s data: %v\n", entityType, err)
+		return err
 	}
 
-	return results, nil
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to create %s: %v\n", entityType, err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	// Accept 200, 201, or 409 (already exists)
+	if resp.StatusCode == 200 || resp.StatusCode == 201 || resp.StatusCode == 409 {
+		return nil
+	}
+
+	id := payload["id"]
+	fmt.Fprintf(os.Stderr, "Error: failed to create %s %v: status %d - %s\n", entityType, id, resp.StatusCode, string(body))
+	return fmt.Errorf("status %d", resp.StatusCode)
 }

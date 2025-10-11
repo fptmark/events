@@ -574,7 +574,7 @@ func GetAllTestCases() []types.TestCase {
 				ExpectedErrorType: "constraint",
 			}},
 
-		{Method: "PUT", URL: "/api/Account/nonexistent_account_123456", TestClass: "failure", Description: "Update non-existent account",
+		{Method: "PUT", URL: "/api/Account/nonexistent_account_123456", TestClass: "failure", Description: "Update non-existent account", ExpectedStatus: 404,
 			RequestBody: map[string]interface{}{
 				"name": "NonExistent Update"},
 			ExpectedData: &types.CRUDExpectation{

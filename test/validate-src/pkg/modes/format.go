@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"validate/pkg/core"
+	"validate/pkg/tests"
 	"validate/pkg/types"
 )
 
@@ -55,7 +55,7 @@ func formatResult(testCase *types.TestCase, result *types.TestResult, showData b
 	output.WriteString("\n\n")
 
 	// Show sort and filter field values (before pass/fail status)
-	validation := core.ValidateTest(testCase.ID, result)
+	validation := tests.ValidateTest(testCase.ID, result)
 	if len(validation.Fields) > 0 {
 		output.WriteString("Field Values:\n")
 		for fieldKey, values := range validation.Fields {

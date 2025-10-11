@@ -1,11 +1,10 @@
-package core
+package tests
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
 
-	"validate/pkg/tests"
 	"validate/pkg/types"
 	"validate/pkg/verifier"
 )
@@ -264,7 +263,7 @@ func valuesEqual(actual, expected interface{}) bool {
 
 // getTestCaseByID retrieves a test case by its ID (helper function)
 func getTestCaseByID(testID int) (*types.TestCase, error) {
-	allTests := tests.GetAllTestCases()
+	allTests := GetAllTestCases()
 	if testID < 1 || testID > len(allTests) {
 		return nil, fmt.Errorf("test ID %d out of range", testID)
 	}

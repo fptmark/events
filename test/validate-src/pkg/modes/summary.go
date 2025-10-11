@@ -5,14 +5,13 @@ import (
 	"os"
 	"sort"
 
-	"validate/pkg/core"
 	"validate/pkg/tests"
 	"validate/pkg/types"
 )
 
 // RunSummary runs all tests and shows summary statistics
 func RunSummary(testNums []int) {
-	results, err := core.ExecuteTests(testNums)
+	results, err := tests.ExecuteTests(testNums)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

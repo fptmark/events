@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"os"
 
-	"validate/pkg/core"
 	"validate/pkg/tests"
 )
 
 // RunWrite runs a single test and outputs formatted result
 func RunWrite(testNum int, fullData bool, fullNotifications bool) {
-	results, err := core.ExecuteTests([]int{testNum})
+	results, err := tests.ExecuteTests([]int{testNum})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

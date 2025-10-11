@@ -1,4 +1,4 @@
-package httpclient
+package tests
 
 import (
 	"bytes"
@@ -12,8 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"validate/pkg/datagen"
-	"validate/pkg/tests"
+	"validate/pkg/core"
 	"validate/pkg/types"
 )
 
@@ -36,14 +35,20 @@ func NewHTTPExecutor() *HTTPExecutor {
 	}
 }
 
+// ExecuteTest is a package-level function that executes a test using the default executor
+func ExecuteTest(testNumber int) (*types.TestResult, error) {
+	executor := NewHTTPExecutor()
+	return executor.ExecuteTest(testNumber)
+}
+
 // ExecuteTest executes a test by number and returns TestResult
 func (e *HTTPExecutor) ExecuteTest(testNumber int) (*types.TestResult, error) {
 	// Get test definition from static test suite
-	allTests := tests.GetAllTestCases()
+	allTests := GetAllTestCases()
 	testCase := allTests[testNumber-1] // testNumber is 1-based
 
 	if testCase.TestClass == "dynamic" {
-		function_if := tests.GetDynamicTest(testCase.URL)
+		function_if := GetDynamicTest(testCase.URL)
 		if function_if == nil {
 			fmt.Fprintf(os.Stderr, "no dynamic function found for URL: %s\n", testCase.URL)
 			os.Exit(1)
@@ -68,7 +73,7 @@ func (e *HTTPExecutor) ExecuteTest(testNumber int) (*types.TestResult, error) {
 // executeTestCase executes a single test case and returns a TestResult
 func (e *HTTPExecutor) executeTestCase(testCase *types.TestCase) (*types.TestResult, error) {
 	// Build full URL using GlobalConfig.ServerURL
-	fullURL := datagen.GlobalConfig.ServerURL + testCase.URL
+	fullURL := core.ServerURL + testCase.URL
 
 	// Use the new executeUrl function to perform the HTTP request
 	resp, responseBody, err := executeUrl(fullURL, testCase.Method, testCase.RequestBody)
@@ -358,8 +363,79 @@ func reshapeToTestResult(resp *http.Response, responseBody []byte, url string) (
 	return result, nil
 }
 
-// ExecuteTest is a package-level function that creates an executor and runs a test
-func ExecuteTest(testNumber int) (*types.TestResult, error) {
-	executor := NewHTTPExecutor()
-	return executor.ExecuteTest(testNumber)
+// ExecuteTests runs all tests and returns results
+func ExecuteTests(testNumbers []int) ([]*types.TestResult, error) {
+	allTestCases := GetAllTestCases()
+	totalTests := len(allTestCases)
+
+	// Validate all test numbers first
+	for _, testNum := range testNumbers {
+		if testNum < 1 || testNum > totalTests {
+			return nil, fmt.Errorf("test number %d out of range (1-%d)", testNum, totalTests)
+		}
+	}
+
+	results := make([]*types.TestResult, len(testNumbers))
+
+	for i, testNum := range testNumbers {
+		// Execute test
+		result, err := ExecuteTest(testNum)
+		results[i] = result
+
+		if err != nil || result == nil {
+			continue
+		}
+
+		testCase := allTestCases[testNum-1]
+
+		if result.StatusCode >= 400 {
+			// Special case: CREATE test expecting 201 but got 409 (already exists)
+			if testCase.Method == "POST" && testCase.ExpectedStatus == 201 && result.StatusCode == 409 {
+				result.Alert = true
+				result.Passed = false
+			} else {
+				result.Passed = result.StatusCode == testCase.ExpectedStatus
+			}
+			continue
+		}
+
+		// Count warnings, request warnings, and errors in notifications
+		if result.Notifications != nil {
+			if notifMap, ok := result.Notifications.(map[string]interface{}); ok {
+				if warningsMap, ok := notifMap["warnings"].(map[string]interface{}); ok {
+					for _, entityWarnings := range warningsMap {
+						if entityMap, ok := entityWarnings.(map[string]interface{}); ok {
+							for _, entityErrors := range entityMap {
+								if errorsList, ok := entityErrors.([]interface{}); ok {
+									for _, errorItem := range errorsList {
+										if errorMap, ok := errorItem.(map[string]interface{}); ok {
+											if errorType, ok := errorMap["type"].(string); ok {
+												switch errorType {
+												case "warning":
+													result.Warnings++
+												case "request_warning":
+													result.RequestWarnings++
+												case "error":
+													result.Errors++
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Determine pass/fail
+		validation := ValidateTest(testNum, result)
+		statusMatch := result.StatusCode == testCase.ExpectedStatus
+
+		// Store pass/fail in result
+		result.Passed = statusMatch && validation.OK && result.Errors == 0
+	}
+
+	return results, nil
 }

@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"validate/pkg/core"
 	"validate/pkg/tests"
 	"validate/pkg/types"
 )
@@ -22,7 +21,7 @@ func RunInteractive(startTestNum int) {
 mainLoop:
 	for {
 		// Execute test
-		results, err := core.ExecuteTests([]int{testNum})
+		results, err := tests.ExecuteTests([]int{testNum})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Unexpected error: %v\n", err)
 			break

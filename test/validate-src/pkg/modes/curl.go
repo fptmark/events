@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"validate/pkg/datagen"
+	"validate/pkg/core"
 	"validate/pkg/tests"
 	"validate/pkg/types"
 )
@@ -41,7 +41,7 @@ func RunCurl(testNum int) {
 }
 
 func buildCurlCommand(testCase *types.TestCase) string {
-	serverURL := datagen.GlobalConfig.ServerURL
+	serverURL := core.ServerURL
 	// Remove trailing slash from serverURL if present
 	serverURL = strings.TrimSuffix(serverURL, "/")
 	// testCase.URL already includes /api/ prefix with leading slash

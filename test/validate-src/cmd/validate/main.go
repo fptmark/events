@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"validate/pkg/core"
 	"validate/pkg/datagen"
 	"validate/pkg/display"
 	"validate/pkg/modes"
@@ -16,7 +17,7 @@ import (
 
 const (
 	DefaultServerURL    = "http://localhost:5500"
-	DefaultUserCount    = 85
+	DefaultUserCount    = 87
 	DefaultAccountCount = 31
 )
 
@@ -37,7 +38,7 @@ var (
 	showNotify bool
 
 	// Database reset (always honored)
-	resetDB bool
+	resetSpec string
 
 	verbose bool
 )
@@ -64,7 +65,8 @@ Dump modes (require test#, override run mode):
   validate 5 --notify         # Show notifications for test 5, then exit
 
 Database reset (applies to all run modes):
-  validate --reset            # Reset database and populate test data before execution`,
+  validate --reset                  # Reset database and populate with default counts (87 users, 31 accounts)
+  validate --reset=100,50           # Reset database and populate with 100 users, 50 accounts`,
 		Args: cobra.MaximumNArgs(1),
 		Run:  runCommand,
 	}
@@ -87,7 +89,7 @@ Database reset (applies to all run modes):
 	rootCmd.Flags().BoolVarP(&showNotify, "notify", "n", false, "Show notification records")
 
 	// Database reset (always honored)
-	rootCmd.Flags().BoolVarP(&resetDB, "reset", "r", false, "Reset database and populate test data before execution")
+	rootCmd.Flags().StringVarP(&resetSpec, "reset", "r", "", "Reset database and populate test data (optional: users,accounts)")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "verbose output (for debugging)")
 
 	if err := rootCmd.Execute(); err != nil {
@@ -105,7 +107,29 @@ func runCommand(cmd *cobra.Command, args []string) {
 }
 
 func validateAndExecute(cmd *cobra.Command, args []string) error {
-	datagen.SetConfigDefaults(DefaultServerURL, verbose)
+	// Parse reset spec for user/account counts
+	numUsers := DefaultUserCount
+	numAccounts := DefaultAccountCount
+
+	if resetSpec != "" {
+		parts := strings.Split(resetSpec, ",")
+		if len(parts) == 2 {
+			var err error
+			numUsers, err = strconv.Atoi(strings.TrimSpace(parts[0]))
+			if err != nil {
+				return fmt.Errorf("invalid user count in --reset: %s", parts[0])
+			}
+			numAccounts, err = strconv.Atoi(strings.TrimSpace(parts[1]))
+			if err != nil {
+				return fmt.Errorf("invalid account count in --reset: %s", parts[1])
+			}
+		} else if len(parts) != 0 {
+			return fmt.Errorf("invalid --reset format, expected: --reset=users,accounts")
+		}
+	}
+
+	// Set global config (now in core package)
+	core.SetConfig(DefaultServerURL, verbose, numUsers, numAccounts)
 
 	// Get test categories if specified
 	var testNums []int
@@ -142,8 +166,8 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 	}
 
 	// Handle database reset if requested (standalone CLI operation)
-	if resetDB {
-		if err := datagen.ResetAndPopulate(DefaultServerURL, DefaultUserCount, DefaultAccountCount); err != nil {
+	if resetSpec != "" {
+		if err := datagen.ResetAndPopulate(numUsers, numAccounts); err != nil {
 			return fmt.Errorf("database reset failed: %w", err)
 		}
 	}
@@ -180,23 +204,6 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 	}
 	if curlMode && len(testNums) != 1 {
 		return fmt.Errorf("curl mode requires exactly one test number")
-	}
-
-	// Validate minimum record counts before running tests
-	initialUsers, initialAccounts, err := datagen.GetRecordCounts()
-	if err != nil {
-		return fmt.Errorf("failed to get initial record counts: %w", err)
-	}
-
-	// Check if we have minimum required data
-	if initialUsers < DefaultUserCount || initialAccounts < DefaultAccountCount {
-		return fmt.Errorf("insufficient test data: have %d users, %d accounts; need %d users, %d accounts. Run with --reset to populate test data",
-			initialUsers, initialAccounts, DefaultUserCount, DefaultAccountCount)
-	}
-
-	// Display initial record counts (unless in single-output modes)
-	if !(writeMode || showData || showNotify) {
-		fmt.Printf("Initial records: %d users, %d accounts\n", initialUsers, initialAccounts)
 	}
 
 	return runTests(testNums)
@@ -243,13 +250,7 @@ func runTests(testNums []int) error {
 	} else if interactiveMode {
 		modes.RunInteractive(testNums[0])
 	} else {
-		// auto reset db for summary and table modes unless --reset was specified
-		if resetDB == false {
-			if err := datagen.ResetAndPopulate(DefaultServerURL, DefaultUserCount, DefaultAccountCount); err != nil {
-				fmt.Printf("database reset failed: %w", err)
-				return nil
-			}
-		}
+		resetDb()
 		if summaryMode {
 			modes.RunSummary(testNums)
 		} else {
@@ -257,4 +258,21 @@ func runTests(testNums []int) error {
 		}
 	}
 	return nil
+}
+
+func resetDb() {
+	initialUsers, initialAccounts := core.GetEntityCountsFromReport()
+	fmt.Printf("Initial records: %d users, %d accounts\n", initialUsers, initialAccounts)
+
+	if initialUsers < core.NumUsers || initialAccounts < core.NumAccounts {
+		fmt.Printf("Insufficient test data: have %d users, %d accounts; need %d users, %d accounts\n",
+			initialUsers, initialAccounts, core.NumUsers, core.NumAccounts)
+		fmt.Println("Auto-resetting and populating database...")
+		if err := datagen.ResetAndPopulate(core.NumUsers, core.NumAccounts); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: auto-reset failed: %v\n", err)
+			os.Exit(1)
+		}
+		currentUsers, currentAccounts := core.GetEntityCountsFromReport()
+		fmt.Printf("After reset: %d users, %d accounts\n", currentUsers, currentAccounts)
+	}
 }
