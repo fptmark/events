@@ -92,24 +92,23 @@ class MongoDocuments(DocumentManager):
         """Delete document by ID"""
         self.database._ensure_initialized()
         db = self.database.core.get_connection()
-        
+
         try:
             collection = entity_type
-            
+
             # Use findOneAndDelete for atomic operation that returns deleted document
             deleted_doc = await db[collection].find_one_and_delete({"_id": id})
-            
+
             if deleted_doc:
                 # normalized_doc = self._normalize_document(deleted_doc)
                 return deleted_doc, 1
             else:
-                Notification.warning(Warning.NOT_FOUND, "Document not found for deletion", entity_type=entity_type, entity_id=id)
-                return {}, 0
-            
-        except Exception as e:
-            Notification.error(Error.DATABASE, f"MongoDB delete error: {str(e)}")
+                raise DocumentNotFound(entity_type, id)
 
-        return {}, 0
+        except DocumentNotFound:
+            raise  # Re-raise to let DocumentManager handle it
+        except Exception as e:
+            raise DatabaseError(f"MongoDB delete error: {str(e)}")
     
     # async def _validate_document_exists_for_update(self, entity_type: str, id: str) -> bool:
     #     """Validate that document exists for update operations"""

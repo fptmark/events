@@ -177,9 +177,9 @@ class DocumentManager(ABC):
         id = (data.pop('id', '') or '').strip()
 
         # Validate input data if validation is enabled.  it should only be disabled for writing test data (?novalidate param)
-        if not RequestContext.novalidate:
-            model_class = ModelService.get_model_class(entity_type)   #self._get_model_class(entity_type)
-            validate_model(model_class, data, entity_type)
+        # if not RequestContext.novalidate:    - DEPRECATED - always validate
+        model_class = ModelService.get_model_class(entity_type)   #self._get_model_class(entity_type)
+        validate_model(model_class, data, entity_type)
 
         # Check if document exists for update
         if is_update:
@@ -314,66 +314,6 @@ class DocumentManager(ABC):
                 cleaned_data.pop(field)
 
         return cleaned_data
-
-
-
-# def process_raw_results(cls, entity_type: str, raw_docs: List[Dict[str, Any]], warnings: List[str]) -> List[Dict[str, Any]]:
-#     """Common processing for raw database results."""
-#     validations = Config.validation(True)
-#     entities = []
-
-#     # ALWAYS validate model data against Pydantic schema (enum, range, string validation, etc.)
-#     # This is independent of GV settings which only control FK validation
-#     for doc in raw_docs:
-#         entities.append(validate_model(cls, doc, entity_type))  
-
-#     # Database warnings are already processed by DatabaseFactory - don't duplicate
-
-#     # Convert models to dictionaries for FastAPI response validation
-#     entity_data = []
-#     for entity in entities:
-#         with python_warnings.catch_warnings(record=True) as caught_warnings:
-#             python_warnings.simplefilter("always")
-#             data_dict = entity.model_dump(mode='python')
-#             entity_data.append(data_dict)
-            
-#             # Add any serialization warnings as notifications
-#             if caught_warnings:
-#                 entity_id = data_dict.get('id')
-#                 if not entity_id:
-#                     Notification.error(Error.SYSTEM, "Document missing ID field")
-#                     entity_id = "missing"
-
-#                 # Extract field names from warning messages  
-#                 warning_field_names = set()
-#                 for warning in caught_warnings:
-#                     warning_msg = str(warning.message)
-                    
-#                     # Look for various Pydantic warning patterns
-#                     # Pattern 1: "Field 'fieldname' has invalid value" 
-#                     if "field" in warning_msg.lower() and "'" in warning_msg:
-#                         parts = warning_msg.split("'")
-#                         if len(parts) >= 2:
-#                             potential_field = parts[1]
-#                             if cls._metadata and potential_field in cls._metadata.get('fields', {}):
-#                                 warning_field_names.add(potential_field)
-                    
-#                     # Pattern 2: Check if warning is related to datetime fields based on message content
-#                     elif any(keyword in warning_msg.lower() for keyword in ['datetime', 'date', 'time', 'iso']):
-#                         # For datetime-related warnings, check all datetime fields in the data
-#                         for field_name, field_meta in cls._metadata.get('fields', {}).items():
-#                             if field_meta.get('type') in ['Date', 'Datetime', 'ISODate'] and field_name in data_dict:
-#                                 warning_field_names.add(field_name)
-                
-#                 if warning_field_names:
-#                     field_list = ', '.join(sorted(warning_field_names))
-#                     Notification.warning(Warning.DATA_VALIDATION, "Serialization warnings for fields", entity_type=entity_type, entity_id=entity_id, value=field_list)
-#                 else:
-#                     # Fallback for warnings without extractable field names
-#                     warning_count = len(caught_warnings)
-#                     Notification.warning(Warning.DATA_VALIDATION, "Serialization warnings", entity_type=entity_type, entity_id=entity_id, value=str(warning_count))
-
-#     return entity_data
 
 
 async def validate_uniques(entity_type: str, data: Dict[str, Any], unique_constraints: List[List[str]], exclude_id: Optional[str] = None) -> None:

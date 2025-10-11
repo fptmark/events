@@ -146,18 +146,19 @@ class ElasticsearchDocuments(DocumentManager):
         try:
             # Get document before deleting
             doc = await es.get(index=index, id=id)
-            # doc = self._normalize_document(get_response["_source"])
 
             # Now delete it
             delete_response = await es.delete(index=index, id=id)
             if delete_response.get("result") == "deleted":
                 return doc, 1
             else:
-                return {}, 0
+                raise DatabaseError(f"Elasticsearch delete returned unexpected result: {delete_response.get('result')}")
+
+        except NotFoundError:
+            # ES driver exception → translate to our app exception
+            raise DocumentNotFound(entity_type, id)
         except Exception as e:
-            if "not found" not in str(e).lower():
-                Notification.error(Error.DATABASE, f"Elasticsearch delete error: {str(e)}")
-            return {}, 0
+            raise DatabaseError(f"Elasticsearch delete error: {str(e)}")
     
     async def _create_impl(self, entity_type: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create document in Elasticsearch. If data contains 'id', use it as _id, otherwise auto-generate."""
@@ -280,23 +281,14 @@ class ElasticsearchDocuments(DocumentManager):
             return value
     
     async def _validate_unique_constraints(
-        self, 
-        entity_type: str, 
-        data: Dict[str, Any], 
-        unique_constraints: List[List[str]], 
+        self,
+        entity_type: str,
+        data: Dict[str, Any],
+        unique_constraints: List[List[str]],
         exclude_id: Optional[str] = None
     ) -> bool:
         """Validate unique constraints (Elasticsearch synthetic implementation)"""
-        
-        # Get unique constraints from metadata if not provided
-        if not unique_constraints:
-            metadata = MetadataService.get(entity_type) 
-            if metadata:
-                unique_constraints = metadata.get('unique_constraints', [])
-            else:
-                Notification.warning(Warning.BAD_NAME, "Unknown entity", entity_type=entity_type)
-                return False
-        
+
         if not unique_constraints:
             return True
             
