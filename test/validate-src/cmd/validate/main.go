@@ -89,6 +89,7 @@ Database reset (applies to all run modes):
 
 	// Database reset (always honored)
 	rootCmd.Flags().StringVarP(&resetSpec, "reset", "r", "", "Reset database and populate test data (optional: users,accounts)")
+	rootCmd.Flag("reset").NoOptDefVal = "defaults" // Allow --reset without value (uses defaults)
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "verbose output (for debugging)")
 
 	if err := rootCmd.Execute(); err != nil {
@@ -110,21 +111,27 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 	numUsers := DefaultUserCount
 	numAccounts := DefaultAccountCount
 
-	if resetSpec != "" {
-		parts := strings.Split(resetSpec, ",")
-		if len(parts) == 2 {
-			var err error
-			numUsers, err = strconv.Atoi(strings.TrimSpace(parts[0]))
-			if err != nil {
-				return fmt.Errorf("invalid user count in --reset: %s", parts[0])
+	// Check if --reset flag was provided
+	if cmd.Flags().Changed("reset") {
+		// If resetSpec is "defaults" (from NoOptDefVal), use defaults
+		if resetSpec != "" && resetSpec != "defaults" {
+			// --reset=users,accounts format
+			parts := strings.Split(resetSpec, ",")
+			if len(parts) == 2 {
+				var err error
+				numUsers, err = strconv.Atoi(strings.TrimSpace(parts[0]))
+				if err != nil {
+					return fmt.Errorf("invalid user count in --reset: %s", parts[0])
+				}
+				numAccounts, err = strconv.Atoi(strings.TrimSpace(parts[1]))
+				if err != nil {
+					return fmt.Errorf("invalid account count in --reset: %s", parts[1])
+				}
+			} else {
+				return fmt.Errorf("invalid --reset format, expected: --reset=users,accounts")
 			}
-			numAccounts, err = strconv.Atoi(strings.TrimSpace(parts[1]))
-			if err != nil {
-				return fmt.Errorf("invalid account count in --reset: %s", parts[1])
-			}
-		} else if len(parts) != 0 {
-			return fmt.Errorf("invalid --reset format, expected: --reset=users,accounts")
 		}
+		// else: --reset with no value uses defaults (numUsers and numAccounts already set)
 	}
 
 	// Set global config (now in core package)
@@ -165,7 +172,7 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 	}
 
 	// Handle database reset if requested (standalone CLI operation)
-	if resetSpec != "" {
+	if cmd.Flags().Changed("reset") {
 		if err := ResetAndPopulate(); err != nil {
 			return fmt.Errorf("database reset failed: %w", err)
 		}
@@ -194,15 +201,17 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("only one run mode allowed")
 	}
 
-	// Write, interactive, and curl modes require exactly one test
+	// Write and curl modes require exactly one test
 	if writeMode && len(testNums) != 1 {
 		return fmt.Errorf("write mode requires exactly one test number")
 	}
-	if interactiveMode && len(testNums) != 1 {
-		testNums = []int{1}
-	}
 	if curlMode && len(testNums) != 1 {
 		return fmt.Errorf("curl mode requires exactly one test number")
+	}
+
+	// Interactive mode: start with first test in the filtered list
+	if interactiveMode && len(testNums) > 1 {
+		testNums = []int{testNums[0]}
 	}
 
 	return runTests(testNums)

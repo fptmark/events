@@ -1,6 +1,7 @@
 package modes
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -18,40 +19,63 @@ func formatResult(testCase *types.TestCase, result *types.TestResult, showData b
 	if testCase.Description != "" {
 		output.WriteString(fmt.Sprintf("Description: %s\n", testCase.Description))
 	}
-	output.WriteString(fmt.Sprintf("HTTP Status: %d\n\n", result.StatusCode))
+	output.WriteString(fmt.Sprintf("HTTP Status: %d\n", result.StatusCode))
+
+	// Show RequestBody for POST/PUT tests
+	if (testCase.Method == "POST" || testCase.Method == "PUT") && testCase.RequestBody != nil {
+		output.WriteString("\nRequest Body:\n")
+		requestJSON, err := json.MarshalIndent(testCase.RequestBody, "  ", "  ")
+		if err == nil {
+			output.WriteString("  ")
+			output.WriteString(string(requestJSON))
+			output.WriteString("\n")
+		}
+	}
+	output.WriteString("\n")
 
 	output.WriteString("Response:\n")
 
 	dataLength := len(result.Data)
-	suppressNotifications := !showNotify && dataLength > 1
 
-	// Build display data
-	displayData := result.Data
-	if !showData && dataLength > 1 {
-		displayData = result.Data[:1]
-		output.WriteString(fmt.Sprintf("  (Showing first record only, use --data to see all %d records)\n", dataLength))
+	// If we need to truncate or suppress, we have to re-marshal (and lose ordering)
+	// Otherwise, use raw response to preserve server's field ordering
+	if (!showData && dataLength > 1) || (!showNotify && dataLength > 1) {
+		// Need to modify response - build custom version
+		suppressNotifications := !showNotify && dataLength > 1
+
+		displayData := result.Data
+		if !showData && dataLength > 1 {
+			displayData = result.Data[:1]
+			output.WriteString(fmt.Sprintf("  (Showing first record only, use --data to see all %d records)\n", dataLength))
+		}
+
+		displayNotifications := result.Notifications
+		if suppressNotifications {
+			displayNotifications = nil
+			output.WriteString("  (Notifications suppressed for multi-record response, use --notify to see them)\n")
+		}
+
+		// Marshal to JSON for display (field order will be alphabetic)
+		response := map[string]interface{}{
+			"data":          displayData,
+			"notifications": displayNotifications,
+			"status":        fmt.Sprintf("%d", result.StatusCode),
+		}
+
+		jsonBytes, err := json.MarshalIndent(response, "", "  ")
+		if err != nil {
+			return fmt.Sprintf("Error formatting response: %v\n", err)
+		}
+		output.WriteString(string(jsonBytes))
+	} else {
+		// Use raw response body to preserve server's field ordering
+		var prettyJSON bytes.Buffer
+		if err := json.Indent(&prettyJSON, result.RawResponseBody, "", "  "); err != nil {
+			return fmt.Sprintf("Error formatting response: %v\n", err)
+		}
+		output.WriteString(prettyJSON.String())
 	}
 
-	// Build display notifications
-	displayNotifications := result.Notifications
-	if suppressNotifications {
-		displayNotifications = nil
-		output.WriteString("  (Notifications suppressed for multi-record response, use --notify to see them)\n")
-	}
-
-	// Marshal to JSON for display
-	response := map[string]interface{}{
-		"data":          displayData,
-		"notifications": displayNotifications,
-		"status":        fmt.Sprintf("%d", result.StatusCode),
-	}
-
-	jsonBytes, err := json.MarshalIndent(response, "", "  ")
-	if err != nil {
-		return fmt.Sprintf("Error formatting response: %v\n", err)
-	}
-
-	output.WriteString(string(jsonBytes))
 	output.WriteString("\n\n")
 
 	// Show sort and filter field values (before pass/fail status)

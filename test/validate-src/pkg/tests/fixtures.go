@@ -235,11 +235,16 @@ func CreateFixturesFromTestCases() error {
 				continue
 			}
 
+			// Skip creating users with nonexist IDs (for FK validation tests)
+			if strings.Contains(id, "nonexist") {
+				continue
+			}
+
 			// Get accountId from RequestBody or use default
 			accountId := getAccountIdFromRequestBody(testCase.RequestBody)
 
-			// Ensure the account exists first
-			if !createdAccounts[accountId] {
+			// Skip creating accounts with nonexist IDs (for FK validation tests)
+			if !strings.Contains(accountId, "nonexist") && !createdAccounts[accountId] {
 				if err := CreateFixtureAccount(accountId, nil); err != nil {
 					// Account might already exist, that's ok
 					if core.Verbose {
@@ -259,6 +264,11 @@ func CreateFixturesFromTestCases() error {
 		} else if entityType == "Account" {
 			// Skip if already created
 			if createdAccounts[id] {
+				continue
+			}
+
+			// Skip creating accounts with nonexist IDs (for 404 tests)
+			if strings.Contains(id, "nonexist") {
 				continue
 			}
 
