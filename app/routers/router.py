@@ -90,6 +90,7 @@ class SimpleDynamicRouterFactory:
             response_model=EntityAllResponse,
             responses={
                 200: {"description": f"Successfully retrieved {entity_lower} list"},
+                400: {"description": "Invalid query parameters"},
                 500: {"description": "Server error"}
             }
         )
@@ -103,6 +104,7 @@ class SimpleDynamicRouterFactory:
             response_model=EntityResponse,
             responses={
                 200: {"description": f"Successfully retrieved {entity_lower}"},
+                400: {"description": "Invalid request parameters"},
                 404: {"description": f"{entity_type} not found"},
                 500: {"description": "Server error"}
             }
@@ -118,8 +120,9 @@ class SimpleDynamicRouterFactory:
             status_code=201,
             responses={
                 201: {"description": f"Successfully created {entity_lower}"},
-                422: {"description": "Validation error"},
+                400: {"description": "Invalid foreign key reference"},
                 409: {"description": "Duplicate entry"},
+                422: {"description": "Validation error"},
                 500: {"description": "Server error"}
             }
         )
@@ -133,9 +136,10 @@ class SimpleDynamicRouterFactory:
             response_model=EntityResponse,
             responses={
                 200: {"description": f"Successfully updated {entity_lower}"},
+                400: {"description": "Invalid foreign key reference or missing ID"},
                 404: {"description": f"{entity_type} not found"},
-                422: {"description": "Validation error"},
                 409: {"description": "Duplicate entry"},
+                422: {"description": "Validation error"},
                 500: {"description": "Server error"}
             }
         )
@@ -148,8 +152,7 @@ class SimpleDynamicRouterFactory:
             response_description="Deletion confirmation",
             response_model=EntityResponse,
             responses={
-                200: {"description": f"Successfully deleted {entity_lower}"},
-                404: {"description": f"{entity_type} not found"},
+                200: {"description": f"Successfully deleted {entity_lower} (idempotent)"},
                 500: {"description": "Server error"}
             }
         )
