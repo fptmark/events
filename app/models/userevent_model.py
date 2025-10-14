@@ -91,20 +91,25 @@ class UserEvent(BaseModel):
                       view_spec: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int]:
         "Get paginated, sorted, and filtered list of entity." 
         
-        return await DatabaseFactory.get_all("UserEvent", sort, filter, page, pageSize, view_spec)
+        db = DatabaseFactory.get_instance()
+        return await db.documents.get_all("UserEvent", sort, filter, page, pageSize, view_spec)
         
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.get("UserEvent", id, view_spec)
+        db = DatabaseFactory.get_instance()
+        return await db.documents.get("UserEvent", id, view_spec)
 
     @classmethod
     async def create(cls, data: UserEventCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.create("UserEvent", data.model_dump())
+        db = DatabaseFactory.get_instance()
+        return await db.documents.create("UserEvent", data.model_dump())
 
     @classmethod
-    async def update(cls, data: UserEventUpdate) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.update("UserEvent", data.model_dump())
+    async def update(cls, id, data: UserEventUpdate) -> Tuple[Dict[str, Any], int]:
+        db = DatabaseFactory.get_instance()
+        return await db.documents.update("UserEvent", id, data.model_dump())
 
     @classmethod
     async def delete(cls, id: str) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.delete("UserEvent", id)
+        db = DatabaseFactory.get_instance()
+        return await db.documents.delete("UserEvent", id)

@@ -80,20 +80,25 @@ class TagAffinity(BaseModel):
                       view_spec: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int]:
         "Get paginated, sorted, and filtered list of entity." 
         
-        return await DatabaseFactory.get_all("TagAffinity", sort, filter, page, pageSize, view_spec)
+        db = DatabaseFactory.get_instance()
+        return await db.documents.get_all("TagAffinity", sort, filter, page, pageSize, view_spec)
         
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.get("TagAffinity", id, view_spec)
+        db = DatabaseFactory.get_instance()
+        return await db.documents.get("TagAffinity", id, view_spec)
 
     @classmethod
     async def create(cls, data: TagAffinityCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.create("TagAffinity", data.model_dump())
+        db = DatabaseFactory.get_instance()
+        return await db.documents.create("TagAffinity", data.model_dump())
 
     @classmethod
-    async def update(cls, data: TagAffinityUpdate) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.update("TagAffinity", data.model_dump())
+    async def update(cls, id, data: TagAffinityUpdate) -> Tuple[Dict[str, Any], int]:
+        db = DatabaseFactory.get_instance()
+        return await db.documents.update("TagAffinity", id, data.model_dump())
 
     @classmethod
     async def delete(cls, id: str) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.delete("TagAffinity", id)
+        db = DatabaseFactory.get_instance()
+        return await db.documents.delete("TagAffinity", id)

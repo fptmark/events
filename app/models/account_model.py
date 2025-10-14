@@ -70,20 +70,25 @@ class Account(BaseModel):
                       view_spec: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int]:
         "Get paginated, sorted, and filtered list of entity." 
         
-        return await DatabaseFactory.get_all("Account", sort, filter, page, pageSize, view_spec)
+        db = DatabaseFactory.get_instance()
+        return await db.documents.get_all("Account", sort, filter, page, pageSize, view_spec)
         
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.get("Account", id, view_spec)
+        db = DatabaseFactory.get_instance()
+        return await db.documents.get("Account", id, view_spec)
 
     @classmethod
     async def create(cls, data: AccountCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.create("Account", data.model_dump())
+        db = DatabaseFactory.get_instance()
+        return await db.documents.create("Account", data.model_dump())
 
     @classmethod
-    async def update(cls, data: AccountUpdate) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.update("Account", data.model_dump())
+    async def update(cls, id, data: AccountUpdate) -> Tuple[Dict[str, Any], int]:
+        db = DatabaseFactory.get_instance()
+        return await db.documents.update("Account", id, data.model_dump())
 
     @classmethod
     async def delete(cls, id: str) -> Tuple[Dict[str, Any], int]:
-        return await DatabaseFactory.delete("Account", id)
+        db = DatabaseFactory.get_instance()
+        return await db.documents.delete("Account", id)

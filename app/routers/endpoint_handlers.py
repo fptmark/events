@@ -15,12 +15,29 @@ from functools import wraps
 from fastapi import Request, HTTPException
 from pydantic import BaseModel
 
-from app.routers.router_factory import EntityModelProtocol
 from app.services.notify import Notification
 from app.services.request_context import RequestContext
 
 logger = logging.getLogger(__name__)
 
+class EntityModelProtocol(Protocol):
+    """Protocol for entity model classes with required methods and attributes."""
+    _metadata: Dict[str, Any]
+
+    @classmethod
+    async def get_all(cls, sort, filter, page: int, pageSize: int, view_spec) -> tuple: ...
+
+    @classmethod
+    async def get(cls, entity_id: str, view_spec) -> tuple: ...
+
+    @classmethod
+    async def create(cls, data: BaseModel, validate: bool = True) -> tuple: ...
+
+    @classmethod
+    async def update(cls, entity_id: str, data: BaseModel) -> tuple: ...
+
+    @classmethod
+    async def delete(cls, entity_id: str) -> tuple: ...
 
 def parse_request_context(handler: Callable) -> Callable:
     """Decorator to parse RequestContext from request for all handlers."""
@@ -90,8 +107,7 @@ async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_da
 async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str, entity_data: BaseModel, request: Request) -> Dict[str, Any]:
     """Reusable handler for PUT endpoint - True PUT semantics (full replacement)."""
     # Model handles notifications internally, just call and return
-    setattr(entity_data, 'id', entity_id)  # Ensure ID is set from path param
-    response, _ = await entity_cls.update(entity_data)
+    response, _ = await entity_cls.update(entity_id, entity_data)
     return update_response(response)
 
 
