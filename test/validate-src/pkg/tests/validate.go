@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"validate/pkg/types"
-	"validate/pkg/verifier"
 )
 
 // ValidationResult represents the result of test validation
@@ -30,7 +29,7 @@ func ValidateTest(testNum int, result *types.TestResult) *ValidationResult {
 	}
 
 	// First do existing verification
-	verifyResult := verifier.Verifier.Verify(result.Data, result.Params)
+	verifyResult := Verify(result.Data, result.Params)
 	allIssues = append(allIssues, verifyResult.Issues...)
 
 	// Add pagination validation for collection requests

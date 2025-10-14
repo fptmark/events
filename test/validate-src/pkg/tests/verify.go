@@ -1,4 +1,4 @@
-package verifier
+package tests
 
 import (
 	"fmt"
@@ -8,9 +8,6 @@ import (
 
 	"validate/pkg/types"
 )
-
-// Verifier is the global verifier instance
-var Verifier verifier
 
 type verifier struct {
 	// Note: Schema cache removed for now - validate-src doesn't have events-shared dependency
@@ -25,7 +22,8 @@ type VerificationResult struct {
 }
 
 // Verify performs verification of data against parameters
-func (v *verifier) Verify(data []map[string]interface{}, params types.TestParams) *VerificationResult {
+func Verify(data []map[string]interface{}, params types.TestParams) *VerificationResult {
+	v := &verifier{}
 	result := &VerificationResult{
 		Passed: true,
 		Issues: []string{},

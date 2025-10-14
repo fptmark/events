@@ -25,30 +25,9 @@ func SetConfig(serverURL string, verbose bool, numUsers int, numAccounts int) {
 	NumAccounts = numAccounts
 }
 
-func GetEntityCountsFromReport() (int, int) {
-	users := 0
-	accounts := 0
-	response, err := ExecuteGet("/api/db/report", "report.entities")
-	if err == nil {
-		// Extract entity count from report.entities.EntityName
-		// GetFromResponse navigates: response -> report -> entities -> Users (with default "0")
-		if val := GetFromResponse(response, "report", "entities", "Users", "0"); val != "0" {
-			if numVal, ok := val.(float64); ok {
-				users = int(numVal)
-			}
-		}
-		if val := GetFromResponse(response, "report", "entities", "Accounts", "0"); val != "0" {
-			if numVal, ok := val.(float64); ok {
-				accounts = int(numVal)
-			}
-		}
-	}
-	return users, accounts
-}
-
 // ExecuteGet makes a GET request and returns the parsed JSON response
 // Prints errors to stderr and returns nil on failure
-func ExecuteGet(endpoint string, jsonPath string) (interface{}, error) {
+func ExecuteGet(endpoint string) (interface{}, error) {
 	url := ServerURL + endpoint
 
 	resp, err := http.Get(url)

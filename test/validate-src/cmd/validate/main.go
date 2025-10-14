@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"validate/pkg/core"
-	"validate/pkg/datagen"
 	"validate/pkg/display"
 	"validate/pkg/modes"
 	"validate/pkg/tests"
@@ -167,7 +166,7 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 
 	// Handle database reset if requested (standalone CLI operation)
 	if resetSpec != "" {
-		if err := datagen.ResetAndPopulate(numUsers, numAccounts); err != nil {
+		if err := ResetAndPopulate(); err != nil {
 			return fmt.Errorf("database reset failed: %w", err)
 		}
 	}
@@ -200,7 +199,7 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("write mode requires exactly one test number")
 	}
 	if interactiveMode && len(testNums) != 1 {
-		return fmt.Errorf("interactive mode requires exactly one test number")
+		testNums = []int{1}
 	}
 	if curlMode && len(testNums) != 1 {
 		return fmt.Errorf("curl mode requires exactly one test number")
@@ -250,7 +249,7 @@ func runTests(testNums []int) error {
 	} else if interactiveMode {
 		modes.RunInteractive(testNums[0])
 	} else {
-		resetDb()
+		EnsureTestData()
 		if summaryMode {
 			modes.RunSummary(testNums)
 		} else {
@@ -260,19 +259,39 @@ func runTests(testNums []int) error {
 	return nil
 }
 
-func resetDb() {
-	initialUsers, initialAccounts := core.GetEntityCountsFromReport()
-	fmt.Printf("Initial records: %d users, %d accounts\n", initialUsers, initialAccounts)
+// ResetAndPopulate performs the complete database reset and population sequence
+// Always shows before/after counts (used for explicit --reset flag and before table/summary mode)
+func ResetAndPopulate() error {
+	users, accounts := core.GetEntityCountsFromReport()
+	fmt.Printf("Before Reset:  users=%d, accounts=%d\n", users, accounts)
 
-	if initialUsers < core.NumUsers || initialAccounts < core.NumAccounts {
+	// Step 1: Clean database
+	if err := core.CleanDatabase(); err != nil {
+		return fmt.Errorf("failed to clean database: %w", err)
+	}
+
+	// Step 2: Populate test data
+	if err := tests.PopulateTestData(core.NumAccounts, core.NumUsers); err != nil {
+		return fmt.Errorf("failed to populate test data: %w", err)
+	}
+
+	users, accounts = core.GetEntityCountsFromReport()
+	fmt.Printf("After Reset:   users=%d, accounts=%d\n", users, accounts)
+
+	return nil
+}
+
+// EnsureTestData checks if sufficient test data exists, and auto-resets if needed
+// Used before running tests in table/summary mode
+func EnsureTestData() {
+	users, accounts := core.GetEntityCountsFromReport()
+	fmt.Printf("Initial records: %d users, %d accounts\n", users, accounts)
+
+	if users < core.NumUsers || accounts < core.NumAccounts {
 		fmt.Printf("Insufficient test data: have %d users, %d accounts; need %d users, %d accounts\n",
-			initialUsers, initialAccounts, core.NumUsers, core.NumAccounts)
+			users, accounts, core.NumUsers, core.NumAccounts)
 		fmt.Println("Auto-resetting and populating database...")
-		if err := datagen.ResetAndPopulate(core.NumUsers, core.NumAccounts); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: auto-reset failed: %v\n", err)
-			os.Exit(1)
-		}
-		currentUsers, currentAccounts := core.GetEntityCountsFromReport()
-		fmt.Printf("After reset: %d users, %d accounts\n", currentUsers, currentAccounts)
+
+		ResetAndPopulate()
 	}
 }
