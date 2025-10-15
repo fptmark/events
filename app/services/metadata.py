@@ -1,5 +1,5 @@
 from typing import Dict, List, Any, Optional, Tuple
-from app.services.notify import Notification, Error
+from app.services.notify import Notification, HTTP
 from app.utils import merge_overrides
 
 class MetadataService:
@@ -107,5 +107,5 @@ class MetadataService:
     @staticmethod
     def _fail_fast(message: str) -> None:
         """Fail-fast error handling - notify and raise exception."""
-        Notification.error(Error.SYSTEM, message)
+        Notification.error(HTTP.INTERNAL_ERROR, message)
         raise ValueError(message)

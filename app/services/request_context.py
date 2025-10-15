@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List, Tuple, Union
 from urllib.parse import unquote
 from app.services.metadata import MetadataService
-from app.services.notify import Notification, Error
+from app.services.notify import Notification, HTTP
 from app.utils import parse_url_path
 
 
@@ -34,7 +34,7 @@ class RequestContext:
     # View/expansion
     view_spec: Dict[str, Any] = {}
     
-    novalidate: bool = False
+    # novalidate: bool = False
 
     @staticmethod
     def parse_request(path: str, query_params: Dict[str, str]) -> None:
@@ -51,7 +51,7 @@ class RequestContext:
             RequestContext.setup_entity(entity_type, entity_id)
             
         except ValueError as e:
-            Notification.error(Error.REQUEST, f"Invalid URL path: {str(e)}")
+            Notification.error(HTTP.BAD_REQUEST, f"Invalid URL path: {str(e)}")
         
         # Parse query parameters
         RequestContext._parse_url_query_params(query_params)
@@ -68,7 +68,7 @@ class RequestContext:
         RequestContext.page = 1
         RequestContext.pageSize = 25
         RequestContext.view_spec = {}
-        RequestContext.novalidate = False
+        # RequestContext.novalidate = False
 
     
     @staticmethod
@@ -99,7 +99,7 @@ class RequestContext:
         RequestContext.entity_id = entity_id
         
         if not RequestContext.entity_metadata:
-            Notification.error(Error.REQUEST, f"Entity metadata not found: {RequestContext.entity_type}")
+            Notification.error(HTTP.BAD_REQUEST, f"Entity metadata not found: {RequestContext.entity_type}")
     
     @staticmethod
     def set_parameters(
@@ -171,8 +171,8 @@ class RequestContext:
                 elif key == 'view':
                     RequestContext.view_spec = RequestContext._parse_view_parameter(value, RequestContext.entity_type)
                         
-                elif key == 'novalidate':
-                    RequestContext.novalidate = True
+                # elif key == 'novalidate':
+                #     RequestContext.novalidate = True
                         
                 else:
                     # Unknown parameter - ignore and continue
