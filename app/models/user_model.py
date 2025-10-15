@@ -20,7 +20,7 @@ class UserCreate(BaseModel):
     lastName: str = Field(..., min_length=3, max_length=100)
     gender: GenderEnum | None = Field(default=None)
     dob: datetime | None = Field(default=None)
-    isAccountOwner: bool = Field(...)
+    isAccountOwner: bool = Field(..., strict=True)
     netWorth: float | None = Field(default=None, ge=0, le=10000000)
     accountId: str = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -40,7 +40,7 @@ class UserUpdate(BaseModel):
     lastName: str = Field(..., min_length=3, max_length=100)
     gender: GenderEnum | None = Field(default=None)
     dob: datetime | None = Field(default=None)
-    isAccountOwner: bool = Field(...)
+    isAccountOwner: bool = Field(..., strict=True)
     netWorth: float | None = Field(default=None, ge=0, le=10000000)
     accountId: str = Field(...)
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -60,7 +60,7 @@ class User(BaseModel):
     lastName: str = Field(..., min_length=3, max_length=100)
     gender: GenderEnum | None = Field(default=None)
     dob: datetime | None = Field(default=None)
-    isAccountOwner: bool = Field(...)
+    isAccountOwner: bool = Field(..., strict=True)
     netWorth: float | None = Field(default=None, ge=0, le=10000000)
     accountId: str = Field(...)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -154,9 +154,9 @@ class User(BaseModel):
         return await db.documents.get_all("User", sort, filter, page, pageSize, view_spec)
         
     @classmethod
-    async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    async def get(cls, id: str, view_spec: Dict[str, Any], top_level: bool = True) -> Tuple[Dict[str, Any], int, Optional[BaseException]]:
         db = DatabaseFactory.get_instance()
-        return await db.documents.get("User", id, view_spec)
+        return await db.documents.get("User", id, view_spec, top_level)
 
     @classmethod
     async def create(cls, data: UserCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
