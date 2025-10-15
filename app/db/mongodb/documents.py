@@ -13,7 +13,6 @@ from pymongo.errors import DuplicateKeyError, ConnectionFailure, ServerSelection
 from ..document_manager import DocumentManager
 from ..core_manager import CoreManager
 from ..exceptions import DocumentNotFound, DatabaseError, DuplicateConstraintError
-from app.services.notify import Notification, Warning, Error
 from app.services.metadata import MetadataService
 
 
@@ -141,8 +140,9 @@ class MongoDocuments(DocumentManager):
 
             result = await db[collection].insert_one(data)
             if result.inserted_id:
-                data["id"] = data.pop('_id')
-                return data
+                return {'id': data.pop('_id'), **data}
+                # data["id"] = data.pop('_id')
+                # return data
             else:
                 raise DatabaseError(message=f"MongoDB insert failed: {result}")
 

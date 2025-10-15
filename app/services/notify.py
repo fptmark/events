@@ -7,11 +7,32 @@ from contextlib import contextmanager
 from typing import Dict, List, Optional, Any
 from fastapi import HTTPException
 
-class Error:
-    SECURITY = 'security'    # Auth/authorization failures → 403
-    REQUEST = 'request'      # Client request errors → 400  
-    DATABASE = 'database'    # DB connection/operation failures → 500
-    SYSTEM = 'system'        # Unhandled exceptions, infrastructure → 500
+
+class HTTP:
+    """HTTP status codes for errors"""
+    # 4xx Client Errors
+    BAD_REQUEST = 400
+    UNAUTHORIZED = 401
+    FORBIDDEN = 403
+    NOT_FOUND = 404
+    CONFLICT = 409
+    UNPROCESSABLE = 422
+
+    # 5xx Server Errors
+    INTERNAL_ERROR = 500
+
+
+def get_error_category(status_code: int) -> str:
+    """Get human-readable category name for logging from HTTP status code"""
+    return {
+        400: 'bad_request',
+        401: 'unauthorized',
+        403: 'forbidden',
+        404: 'not_found',
+        409: 'conflict',
+        422: 'validation_failed',
+        500: 'internal_error',
+    }.get(status_code, f'http_{status_code}')
 
 class Warning:
     NOT_FOUND = 'not_found'
@@ -97,24 +118,23 @@ class Notification:
         return response
     
     @classmethod
-    def error(cls, stop_type: str, message: str, entity_type = None, field = None, raise_exception: bool = True) -> None:
-        """Add stop-work error"""
-        cls._errors.append(f"[{stop_type}] {message}")
-        logging.error(f"[ERROR] {stop_type}: {message}")
-        
+    def error(cls, status_code: int, message: str, entity_type: Optional[str] = None, field: Optional[str] = None, raise_exception: bool = True) -> None:
+        """
+        Add stop-work error and raise StopWorkError with HTTP status code.
+
+        Args:
+            status_code: HTTP status code (use HTTP.NOT_FOUND, HTTP.BAD_REQUEST, etc.)
+            message: Error message
+            entity_type: Entity name (optional, for context)
+            field: Field name (optional, for validation errors)
+            raise_exception: If True, raises StopWorkError immediately
+        """
+        category = get_error_category(status_code)
+        cls._errors.append(f"[{category}] {message}")
+        logging.error(f"[{status_code}] {message}")
+
         if raise_exception:
-            # Determine HTTP status code based on error type
-            if stop_type == Error.REQUEST:
-                status_code = 400
-            elif stop_type == Error.SECURITY:
-                status_code = 403
-            elif stop_type in [Error.DATABASE, Error.SYSTEM]:
-                status_code = 500
-            else:
-                # Default to 500 for unknown types
-                status_code = 500
-            
-            raise StopWorkError(message, status_code, stop_type)
+            raise StopWorkError(message, status_code, category)
     
     @classmethod
     def request_warning(cls, message:str = '', entity:str = '', field:str = '', value:str = '', parameter:str = ''):
@@ -171,10 +191,11 @@ class Notification:
     def handle_duplicate_constraint(cls, error, is_validation=False):
         """Handle DuplicateConstraintError with context-sensitive behavior"""
         # Always add warning for UI field highlighting
-        cls.warning(Warning.UNIQUE_VIOLATION, error.message, 
+        cls.warning(Warning.UNIQUE_VIOLATION, error.message,
                    entity_type=error.entity, entity_id=error.entity_id, field=error.field)
-        
+
         if not is_validation:
-            # Data operations (create, update) - stop work
-            cls.error(Error.REQUEST, f"Cannot save: {error.message}")
+            # Data operations (create, update) - stop work with 409 Conflict
+            cls.error(HTTP.CONFLICT, f"Cannot save: {error.message}",
+                     entity_type=error.entity, field=error.field)
         # else: validation only - just continue with warning

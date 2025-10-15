@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import warnings as python_warnings
 from pydantic import ValidationError as PydanticValidationError
 
-from app.services.notify import Notification, Warning, Error
+from app.services.notify import Notification, Warning, HTTP
 from app.db.core_manager import CoreManager
 from app.db.exceptions import DocumentNotFound, DuplicateConstraintError
 from app.services.metadata import MetadataService
@@ -63,8 +63,8 @@ class DocumentManager(ABC):
 
             return docs, count
         except Exception as e:
-            Notification.error(Error.DATABASE, f"Database get_all error: {str(e)}")
-            return [], 0
+            Notification.error(HTTP.INTERNAL_ERROR, f"Database get_all error: {str(e)}")
+            raise  # Unreachable but satisfies type checker
 
     @abstractmethod
     async def _get_all_impl(
@@ -82,7 +82,8 @@ class DocumentManager(ABC):
         self,
         entity_type: str,
         id: str,
-        view_spec: Dict[str, Any] = {}
+        view_spec: Dict[str, Any] = {},
+        top_level: bool = True
     ) -> Tuple[Dict[str, Any], int]:
         """
         Get single document by ID.
@@ -106,12 +107,19 @@ class DocumentManager(ABC):
                 doc = await self._normalize_document(entity_type, doc, model_class, view_spec, unique_constraints, validate)
             return doc, count
         except DocumentNotFound as e:
-            msg = str(e.message) if e.message else str(e.error)
-            Notification.warning(Warning.NOT_FOUND, message=msg, entity_type=entity_type, entity_id=id)
-            return {}, 0
+            if top_level:
+                msg = str(e.message) if e.message else str(e.error)
+                Notification.warning(Warning.NOT_FOUND, message=msg, entity_type=entity_type, entity_id=id)
+                Notification.error(HTTP.NOT_FOUND, msg, entity_type=entity_type)
+            else:
+                return {}, 0
+            raise  # Unreachable
         except Exception as e:
-            Notification.error(Error.DATABASE, f"Database get error: {str(e)}")
-            return {}, 0
+            if top_level:
+                Notification.error(HTTP.INTERNAL_ERROR, f"Database get error: {str(e)}")
+            else:
+                return {}, 0
+            raise  # Unreachable
 
     async def _normalize_document(self, entity_type: str, doc: Dict[str, Any], model_class: Any, view_spec: Dict[str, Any], 
                                   unique_constraints : List[Any], validate: bool) -> Dict[str, Any]:
@@ -138,11 +146,12 @@ class DocumentManager(ABC):
         except DocumentNotFound as e:
             msg = str(e.message) if e.message else str(e.error)
             Notification.warning(Warning.NOT_FOUND, message=msg, entity_type=entity_type, entity_id=id)
-            return {}
+            Notification.error(HTTP.NOT_FOUND, msg, entity_type=entity_type)
+            raise  # Unreachable
         except Exception as e:
-                Notification.error(Error.DATABASE, f"Database retrieve error: {str(e)}")
-                return {}
-        
+            Notification.error(HTTP.INTERNAL_ERROR, f"Database retrieve error: {str(e)}")
+            raise  # Unreachable
+
         return the_doc or {}
 
                                     
@@ -150,7 +159,7 @@ class DocumentManager(ABC):
     async def _get_impl(
         self,
         id: str,
-        entity_type: str
+        entity_type: str,
     ) -> Tuple[Dict[str, Any], int]:
         """Database-specific implementation of get"""
         pass
@@ -173,7 +182,7 @@ class DocumentManager(ABC):
             Tuple of (saved_document, count) where count is 1 if created, 0 if failed
         """
         # remove the id from the data and pass it separately
-        orig = data.copy()
+        # orig = data.copy()
         id = (data.pop('id', '') or '').strip()
 
         # Validate input data if validation is enabled.  it should only be disabled for writing test data (?novalidate param)
@@ -184,12 +193,12 @@ class DocumentManager(ABC):
         # Check if document exists for update
         if is_update:
             if not id:
-                Notification.error(Error.REQUEST, "Missing 'id' field or value for update operation")
-                return orig, 0
+                Notification.error(HTTP.BAD_REQUEST, "Missing 'id' field or value for update operation", entity_type=entity_type, field="id")
+                raise  # Unreachable
             doc, count = await self.get(entity_type, id)
             if count == 0:
-                Notification.error(Error.REQUEST, "Document to update not found using id")
-                return orig, 0
+                Notification.error(HTTP.NOT_FOUND, f"Document to update not found: {id}", entity_type=entity_type)
+                raise  # Unreachable
 
         # Validate unique constraints from metadata (only for databases without native support)
         metadata = MetadataService.get(entity_type)
@@ -216,14 +225,16 @@ class DocumentManager(ABC):
                     doc = await self._create_impl(entity_type, id, prepared_data)
                 return doc, 1
             except DuplicateConstraintError as e:
-                Notification.error(Error.DATABASE, f"Duplicate key error: {str(e)}")
+                Notification.error(HTTP.CONFLICT, f"Duplicate key error: {str(e)}")
+                raise  # Unreachable
             except Exception as e:
                 operation = "update" if is_update else "create"
-                Notification.error(Error.DATABASE, f"{operation} error: {str(e)}")
+                Notification.error(HTTP.INTERNAL_ERROR, f"{operation} error: {str(e)}")
+                raise  # Unreachable
         else:
             operation = "update" if is_update else "create"
-            Notification.error(Error.REQUEST, f"Foreign key validation of {result} failed for {operation}")
-        return {}, 0
+            Notification.error(HTTP.UNPROCESSABLE, f"Foreign key validation of {result} failed for {operation}")
+            raise  # Unreachable
         
     async def create(
         self,
@@ -240,10 +251,12 @@ class DocumentManager(ABC):
     async def update(
         self,
         entity_type: str,
+        id: str,
         data: Dict[str, Any],
         validate: bool = True
     ) -> Tuple[Dict[str, Any], int]:
         """Update existing document by id. Fails if document doesn't exist."""
+        data['id'] = id  # Ensure id parameter takes precedence
         return await self._save_document(entity_type, data, is_update=True)
 
     @abstractmethod  
@@ -252,7 +265,7 @@ class DocumentManager(ABC):
     
     async def delete(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
         """
-        Delete document by ID.
+        Delete document by ID. Idempotent - returns success even if already deleted.
 
         Args:
             id: Document ID to delete
@@ -261,7 +274,11 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (deleted_document, count) where count is 1 if deleted, 0 if not found
         """
-        return await self._delete_impl(id, entity_type)
+        try:
+            return await self._delete_impl(id, entity_type)
+        except DocumentNotFound:
+            # Idempotent DELETE: already gone = success
+            return {}, 0
 
     @abstractmethod
     async def _delete_impl(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
@@ -397,10 +414,12 @@ async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, vi
                     if fk_cls:
                         # Fetch FK record
                         with Notification.suppress_warnings():  # suppress warnings when fetching a fk as the code below has a better warning (it includes the offending field)
-                            related_data, count = await fk_cls.get(fk_field_id, None)
-                        
+                            related_data, count = await fk_cls.get(fk_field_id, None, False)
+                        if count == 0:
+                            # FK record not found - validation warning if validating
+                            Notification.error(HTTP.UNPROCESSABLE, "Referenced ID does not exist", entity_type=entity_type, field=field_name)
                         # if there is more than one fk record, something is very wrong
-                        if count == 1:
+                        elif count == 1:
                             fk_data["exists"] = True
                             
                             # Populate requested fields if view_spec provided
@@ -419,9 +438,6 @@ async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, vi
                                         if 'required' in attrs and attrs['required'].lower() == 'true':
                                             Notification.warning(Warning.BAD_NAME, "Field not found in related entity", entity_type=entity_type, entity_id=entity_id, field=field)
                                         
-                        elif count == 0:
-                            # FK record not found - validation warning if validating
-                            Notification.warning(Warning.NOT_FOUND, "Referenced ID does not exist", entity_type=entity_type, entity_id=entity_id, field=field_name, value=fk_field_id)
                         else:
                             # Multiple records - data integrity issue
                             Notification.warning(Warning.DATA_VALIDATION, "Multiple FK records found. Data integrity issue?", entity_type=entity_type, entity_id=entity_id, field=field_name, value=fk_field_id)

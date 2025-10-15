@@ -10,9 +10,9 @@ from elasticsearch.exceptions import NotFoundError
 
 from ..document_manager import DocumentManager
 from ..core_manager import CoreManager
-from ..exceptions import DocumentNotFound, DatabaseError
-from app.services.notify import Notification, Warning, Error, DuplicateConstraintError
+from ..exceptions import DocumentNotFound, DatabaseError, DuplicateConstraintError
 from app.services.metadata import MetadataService
+from app.services.notify import Notification
 
 
 class ElasticsearchDocuments(DocumentManager):

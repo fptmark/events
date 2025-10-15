@@ -10,7 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from ..base import DatabaseInterface
 from ..core_manager import CoreManager
 from ..index_manager import IndexManager
-from app.services.notify import Notification, Error
+from ..exceptions import DatabaseError
 
 
 class MongoCore(CoreManager):
@@ -197,7 +197,7 @@ class MongoIndexes(IndexManager):
 
             await db[entity_type].create_index(index_spec, **kwargs)
         except Exception as e:
-            Notification.error(Error.DATABASE, f"MongoDB create index error: {str(e)}")
+            raise DatabaseError(f"MongoDB create index error: {str(e)}")
     
     async def get_all(self, entity_type: str) -> List[List[str]]:
         """Get all unique indexes for collection as field lists"""
@@ -224,8 +224,7 @@ class MongoIndexes(IndexManager):
 
             return field_lists
         except Exception as e:
-            Notification.error(Error.DATABASE, f"MongoDB get indexes error: {str(e)}")
-        return []
+            raise DatabaseError(f"MongoDB get indexes error: {str(e)}")
 
     async def get_all_detailed(self, entity_type: str) -> dict:
         """Get all indexes with full details as dict[index_name, index_info]"""
@@ -251,8 +250,7 @@ class MongoIndexes(IndexManager):
 
             return indexes
         except Exception as e:
-            Notification.error(Error.DATABASE, f"MongoDB get detailed indexes error: {str(e)}")
-        return {}
+            raise DatabaseError(f"MongoDB get detailed indexes error: {str(e)}")
     
     async def delete(self, entity_type: str, fields: List[str]) -> None:
         """Delete index by field names"""
@@ -263,7 +261,7 @@ class MongoIndexes(IndexManager):
             index_spec = [(field, 1) for field in fields]
             await db[entity_type].drop_index(index_spec)
         except Exception as e:
-            Notification.error(Error.DATABASE, f"MongoDB delete index error: {str(e)}")
+            raise DatabaseError(f"MongoDB delete index error: {str(e)}")
 
 
 class MongoDatabase(DatabaseInterface):
