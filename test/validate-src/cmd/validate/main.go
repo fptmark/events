@@ -22,8 +22,9 @@ const (
 
 var (
 	// Show modes (informational only)
-	listMode bool
-	testMode bool
+	listMode    bool
+	testMode    bool
+	failureMode bool
 
 	// Run modes (mutually exclusive)
 	interactiveMode bool
@@ -81,6 +82,7 @@ Database reset (applies to all run modes):
 	rootCmd.Flags().BoolVarP(&interactiveMode, "interactive", "i", false, "Interactive verification mode")
 	rootCmd.Flags().BoolVarP(&writeMode, "write", "w", false, "Write single test output to stdout and terminate (requires test number)")
 	rootCmd.Flags().BoolVarP(&summaryMode, "summary", "s", false, "Show summary statistics only")
+	rootCmd.Flags().BoolVarP(&failureMode, "failures", "f", false, "Show test failures only")
 	rootCmd.Flags().BoolVarP(&curlMode, "curl", "c", false, "Generate and execute curl command (requires test number)")
 
 	// Output expansion (for interactive and write modes)
@@ -262,7 +264,7 @@ func runTests(testNums []int) error {
 		if summaryMode {
 			modes.RunSummary(testNums)
 		} else {
-			modes.RunTable(testNums)
+			modes.RunTable(testNums, failureMode)
 		}
 	}
 	return nil

@@ -99,7 +99,7 @@ func ListTests(testNumbers []int) {
 }
 
 // ShowTestResults displays multiple test results as a table
-func ShowTestResults(testNumbers []int, results []*types.TestResult) {
+func ShowTestResults(testNumbers []int, results []*types.TestResult, showAll bool) {
 	if len(testNumbers) == 0 {
 		fmt.Print("No test results to display.\n")
 		return
@@ -151,17 +151,19 @@ func ShowTestResults(testNumbers []int, results []*types.TestResult) {
 			urlPath = strings.TrimPrefix(urlPath, "/api/")
 		}
 
-		fmt.Printf("│ %-3d │ %-8s │ %-35s │ %-6s │ %-8d │ %-35s │ %-6d │ %-7s │ %-4s │ %-40s │\n",
-			row.TestCase.ID,
-			truncateString(row.TestCase.TestClass, 8),
-			truncateString(urlPath, 35),
-			row.TestCase.Method,
-			row.TestCase.ExpectedStatus,
-			truncateString(row.TestCase.Description, 35),
-			row.Status,
-			row.WarningCol,
-			row.Pass,
-			truncateString(row.FailureReason, 40))
+		if showAll || strings.Contains(row.Pass, "FAIL") {
+			fmt.Printf("│ %-3d │ %-8s │ %-35s │ %-6s │ %-8d │ %-35s │ %-6d │ %-7s │ %-4s │ %-40s │\n",
+				row.TestCase.ID,
+				truncateString(row.TestCase.TestClass, 8),
+				truncateString(urlPath, 35),
+				row.TestCase.Method,
+				row.TestCase.ExpectedStatus,
+				truncateString(row.TestCase.Description, 35),
+				row.Status,
+				row.WarningCol,
+				row.Pass,
+				truncateString(row.FailureReason, 40))
+		}
 	}
 
 	// Footer

@@ -19,7 +19,26 @@ func formatResult(testCase *types.TestCase, result *types.TestResult, showData b
 	if testCase.Description != "" {
 		output.WriteString(fmt.Sprintf("Description: %s\n", testCase.Description))
 	}
-	output.WriteString(fmt.Sprintf("HTTP Status: %d\n", result.StatusCode))
+
+	// Show HTTP Status with expected vs actual and pass/fail indicator
+	statusLine := fmt.Sprintf("HTTP Status: Expected=%d  Response=%d ", testCase.ExpectedStatus, result.StatusCode)
+	if result.Passed {
+		statusLine += "\033[32mPASS\033[0m"
+	} else if result.Alert {
+		statusLine += "\033[33mALERT\033[0m"
+	} else {
+		statusLine += "\033[1;91mFAIL\033[0m"
+	}
+	output.WriteString(statusLine + "\n")
+
+	// Show validation issues if test failed
+	validation := tests.ValidateTest(testCase.ID, result)
+	if !result.Passed && len(validation.Issues) > 0 {
+		output.WriteString("Issues:\n")
+		for _, issue := range validation.Issues {
+			output.WriteString(fmt.Sprintf("  - %s\n", issue))
+		}
+	}
 
 	// Show RequestBody for POST/PUT tests
 	if (testCase.Method == "POST" || testCase.Method == "PUT") && testCase.RequestBody != nil {
@@ -79,7 +98,7 @@ func formatResult(testCase *types.TestCase, result *types.TestResult, showData b
 	output.WriteString("\n\n")
 
 	// Show sort and filter field values (before pass/fail status)
-	validation := tests.ValidateTest(testCase.ID, result)
+	// Note: validation already called above to show issues
 	if len(validation.Fields) > 0 {
 		output.WriteString("Field Values:\n")
 		for fieldKey, values := range validation.Fields {
@@ -103,15 +122,6 @@ func formatResult(testCase *types.TestCase, result *types.TestResult, showData b
 			output.WriteString(fmt.Sprintf("%s = [%s]\n", fieldKey, strings.Join(formattedValues, ", ")))
 		}
 		output.WriteString("\n")
-	}
-
-	// Show pass/fail/alert status in color at the bottom
-	if result.Passed {
-		output.WriteString("\033[32mPASS\033[0m\n")
-	} else if result.Alert {
-		output.WriteString("\033[33mALERT: Record already exists (run with --reset or delete manually)\033[0m\n")
-	} else {
-		output.WriteString("\033[1;91mFAIL\033[0m\n")
 	}
 
 	return output.String()

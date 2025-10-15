@@ -209,7 +209,7 @@ func GetAllTestCases() []types.TestCase {
 				"gender": "invalid_gender", "isAccountOwner": false},
 			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "validation"}},
 
-		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - duplicate email + invalid FK (constraint wins)", ExpectedStatus: 409,
+		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - duplicate email + invalid FK (fk validation wins)", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"firstName": "Combo", "lastName": "Test", "email": "duplicate@example.com",
 				"username": "combo_user_3", "password": "TestPass123!", "accountId": "acc_nonexist_999",

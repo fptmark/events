@@ -22,25 +22,31 @@ mainLoop:
 	for {
 		// Execute test
 		results, err := tests.ExecuteTests([]int{testNum})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unexpected error: %v\n", err)
-			break
-		}
-		result := results[0]
-		if result == nil {
-			fmt.Fprintf(os.Stderr, "Error running test %d: no result\n", testNum)
-			testNum++
-			if testNum > len(allTests) {
-				break
-			}
-			continue
-		}
-
-		// Clear screen and display test (default: truncated)
-		fmt.Print("\033[2J\033[H")
 		testCase := allTests[testNum-1]
-		output := formatResult(&testCase, result, false, false)
-		fmt.Print(output)
+
+		// Clear screen before displaying results
+		fmt.Print("\033[2J\033[H")
+
+		// Handle errors or nil results by displaying error message
+		if err != nil {
+			fmt.Printf("Test #%d: %s %s\n", testCase.ID, testCase.Method, testCase.URL)
+			if testCase.Description != "" {
+				fmt.Printf("Description: %s\n", testCase.Description)
+			}
+			fmt.Printf("\n\033[1;91mERROR\033[0m: %v\n", err)
+			fmt.Println("\n(Server may be down or request timed out)")
+		} else if results[0] == nil {
+			fmt.Printf("Test #%d: %s %s\n", testCase.ID, testCase.Method, testCase.URL)
+			if testCase.Description != "" {
+				fmt.Printf("Description: %s\n", testCase.Description)
+			}
+			fmt.Printf("\n\033[1;91mERROR\033[0m: No result returned\n")
+		} else {
+			// Display test result normally
+			result := results[0]
+			output := formatResult(&testCase, result, false, false)
+			fmt.Print(output)
+		}
 
 		// Handle navigation
 		if testNum >= len(allTests) {
@@ -53,9 +59,19 @@ mainLoop:
 			fmt.Println("\nVerification session ended by user.")
 			break mainLoop
 		case "data":
-			showTestData(result, &testCase)
+			if err == nil && results[0] != nil {
+				showTestData(results[0], &testCase)
+			} else {
+				fmt.Println("Cannot show data: test execution failed")
+				waitForEnter()
+			}
 		case "notify":
-			showTestNotifications(result, &testCase)
+			if err == nil && results[0] != nil {
+				showTestNotifications(results[0], &testCase)
+			} else {
+				fmt.Println("Cannot show notifications: test execution failed")
+				waitForEnter()
+			}
 		case "next":
 			if testNum < len(allTests) {
 				testNum++

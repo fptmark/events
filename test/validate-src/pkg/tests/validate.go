@@ -8,20 +8,13 @@ import (
 	"validate/pkg/types"
 )
 
-// ValidationResult represents the result of test validation
-type ValidationResult struct {
-	OK     bool
-	Issues []string
-	Fields map[string][]interface{}
-}
-
 // ValidateTest validates a test result and returns validation status
-func ValidateTest(testNum int, result *types.TestResult) *ValidationResult {
+func ValidateTest(testNum int, result *types.TestResult) *types.ValidationResult {
 	var allIssues []string
 
 	// Check for nil result
 	if result == nil {
-		return &ValidationResult{
+		return &types.ValidationResult{
 			OK:     false,
 			Issues: []string{"Test result is nil"},
 			Fields: make(map[string][]interface{}),
@@ -40,7 +33,7 @@ func ValidateTest(testNum int, result *types.TestResult) *ValidationResult {
 	crudIssues := validateCRUDResult(testNum, result)
 	allIssues = append(allIssues, crudIssues...)
 
-	return &ValidationResult{
+	return &types.ValidationResult{
 		OK:     len(allIssues) == 0,
 		Issues: allIssues,
 		Fields: verifyResult.Fields,
@@ -269,4 +262,3 @@ func getTestCaseByID(testID int) (*types.TestCase, error) {
 	testCase := allTests[testID-1]
 	return &testCase, nil
 }
-

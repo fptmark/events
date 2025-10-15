@@ -6,27 +6,34 @@ import (
 
 // TestResult represents the result of executing a test
 type TestResult struct {
-	TestNum         int                      // Test number (1-based) - use to look up TestCase
-	URL             string                   // URL for this test (needed for validation)
+	TestNum         int    // Test number (1-based) - use to look up TestCase
+	URL             string // URL for this test (needed for validation)
 	Data            []map[string]interface{}
 	RawResponseBody json.RawMessage
 	Notifications   interface{}
 	StatusCode      int
 	Params          TestParams
-	Passed          bool                     // Overall pass/fail determined by ExecuteTests
-	Alert           bool                     // True if CREATE test got 409 (record already exists)
-	Warnings        int                      // Count of warnings in notifications
-	RequestWarnings int                      // Count of request warnings in notifications
-	Errors          int                      // Count of errors in notifications
+	Passed          bool // Overall pass/fail determined by ExecuteTests
+	Alert           bool // True if CREATE test got 409 (record already exists)
+	Warnings        int  // Count of warnings in notifications
+	RequestWarnings int  // Count of request warnings in notifications
+	Errors          int  // Count of errors in notifications
+}
+
+// ValidationResult represents the result of test validation
+type ValidationResult struct {
+	OK     bool
+	Issues []string
+	Fields map[string][]interface{}
 }
 
 // TestParams represents parsed URL parameters from a test
 type TestParams struct {
-	Sort   []SortField            `json:"sort"`
-	Filter map[string][]FilterValue `json:"filter"`
-	View   map[string][]string    `json:"view"`
-	Page   int                    `json:"page"`
-	PageSize int                  `json:"pageSize"`
+	Sort     []SortField              `json:"sort"`
+	Filter   map[string][]FilterValue `json:"filter"`
+	View     map[string][]string      `json:"view"`
+	Page     int                      `json:"page"`
+	PageSize int                      `json:"pageSize"`
 }
 
 // SortField represents a sort parameter field:direction
@@ -44,12 +51,12 @@ type FilterValue struct {
 // TestCase represents a single test case static definition
 type TestCase struct {
 	ID             int                    `json:"id"`
-	URL            string                 `json:"url"`             // Relative URL path (e.g., "/api/User")
-	Method         string                 `json:"method"`          // HTTP method (GET, POST, PUT, DELETE)
+	URL            string                 `json:"url"`    // Relative URL path (e.g., "/api/User")
+	Method         string                 `json:"method"` // HTTP method (GET, POST, PUT, DELETE)
 	Description    string                 `json:"description"`
-	TestClass      string                 `json:"test_class"`      // Test category (basic, view, sort, etc.)
-	ExpectedStatus int                    `json:"expected_status"` // Expected HTTP status code
-	RequestBody    map[string]interface{} `json:"request_body,omitempty"` // Request payload for POST/PUT/DELETE
+	TestClass      string                 `json:"test_class"`              // Test category (basic, view, sort, etc.)
+	ExpectedStatus int                    `json:"expected_status"`         // Expected HTTP status code
+	RequestBody    map[string]interface{} `json:"request_body,omitempty"`  // Request payload for POST/PUT/DELETE
 	ExpectedData   *CRUDExpectation       `json:"expected_data,omitempty"` // Expected result data for CRUD operations
 }
 
@@ -61,7 +68,7 @@ type CRUDExpectation struct {
 	ExpectedFields map[string]interface{} `json:"expected_fields,omitempty"`
 
 	// For validation of specific response patterns
-	ShouldContainFields []string `json:"should_contain_fields,omitempty"` // Fields that must be present
+	ShouldContainFields    []string `json:"should_contain_fields,omitempty"`     // Fields that must be present
 	ShouldNotContainFields []string `json:"should_not_contain_fields,omitempty"` // Fields that must not be present
 
 	// For error validation
