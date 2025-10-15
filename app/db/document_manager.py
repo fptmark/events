@@ -84,7 +84,7 @@ class DocumentManager(ABC):
         id: str,
         view_spec: Dict[str, Any] = {},
         top_level: bool = True
-    ) -> Tuple[Dict[str, Any], int]:
+    ) -> Tuple[Dict[str, Any], int, Optional[BaseException]]:
         """
         Get single document by ID.
 
@@ -105,20 +105,20 @@ class DocumentManager(ABC):
                 unique_constraints = metadata.get('uniques', []) if metadata else []
 
                 doc = await self._normalize_document(entity_type, doc, model_class, view_spec, unique_constraints, validate)
-            return doc, count
+            return doc, count, None
         except DocumentNotFound as e:
             if top_level:
                 msg = str(e.message) if e.message else str(e.error)
                 Notification.warning(Warning.NOT_FOUND, message=msg, entity_type=entity_type, entity_id=id)
                 Notification.error(HTTP.NOT_FOUND, msg, entity_type=entity_type)
             else:
-                return {}, 0
+                return {}, 0, e
             raise  # Unreachable
         except Exception as e:
             if top_level:
                 Notification.error(HTTP.INTERNAL_ERROR, f"Database get error: {str(e)}")
             else:
-                return {}, 0
+                return {}, 0, e
             raise  # Unreachable
 
     async def _normalize_document(self, entity_type: str, doc: Dict[str, Any], model_class: Any, view_spec: Dict[str, Any], 
@@ -139,8 +139,8 @@ class DocumentManager(ABC):
                 await validate_uniques(entity_type, the_doc, unique_constraints, None)
 
             # Populate view data if requested and validate fks
-            if view_spec is None:
-                view_spec = {}
+            # if view_spec is None:
+            #     view_spec = {}
             await process_fks(entity_type, the_doc, validate, view_spec)
 
         except DocumentNotFound as e:
@@ -195,10 +195,14 @@ class DocumentManager(ABC):
             if not id:
                 Notification.error(HTTP.BAD_REQUEST, "Missing 'id' field or value for update operation", entity_type=entity_type, field="id")
                 raise  # Unreachable
-            doc, count = await self.get(entity_type, id)
-            if count == 0:
+            try:
+                doc, count = await self._get_impl(id, entity_type)  # only check for existance - no validation
+                if count == 0:
+                    Notification.error(HTTP.NOT_FOUND, f"Document to update not found: {id}", entity_type=entity_type)
+            except DocumentNotFound:
                 Notification.error(HTTP.NOT_FOUND, f"Document to update not found: {id}", entity_type=entity_type)
-                raise  # Unreachable
+            except:
+                Notification.error(HTTP.INTERNAL_ERROR, f"Document error in update: {id}", entity_type=entity_type)
 
         # Validate unique constraints from metadata (only for databases without native support)
         metadata = MetadataService.get(entity_type)
@@ -223,7 +227,7 @@ class DocumentManager(ABC):
                     doc = await self._update_impl(entity_type, id, prepared_data)
                 else:
                     doc = await self._create_impl(entity_type, id, prepared_data)
-                return doc, 1
+                return {'id': id, **doc}, 1
             except DuplicateConstraintError as e:
                 Notification.error(HTTP.CONFLICT, f"Duplicate key error: {str(e)}")
                 raise  # Unreachable
@@ -414,7 +418,7 @@ async def process_fks(entity_type: str, data: Dict[str, Any], validate: bool, vi
                     if fk_cls:
                         # Fetch FK record
                         with Notification.suppress_warnings():  # suppress warnings when fetching a fk as the code below has a better warning (it includes the offending field)
-                            related_data, count = await fk_cls.get(fk_field_id, None, False)
+                            related_data, count, excpt = await fk_cls.get(fk_field_id, None, False)
                         if count == 0:
                             # FK record not found - validation warning if validating
                             Notification.error(HTTP.UNPROCESSABLE, "Referenced ID does not exist", entity_type=entity_type, field=field_name)
