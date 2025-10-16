@@ -266,57 +266,52 @@ class RequestContext:
         if not filter_str or not filter_str.strip():
             return filters
             
-        try:
-            # Split by comma for multiple filters
-            filter_parts = filter_str.split(',')
+        # Split by comma for multiple filters
+        filter_parts = filter_str.split(',')
+        
+        for filter_part in filter_parts:
+            filter_part = filter_part.strip()
+            if not filter_part:
+                continue
+                
+            # Split by colon - minimum 2 parts (field:value)
+            parts = filter_part.split(':', 2)
+            if len(parts) < 2:
+                Notification.error(HTTP.BAD_REQUEST, f"Invalid filter format. Use field:value instead of {filter_part}")
+                continue
+                
+            field_name = parts[0].strip()
+            if not field_name:
+                Notification.error(HTTP.BAD_REQUEST, "Empty field name in filter")
+                continue
             
-            for filter_part in filter_parts:
-                filter_part = filter_part.strip()
-                if not filter_part:
-                    continue
-                    
-                # Split by colon - minimum 2 parts (field:value)
-                parts = filter_part.split(':', 2)
-                if len(parts) < 2:
-                    Notification.request_warning("Invalid filter format. Use field:value", value=filter_part, parameter='filter')
-                    continue
-                    
-                field_name = parts[0].strip()
-                if not field_name:
-                    Notification.request_warning("Empty field name in filter", value=filter_part, parameter='filter')
-                    continue
-                
-                if not MetadataService.get(entity_name, field_name):
-                    Notification.request_warning("Unknown filter field", value=field_name, parameter='filter')
-                    continue
-                
-                if len(parts) == 2:
-                    # Simple format: field:value
-                    operator = "eq"
-                    value = parts[1].strip() 
-                else:
-                    # Extended format: field:operator:value
-                    operator = parts[1].strip().lower()
-                    value = parts[2].strip()
-                
-                # Parse the filter value with type conversion
-                parsed_filter = RequestContext._parse_filter_value(entity_name, field_name, operator, value)
-                if parsed_filter is not None:
-                    # Handle multiple conditions on the same field (e.g., age:gte:21,age:lt:65)
-                    if field_name in filters:
-                        existing_filter = filters[field_name]
-                        if isinstance(existing_filter, dict) and isinstance(parsed_filter, dict):
-                            # Merge dictionaries for range conditions like {"$gte": X} + {"$lt": Y}
-                            existing_filter.update(parsed_filter)
-                        else:
-                            # For non-dict filters, overwrite (shouldn't happen with range operators)
-                            filters[field_name] = parsed_filter
+            if not MetadataService.get(entity_name, field_name):
+                Notification.error(HTTP.BAD_REQUEST, f"Invalid field filter {entity_name}.{field_name}")
+            
+            if len(parts) == 2:
+                # Simple format: field:value
+                operator = "eq"
+                value = parts[1].strip() 
+            else:
+            # Extended format: field:operator:value
+                operator = parts[1].strip().lower()
+                value = parts[2].strip()
+            
+            # Parse the filter value with type conversion
+            parsed_filter = RequestContext._parse_filter_value(entity_name, field_name, operator, value)
+            if parsed_filter is not None:
+                # Handle multiple conditions on the same field (e.g., age:gte:21,age:lt:65)
+                if field_name in filters:
+                    existing_filter = filters[field_name]
+                    if isinstance(existing_filter, dict) and isinstance(parsed_filter, dict):
+                        # Merge dictionaries for range conditions like {"$gte": X} + {"$lt": Y}
+                        existing_filter.update(parsed_filter)
                     else:
+                        # For non-dict filters, overwrite (shouldn't happen with range operators)
                         filters[field_name] = parsed_filter
+                else:
+                    filters[field_name] = parsed_filter
                         
-        except Exception as e:
-            Notification.request_warning("Error parsing filter parameter", parameter='filter')
-            
         return filters
 
     @staticmethod
