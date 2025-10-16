@@ -225,9 +225,10 @@ class DocumentManager(ABC):
             try:
                 if is_update:
                     doc = await self._update_impl(entity_type, id, prepared_data)
+                    return {'id': id, **doc}, 1
                 else:
                     doc = await self._create_impl(entity_type, id, prepared_data)
-                return {'id': id, **doc}, 1
+                    return doc, 1
             except DuplicateConstraintError as e:
                 Notification.error(HTTP.CONFLICT, f"Duplicate key error: {str(e)}")
                 raise  # Unreachable
