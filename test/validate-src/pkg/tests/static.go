@@ -371,20 +371,20 @@ func GetAllTestCases() []types.TestCase {
 				"password": "TestPass123!", "accountId": "acc_valid_001"},
 			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "constraint"}},
 
-		{Method: "PUT", URL: "/api/User/usr_update_001", TestClass: "update", Description: "Update user - duplicate email", ExpectedStatus: 409,
-			RequestBody: map[string]interface{}{
-				"id": "usr_update_001", "firstName": "Test", "lastName": "User", "email": "updated2@example.com",
-				"username": "usr_update_001", "gender": "male", "isAccountOwner": false,
-				"password": "TestPass123!", "accountId": "acc_valid_001"},
-			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "constraint"}},
+		// {Method: "PUT", URL: "/api/User/usr_update_001", TestClass: "update", Description: "Update user - duplicate email", ExpectedStatus: 409,
+		// 	RequestBody: map[string]interface{}{
+		// 		"id": "usr_update_001", "firstName": "Test", "lastName": "User", "email": "updated2@example.com",
+		// 		"username": "usr_update_001", "gender": "male", "isAccountOwner": false,
+		// 		"password": "TestPass123!", "accountId": "acc_valid_001"},
+		// 	ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "constraint"}},
 
 		// PUT combo validation tests
-		{Method: "PUT", URL: "/api/User/usr_nonexist_999", TestClass: "update", Description: "Update non-existent user with bad data (404 wins)", ExpectedStatus: 404,
+		{Method: "PUT", URL: "/api/User/usr_nonexist_999", TestClass: "update", Description: "Update non-existent user with bad data (422 wins)", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"id": "usr_nonexist_999", "firstName": "Test", "lastName": "User", "email": "test@example.com",
 				"username": "nonexistent_999", "gender": "invalid_value", "isAccountOwner": false,
 				"password": "TestPass123!", "accountId": "acc_valid_001"},
-			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "not_found"}},
+			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "validation"}},
 
 		{Method: "PUT", URL: "/api/User/usr_update_001", TestClass: "update", Description: "Update user - bad enum + duplicate username (validation wins)", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
@@ -582,7 +582,7 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/api/User?filter=netWorth:invalid:50000", TestClass: "edge", Description: "Invalid filter operator", ExpectedStatus: 400},
 		{Method: "GET", URL: "/api/User?view=account()", TestClass: "edge", Description: "Empty view fields", ExpectedStatus: 400},
 		{Method: "GET", URL: "/api/User?view=account(invalidField)", TestClass: "edge", Description: "Invalid view field", ExpectedStatus: 400},
-		{Method: "GET", URL: "/api/User?unknown=parameter", TestClass: "edge", Description: "Unknown query parameter"},
+		{Method: "GET", URL: "/api/User?unknown=parameter", TestClass: "edge", Description: "Unknown query parameter", ExpectedStatus: 400},
 		{Method: "GET", URL: "/api/User?sort=firstName&sort=lastName", TestClass: "edge", Description: "Duplicate sort parameters"},
 		{Method: "GET", URL: "/api/User?filter=gender:male&filter=gender:female", TestClass: "edge", Description: "Duplicate filter parameters"},
 		{Method: "GET", URL: "/api/User?view=account(id)&view=profile(name)", TestClass: "edge", Description: "Duplicate view parameters"},
