@@ -178,6 +178,9 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 		if err := ResetAndPopulate(); err != nil {
 			return fmt.Errorf("database reset failed: %w", err)
 		}
+		if !writeMode && !interactiveMode && !summaryMode && !failureMode {
+			return nil
+		}
 	}
 
 	// Auto-enable write mode if data/notify flags are used
@@ -260,7 +263,7 @@ func runTests(testNums []int) error {
 	} else if interactiveMode {
 		modes.RunInteractive(testNums[0])
 	} else {
-		EnsureTestData()
+		ResetAndPopulate()
 		if summaryMode {
 			modes.RunSummary(testNums)
 		} else {
@@ -292,8 +295,6 @@ func ResetAndPopulate() error {
 	return nil
 }
 
-// EnsureTestData checks if sufficient test data exists, and auto-resets if needed
-// Used before running tests in table/summary mode
 func EnsureTestData() {
 	users, accounts := core.GetEntityCountsFromReport()
 	fmt.Printf("Initial records: %d users, %d accounts\n", users, accounts)

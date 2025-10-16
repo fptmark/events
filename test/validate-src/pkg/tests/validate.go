@@ -50,6 +50,11 @@ func validatePagination(testNum int, result *types.TestResult) []string {
 		return issues // Only validate pagination for GET requests
 	}
 
+	// Skip pagination validation for admin/utility endpoints
+	if err == nil && (testCase.TestClass == "admin" || testCase.TestClass == "dynamic") {
+		return issues // Admin and dynamic tests don't follow standard pagination
+	}
+
 	// Check if this is a collection request (no specific ID in URL)
 	if !isCollectionRequest(result.URL) {
 		return issues // Skip pagination validation for single resource requests

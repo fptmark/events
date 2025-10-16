@@ -29,6 +29,13 @@ func GetDynamicTest(functionName string) func() (*types.TestResult, error) {
 func testPaginationAggregation() (*types.TestResult, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
+	// Create result that will be returned in all cases
+	result := &types.TestResult{
+		StatusCode: 200,
+		Data:       []map[string]interface{}{},
+		Passed:     false, // Will be set to true only if all validations pass
+	}
+
 	// Step 1: Get total user count from db/report endpoint
 	totalUsers, _ := core.GetEntityCountsFromReport()
 
@@ -36,26 +43,21 @@ func testPaginationAggregation() (*types.TestResult, error) {
 	pageSize := 8
 	allRecords, pageCount, err := fetchAllPages(client, pageSize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch all pages: %w", err)
+		// Return result with error details, not nil
+		return result, fmt.Errorf("failed to fetch all pages: %w", err)
 	}
 
 	// Calculate expected page count
 	expectedPageCount := (totalUsers + pageSize - 1) / pageSize // ceiling division
 
-	// Create result
-	result := &types.TestResult{
-		StatusCode: 200,
-		Data:       []map[string]interface{}{},
-	}
-
 	// Step 3: Verify page count matches expected
 	if pageCount != expectedPageCount {
-		return nil, fmt.Errorf("page count mismatch: expected %d pages, got %d pages", expectedPageCount, pageCount)
+		return result, fmt.Errorf("page count mismatch: expected %d pages, got %d pages", expectedPageCount, pageCount)
 	}
 
 	// Step 4: Verify total records fetched equals total user count
 	if len(allRecords) != totalUsers {
-		return nil, fmt.Errorf("record count mismatch: expected %d records, got %d records", totalUsers, len(allRecords))
+		return result, fmt.Errorf("record count mismatch: expected %d records, got %d records", totalUsers, len(allRecords))
 	}
 
 	// Step 5: Validate all user IDs are unique
@@ -64,19 +66,19 @@ func testPaginationAggregation() (*types.TestResult, error) {
 	for i, record := range allRecords {
 		id, exists := record["id"]
 		if !exists {
-			return nil, fmt.Errorf("record %d missing 'id' field", i)
+			return result, fmt.Errorf("record %d missing 'id' field", i)
 		}
 
 		// Check for duplicates
 		if seenIDs[id] {
-			return nil, fmt.Errorf("duplicate ID found: %v", id)
+			return result, fmt.Errorf("duplicate ID found: %v", id)
 		}
 		seenIDs[id] = true
 
 		// Step 6: Validate IDs are increasing (default sort order)
 		if i > 0 {
 			if !isIDIncreasing(lastID, id) {
-				return nil, fmt.Errorf("IDs not in increasing order: %v followed by %v at index %d", lastID, id, i)
+				return result, fmt.Errorf("IDs not in increasing order: %v followed by %v at index %d", lastID, id, i)
 			}
 		}
 		lastID = id

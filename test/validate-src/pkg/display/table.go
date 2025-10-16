@@ -169,9 +169,6 @@ func ShowTestResults(testNumbers []int, results []*types.TestResult, showAll boo
 	// Footer
 	fmt.Print("└─────┴──────────┴─────────────────────────────────────┴────────┴──────────┴─────────────────────────────────────┴────────┴─────────┴──────┴──────────────────────────────────────────┘\n")
 
-	percentage := float64(passed) / float64(len(rows)) * 100
-	fmt.Printf("Summary: %d/%d tests passed (%.1f%%)\n", passed, len(rows), percentage)
-
 	fmt.Printf("Total warnings: %d, Total request warnings: %d, Total errors: %d\n", totalWarnings, totalRequestWarnings, totalErrors)
 }
 

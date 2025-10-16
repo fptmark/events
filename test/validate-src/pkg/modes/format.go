@@ -90,9 +90,17 @@ func formatResult(testCase *types.TestCase, result *types.TestResult, showData b
 		// Use raw response body to preserve server's field ordering
 		var prettyJSON bytes.Buffer
 		if err := json.Indent(&prettyJSON, result.RawResponseBody, "", "  "); err != nil {
-			return fmt.Sprintf("Error formatting response: %v\n", err)
+			// Not JSON - likely HTML, show first 10 lines
+			output.WriteString("(Non-JSON response - showing first 10 lines)\n")
+			lines := strings.Split(string(result.RawResponseBody), "\n")
+			if len(lines) > 10 {
+				lines = lines[:10]
+			}
+			output.WriteString(strings.Join(lines, "\n"))
+			output.WriteString("\n")
+		} else {
+			output.WriteString(prettyJSON.String())
 		}
-		output.WriteString(prettyJSON.String())
 	}
 
 	output.WriteString("\n\n")

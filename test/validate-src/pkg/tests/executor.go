@@ -114,33 +114,26 @@ func parseTestURL(urlStr string) (*types.TestParams, error) {
 
 	query := u.Query()
 
-	// Parse page
-	if pageStr := query.Get("page"); pageStr != "" {
-		if page, err := strconv.Atoi(pageStr); err == nil && page > 0 {
-			params.Page = page
+	// For duplicate parameters, last value wins
+	for key, values := range query {
+		lastValue := values[len(values)-1]
+
+		switch strings.ToLower(key) {
+		case "page":
+			if page, err := strconv.Atoi(lastValue); err == nil {
+				params.Page = page
+			}
+		case "pagesize":
+			if pageSize, err := strconv.Atoi(lastValue); err == nil {
+				params.PageSize = pageSize
+			}
+		case "sort":
+			params.Sort = parseSortParam(lastValue)
+		case "filter":
+			params.Filter = parseFilterParam(lastValue)
+		case "view":
+			params.View = parseViewParam(lastValue)
 		}
-	}
-
-	// Parse pageSize
-	if pageSizeStr := query.Get("pageSize"); pageSizeStr != "" {
-		if pageSize, err := strconv.Atoi(pageSizeStr); err == nil && pageSize > 0 {
-			params.PageSize = pageSize
-		}
-	}
-
-	// Parse sort parameter
-	if sortStr := query.Get("sort"); sortStr != "" {
-		params.Sort = parseSortParam(sortStr)
-	}
-
-	// Parse filter parameter
-	if filterStr := query.Get("filter"); filterStr != "" {
-		params.Filter = parseFilterParam(filterStr)
-	}
-
-	// Parse view parameter
-	if viewStr := query.Get("view"); viewStr != "" {
-		params.View = parseViewParam(viewStr)
 	}
 
 	return params, nil
