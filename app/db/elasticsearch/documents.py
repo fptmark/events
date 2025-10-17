@@ -202,8 +202,10 @@ class ElasticsearchDocuments(DocumentManager):
         """Build Elasticsearch query from filter conditions"""
         if not filters:
             return {"match_all": {}}
-        
+
         must_clauses = []
+        fields_meta = MetadataService.fields(entity)
+
         for field, value in filters.items():
             if isinstance(value, dict) and any(op in value for op in ['$gte', '$lte', '$gt', '$lt']):
                 # Range query
@@ -213,9 +215,20 @@ class ElasticsearchDocuments(DocumentManager):
                     range_query[es_op] = val
                 must_clauses.append({"range": {field: range_query}})
             else:
-                # Exact match
-                must_clauses.append({"term": {field: value}})
-        
+                # Check field metadata to determine match strategy
+                field_meta = fields_meta.get(field, {})
+                field_type = field_meta.get('type', 'String')
+                has_enum_values = 'enum' in field_meta
+
+                if field_type == 'String' and not has_enum_values:
+                    # Non-enum strings: substring match (anywhere in string)
+                    # Lowercase value since fields use lc normalizer
+                    value_lower = str(value).lower()
+                    must_clauses.append({"wildcard": {field: f"*{value_lower}*"}})
+                else:
+                    # Enum fields and non-strings: exact match
+                    must_clauses.append({"term": {field: value}})
+
         return {"bool": {"must": must_clauses}} if must_clauses else {"match_all": {}}
     
     def _build_sort_spec(self, sort_fields: Optional[List[Tuple[str, str]]], entity: str) -> List[Dict[str, Any]]:
