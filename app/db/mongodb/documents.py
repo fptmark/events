@@ -12,7 +12,7 @@ from pymongo.errors import DuplicateKeyError, ConnectionFailure, ServerSelection
 
 from ..document_manager import DocumentManager
 from ..core_manager import CoreManager
-from ..exceptions import DocumentNotFound, DatabaseError, DuplicateConstraintError
+from app.exceptions import DocumentNotFound, DatabaseError, DuplicateConstraintError
 from app.services.metadata import MetadataService
 
 
@@ -25,7 +25,7 @@ class MongoDocuments(DocumentManager):
     
     async def _get_all_impl(
         self,
-        entity_type: str,
+        entity: str,
         sort: Optional[List[Tuple[str, str]]] = None,
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
@@ -35,27 +35,27 @@ class MongoDocuments(DocumentManager):
         self.database._ensure_initialized()
         db = self.database.core.get_connection()
 
-        collection = entity_type
+        collection = entity
 
         # Mongo is case sensitive for field names
         case_filter = {}
         for key, value in (filter.items() if filter else []):
-            case_key = MetadataService.get_proper_name(entity_type, key)  # Get correct case from metadata
+            case_key = MetadataService.get_proper_name(entity, key)  # Get correct case from metadata
             case_filter[case_key] = value
 
         case_sort = []
         for key, value in (sort if sort else []):
-            case_key = MetadataService.get_proper_name(entity_type, key)  # Get correct case from metadata
+            case_key = MetadataService.get_proper_name(entity, key)  # Get correct case from metadata
             case_sort.append((case_key, value))
 
         # Build query filter
-        query = self._build_query_filter(case_filter, entity_type) if filter else {}
+        query = self._build_query_filter(case_filter, entity) if filter else {}
 
         # Get total count
         total_count = await db[collection].count_documents(query)
 
         # Build sort specification
-        sort_spec = self._build_sort_spec(case_sort, entity_type)
+        sort_spec = self._build_sort_spec(case_sort, entity)
 
         # Execute paginated query
         skip_count = (page - 1) * pageSize
@@ -72,12 +72,12 @@ class MongoDocuments(DocumentManager):
 
         return raw_documents, total_count
     
-    async def _get_impl(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
+    async def _get_impl(self, id: str, entity: str) -> Tuple[Dict[str, Any], int]:
         """Get single document by ID"""
         self.database._ensure_initialized()
         db = self.database.core.get_connection()
 
-        collection = entity_type
+        collection = entity
 
         doc = await db[collection].find_one({"_id": id})
 
@@ -87,13 +87,13 @@ class MongoDocuments(DocumentManager):
         # normalized_doc = self._normalize_document(doc)
         return doc, 1
 
-    async def _delete_impl(self, id: str, entity_type: str) -> Tuple[Dict[str, Any], int]:
+    async def _delete_impl(self, id: str, entity: str) -> Tuple[Dict[str, Any], int]:
         """Delete document by ID"""
         self.database._ensure_initialized()
         db = self.database.core.get_connection()
 
         try:
-            collection = entity_type
+            collection = entity
 
             # Use findOneAndDelete for atomic operation that returns deleted document
             deleted_doc = await db[collection].find_one_and_delete({"_id": id})
@@ -102,38 +102,38 @@ class MongoDocuments(DocumentManager):
                 # normalized_doc = self._normalize_document(deleted_doc)
                 return deleted_doc, 1
             else:
-                raise DocumentNotFound(entity_type, id)
+                raise DocumentNotFound(entity, id)
 
         except DocumentNotFound:
             raise  # Re-raise to let DocumentManager handle it
         except Exception as e:
             raise DatabaseError(f"MongoDB delete error: {str(e)}")
     
-    # async def _validate_document_exists_for_update(self, entity_type: str, id: str) -> bool:
+    # async def _validate_document_exists_for_update(self, entity: str, id: str) -> bool:
     #     """Validate that document exists for update operations"""
     #     self.database._ensure_initialized()
     #     db = self.database.core.get_connection()
         
     #     try:
-    #         collection = entity_type
+    #         collection = entity
     #         mongo_id = ObjectId(id) if ObjectId.is_valid(id) else id
     #         existing_doc = await db[collection].find_one({"_id": mongo_id})
             
     #         if not existing_doc:
-    #             Notification.warning(Warning.NOT_FOUND, "Document not found for update", entity_type=entity_type, entity_id=id)
+    #             Notification.warning(Warning.NOT_FOUND, "Document not found for update", entity=entity, entity_id=id)
     #             return False
             
     #         return True
     #     except Exception:
-    #         Notification.warning(Warning.NOT_FOUND, "Document not found for update", entity_type=entity_type, entity_id=id)
+    #         Notification.warning(Warning.NOT_FOUND, "Document not found for update", entity=entity, entity_id=id)
     #         return False
     
-    async def _create_impl(self, entity_type: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _create_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create document in MongoDB"""
         db = self.database.core.get_connection()
 
         try:
-            collection = entity_type
+            collection = entity
 
             # If data contains 'id', use it as MongoDB _id
             data['_id'] = id if id else str(uuid.uuid4())
@@ -153,12 +153,12 @@ class MongoDocuments(DocumentManager):
             # Wrap all other errors as DatabaseError
             raise DatabaseError(f"MongoDB create error: {str(e)}", e)
 
-    async def _update_impl(self, entity_type: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _update_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update existing document in MongoDB"""
         db = self.database.core.get_connection()
         
         try:
-            collection = entity_type
+            collection = entity
             await db[collection].replace_one({"_id": id}, data, upsert=False)
             return data
                 
@@ -175,16 +175,16 @@ class MongoDocuments(DocumentManager):
 
 
 
-    def _prepare_datetime_fields(self, entity_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _prepare_datetime_fields(self, entity: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Convert datetime fields for MongoDB storage"""
-        fields_meta = MetadataService.fields(entity_type)
+        fields_meta = MetadataService.fields(entity)
         prepared_data = data.copy()
         
-        for field_name, value in prepared_data.items():
+        for field, value in prepared_data.items():
             if value is None:
                 continue
                 
-            field_meta = fields_meta.get(field_name, {})
+            field_meta = fields_meta.get(field, {})
             field_type = field_meta.get('type')
             
             if field_type in ['Date', 'Datetime'] and isinstance(value, str):
@@ -192,22 +192,22 @@ class MongoDocuments(DocumentManager):
                     date_str = value.strip()
                     if date_str.endswith('Z'):
                         date_str = date_str[:-1] + '+00:00'
-                    prepared_data[field_name] = datetime.fromisoformat(date_str)
+                    prepared_data[field] = datetime.fromisoformat(date_str)
                 except (ValueError, TypeError):
                     pass
         
         return prepared_data
     
-    def _convert_filter_values(self, filters: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
+    def _convert_filter_values(self, filters: Dict[str, Any], entity: str) -> Dict[str, Any]:
         """Convert filter values to MongoDB-appropriate types"""
         if not filters:
             return filters
             
         converted_filters = {}
-        fields_meta = MetadataService.fields(entity_type)
+        fields_meta = MetadataService.fields(entity)
         
-        for field_name, filter_value in filters.items():
-            field_meta = fields_meta.get(field_name, {})
+        for field, filter_value in filters.items():
+            field_meta = fields_meta.get(field, {})
             field_type = field_meta.get('type', 'String')
             
             if isinstance(filter_value, dict):
@@ -215,10 +215,10 @@ class MongoDocuments(DocumentManager):
                 converted_range = {}
                 for op, value in filter_value.items():
                     converted_range[op] = self._convert_single_value(value, field_type)
-                converted_filters[field_name] = converted_range
+                converted_filters[field] = converted_range
             else:
                 # Simple equality filter
-                converted_filters[field_name] = self._convert_single_value(filter_value, field_type)
+                converted_filters[field] = self._convert_single_value(filter_value, field_type)
         
         return converted_filters
     
@@ -240,7 +240,7 @@ class MongoDocuments(DocumentManager):
     
     async def _validate_unique_constraints(
         self, 
-        entity_type: str, 
+        entity: str, 
         data: Dict[str, Any], 
         unique_constraints: List[List[str]], 
         exclude_id: Optional[str] = None
@@ -248,13 +248,13 @@ class MongoDocuments(DocumentManager):
         """Validate unique constraints for MongoDB"""
         return True  # MongoDB handles unique constraints natively
     
-    def _build_query_filter(self, filters: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
+    def _build_query_filter(self, filters: Dict[str, Any], entity: str) -> Dict[str, Any]:
         """Build MongoDB query from filter conditions"""
         if not filters:
             return {}
         
-        converted_filters = self._convert_filter_values(filters, entity_type)
-        fields_meta = MetadataService.fields(entity_type)
+        converted_filters = self._convert_filter_values(filters, entity)
+        fields_meta = MetadataService.fields(entity)
         query: Dict[str, Any] = {}
         
         for field, value in converted_filters.items():
@@ -286,7 +286,7 @@ class MongoDocuments(DocumentManager):
         
         return query
     
-    def _build_sort_spec(self, sort_fields: Optional[List[Tuple[str, str]]], entity_type: str) -> List[Tuple[str, int]]:
+    def _build_sort_spec(self, sort_fields: Optional[List[Tuple[str, str]]], entity: str) -> List[Tuple[str, int]]:
         """Build MongoDB sort specification"""
         if sort_fields:
             return [(field, 1 if direction == "asc" else -1) for field, direction in sort_fields]
@@ -300,8 +300,8 @@ class MongoDocuments(DocumentManager):
     #         parts = error_msg.split("index:")
     #         if len(parts) > 1:
     #             index_info = parts[1].strip()
-    #             field_name = index_info.split("_")[0]
-    #             return field_name, "unknown_value"
+    #             field = index_info.split("_")[0]
+    #             return field, "unknown_value"
     #     return "unknown_field", "unknown_value"
     
     def _escape_regex(self, text: str) -> str:

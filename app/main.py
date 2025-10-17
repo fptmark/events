@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.services.metadata import MetadataService
 from app.services.model import ModelService
-from app.services.notify import StopWorkError
+from app.exceptions import StopWorkError
 from app.routers.router import get_all_dynamic_routers
 from app.routers.admin import router as admin_router
 
@@ -33,8 +33,72 @@ def setup_routers(yaml_file: str):
     for router in get_all_dynamic_routers(Path(yaml_file)):
         app.include_router(router, prefix="/api")
 
-    # --- Register Admin Router --- #
     app.include_router(admin_router)
+
+def log_initialization_failure(error_message = None):
+    """Log database initialization failure with prominent formatting"""
+    RED_BOLD = "\033[1;31m"
+    RESET = "\033[0m"
+
+    logger.error("=" * 80)
+    if error_message:
+        logger.error(f"{RED_BOLD}DATABASE INITIALIZATION FAILED{RESET}")
+        logger.error("=" * 80)
+        logger.error(f"Error: {error_message}")
+    else:
+        logger.error(f"{RED_BOLD}DATABASE INITIALIZATION FAILED - INDEXES COULD NOT BE CREATED{RESET}")
+        logger.error("=" * 80)
+        logger.error("This usually means there is duplicate data violating unique constraints.")
+        logger.error("")
+
+async def prompt_and_wipe_database(db_instance) -> bool:
+    """Prompt user to wipe database and perform wipe if confirmed.
+
+    Returns:
+        bool: True if wipe succeeded, False otherwise
+    """
+    response = input("Do you want to WIPE ALL DATA and reinitialize the database? (yes/no): ").strip().lower()
+
+    if response == 'yes':
+        logger.info("Wiping and reinitializing database...")
+        wipe_success = await db_instance.core.wipe_and_reinit()
+
+        if wipe_success:
+            logger.info("Database wiped and reinitialized successfully!")
+            logger.info("Please restart the application.")
+            return True
+        else:
+            logger.error("Failed to wipe and reinitialize database")
+            return False
+    else:
+        logger.error("=" * 80)
+        logger.error("WARNING: The application will terminate.")
+        logger.error("         Indexes could not be created and data integrity cannot be guaranteed.")
+        logger.error("=" * 80)
+        return False
+
+async def initialize_database_indexes(db_instance) -> None:
+    """Initialize database indexes with error handling and user prompts.
+
+    Raises:
+        SystemExit: If initialization fails and cannot be recovered
+    """
+    logger.info("Running automatic database initialization...")
+
+    try:
+        success = await db_instance.indexes.initialize()
+
+        if not success:
+            log_initialization_failure()
+            wipe_success = await prompt_and_wipe_database(db_instance)
+            sys.exit(0 if wipe_success else 1)
+        else:
+            logger.info("Automatic database initialization completed successfully")
+
+    except Exception as init_error:
+        log_initialization_failure(str(init_error))
+        wipe_success = await prompt_and_wipe_database(db_instance)
+        sys.exit(0 if wipe_success else 1)
 
 def parse_args():
     """Parse command line arguments"""
@@ -115,78 +179,14 @@ async def lifespan(app: FastAPI):
         # Initialize database connection for normal server operation
         db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name)
         logger.info(f"Connected to {db_type} successfully")
-
-
+                
         # Auto-run database initialization unless --noinitdb flag is set
         if not args.noinitdb:
-            logger.info("Running automatic database initialization...")
-            try:
-                success = await db_instance.indexes.initialize()
-                if not success:
-                    # ANSI escape codes for bold red text
-                    RED_BOLD = "\033[1;31m"
-                    RESET = "\033[0m"
-
-                    logger.error("=" * 80)
-                    logger.error(f"{RED_BOLD}DATABASE INITIALIZATION FAILED - INDEXES COULD NOT BE CREATED{RESET}")
-                    logger.error("=" * 80)
-                    logger.error("This usually means there is duplicate data violating unique constraints.")
-                    logger.error("")
-
-                    # Prompt user to wipe and reinitialize
-                    response = input("Do you want to WIPE ALL DATA and reinitialize the database? (yes/no): ").strip().lower()
-
-                    if response == 'yes':
-                        logger.info("Wiping and reinitializing database...")
-                        wipe_success = await db_instance.core.wipe_and_reinit()
-
-                        if wipe_success:
-                            logger.info("Database wiped and reinitialized successfully!")
-                            logger.info("Please restart the application.")
-                            sys.exit(0)
-                        else:
-                            logger.error("Failed to wipe and reinitialize database")
-                            sys.exit(1)
-                    else:
-                        logger.error("=" * 80)
-                        logger.error("WARNING: The application will terminate.")
-                        logger.error("         Indexes could not be created and data integrity cannot be guaranteed.")
-                        logger.error("=" * 80)
-                        sys.exit(1)
-                else:
-                    logger.info("Automatic database initialization completed successfully")
-            except Exception as init_error:
-                # ANSI escape codes for bold red text
-                RED_BOLD = "\033[1;31m"
-                RESET = "\033[0m"
-
-                logger.error("=" * 80)
-                logger.error(f"{RED_BOLD}DATABASE INITIALIZATION FAILED{RESET}")
-                logger.error("=" * 80)
-                logger.error(f"Error: {str(init_error)}")
-
-                # Prompt user to wipe and reinitialize
-                response = input("Do you want to WIPE ALL DATA and reinitialize the database? (yes/no): ").strip().lower()
-
-                if response == 'yes':
-                    logger.info("Wiping and reinitializing database...")
-                    wipe_success = await db_instance.core.wipe_and_reinit()
-
-                    if wipe_success:
-                        logger.info("Database wiped and reinitialized successfully!")
-                        logger.info("Please restart the application.")
-                        sys.exit(0)
-                    else:
-                        logger.error("Failed to wipe and reinitialize database")
-                        sys.exit(1)
-                else:
-                    logger.error("Database initialization failed. Application will terminate.")
-                    sys.exit(1)
+            await initialize_database_indexes(db_instance)
         else:
             logger.info("Skipping automatic database initialization (--noinitdb flag)")
 
     except Exception as e:
-        # This catches database connection failures - must terminate
         logger.error(f"Failed to connect to database: {str(e)}")
         sys.exit(1)
 
@@ -335,10 +335,10 @@ def read_root():
 @app.get('/api/metadata')
 def get_entities_metadata():
     entities = {}
-
+    
     for entity in ENTITIES:
         entities[entity] = MetadataService.get(entity)
-
+    
     return {
         "projectName": project,
         "database": db_type,

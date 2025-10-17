@@ -7,6 +7,8 @@ from contextlib import contextmanager
 from typing import Dict, List, Optional, Any
 from fastapi import HTTPException
 
+from app.exceptions import DuplicateConstraintError, StopWorkError
+
 
 class HTTP:
     """HTTP status codes for errors"""
@@ -41,24 +43,6 @@ class Warning:
     REQUEST = 'request'     # e.g. - bad sort field
     BAD_NAME = 'bad_name'   # unknown entity or field
     MISSING = 'missing'
-
-
-class DuplicateConstraintError(Exception):
-    """Raised when a unique constraint violation occurs - database agnostic"""
-    
-    def __init__(self, message: str, entity: str, field: str, entity_id: str = "new"):
-        self.message = message
-        self.entity = entity
-        self.field = field
-        self.entity_id = entity_id
-        super().__init__(message)
-
-
-class StopWorkError(HTTPException):
-    """Single exception class for all stop-work scenarios"""
-    def __init__(self, message: str, status_code: int, error_type: str):
-        self.error_type = error_type  # For logging context
-        super().__init__(status_code=status_code, detail=message)
 
 
 class Notification:
@@ -118,15 +102,16 @@ class Notification:
         return response
     
     @classmethod
-    def error(cls, status_code: int, message: str, entity_type: Optional[str] = None, field: Optional[str] = None, raise_exception: bool = True) -> None:
+    def error(cls, status_code: int, message: str, entity: Optional[str] = None, field: Optional[str] = None, value: Optional[str] = None, raise_exception: bool = True) -> None:
         """
         Add stop-work error and raise StopWorkError with HTTP status code.
 
         Args:
             status_code: HTTP status code (use HTTP.NOT_FOUND, HTTP.BAD_REQUEST, etc.)
             message: Error message
-            entity_type: Entity name (optional, for context)
+            entity: Entity name (optional, for context)
             field: Field name (optional, for validation errors)
+            value: Field value (optional, for validation errors)
             raise_exception: If True, raises StopWorkError immediately
         """
         category = get_error_category(status_code)
@@ -134,14 +119,14 @@ class Notification:
         logging.error(f"[{status_code}] {message}")
 
         if raise_exception:
-            raise StopWorkError(message, status_code, category)
+            raise StopWorkError(message, status_code, category, entity=entity, field=field, value=value)
     
     @classmethod
     def request_warning(cls, message:str = '', entity:str = '', field:str = '', value:str = '', parameter:str = ''):
-        cls.warning(Warning.REQUEST, message=message, entity_type=entity, field=field, value=value, parameter=parameter)
+        cls.warning(Warning.REQUEST, message=message, entity=entity, field=field, value=value, parameter=parameter)
 
     @classmethod
-    def warning(cls, warning_type: str, message: str = '', entity_type:str = '', entity_id:str = '', field:str = '', value = None, parameter:str = '') -> None:
+    def warning(cls, warning_type: str, message: str = '', entity:str = '', entity_id:str = '', field:str = '', value = None, parameter:str = '') -> None:
         """Add warning"""
         # Skip warnings if suppressed (e.g., during FK lookups)
         if cls._suppress_warnings:
@@ -153,8 +138,8 @@ class Notification:
                 warning['message'] = message
             if value:
                 warning['value'] = value
-            if len(entity_type) > 0:
-                warning['entity_type'] = entity_type
+            if len(entity) > 0:
+                warning['entity'] = entity
             if len(field) > 0:
                 warning['field'] = field
             if parameter:
@@ -162,9 +147,9 @@ class Notification:
             cls._request_warnings.append(warning)
 
         else:
-            # entity_type = entity_type or 'system'
+            # entity = entity or 'system'
             # entity_id = entity_id or 'general'
-            warning['entity_type'] = entity_type
+            warning['entity'] = entity
             warning['entity_id'] = entity_id
             warning['message'] = message
         
@@ -176,12 +161,12 @@ class Notification:
                 warning['parameter'] = parameter
             
             # Initialize structure if needed
-            if entity_type not in cls._warnings:
-                cls._warnings[entity_type] = {}
-            if entity_id not in cls._warnings[entity_type]:
-                cls._warnings[entity_type][entity_id] = []
+            if entity not in cls._warnings:
+                cls._warnings[entity] = {}
+            if entity_id not in cls._warnings[entity]:
+                cls._warnings[entity][entity_id] = []
             
-            cls._warnings[entity_type][entity_id].append(warning)
+            cls._warnings[entity][entity_id].append(warning)
             
         # Log the warning
         logging.warning(warning)
@@ -192,10 +177,10 @@ class Notification:
         """Handle DuplicateConstraintError with context-sensitive behavior"""
         # Always add warning for UI field highlighting
         cls.warning(Warning.UNIQUE_VIOLATION, error.message,
-                   entity_type=error.entity, entity_id=error.entity_id, field=error.field)
+                   entity=error.entity, entity_id=error.entity_id, field=error.field)
 
         if not is_validation:
             # Data operations (create, update) - stop work with 409 Conflict
             cls.error(HTTP.CONFLICT, f"Cannot save: {error.message}",
-                     entity_type=error.entity, field=error.field)
+                     entity=error.entity, field=error.field)
         # else: validation only - just continue with warning

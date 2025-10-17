@@ -10,7 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from ..base import DatabaseInterface
 from ..core_manager import CoreManager
 from ..index_manager import IndexManager
-from ..exceptions import DatabaseError
+from app.exceptions import DatabaseError
 
 
 class MongoCore(CoreManager):
@@ -174,7 +174,7 @@ class MongoIndexes(IndexManager):
     
     async def create(
         self,
-        entity_type: str,
+        entity: str,
         fields: List[str],
         unique: bool = False,
         name: Optional[str] = None
@@ -187,26 +187,26 @@ class MongoIndexes(IndexManager):
             # Ensure collection exists - MongoDB creates it implicitly on first index
             # but we explicitly create it to handle the case where no documents exist
             collection_names = await db.list_collection_names()
-            if entity_type not in collection_names:
-                await db.create_collection(entity_type)
+            if entity not in collection_names:
+                await db.create_collection(entity)
 
             index_spec = [(field, 1) for field in fields]
             kwargs: Dict[str, Any] = {"unique": unique}
             if name:
                 kwargs["name"] = name
 
-            await db[entity_type].create_index(index_spec, **kwargs)
+            await db[entity].create_index(index_spec, **kwargs)
         except Exception as e:
             raise DatabaseError(f"MongoDB create index error: {str(e)}")
     
-    async def get_all(self, entity_type: str) -> List[List[str]]:
+    async def get_all(self, entity: str) -> List[List[str]]:
         """Get all unique indexes for collection as field lists"""
         self.database._ensure_initialized()
         db = self.database.core.get_connection()
 
         try:
             field_lists = []
-            cursor = db[entity_type].list_indexes()
+            cursor = db[entity].list_indexes()
 
             async for index_info in cursor:
                 if index_info.get("name") == "_id_":
@@ -226,14 +226,14 @@ class MongoIndexes(IndexManager):
         except Exception as e:
             raise DatabaseError(f"MongoDB get indexes error: {str(e)}")
 
-    async def get_all_detailed(self, entity_type: str) -> dict:
+    async def get_all_detailed(self, entity: str) -> dict:
         """Get all indexes with full details as dict[index_name, index_info]"""
         self.database._ensure_initialized()
         db = self.database.core.get_connection()
 
         try:
             indexes = {}
-            cursor = db[entity_type].list_indexes()
+            cursor = db[entity].list_indexes()
 
             async for index_info in cursor:
                 index_name = index_info.get("name")
@@ -252,14 +252,14 @@ class MongoIndexes(IndexManager):
         except Exception as e:
             raise DatabaseError(f"MongoDB get detailed indexes error: {str(e)}")
     
-    async def delete(self, entity_type: str, fields: List[str]) -> None:
+    async def delete(self, entity: str, fields: List[str]) -> None:
         """Delete index by field names"""
         self.database._ensure_initialized()
         db = self.database.core.get_connection()
         
         try:
             index_spec = [(field, 1) for field in fields]
-            await db[entity_type].drop_index(index_spec)
+            await db[entity].drop_index(index_spec)
         except Exception as e:
             raise DatabaseError(f"MongoDB delete index error: {str(e)}")
 
