@@ -219,15 +219,20 @@ class ElasticsearchDocuments(DocumentManager):
         return {"bool": {"must": must_clauses}} if must_clauses else {"match_all": {}}
     
     def _build_sort_spec(self, sort_fields: Optional[List[Tuple[str, str]]], entity: str) -> List[Dict[str, Any]]:
-        """Build Elasticsearch sort specification"""
+        """Build Elasticsearch sort specification
+
+        If no sort specified, default to sorting by 'id' field (ascending) to ensure
+        consistent ordering across pagination. Without this, ES uses internal _id which
+        can result in inconsistent ordering.
+        """
         if not sort_fields:
-            # No default sort - let Elasticsearch handle natural ordering
-            return []  
-        
+            # Default sort by 'id' field for consistent pagination
+            return [{"id": {"order": "asc"}}]
+
         sort_spec = []
         for field, direction in sort_fields:
             sort_spec.append({field: {"order": direction}})
-        
+
         return sort_spec
     
     def _prepare_datetime_fields(self, entity: str, data: Dict[str, Any]) -> Dict[str, Any]:
