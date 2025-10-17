@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -39,6 +40,9 @@ var (
 
 	// Database reset (always honored)
 	resetSpec string
+
+	// Test execution options
+	pauseMs int // Pause between tests in milliseconds
 
 	verbose bool
 )
@@ -92,6 +96,10 @@ Database reset (applies to all run modes):
 	// Database reset (always honored)
 	rootCmd.Flags().StringVarP(&resetSpec, "reset", "r", "", "Reset database and populate test data (optional: users,accounts)")
 	rootCmd.Flag("reset").NoOptDefVal = "defaults" // Allow --reset without value (uses defaults)
+
+	// Test execution options
+	rootCmd.Flags().IntVarP(&pauseMs, "pause", "p", 250, "Pause between tests in milliseconds (for eventual consistency)")
+
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "verbose output (for debugging)")
 
 	if err := rootCmd.Execute(); err != nil {
@@ -137,7 +145,7 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 	}
 
 	// Set global config (now in core package)
-	core.SetConfig(DefaultServerURL, verbose, numUsers, numAccounts)
+	core.SetConfig(DefaultServerURL, verbose, numUsers, numAccounts, pauseMs)
 
 	// Get test categories if specified
 	var testNums []int
@@ -276,6 +284,7 @@ func runTests(testNums []int) error {
 // ResetAndPopulate performs the complete database reset and population sequence
 // Always shows before/after counts (used for explicit --reset flag and before table/summary mode)
 func ResetAndPopulate() error {
+	fmt.Printf("Checking current data counts...\n")
 	users, accounts := core.GetEntityCountsFromReport()
 	fmt.Printf("Before Reset:  users=%d, accounts=%d\n", users, accounts)
 
@@ -288,7 +297,9 @@ func ResetAndPopulate() error {
 	if err := tests.PopulateTestData(core.NumAccounts, core.NumUsers); err != nil {
 		return fmt.Errorf("failed to populate test data: %w", err)
 	}
-
+	// Sleep for PauseMs milliseconds to allow for eventual consistency
+	// (convert ms to time.Duration)
+	time.Sleep(time.Duration(1000 * time.Millisecond))
 	users, accounts = core.GetEntityCountsFromReport()
 	fmt.Printf("After Reset:   users=%d, accounts=%d\n", users, accounts)
 

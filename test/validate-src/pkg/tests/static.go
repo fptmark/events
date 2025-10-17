@@ -588,8 +588,9 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/api/User?view=account(id)&view=profile(name)", TestClass: "edge", Description: "Duplicate view parameters"},
 		{Method: "GET", URL: "/api/User/", TestClass: "edge", Description: "Trailing slash on entity"},
 		{Method: "GET", URL: "/api/User//", TestClass: "edge", Description: "Double slash in URL"},
-		{Method: "GET", URL: "/api/User?%20invalid=space", TestClass: "edge", Description: "URL with special characters"},
-		{Method: "GET", URL: "/api/User?sort=firstName%2Cdesc", TestClass: "edge", Description: "URL encoded sort parameter"},
+		{Method: "GET", URL: "/api/User?%20invalid=space", TestClass: "edge", Description: "URL with special characters", ExpectedStatus: 400},
+		{Method: "GET", URL: "/api/User?sort=firstName%2Cdesc", TestClass: "edge", Description: "URL encoded sort parameter w encoded comma", ExpectedStatus: 400},
+		{Method: "GET", URL: "/api/User?sort=firstName%3Adesc", TestClass: "edge", Description: "URL encoded sort parameter w encoded colon"},
 		{Method: "GET", URL: "/api/User?filter=firstName%3AJames", TestClass: "edge", Description: "URL encoded filter parameter"},
 		{Method: "POST", URL: "/api/User?pageSize=5", TestClass: "edge", Description: "POST with query parameters", ExpectedStatus: 201,
 			RequestBody: map[string]interface{}{
@@ -617,15 +618,11 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/invalid-url", TestClass: "edge", Description: "Invalid URL path", ExpectedStatus: 404},
 
 		// =============================================================================
-		// ADMIN/UTILITY ENDPOINTS
+		// DYNAMIC TESTS (Multi-step programmatic tests and admin endpoints)
 		// =============================================================================
-		{Method: "GET", URL: "/api/metadata", TestClass: "admin", Description: "Get system metadata"},
-		{Method: "GET", URL: "/api/db/report", TestClass: "admin", Description: "Get database status report"},
-		{Method: "GET", URL: "/api/db/init", TestClass: "admin", Description: "Initialize database confirmation page"},
-
-		// =============================================================================
-		// DYNAMIC TESTS (Multi-step programmatic tests)
-		// =============================================================================
+		{Method: "GET", URL: "testMetadata", TestClass: "dynamic", Description: "Get system metadata"},
+		{Method: "GET", URL: "testDbReport", TestClass: "dynamic", Description: "Get database status report"},
+		{Method: "GET", URL: "testDbInit", TestClass: "dynamic", Description: "Initialize database confirmation page"},
 		{Method: "GET", URL: "testPaginationAggregation", TestClass: "dynamic", Description: "Aggregate pagination test"},
 	}
 

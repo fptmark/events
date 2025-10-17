@@ -18,13 +18,10 @@ type TestResult struct {
 	Warnings        int  // Count of warnings in notifications
 	RequestWarnings int  // Count of request warnings in notifications
 	Errors          int  // Count of errors in notifications
-}
 
-// ValidationResult represents the result of test validation
-type ValidationResult struct {
-	OK     bool
-	Issues []string
-	Fields map[string][]interface{}
+	// Validation fields (populated by ValidateTest for static tests, or directly by dynamic tests)
+	Issues []string                   // Validation issues found
+	Fields map[string][]interface{}   // Field values extracted during validation
 }
 
 // TestParams represents parsed URL parameters from a test

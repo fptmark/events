@@ -14,7 +14,9 @@ import (
 // Map of dynamic test function names to function pointers
 var dynamicTests = map[string]func() (*types.TestResult, error){
 	"testPaginationAggregation": testPaginationAggregation,
-	// Add more dynamic tests here as needed
+	"testMetadata":              testMetadata,
+	"testDbReport":              testDbReport,
+	"testDbInit":                testDbInit,
 }
 
 // GetDynamicTest returns the dynamic test function for the given name, or nil if not found
@@ -33,6 +35,8 @@ func testPaginationAggregation() (*types.TestResult, error) {
 	result := &types.TestResult{
 		StatusCode: 200,
 		Data:       []map[string]interface{}{},
+		Issues:     []string{},
+		Fields:     make(map[string][]interface{}),
 		Passed:     false, // Will be set to true only if all validations pass
 	}
 
@@ -43,7 +47,7 @@ func testPaginationAggregation() (*types.TestResult, error) {
 	pageSize := 8
 	allRecords, pageCount, err := fetchAllPages(client, pageSize)
 	if err != nil {
-		// Return result with error details, not nil
+		// Return error for execution failures (can't connect, etc.)
 		return result, fmt.Errorf("failed to fetch all pages: %w", err)
 	}
 
@@ -52,12 +56,12 @@ func testPaginationAggregation() (*types.TestResult, error) {
 
 	// Step 3: Verify page count matches expected
 	if pageCount != expectedPageCount {
-		return result, fmt.Errorf("page count mismatch: expected %d pages, got %d pages", expectedPageCount, pageCount)
+		result.Issues = append(result.Issues, fmt.Sprintf("Page count mismatch: expected %d pages, got %d pages", expectedPageCount, pageCount))
 	}
 
 	// Step 4: Verify total records fetched equals total user count
 	if len(allRecords) != totalUsers {
-		return result, fmt.Errorf("record count mismatch: expected %d records, got %d records", totalUsers, len(allRecords))
+		result.Issues = append(result.Issues, fmt.Sprintf("Record count mismatch: expected %d records, got %d records", totalUsers, len(allRecords)))
 	}
 
 	// Step 5: Validate all user IDs are unique
@@ -66,26 +70,39 @@ func testPaginationAggregation() (*types.TestResult, error) {
 	for i, record := range allRecords {
 		id, exists := record["id"]
 		if !exists {
-			return result, fmt.Errorf("record %d missing 'id' field", i)
+			result.Issues = append(result.Issues, fmt.Sprintf("Record %d missing 'id' field", i))
+			continue
 		}
 
 		// Check for duplicates
 		if seenIDs[id] {
-			return result, fmt.Errorf("duplicate ID found: %v", id)
+			result.Issues = append(result.Issues, fmt.Sprintf("Duplicate ID found: %v", id))
 		}
 		seenIDs[id] = true
 
 		// Step 6: Validate IDs are increasing (default sort order)
 		if i > 0 {
 			if !isIDIncreasing(lastID, id) {
-				return result, fmt.Errorf("IDs not in increasing order: %v followed by %v at index %d", lastID, id, i)
+				result.Issues = append(result.Issues, fmt.Sprintf("IDs not in increasing order: %v followed by %v at index %d", lastID, id, i))
 			}
 		}
 		lastID = id
 	}
 
-	// All validations passed
-	result.Passed = true
+	// Create synthetic summary data
+	result.Data = []map[string]interface{}{
+		{
+			"totalRecords":   len(allRecords),
+			"expectedRecords": totalUsers,
+			"pageCount":      pageCount,
+			"expectedPages":  expectedPageCount,
+			"uniqueIDs":      len(seenIDs),
+			"sortOrder":      "ascending",
+		},
+	}
+
+	// Set Passed based on whether any issues were found
+	result.Passed = len(result.Issues) == 0
 	return result, nil
 }
 
@@ -168,4 +185,65 @@ func isIDIncreasing(id1, id2 interface{}) bool {
 
 	// Fallback: convert to string and compare
 	return fmt.Sprintf("%v", id2) > fmt.Sprintf("%v", id1)
+}
+
+// testAdminEndpoint is a generic test for admin endpoints - validates 200 status and expected data type
+func testAdminEndpoint(url string, dataType string) (*types.TestResult, error) {
+	result := &types.TestResult{
+		StatusCode: 200,
+		Data:       []map[string]interface{}{},
+		Issues:     []string{},
+		Fields:     make(map[string][]interface{}),
+		Passed:     false,
+	}
+
+	fullURL := core.ServerURL + url
+	resp, body, err := executeUrl(fullURL, "GET", nil)
+	if err != nil {
+		return result, fmt.Errorf("failed to execute request: %w", err)
+	}
+
+	result.StatusCode = resp.StatusCode
+
+	if resp.StatusCode != 200 {
+		result.Issues = append(result.Issues, fmt.Sprintf("Expected status 200, got %d", resp.StatusCode))
+		return result, nil
+	}
+
+	// Check if response matches expected data type
+	var responseData interface{}
+	isJSON := json.Unmarshal(body, &responseData) == nil
+
+	if dataType == "JSON" && !isJSON {
+		result.Issues = append(result.Issues, "Expected JSON response but got non-JSON content")
+	} else if dataType == "HTML" && isJSON {
+		result.Issues = append(result.Issues, "Expected HTML response but got JSON content")
+	}
+
+	result.Data = []map[string]interface{}{
+		{
+			"endpoint":     url,
+			"statusCode":   resp.StatusCode,
+			"expectedType": dataType,
+			"isJSON":       isJSON,
+		},
+	}
+
+	result.Passed = len(result.Issues) == 0
+	return result, nil
+}
+
+// testMetadata validates /api/metadata endpoint (expects JSON)
+func testMetadata() (*types.TestResult, error) {
+	return testAdminEndpoint("/api/metadata", "JSON")
+}
+
+// testDbReport validates /api/db/report endpoint (expects JSON)
+func testDbReport() (*types.TestResult, error) {
+	return testAdminEndpoint("/api/db/report", "JSON")
+}
+
+// testDbInit validates /api/db/init endpoint (expects HTML)
+func testDbInit() (*types.TestResult, error) {
+	return testAdminEndpoint("/api/db/init", "HTML")
 }

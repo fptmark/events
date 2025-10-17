@@ -8,36 +8,41 @@ import (
 	"validate/pkg/types"
 )
 
-// ValidateTest validates a test result and returns validation status
-func ValidateTest(testNum int, result *types.TestResult) *types.ValidationResult {
-	var allIssues []string
-
+// ValidateTest validates a test result and populates Issues and Fields in the TestResult
+func ValidateTest(testNum int, result *types.TestResult) {
 	// Check for nil result
 	if result == nil {
-		return &types.ValidationResult{
-			OK:     false,
-			Issues: []string{"Test result is nil"},
-			Fields: make(map[string][]interface{}),
-		}
+		return
+	}
+
+	// Initialize Issues and Fields if not already set (dynamic tests may have already populated these)
+	if result.Issues == nil {
+		result.Issues = []string{}
+	}
+	if result.Fields == nil {
+		result.Fields = make(map[string][]interface{})
+	}
+
+	// Check if this is a dynamic test - if so, skip validation (already done internally)
+	testCase, err := getTestCaseByID(testNum)
+	if err == nil && testCase.TestClass == "dynamic" {
+		return // Dynamic tests populate Issues/Fields themselves
 	}
 
 	// First do existing verification
 	verifyResult := Verify(result.Data, result.Params)
-	allIssues = append(allIssues, verifyResult.Issues...)
+	result.Issues = append(result.Issues, verifyResult.Issues...)
 
 	// Add pagination validation for collection requests
 	paginationIssues := validatePagination(testNum, result)
-	allIssues = append(allIssues, paginationIssues...)
+	result.Issues = append(result.Issues, paginationIssues...)
 
 	// Add CRUD validation if expected data exists
 	crudIssues := validateCRUDResult(testNum, result)
-	allIssues = append(allIssues, crudIssues...)
+	result.Issues = append(result.Issues, crudIssues...)
 
-	return &types.ValidationResult{
-		OK:     len(allIssues) == 0,
-		Issues: allIssues,
-		Fields: verifyResult.Fields,
-	}
+	// Copy fields from verification
+	result.Fields = verifyResult.Fields
 }
 
 // validatePagination validates pagination data for collection requests
@@ -50,9 +55,9 @@ func validatePagination(testNum int, result *types.TestResult) []string {
 		return issues // Only validate pagination for GET requests
 	}
 
-	// Skip pagination validation for admin/utility endpoints
-	if err == nil && (testCase.TestClass == "admin" || testCase.TestClass == "dynamic") {
-		return issues // Admin and dynamic tests don't follow standard pagination
+	// Skip pagination validation for dynamic tests (they do their own validation)
+	if err == nil && testCase.TestClass == "dynamic" {
+		return issues // Dynamic tests handle their own validation
 	}
 
 	// Check if this is a collection request (no specific ID in URL)

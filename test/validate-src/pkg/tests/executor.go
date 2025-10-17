@@ -368,12 +368,34 @@ func ExecuteTests(testNumbers []int) ([]*types.TestResult, error) {
 		}
 	}
 
+	// Check if database is Elasticsearch to determine if pause is needed
+	// dbType := core.GetDatabaseType()
+	// usePause := (dbType == "elasticsearch") && (core.PauseMs > 0)
+
 	results := make([]*types.TestResult, len(testNumbers))
 
+	lastUpdate := time.Now()
+	showing_progress := false
+
 	for i, testNum := range testNumbers {
+		// Show progress update if using pause and more than 1 second since last update
+		// if usePause {
+		now := time.Now()
+		if now.Sub(lastUpdate) > 1*time.Second {
+			fmt.Fprintf(os.Stderr, "\rRunning test %d  ", testNum)
+			lastUpdate = now
+			showing_progress = true
+		}
+		// }
+
 		// Execute test
 		result, err := ExecuteTest(testNum)
 		results[i] = result
+
+		// Pause between tests if using Elasticsearch (for eventual consistency)
+		// if usePause && i < len(testNumbers)-1 {
+		// 	time.Sleep(time.Duration(core.PauseMs) * time.Millisecond)
+		// }
 
 		if err != nil || result == nil {
 			continue
@@ -422,12 +444,20 @@ func ExecuteTests(testNumbers []int) ([]*types.TestResult, error) {
 			}
 		}
 
+		// Populate validation issues and fields (modifies result in place)
+		ValidateTest(testNum, result)
+
 		// Determine pass/fail
-		validation := ValidateTest(testNum, result)
 		statusMatch := result.StatusCode == testCase.ExpectedStatus
+		noValidationIssues := len(result.Issues) == 0
 
 		// Store pass/fail in result
-		result.Passed = statusMatch && validation.OK && result.Errors == 0
+		result.Passed = statusMatch && noValidationIssues && result.Errors == 0
+	}
+
+	// Clear the progress line if it was shown
+	if showing_progress {
+		fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 50))
 	}
 
 	return results, nil

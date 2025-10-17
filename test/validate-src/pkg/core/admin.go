@@ -60,3 +60,19 @@ func GetEntityCountsFromReport() (int, int) {
 	}
 	return users, accounts
 }
+
+// GetDatabaseType returns the database type from /api/db/report
+func GetDatabaseType() string {
+	response, err := ExecuteGet("/api/db/report")
+	if err != nil {
+		return "unknown"
+	}
+
+	// Extract database type from response.database
+	if val := GetFromResponse(response, "database", "unknown"); val != "unknown" {
+		if dbType, ok := val.(string); ok {
+			return dbType
+		}
+	}
+	return "unknown"
+}

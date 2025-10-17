@@ -15,14 +15,16 @@ var (
 	Verbose     bool
 	NumUsers    int
 	NumAccounts int
+	PauseMs     int // Pause in milliseconds between tests (for eventual consistency)
 )
 
 // SetConfig sets the global configuration
-func SetConfig(serverURL string, verbose bool, numUsers int, numAccounts int) {
+func SetConfig(serverURL string, verbose bool, numUsers int, numAccounts int, pauseMs int) {
 	ServerURL = serverURL
 	Verbose = verbose
 	NumUsers = numUsers
 	NumAccounts = numAccounts
+	PauseMs = pauseMs
 }
 
 // ExecuteGet makes a GET request and returns the parsed JSON response
@@ -96,8 +98,9 @@ func GetFromResponse(response interface{}, keys ...string) interface{} {
 // CreateEntity creates an entity via POST to the API
 // Takes a payload and entity type, issues a POST request
 // Prints errors to stderr and returns error on failure
+// Automatically adds ?no_consistency=true to skip refresh='wait_for' for faster bulk loading
 func CreateEntity(entityType string, payload map[string]interface{}) error {
-	url := ServerURL + "/api/" + entityType
+	url := ServerURL + "/api/" + entityType + "?no_consistency=true"
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {

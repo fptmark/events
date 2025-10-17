@@ -31,11 +31,13 @@ func formatResult(testCase *types.TestCase, result *types.TestResult, showData b
 	}
 	output.WriteString(statusLine + "\n")
 
+	// Populate validation issues in result (modifies result in place)
+	tests.ValidateTest(testCase.ID, result)
+
 	// Show validation issues if test failed
-	validation := tests.ValidateTest(testCase.ID, result)
-	if !result.Passed && len(validation.Issues) > 0 {
+	if !result.Passed && len(result.Issues) > 0 {
 		output.WriteString("Issues:\n")
-		for _, issue := range validation.Issues {
+		for _, issue := range result.Issues {
 			output.WriteString(fmt.Sprintf("  - %s\n", issue))
 		}
 	}
@@ -105,11 +107,10 @@ func formatResult(testCase *types.TestCase, result *types.TestResult, showData b
 
 	output.WriteString("\n\n")
 
-	// Show sort and filter field values (before pass/fail status)
-	// Note: validation already called above to show issues
-	if len(validation.Fields) > 0 {
+	// Show sort and filter field values (validation already called above)
+	if len(result.Fields) > 0 {
 		output.WriteString("Field Values:\n")
-		for fieldKey, values := range validation.Fields {
+		for fieldKey, values := range result.Fields {
 			// Skip view parameter fields
 			if strings.HasPrefix(fieldKey, "view_") {
 				continue
