@@ -72,3 +72,19 @@ class Config:
         else:
             # No FK validation
             return False
+
+    @classmethod
+    def elasticsearch_strict_consistency(cls) -> bool:
+        """Check if Elasticsearch should use strict consistency mode.
+
+        When enabled (default), uses refresh='wait_for' on write operations to ensure
+        documents are immediately searchable. This is required for synthetic unique
+        constraint validation to work correctly with concurrent requests.
+
+        When disabled, writes are faster but duplicate constraint validation may fail
+        under concurrent load (only safe for single-client testing scenarios).
+
+        Returns:
+            bool: True if strict consistency is enabled (default), False otherwise
+        """
+        return cls._config.get('elasticsearch_strict_consistency', True)
