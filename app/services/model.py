@@ -18,52 +18,52 @@ class ModelService:
     _update_models: Dict[str, Type[Any]] = {}
     
     @classmethod
-    def initialize(cls, entity_names: list[str]) -> None:
+    def initialize(cls, entitys: list[str]) -> None:
         """Initialize ModelService with all entity model classes.
         
         Args:
-            entity_names: List of entity names (e.g., ["User", "Account", "Profile"])
+            entitys: List of entity names (e.g., ["User", "Account", "Profile"])
         """
-        logger.info(f"Initializing ModelService with {len(entity_names)} entities...")
+        logger.info(f"Initializing ModelService with {len(entitys)} entities...")
         
-        for entity_name in entity_names:
+        for entity in entitys:
             try:
                 # Import model classes (e.g., User, UserCreate, UserUpdate from app.models.user_model)
-                module_name = f"app.models.{entity_name.lower()}_model"
+                module_name = f"app.models.{entity.lower()}_model"
                 module = importlib.import_module(module_name)
                 
                 # Main model class
-                model_class = getattr(module, entity_name)
-                cls._models[entity_name] = model_class
+                model_class = getattr(module, entity)
+                cls._models[entity] = model_class
                 
                 # Create class (e.g., UserCreate)
                 try:
-                    create_class = getattr(module, f"{entity_name}Create")
-                    cls._create_models[entity_name] = create_class
+                    create_class = getattr(module, f"{entity}Create")
+                    cls._create_models[entity] = create_class
                 except AttributeError:
-                    logger.warning(f"No {entity_name}Create class found")
+                    logger.warning(f"No {entity}Create class found")
                 
                 # Update class (e.g., UserUpdate)
                 try:
-                    update_class = getattr(module, f"{entity_name}Update")
-                    cls._update_models[entity_name] = update_class
+                    update_class = getattr(module, f"{entity}Update")
+                    cls._update_models[entity] = update_class
                 except AttributeError:
-                    logger.warning(f"No {entity_name}Update class found")
+                    logger.warning(f"No {entity}Update class found")
                 
-                logger.debug(f"Loaded model classes for: {entity_name}")
+                logger.debug(f"Loaded model classes for: {entity}")
                 
             except (ImportError, AttributeError) as e:
-                logger.error(f"Failed to load model {entity_name}: {e}")
-                raise RuntimeError(f"Failed to load required model {entity_name}: {e}")
+                logger.error(f"Failed to load model {entity}: {e}")
+                raise RuntimeError(f"Failed to load required model {entity}: {e}")
         
         logger.info(f"ModelService initialized with {len(cls._models)} model classes")
     
     @classmethod
-    def get_model_class(cls, entity_name: str) -> Type[Any]:
+    def get_model_class(cls, entity: str) -> Type[Any]:
         """Get pre-loaded model class by entity name.
 
         Args:
-            entity_name: Entity name (e.g., "User", "Account")
+            entity: Entity name (e.g., "User", "Account")
 
         Returns:
             Model class
@@ -72,21 +72,21 @@ class ModelService:
             RuntimeError: If ModelService not initialized
             ModelNotFound: If entity type is not found
         """
-        from app.db.exceptions import ModelNotFound
+        from app.exceptions import ModelNotFound
 
         # Case-insensitive lookup
         for name, model_class in cls._models.items():
-            if name.lower() == entity_name.lower():
+            if name.lower() == entity.lower():
                 return model_class
 
-        raise ModelNotFound(entity_name)
+        raise ModelNotFound(entity)
     
     @classmethod
-    def get_create_class(cls, entity_name: str) -> Type[Any] | None:
+    def get_create_class(cls, entity: str) -> Type[Any] | None:
         """Get pre-loaded create class by entity name.
         
         Args:
-            entity_name: Entity name (e.g., "User" returns UserCreate)
+            entity: Entity name (e.g., "User" returns UserCreate)
             
         Returns:
             Create class or None if not found
@@ -96,16 +96,16 @@ class ModelService:
         """
         # Case-insensitive lookup
         for name, create_class in cls._create_models.items():
-            if name.lower() == entity_name.lower():
+            if name.lower() == entity.lower():
                 return create_class
         return None
     
     @classmethod
-    def get_update_class(cls, entity_name: str) -> Type[Any] | None:
+    def get_update_class(cls, entity: str) -> Type[Any] | None:
         """Get pre-loaded update class by entity name.
         
         Args:
-            entity_name: Entity name (e.g., "User" returns UserUpdate)
+            entity: Entity name (e.g., "User" returns UserUpdate)
             
         Returns:
             Update class or None if not found
@@ -115,7 +115,7 @@ class ModelService:
         """
         # Case-insensitive lookup
         for name, update_class in cls._update_models.items():
-            if name.lower() == entity_name.lower():
+            if name.lower() == entity.lower():
                 return update_class
         return None
     

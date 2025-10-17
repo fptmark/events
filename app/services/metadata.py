@@ -89,9 +89,9 @@ class MetadataService:
         return ''
 
     @staticmethod
-    def _get_raw_metadata(entity_name: str) -> Optional[Dict[str, Any]]:
+    def _get_raw_metadata(entity: str) -> Optional[Dict[str, Any]]:
         
-        module_path = f"app.models.{entity_name.lower()}_model.{entity_name}"
+        module_path = f"app.models.{entity.lower()}_model.{entity}"
         if not module_path:
             return None
             

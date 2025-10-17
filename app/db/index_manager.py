@@ -51,21 +51,21 @@ class IndexManager(ABC):
     
     # Abstract worker methods for database drivers to implement
     @abstractmethod
-    async def get_all(self, entity_type: str) -> List[List[str]]:
+    async def get_all(self, entity: str) -> List[List[str]]:
         """Get all unique constraint field lists for entity"""
         pass
 
     @abstractmethod
-    async def get_all_detailed(self, entity_type: str) -> dict:
+    async def get_all_detailed(self, entity: str) -> dict:
         """Get all indexes with full details as dict[index_name, index_info]"""
         pass
 
     @abstractmethod
-    async def create(self, entity_type: str, fields: List[str], unique: bool = True, name: Optional[str] = None) -> None:
+    async def create(self, entity: str, fields: List[str], unique: bool = True, name: Optional[str] = None) -> None:
         """Create unique index on entity"""
         pass
 
     @abstractmethod
-    async def delete(self, entity_type: str, fields: List[str]) -> None:
+    async def delete(self, entity: str, fields: List[str]) -> None:
         """Delete index by field names"""
         pass 

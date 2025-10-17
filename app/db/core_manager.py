@@ -40,13 +40,13 @@ class CoreManager(ABC):
         """Get the database connection/client instance"""
         pass
 
-    def _get_default_sort_field(self, entity_type: str) -> str:
+    def _get_default_sort_field(self, entity: str) -> str:
         from app.services.metadata import MetadataService
 
-        fields = MetadataService.fields(entity_type)
-        for field_name, field_info in fields.items():
+        fields = MetadataService.fields(entity)
+        for field, field_info in fields.items():
             if field_info.get('autoGenerate', False):
-                return field_name
+                return field
         return self.id_field
 
     @abstractmethod

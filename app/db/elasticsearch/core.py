@@ -92,7 +92,7 @@ class ElasticsearchCore(CoreManager):
             self.database._initialized = False
             logging.info("ElasticsearchDatabase: Connection closed")
 
-    def _get_default_sort_field(self, entity_type: str) -> str:
+    def _get_default_sort_field(self, entity: str) -> str:
         """For Elasticsearch, always use _id as the default sort field"""
         return self.id_field
     
@@ -182,16 +182,16 @@ class ElasticsearchCore(CoreManager):
                         properties = response.get(index_name, {}).get("mappings", {}).get("properties", {})
 
                         # Check each field follows our template rules
-                        for field_name, field_mapping in properties.items():
+                        for field, field_mapping in properties.items():
                             # Skip ID fields (not covered by our template)
-                            if field_name in ["id", "_id"]:
+                            if field in ["id", "_id"]:
                                 continue
 
                             # Check if this is a string field that should follow our template
                             if field_mapping.get("type") == "text" and "fields" in field_mapping:
-                                violations.append(f"{index_name}.{field_name}: uses old text+.raw mapping")
+                                violations.append(f"{index_name}.{field}: uses old text+.raw mapping")
                             elif field_mapping.get("type") == "keyword" and field_mapping.get("normalizer") != "lc":
-                                violations.append(f"{index_name}.{field_name}: keyword field missing 'lc' normalizer")
+                                violations.append(f"{index_name}.{field}: keyword field missing 'lc' normalizer")
 
                     except Exception as e:
                         logging.warning(f"Could not validate mapping for {index_name}: {e}")
@@ -302,8 +302,8 @@ class ElasticsearchCore(CoreManager):
 
                     # Analyze each field
                     fields = {}
-                    for field_name, field_mapping in properties.items():
-                        if field_name in ["id", "_id"]:
+                    for field, field_mapping in properties.items():
+                        if field in ["id", "_id"]:
                             continue
 
                         field_status = "ok"
@@ -316,8 +316,8 @@ class ElasticsearchCore(CoreManager):
                             from app.services.metadata import MetadataService
                             # Get entity name from index name (capitalize first letter)
                             entity_name = index_name.capitalize()
-                            schema_type = MetadataService.get(entity_name, field_name, 'type') or "unknown"
-                            field_metadata = MetadataService.get(entity_name, field_name)
+                            schema_type = MetadataService.get(entity_name, field, 'type') or "unknown"
+                            field_metadata = MetadataService.get(entity_name, field)
                             if field_metadata:
                                 is_enum = "enum" in field_metadata
                         except:
@@ -329,10 +329,10 @@ class ElasticsearchCore(CoreManager):
                         # Check for violations
                         if field_mapping.get("type") == "text" and "fields" in field_mapping:
                             field_status = "uses old text+.raw mapping"
-                            violations.append(f"{index_name}.{field_name}: {field_status}")
+                            violations.append(f"{index_name}.{field}: {field_status}")
                         elif field_mapping.get("type") == "keyword" and field_mapping.get("normalizer") != "lc":
                             field_status = "keyword field missing 'lc' normalizer"
-                            violations.append(f"{index_name}.{field_name}: {field_status}")
+                            violations.append(f"{index_name}.{field}: {field_status}")
 
                         # Get field statistics
                         population = "0%"
@@ -342,7 +342,7 @@ class ElasticsearchCore(CoreManager):
                             try:
                                 # Get field stats using exists query for population
                                 exists_query = {
-                                    "query": {"exists": {"field": field_name}},
+                                    "query": {"exists": {"field": field}},
                                     "size": 0
                                 }
                                 exists_response = await es.search(index=index_name, body=exists_query)
@@ -352,15 +352,11 @@ class ElasticsearchCore(CoreManager):
 
                                 # Get cardinality using cardinality aggregation
                                 if non_null_count > 0:
-                                    # Choose the right field for cardinality based on type
-                                    cardinality_field = field_name
-                                    if es_type == "text" and "fields" in field_mapping and "raw" in field_mapping["fields"]:
-                                        cardinality_field = f"{field_name}.raw"
-
+                                    # With keyword+lc normalizer, query fields directly
                                     cardinality_query = {
                                         "aggs": {
                                             "unique_count": {
-                                                "cardinality": {"field": cardinality_field}
+                                                "cardinality": {"field": field}
                                             }
                                         },
                                         "size": 0
@@ -373,7 +369,7 @@ class ElasticsearchCore(CoreManager):
 
                             except Exception as stats_error:
                                 # Stats failed, use defaults
-                                logging.warning(f"Field stats failed for {index_name}.{field_name}: {stats_error}")
+                                logging.warning(f"Field stats failed for {index_name}.{field}: {stats_error}")
 
                         # For enums, flag high uniqueness as potential issue
                         approx_uniques_display = approx_uniques
@@ -383,7 +379,7 @@ class ElasticsearchCore(CoreManager):
                             if uniques_pct > 50:
                                 approx_uniques_display = f"🔴{approx_uniques}"
 
-                        fields[field_name] = {
+                        fields[field] = {
                             "es type/yaml type": type_display,
                             "status": field_status,
                             "population": population,
@@ -469,109 +465,94 @@ class ElasticsearchIndexes(IndexManager):
         super().__init__(database)
     
     async def create(
-        self, 
-        entity_type: str, 
+        self,
+        entity: str,
         fields: List[str],
         unique: bool = False,
         name: Optional[str] = None
     ) -> None:
-        """Create synthetic unique constraint mapping for Elasticsearch"""
+        """Create synthetic unique constraint mapping for Elasticsearch
+
+        Note: With the new keyword+lc normalizer template, fields are automatically
+        created with the correct mapping when documents are indexed. This method
+        is kept for consistency with the IndexManager interface but doesn't need
+        to create explicit mappings since the template handles it.
+        """
         if not unique:
             return  # Only handle unique constraints
-            
-        self.database._ensure_initialized()
-        es = self.database.core.get_connection()
-        properties: Dict[str, Any] = {}
-        
-        # Ensure index exists
-        if not await es.indices.exists(index=entity_type.lower()):
-            await es.indices.create(index=entity_type.lower())
-        
-        if len(fields) == 1:
-            # Single field unique constraint - ensure it has .raw subfield for exact matching
-            field_name = fields[0]
-            properties = {
-                field_name: {
-                    "type": "text",
-                    "fields": {
-                        "raw": {
-                            "type": "keyword",
-                            "ignore_above": 256
-                        }
-                    }
-                }
-            }
-        else:
-            # Multi-field unique constraint - create hash field
-            hash_field_name = f"_hash_{'_'.join(sorted(fields))}"
-            properties = {
-                hash_field_name: {
-                    "type": "keyword"
-                }
-            }
-            # Also ensure all individual fields have proper mapping
-            for field_name in fields:
-                properties[field_name] = {
-                    "type": "text",
-                    "fields": {
-                        "raw": {
-                            "type": "keyword", 
-                            "ignore_above": 256
-                        }
-                    }
-                }
-        
-        # Update mapping
-        await es.indices.put_mapping(
-            index=entity_type.lower(),
-            properties=properties
-        )
-    
-    async def get_all(self, entity_type: str) -> List[List[str]]:
-        """Get synthetic unique indexes (hash fields) for Elasticsearch"""
-        self.database._ensure_initialized()
-        es = self.database.core.get_connection()
-        
-        if not await es.indices.exists(index=entity_type.lower()):
-            return []
-        
-        # For Elasticsearch, we look for hash fields that represent unique constraints
-        # Hash fields follow pattern: _hash_field1_field2_... for multi-field constraints
-        response = await es.indices.get_mapping(index=entity_type.lower())
-        mapping = response.get(entity_type.lower(), {}).get("mappings", {}).get("properties", {})
-        
-        unique_constraints = []
-        processed_fields = set()
-        
-        for field_name in mapping.keys():
-            if field_name.startswith('_hash_'):
-                # This is a hash field for multi-field unique constraint
-                # Extract original field names from hash field name
-                # Format: _hash_field1_field2_...
-                fields_part = field_name[6:]  # Remove '_hash_'
-                original_fields = fields_part.split('_')
-                if len(original_fields) > 1:
-                    unique_constraints.append(original_fields)
-                    processed_fields.update(original_fields)
-            elif field_name not in processed_fields:
-                # Single field that might have unique constraint
-                # Check if it's a .raw field (which indicates unique constraint setup)
-                field_config = mapping[field_name]
-                if (isinstance(field_config, dict) and 
-                    'fields' in field_config and 
-                    'raw' in field_config['fields']):
-                    # This field has unique constraint
-                    unique_constraints.append([field_name])
-        
-        return unique_constraints
 
-    async def get_all_detailed(self, entity_type: str) -> dict:
+        self.database._ensure_initialized()
+        es = self.database.core.get_connection()
+
+        # Ensure index exists - template will apply keyword+lc normalizer automatically
+        if not await es.indices.exists(index=entity.lower()):
+            await es.indices.create(index=entity.lower())
+
+        # For multi-field unique constraints, create hash field with lc normalizer
+        if len(fields) > 1:
+            hash_field = f"_hash_{'_'.join(sorted(fields))}"
+            properties = {
+                hash_field: {
+                    "type": "keyword",
+                    "normalizer": "lc"
+                }
+            }
+            await es.indices.put_mapping(
+                index=entity.lower(),
+                properties=properties
+            )
+
+        # Single-field constraints don't need explicit mapping - template handles it
+    
+    async def get_all(self, entity: str) -> List[List[str]]:
+        """Get synthetic unique indexes from metadata and verify they exist in the index
+
+        With the new keyword+lc normalizer template, unique constraint fields are just
+        regular keyword fields. We get the expected unique constraints from metadata
+        and verify they exist in the index mapping.
+        """
+        self.database._ensure_initialized()
+        es = self.database.core.get_connection()
+
+        # Get expected unique constraints from metadata
+        metadata = MetadataService.get(entity)
+        expected_uniques = metadata.get('uniques', [])
+
+        if not await es.indices.exists(index=entity.lower()):
+            # Index doesn't exist yet - return empty list
+            # (create() will create the index when called)
+            return []
+
+        # Get current mapping
+        response = await es.indices.get_mapping(index=entity.lower())
+        mapping = response.get(entity.lower(), {}).get("mappings", {}).get("properties", {})
+
+        # Check which unique constraints are set up
+        existing_constraints = []
+
+        for constraint_fields in expected_uniques:
+            if len(constraint_fields) == 1:
+                # Single field - check if it exists in mapping
+                field = constraint_fields[0]
+                if field in mapping:
+                    existing_constraints.append(constraint_fields)
+            else:
+                # Multi-field - check if hash field exists
+                hash_field = f"_hash_{'_'.join(sorted(constraint_fields))}"
+                if hash_field in mapping:
+                    # Also verify all individual fields exist
+                    if all(field in mapping for field in constraint_fields):
+                        existing_constraints.append(constraint_fields)
+
+        return existing_constraints
+
+    async def get_all_detailed(self, entity: str) -> dict:
         """Get all synthetic unique constraints from metadata"""
         from app.services.metadata import MetadataService
 
         indexes = {}
         try:
-            metadata = MetadataService.get(entity_type)
+            metadata = MetadataService.get(entity)
             uniques = metadata.get('uniques', [])
 
             for fields in uniques:
@@ -587,7 +568,7 @@ class ElasticsearchIndexes(IndexManager):
 
         return indexes
 
-    async def delete(self, entity_type: str, fields: List[str]) -> None:
+    async def delete(self, entity: str, fields: List[str]) -> None:
         """Delete synthetic unique constraint (limited in Elasticsearch)"""
         # Elasticsearch doesn't allow removing fields from existing mappings
         # In practice, you'd need to reindex to a new index without these fields

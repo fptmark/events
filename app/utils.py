@@ -77,7 +77,7 @@ def parse_url_path(path: str) -> Tuple[str, Optional[str]]:
         path: URL path like "/api/user/123" or "/api/user"
         
     Returns:
-        Tuple of (entity_name, entity_id)
+        Tuple of (entity, entity_id)
         
     Raises:
         ValueError: If path format is invalid
@@ -94,7 +94,7 @@ def parse_url_path(path: str) -> Tuple[str, Optional[str]]:
     if len(path_parts) < 2:
         raise ValueError("Bad URL format, expected /api/{entity}/{id?}")
     
-    entity_name = path_parts[1].lower()  # Entity name after /api
+    entity = path_parts[1].lower()  # Entity name after /api
     entity_id = path_parts[2] if len(path_parts) > 2 else None
     
-    return entity_name, entity_id
+    return entity, entity_id
