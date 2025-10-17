@@ -20,8 +20,9 @@ type TestResult struct {
 	Errors          int  // Count of errors in notifications
 
 	// Validation fields (populated by ValidateTest for static tests, or directly by dynamic tests)
-	Issues []string                   // Validation issues found
-	Fields map[string][]interface{}   // Field values extracted during validation
+	Issues []string                 // Validation issues found
+	Notes  []string                 // Informational notes (not errors)
+	Fields map[string][]interface{} // Field values extracted during validation
 }
 
 // TestParams represents parsed URL parameters from a test
@@ -70,4 +71,18 @@ type CRUDExpectation struct {
 
 	// For error validation
 	ExpectedErrorType string `json:"expected_error_type,omitempty"` // "validation", "not_found", "constraint", etc.
+}
+
+// PaginationData represents pagination information from API response
+type PaginationData struct {
+	Page       int
+	PageSize   int
+	Total      int
+	TotalPages int
+}
+
+// CategoryStats represents test result statistics for a category
+type CategoryStats struct {
+	Success int
+	Failed  int
 }

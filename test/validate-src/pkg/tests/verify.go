@@ -6,29 +6,17 @@ import (
 	"strings"
 	"time"
 
+	"validate/pkg/metadata"
 	"validate/pkg/types"
 )
 
 type verifier struct {
-	// Note: Schema cache removed for now - validate-src doesn't have events-shared dependency
-	// Will fall back to string comparison which is still functional
+	entity string // Entity type for metadata lookup (e.g., "User", "Account")
 }
 
-// VerificationResult represents the result of verification
-type VerificationResult struct {
-	Passed bool
-	Issues []string
-	Fields map[string][]interface{} // Field values for display (sort_fieldname, filter_fieldname, view_entity.field)
-}
-
-// Verify performs verification of data against parameters
-func Verify(data []map[string]interface{}, params types.TestParams) *VerificationResult {
-	v := &verifier{}
-	result := &VerificationResult{
-		Passed: true,
-		Issues: []string{},
-		Fields: make(map[string][]interface{}),
-	}
+// Verify performs verification of data against parameters and populates result fields
+func Verify(data []map[string]interface{}, params types.TestParams, entity string, result *types.TestResult) {
+	v := &verifier{entity: entity}
 
 	// Extract and verify sort fields
 	if len(params.Sort) > 0 {
@@ -46,12 +34,10 @@ func Verify(data []map[string]interface{}, params types.TestParams) *Verificatio
 	if len(params.View) > 0 {
 		v.extractViewFields(data, params.View, result)
 	}
-
-	return result
 }
 
 // extractSortFields extracts sort field values for display
-func (v *verifier) extractSortFields(data []map[string]interface{}, sortFields []types.SortField, result *VerificationResult) {
+func (v *verifier) extractSortFields(data []map[string]interface{}, sortFields []types.SortField, result *types.TestResult) {
 	for _, sortField := range sortFields {
 		fieldName := sortField.Field
 		values := v.extractFieldValues(data, fieldName)
@@ -60,7 +46,7 @@ func (v *verifier) extractSortFields(data []map[string]interface{}, sortFields [
 }
 
 // extractFilterFields extracts filter field values for display
-func (v *verifier) extractFilterFields(data []map[string]interface{}, filters map[string][]types.FilterValue, result *VerificationResult) {
+func (v *verifier) extractFilterFields(data []map[string]interface{}, filters map[string][]types.FilterValue, result *types.TestResult) {
 	for fieldName := range filters {
 		values := v.extractFieldValues(data, fieldName)
 		result.Fields[fmt.Sprintf("filter_%s", fieldName)] = values
@@ -68,7 +54,7 @@ func (v *verifier) extractFilterFields(data []map[string]interface{}, filters ma
 }
 
 // extractViewFields extracts view field values for display
-func (v *verifier) extractViewFields(data []map[string]interface{}, views map[string][]string, result *VerificationResult) {
+func (v *verifier) extractViewFields(data []map[string]interface{}, views map[string][]string, result *types.TestResult) {
 	for entity, fields := range views {
 		for _, fieldName := range fields {
 			values := v.extractNestedFieldValues(data, entity, fieldName)
@@ -135,7 +121,7 @@ func (v *verifier) extractNestedFieldValues(data []map[string]interface{}, entit
 }
 
 // verifySortData verifies that data is properly sorted according to sort fields
-func (v *verifier) verifySortData(data []map[string]interface{}, sortFields []types.SortField, result *VerificationResult) {
+func (v *verifier) verifySortData(data []map[string]interface{}, sortFields []types.SortField, result *types.TestResult) {
 	if len(data) <= 1 || len(sortFields) == 0 {
 		return
 	}
@@ -151,7 +137,7 @@ func (v *verifier) verifySortData(data []map[string]interface{}, sortFields []ty
 }
 
 // verifyFilterData verifies that data matches filter criteria
-func (v *verifier) verifyFilterData(data []map[string]interface{}, filters map[string][]types.FilterValue, result *VerificationResult) {
+func (v *verifier) verifyFilterData(data []map[string]interface{}, filters map[string][]types.FilterValue, result *types.TestResult) {
 	if len(data) == 0 {
 		return // No data to verify
 	}
@@ -192,7 +178,6 @@ func (v *verifier) verifyFilterData(data []map[string]interface{}, filters map[s
 	}
 }
 
-
 // checkSortOrder verifies if values are sorted in the specified direction
 func (v *verifier) checkSortOrder(values []interface{}, direction, entityType, fieldName string) bool {
 	if len(values) <= 1 {
@@ -214,19 +199,30 @@ func (v *verifier) checkSortOrder(values []interface{}, direction, entityType, f
 }
 
 // checkFilterMatch checks if a value matches the filter criteria
+// Both MongoDB and Elasticsearch use substring matching for non-enum strings, exact matching for enums
 func (v *verifier) checkFilterMatch(value interface{}, filter types.FilterValue, fieldName string) bool {
 	// Special handling for datetime comparisons
 	if filter.Operator == "eq" && v.isDateTimeComparison(value, filter.Value) {
 		return v.compareDateTimeValues(value, filter.Value) == 0
 	}
 
-	// For "eq" operator on strings, use case-insensitive comparison
+	// For "eq" operator on strings, check if it's an enum field
 	if filter.Operator == "eq" {
 		valueStr, valueIsString := value.(string)
 		filterStr, filterIsString := filter.Value.(string)
 
 		if valueIsString && filterIsString {
-			return strings.EqualFold(valueStr, filterStr)
+			valueLower := strings.ToLower(valueStr)
+			filterLower := strings.ToLower(filterStr)
+
+			// Check if this is an enum field - enum fields use exact matching
+			isEnumField := metadata.IsEnumField(v.entity, fieldName)
+			if isEnumField {
+				// Enum fields: exact match (case-insensitive)
+				return strings.EqualFold(valueStr, filterStr)
+			}
+			// Non-enum strings: substring/contains matching (both databases)
+			return strings.Contains(valueLower, filterLower)
 		}
 	}
 
@@ -484,7 +480,7 @@ func (v *verifier) hasOnlyEmptyObjects(data []map[string]interface{}) bool {
 }
 
 // normalizeSortFields handles unknown fields and default directions
-func (v *verifier) normalizeSortFields(sortFields []types.SortField, result *VerificationResult) []types.SortField {
+func (v *verifier) normalizeSortFields(sortFields []types.SortField, result *types.TestResult) []types.SortField {
 	var normalized []types.SortField
 
 	for _, field := range sortFields {
@@ -511,7 +507,7 @@ func (v *verifier) normalizeSortFields(sortFields []types.SortField, result *Ver
 }
 
 // validateSortOrder validates that records are sorted correctly according to sort fields
-func (v *verifier) validateSortOrder(records []map[string]interface{}, sortFields []types.SortField, result *VerificationResult) {
+func (v *verifier) validateSortOrder(records []map[string]interface{}, sortFields []types.SortField, result *types.TestResult) {
 	// Compare each adjacent pair of records
 	for i := 0; i < len(records)-1; i++ {
 		if !v.compareRecords(records[i], records[i+1], sortFields, result) {
@@ -521,7 +517,7 @@ func (v *verifier) validateSortOrder(records []map[string]interface{}, sortField
 }
 
 // compareRecords compares two records according to sort fields, returns true if record1 <= record2
-func (v *verifier) compareRecords(record1, record2 map[string]interface{}, sortFields []types.SortField, result *VerificationResult) bool {
+func (v *verifier) compareRecords(record1, record2 map[string]interface{}, sortFields []types.SortField, result *types.TestResult) bool {
 	for _, sortField := range sortFields {
 		fieldName := sortField.Field
 		direction := sortField.Direction

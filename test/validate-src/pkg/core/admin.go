@@ -76,3 +76,11 @@ func GetDatabaseType() string {
 	}
 	return "unknown"
 }
+
+// DetectAndSetDatabaseType detects the database type and sets the global DatabaseType variable
+func DetectAndSetDatabaseType() {
+	DatabaseType = GetDatabaseType()
+	if Verbose {
+		fmt.Printf("Detected database type: %s\n", DatabaseType)
+	}
+}

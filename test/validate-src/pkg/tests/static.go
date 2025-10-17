@@ -648,19 +648,13 @@ func GetTestCasesByClass(testClass string) []types.TestCase {
 	return filtered
 }
 
-// CategoryStats tracks success and failure counts for a test category
-type CategoryStats struct {
-	Success int
-	Failed  int
-}
-
 // GetAllCategories returns a map of all test categories with initialized counters
-func GetAllCategories() map[string]*CategoryStats {
-	categories := make(map[string]*CategoryStats)
+func GetAllCategories() map[string]*types.CategoryStats {
+	categories := make(map[string]*types.CategoryStats)
 
 	for _, tc := range GetAllTestCases() {
 		if _, exists := categories[tc.TestClass]; !exists {
-			categories[tc.TestClass] = &CategoryStats{Success: 0, Failed: 0}
+			categories[tc.TestClass] = &types.CategoryStats{Success: 0, Failed: 0}
 		}
 	}
 

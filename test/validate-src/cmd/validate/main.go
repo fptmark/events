@@ -11,6 +11,7 @@ import (
 
 	"validate/pkg/core"
 	"validate/pkg/display"
+	"validate/pkg/metadata"
 	"validate/pkg/modes"
 	"validate/pkg/tests"
 )
@@ -146,6 +147,17 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 
 	// Set global config (now in core package)
 	core.SetConfig(DefaultServerURL, verbose, numUsers, numAccounts, pauseMs)
+
+	// Detect database type for filter matching logic
+	core.DetectAndSetDatabaseType()
+
+	// Load metadata for field type lookups
+	if err := metadata.LoadMetadata(); err != nil {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load metadata: %v\n", err)
+		}
+		// Continue anyway - will fall back to heuristics
+	}
 
 	// Get test categories if specified
 	var testNums []int

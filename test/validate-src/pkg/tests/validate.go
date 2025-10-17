@@ -15,9 +15,12 @@ func ValidateTest(testNum int, result *types.TestResult) {
 		return
 	}
 
-	// Initialize Issues and Fields if not already set (dynamic tests may have already populated these)
+	// Initialize Issues, Notes, and Fields if not already set (dynamic tests may have already populated these)
 	if result.Issues == nil {
 		result.Issues = []string{}
+	}
+	if result.Notes == nil {
+		result.Notes = []string{}
 	}
 	if result.Fields == nil {
 		result.Fields = make(map[string][]interface{})
@@ -29,9 +32,11 @@ func ValidateTest(testNum int, result *types.TestResult) {
 		return // Dynamic tests populate Issues/Fields themselves
 	}
 
-	// First do existing verification
-	verifyResult := Verify(result.Data, result.Params)
-	result.Issues = append(result.Issues, verifyResult.Issues...)
+	// Extract entity from URL (e.g., "/api/User" -> "User")
+	entity := extractEntityFromURL(result.URL)
+
+	// Perform verification (populates Issues, Notes, and Fields directly in result)
+	Verify(result.Data, result.Params, entity, result)
 
 	// Add pagination validation for collection requests
 	paginationIssues := validatePagination(testNum, result)
@@ -40,9 +45,6 @@ func ValidateTest(testNum int, result *types.TestResult) {
 	// Add CRUD validation if expected data exists
 	crudIssues := validateCRUDResult(testNum, result)
 	result.Issues = append(result.Issues, crudIssues...)
-
-	// Copy fields from verification
-	result.Fields = verifyResult.Fields
 }
 
 // validatePagination validates pagination data for collection requests
@@ -101,16 +103,8 @@ func isCollectionRequest(url string) bool {
 	return true
 }
 
-// PaginationData represents pagination information from API response
-type PaginationData struct {
-	Page       int
-	PageSize   int
-	Total      int
-	TotalPages int
-}
-
 // extractPagination extracts pagination data from raw JSON response
-func extractPagination(rawJSON json.RawMessage) *PaginationData {
+func extractPagination(rawJSON json.RawMessage) *types.PaginationData {
 	var response map[string]interface{}
 	if err := json.Unmarshal(rawJSON, &response); err != nil {
 		return nil
@@ -136,7 +130,7 @@ func extractPagination(rawJSON json.RawMessage) *PaginationData {
 		return nil
 	}
 
-	return &PaginationData{
+	return &types.PaginationData{
 		Page:       int(page),
 		PageSize:   int(pageSize),
 		Total:      int(total),
@@ -271,4 +265,21 @@ func getTestCaseByID(testID int) (*types.TestCase, error) {
 	}
 	testCase := allTests[testID-1]
 	return &testCase, nil
+}
+
+// extractEntityFromURL extracts the entity type from a URL
+// Examples: "/api/User" -> "User", "/api/User/usr_001" -> "User", "/api/Account?filter=..." -> "Account"
+func extractEntityFromURL(url string) string {
+	// Remove query params
+	if idx := strings.Index(url, "?"); idx != -1 {
+		url = url[:idx]
+	}
+
+	// Split by / and get the entity part
+	parts := strings.Split(strings.Trim(url, "/"), "/")
+	if len(parts) >= 2 {
+		return parts[1] // "api/User" -> "User"
+	}
+
+	return "User" // Default fallback
 }

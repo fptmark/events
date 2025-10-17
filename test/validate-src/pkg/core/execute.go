@@ -11,11 +11,11 @@ import (
 
 // Global config for all packages
 var (
-	ServerURL   string
-	Verbose     bool
-	NumUsers    int
-	NumAccounts int
-	PauseMs     int // Pause in milliseconds between tests (for eventual consistency)
+	ServerURL    string
+	Verbose      bool
+	NumUsers     int
+	NumAccounts  int
+	DatabaseType string // Detected database type: "mongodb", "elasticsearch", or "unknown"
 )
 
 // SetConfig sets the global configuration
@@ -24,7 +24,6 @@ func SetConfig(serverURL string, verbose bool, numUsers int, numAccounts int, pa
 	Verbose = verbose
 	NumUsers = numUsers
 	NumAccounts = numAccounts
-	PauseMs = pauseMs
 }
 
 // ExecuteGet makes a GET request and returns the parsed JSON response

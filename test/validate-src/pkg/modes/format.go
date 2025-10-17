@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"validate/pkg/tests"
 	"validate/pkg/types"
 )
 
@@ -31,14 +30,21 @@ func formatResult(testCase *types.TestCase, result *types.TestResult, showData b
 	}
 	output.WriteString(statusLine + "\n")
 
-	// Populate validation issues in result (modifies result in place)
-	tests.ValidateTest(testCase.ID, result)
+	// Validation already done in executor.ExecuteTests() - no need to call again here
 
 	// Show validation issues if test failed
 	if !result.Passed && len(result.Issues) > 0 {
 		output.WriteString("Issues:\n")
 		for _, issue := range result.Issues {
 			output.WriteString(fmt.Sprintf("  - %s\n", issue))
+		}
+	}
+
+	// Show informational notes if present (even if test passed)
+	if len(result.Notes) > 0 {
+		output.WriteString("Notes:\n")
+		for _, note := range result.Notes {
+			output.WriteString(fmt.Sprintf("  - %s\n", note))
 		}
 	}
 

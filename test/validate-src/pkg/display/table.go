@@ -12,7 +12,7 @@ import (
 func FormatTableRow(test types.TestCase, result *types.TestResult) TableRow {
 	// Determine pass/fail status
 	status := "\033[32mPASS\033[0m" // Green
-	failureReason := ""
+	notes := ""
 	warningCol := ""
 	actualStatus := 0
 	warnings := 0
@@ -22,7 +22,7 @@ func FormatTableRow(test types.TestCase, result *types.TestResult) TableRow {
 	if result == nil {
 		// Framework error - must have result in table mode
 		status = "\033[1;91mFAIL\033[0m" // Bold bright red
-		failureReason = "Framework error: no result"
+		notes = "Framework error: no result"
 		warningCol = "  - - -"
 	} else {
 		actualStatus = result.StatusCode
@@ -33,16 +33,20 @@ func FormatTableRow(test types.TestCase, result *types.TestResult) TableRow {
 		// Use result.Passed which was calculated in core.ExecuteTests
 		if result.Passed {
 			status = "\033[32mPASS\033[0m"
+			// For passing tests, show notes from validation (e.g., "MongoDB fuzzy match")
+			if len(result.Notes) > 0 {
+				notes = strings.Join(result.Notes, "; ")
+			}
 		} else {
 			status = "\033[1;91mFAIL\033[0m" // Bold bright red
 
-			// Determine failure reason
+			// For failing tests, show failure reason
 			if result.StatusCode != test.ExpectedStatus {
-				failureReason = fmt.Sprintf("Expected %d, got %d", test.ExpectedStatus, result.StatusCode)
+				notes = fmt.Sprintf("Expected %d, got %d", test.ExpectedStatus, result.StatusCode)
 			} else if errors > 0 {
-				failureReason = "Validation errors detected"
+				notes = "Validation errors detected"
 			} else {
-				failureReason = "Validation failed"
+				notes = "Validation failed"
 			}
 		}
 
@@ -58,7 +62,7 @@ func FormatTableRow(test types.TestCase, result *types.TestResult) TableRow {
 		Status:          actualStatus,
 		WarningCol:      warningCol,
 		Pass:            status,
-		FailureReason:   failureReason,
+		Notes:           notes,
 		Warnings:        warnings,
 		RequestWarnings: requestWarnings,
 		Errors:          errors,
@@ -71,7 +75,7 @@ type TableRow struct {
 	Status          int
 	WarningCol      string
 	Pass            string
-	FailureReason   string
+	Notes           string
 	Warnings        int
 	RequestWarnings int
 	Errors          int
@@ -139,7 +143,7 @@ func ShowTestResults(testNumbers []int, results []*types.TestResult, showAll boo
 
 	// Build the table
 	fmt.Print("┌─────┬──────────┬─────────────────────────────────────┬────────┬──────────┬─────────────────────────────────────┬────────┬─────────┬──────┬──────────────────────────────────────────┐\n")
-	fmt.Print("│ ID  │ Category │ URL                                 │ Method │ Expected │ Description                         │ Actual │ W/RW/E  │ Pass │ Failure Reason                           │\n")
+	fmt.Print("│ ID  │ Category │ URL                                 │ Method │ Expected │ Description                         │ Actual │ W/RW/E  │ Pass │ Notes                                    │\n")
 	fmt.Print("├─────┼──────────┼─────────────────────────────────────┼────────┼──────────┼─────────────────────────────────────┼────────┼─────────┼──────┼──────────────────────────────────────────┤\n")
 
 	// Rows
@@ -162,7 +166,7 @@ func ShowTestResults(testNumbers []int, results []*types.TestResult, showAll boo
 				row.Status,
 				row.WarningCol,
 				row.Pass,
-				truncateString(row.FailureReason, 40))
+				truncateString(row.Notes, 40))
 		}
 	}
 
