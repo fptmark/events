@@ -151,7 +151,7 @@ if (db_uri == '' or db_name == '' or db_type == ''):
     sys.exit(1)
 
 # Validate database type is supported
-supported_types = ["mongodb", "elasticsearch"]
+supported_types = ["mongodb", "elasticsearch", "sqlite"]
 if db_type.lower() not in supported_types:
     logger.error(f"Unsupported database type: {db_type}. Supported types: {supported_types}")
     sys.exit(1)

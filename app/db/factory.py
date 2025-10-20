@@ -11,6 +11,7 @@ from app.services.notify import Notification, HTTP
 from .base import DatabaseInterface
 from .mongodb import MongoDatabase
 from .elasticsearch import ElasticsearchDatabase
+from .sqlite import SQLiteDatabase
 
 
 class DatabaseFactory:
@@ -46,9 +47,9 @@ class DatabaseFactory:
         Initialize database connection with new architecture.
         
         Args:
-            db_type: Database type ("mongodb" or "elasticsearch")
-            connection_str: Database connection string
-            database_name: Database name
+            db_type: Database type ("mongodb", "elasticsearch", or "sqlite")
+            connection_str: Database connection string (or file path for SQLite)
+            database_name: Database name (unused for SQLite)
             case_sensitive_sorting: Whether to use case-sensitive sorting
             
         Returns:
@@ -64,12 +65,18 @@ class DatabaseFactory:
             if db_type.lower() == "mongodb":
                 db = MongoDatabase(case_sensitive_sorting=case_sensitive_sorting)
             elif db_type.lower() == "elasticsearch":
-                db = ElasticsearchDatabase(case_sensitive_sorting=case_sensitive_sorting) 
+                db = ElasticsearchDatabase(case_sensitive_sorting=case_sensitive_sorting)
+            elif db_type.lower() == "sqlite":
+                db = SQLiteDatabase(db_path=connection_str, case_sensitive_sorting=case_sensitive_sorting)
             else:
                 raise ValueError(f"Unsupported database type: {db_type}")
-                
+
             # Initialize connection
-            await db.core.init(connection_str, database_name)
+            # For SQLite, connection_str is the db_path and database_name is ignored
+            if db_type.lower() == "sqlite":
+                await db.core.init(connection_str)
+            else:
+                await db.core.init(connection_str, database_name)
             
             cls._instance = db
             cls._db_type = db_type
