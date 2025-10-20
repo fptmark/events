@@ -35,8 +35,12 @@ func ValidateTest(testNum int, result *types.TestResult) {
 	// Extract entity from URL (e.g., "/api/User" -> "User")
 	entity := extractEntityFromURL(result.URL)
 
-	// Perform verification (populates Issues, Notes, and Fields directly in result)
-	Verify(result.Data, result.Params, entity, result)
+	// Skip verification for DELETE operations - DELETE ignores query parameters (filter, sort, view)
+	// and typically returns empty or minimal data, so validating params against response data doesn't make sense
+	if err == nil && testCase.Method != "DELETE" {
+		// Perform verification (populates Issues, Notes, and Fields directly in result)
+		Verify(result.Data, result.Params, entity, result)
+	}
 
 	// Add pagination validation for collection requests
 	paginationIssues := validatePagination(testNum, result)

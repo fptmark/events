@@ -43,6 +43,9 @@ func FormatTableRow(test types.TestCase, result *types.TestResult) TableRow {
 			// For failing tests, show failure reason
 			if result.StatusCode != test.ExpectedStatus {
 				notes = fmt.Sprintf("Expected %d, got %d", test.ExpectedStatus, result.StatusCode)
+			} else if len(result.Issues) > 0 {
+				// Show first issue instead of generic message
+				notes = result.Issues[0]
 			} else if errors > 0 {
 				notes = "Validation errors detected"
 			} else {

@@ -151,6 +151,9 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 	// Detect database type for filter matching logic
 	core.DetectAndSetDatabaseType()
 
+	// Always show database type as first line
+	fmt.Printf("Database: %s\n", core.DatabaseType)
+
 	// Load metadata for field type lookups
 	if err := metadata.LoadMetadata(); err != nil {
 		if verbose {
