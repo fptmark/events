@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Tuple
 import warnings as python_warnings
 from pydantic import ValidationError as PydanticValidationError
+from ulid import ULID
 
 from app.services.notify import Notification, Warning, HTTP
 from app.db.core_manager import CoreManager
@@ -181,9 +182,8 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (saved_document, count) where count is 1 if created, 0 if failed
         """
-        # remove the id from the data and pass it separately
-        # orig = data.copy()
-        id = (data.pop('id', '') or '').strip()
+        # Remove the id from the data and normalize to lowercase
+        id = (data.pop('id', '') or '').strip().lower()
 
         # Validate input data if validation is enabled.  it should only be disabled for writing test data (?novalidate param)
         # if not RequestContext.novalidate:    - DEPRECATED - always validate
@@ -203,6 +203,10 @@ class DocumentManager(ABC):
                 Notification.error(HTTP.NOT_FOUND, f"Document to update not found: {id}", entity=entity)
             except:
                 Notification.error(HTTP.INTERNAL_ERROR, f"Document error in update: {id}", entity=entity)
+        else:
+            # Generate lowercase ULID if no ID provided (CREATE only)
+            if not id:
+                id = str(ULID()).lower()
 
         # Validate unique constraints from metadata (only for databases without native support)
         metadata = MetadataService.get(entity)
@@ -221,11 +225,14 @@ class DocumentManager(ABC):
             # Remove any sub-objects so we don't store them in the db
             prepared_data = self._remove_sub_objects(entity, prepared_data)
 
+            # Add ID to prepared_data (databases will convert to their native field)
+            prepared_data['id'] = id
+
             # Save in database (database-specific implementation)
             try:
                 if is_update:
                     doc = await self._update_impl(entity, id, prepared_data)
-                    return {'id': id, **doc}, 1
+                    return doc, 1
                 else:
                     doc = await self._create_impl(entity, id, prepared_data)
                     return doc, 1

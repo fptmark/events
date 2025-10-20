@@ -106,8 +106,9 @@ class ElasticsearchDocuments(DocumentManager):
 
         documents = []
         for hit in hits:
-            # doc = self._normalize_document(hit["_source"])
-            documents.append(hit["_source"])
+            doc = hit["_source"]
+            # 'id' is already in _source, no need to extract from metadata
+            documents.append(doc)
 
         total_count = response.get("hits", {}).get("total", {}).get("value", 0)
 
@@ -129,8 +130,9 @@ class ElasticsearchDocuments(DocumentManager):
 
         try:
             response = await es.get(index=index, id=id)
-            # doc = self._normalize_document(response["_source"])
-            return response["_source"], 1
+            doc = response["_source"]
+            # 'id' is already in _source, no need to extract from metadata
+            return doc, 1
         except NotFoundError as e:
             raise DocumentNotFound(e)
     
@@ -167,18 +169,14 @@ class ElasticsearchDocuments(DocumentManager):
             raise DatabaseError(f"Elasticsearch delete error: {str(e)}")
     
     async def _create_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create document in Elasticsearch. If data contains 'id', use it as _id, otherwise auto-generate."""
+        """Create document in Elasticsearch. Uses provided id as ES _id and stores in _source for sorting."""
         es = self.database.core.get_connection()
 
         index = entity.lower()
-        create_data = data.copy()
 
-        # If an 'id' was specified, use it as Elasticsearch _id
-        if not id:
-            id = str(uuid.uuid4())
-
-        # Store shadow id field for sorting (not _id - that's metadata)
-        create_data['id'] = id
+        # Keep 'id' in data for sorting (ES can't sort by _id metadata without fielddata)
+        # Note: This duplicates the ID (~35 bytes per doc) but enables sorting functionality
+        # data already has 'id' from DocumentManager._save_document
 
         # Use refresh='wait_for' if strict consistency is enabled (default)
         # This ensures document is searchable immediately, which is critical for
@@ -187,9 +185,10 @@ class ElasticsearchDocuments(DocumentManager):
         #   1. elasticsearch_strict_consistency=false config (global)
         #   2. ?no_consistency=true query param (per-request, for bulk loads)
         refresh_mode = 'wait_for' if (Config.elasticsearch_strict_consistency() and not RequestContext.no_consistency) else False
-        await es.index(index=index, id=id, body=create_data, refresh=refresh_mode)
+        await es.index(index=index, id=id, body=data, refresh=refresh_mode)
 
-        return create_data
+        # Return with 'id' for API response
+        return {'id': id, **data}
 
     async def _update_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         # update is the same as create in ES - it will upsert
@@ -236,8 +235,7 @@ class ElasticsearchDocuments(DocumentManager):
         """Build Elasticsearch sort specification
 
         If no sort specified, default to sorting by 'id' field (ascending) to ensure
-        consistent ordering across pagination. Without this, ES uses internal _id which
-        can result in inconsistent ordering.
+        consistent ordering across pagination.
         """
         if not sort_fields:
             # Default sort by 'id' field for consistent pagination

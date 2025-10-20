@@ -135,14 +135,13 @@ class MongoDocuments(DocumentManager):
         try:
             collection = entity
 
-            # If data contains 'id', use it as MongoDB _id
-            data['_id'] = id if id else str(uuid.uuid4())
+            # Move 'id' from data to '_id' for MongoDB storage (DocumentManager already set 'id')
+            data['_id'] = data.pop('id')
 
             result = await db[collection].insert_one(data)
             if result.inserted_id:
+                # Return with 'id' for API response (move _id back to id)
                 return {'id': data.pop('_id'), **data}
-                # data["id"] = data.pop('_id')
-                # return data
             else:
                 raise DatabaseError(message=f"MongoDB insert failed: {result}")
 
@@ -156,17 +155,21 @@ class MongoDocuments(DocumentManager):
     async def _update_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update existing document in MongoDB"""
         db = self.database.core.get_connection()
-        
+
         try:
             collection = entity
+            # Remove 'id' from data (don't store it - _id is sufficient)
+            data.pop('id', None)
+
             await db[collection].replace_one({"_id": id}, data, upsert=False)
-            return data
-                
+            # Return data with 'id' field (matching Elasticsearch/SQLite behavior)
+            return {'id': id, **data}
+
         except DuplicateKeyError as e:
             raise DuplicateConstraintError(e)
         except Exception as e:
             # Wrap all other errors as DatabaseError
-            raise DatabaseError(f"MongoDB create error: {str(e)}", e)
+            raise DatabaseError(f"MongoDB update error: {str(e)}", e)
     
 
     def _get_core_manager(self) -> CoreManager:

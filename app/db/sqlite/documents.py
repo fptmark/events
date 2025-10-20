@@ -23,13 +23,8 @@ class SqliteDocuments(DocumentManager):
         """Create document in SQLite"""
         db = self.database.core.get_connection()
 
-        # If an 'id' was specified, use it else generate one
-        if not id:
-            id = str(uuid.uuid4())
-
-        # Store shadow id field for sorting (not _id - that's metadata)
-        create_data = data.copy()
-        create_data['id'] = id
+        # Remove 'id' from data - table column is sufficient (don't duplicate in JSON)
+        data.pop('id', None)
 
         # Ensure table exists
         await db.execute(f'''
@@ -40,13 +35,14 @@ class SqliteDocuments(DocumentManager):
         ''')
 
         try:
-            # Insert document as JSON text
+            # Insert document as JSON text (without 'id' field)
             await db.execute(
                 f'INSERT INTO "{entity}" (id, data) VALUES (?, ?)',
-                (id, json.dumps(create_data))
+                (id, json.dumps(data))
             )
             await db.commit()
-            return create_data
+            # Return with 'id' for API response
+            return {'id': id, **data}
 
         except aiosqlite.IntegrityError as e:
             # Unique constraint violation
@@ -62,7 +58,7 @@ class SqliteDocuments(DocumentManager):
         db = self.database.core.get_connection()
 
         cursor = await db.execute(
-            f'SELECT data FROM "{entity}" WHERE id = ?',
+            f'SELECT id, data FROM "{entity}" WHERE id = ?',
             (id,)
         )
         row = await cursor.fetchone()
@@ -70,7 +66,8 @@ class SqliteDocuments(DocumentManager):
         if not row:
             raise DocumentNotFound(entity, id)
 
-        document = json.loads(row[0])
+        document = json.loads(row[1])  # row[1] = data
+        document['id'] = row[0]  # row[0] = id - add for _normalize_document
         return document, 1
 
     async def _get_all_impl(
@@ -120,15 +117,31 @@ class SqliteDocuments(DocumentManager):
 
         where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
 
-        # Build ORDER BY clause
+        # Build ORDER BY clause with proper collation
         order_clause = ""
         if sort:
+            fields_meta = MetadataService.fields(entity)
             order_parts = []
             for field, direction in sort:
-                order_parts.append(
-                    f"json_extract(data, '$.{field}') {direction.upper()}"
-                )
+                # Convert field name to proper case (e.g., 'firstname' -> 'firstName')
+                proper_field = MetadataService.get_proper_name(entity, field)
+
+                # Special case: 'id' is stored in table column, not JSON
+                if proper_field == 'id':
+                    collate = "" if self.database.case_sensitive_sorting else " COLLATE NOCASE"
+                    order_parts.append(f"id{collate} {direction.upper()}")
+                else:
+                    # Other fields are in JSON
+                    collate = "" if self.database.case_sensitive_sorting else " COLLATE NOCASE"
+                    order_parts.append(
+                        f"json_extract(data, '$.{proper_field}'){collate} {direction.upper()}"
+                    )
             order_clause = f"ORDER BY {', '.join(order_parts)}"
+        else:
+            # Default sort by 'id' column for consistent pagination (matches MongoDB/ES behavior)
+            # MongoDB: ORDER BY _id ASC, Elasticsearch: ORDER BY id ASC, SQLite: ORDER BY id ASC
+            collate = "" if self.database.case_sensitive_sorting else " COLLATE NOCASE"
+            order_clause = f"ORDER BY id{collate} ASC"
 
         # Pagination
         offset = (page - 1) * pageSize
@@ -137,7 +150,7 @@ class SqliteDocuments(DocumentManager):
 
         # Execute main query
         query = f'''
-            SELECT data FROM "{entity}"
+            SELECT id, data FROM "{entity}"
             {where_clause}
             {order_clause}
             {limit_clause}
@@ -153,13 +166,20 @@ class SqliteDocuments(DocumentManager):
         total = (await cursor.fetchone())[0]
 
         # Parse JSON documents
-        documents = [json.loads(row[0]) for row in rows]
+        documents = []
+        for row in rows:
+            doc = json.loads(row[1])  # row[1] = data
+            doc['id'] = row[0]  # row[0] = id - add for _normalize_document
+            documents.append(doc)
 
         return documents, total
 
     async def _update_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update existing document"""
         db = self.database.core.get_connection()
+
+        # Remove 'id' from data - table column is sufficient (don't duplicate in JSON)
+        data.pop('id', None)
 
         try:
             cursor = await db.execute(
@@ -172,7 +192,8 @@ class SqliteDocuments(DocumentManager):
             if cursor.rowcount == 0:
                 raise DocumentNotFound(entity, id)
 
-            return data
+            # Return with 'id' for API response
+            return {'id': id, **data}
 
         except aiosqlite.IntegrityError as e:
             raise DuplicateConstraintError(
@@ -188,7 +209,7 @@ class SqliteDocuments(DocumentManager):
 
         # Fetch document before deleting
         cursor = await db.execute(
-            f'SELECT data FROM "{entity}" WHERE id = ?',
+            f'SELECT id, data FROM "{entity}" WHERE id = ?',
             (id,)
         )
         row = await cursor.fetchone()
@@ -196,7 +217,8 @@ class SqliteDocuments(DocumentManager):
         if not row:
             raise DocumentNotFound(entity, id)
 
-        document = json.loads(row[0])
+        document = json.loads(row[1])  # row[1] = data
+        document['id'] = row[0]  # row[0] = id - add for _normalize_document
 
         # Delete document
         await db.execute(
