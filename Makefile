@@ -20,8 +20,9 @@ help:
 	@echo "User targets (running the application):"
 	@echo "  run         - Run server with default backend ($(BACKEND))"
 	@echo "  runmongo    - Run server with MongoDB backend"
+	@echo "  runes       - Run server with ElasticSearch backend"
+	@echo "  runlite     - Run server with sqlite backend"
 	@echo "  startes     - Start Elasticsearch in Docker"
-	@echo "  runes       - Run server with current backend"
 	@echo "  test        - Run tests"
 	@echo "  cli         - Run command-line interface"
 	@echo "  redis       - Start Redis service"
@@ -37,10 +38,11 @@ help:
 	@echo "  services    - Generate service routes"
 	@echo "  spec        - Generate OpenAPI specification"
 	@echo "  code        - Generate all code (main, models, services, spec)"
+	@echo "  validator   - Generate test validation tool"
 	@echo ""
 	@echo "Convenience targets:"
 	@echo "  all         - Generate schema and all code"
-	@echo "  openapi     - Alias for generating OpenAPI spec"
+	@echo "  spec        - Alias for generating OpenAPI spec"
 
 # Setup targets
 install: setup clean rebuild
@@ -59,6 +61,9 @@ runmongo:
 
 runes:	
 	PYTHONPATH=. python app/main.py es.json 
+
+runlite:	
+	PYTHONPATH=. python app/main.py sqlite.json 
 
 startes:
 	docker run -d --name es \
@@ -93,6 +98,7 @@ firsttime:
 	mv app/requirements.txt .
 	rm app/Makefile
 	mv app/config/*.json .
+	$(MAKE) rebuild
 
 rebuild:
 	$(MAKE) schema
@@ -104,7 +110,6 @@ rebuild:
 schema : schema.mmd 
 	$(PYPATH) python -m convert.schemaConvert schema.mmd 
 	cat schema.mmd | sed '/[[:alnum:]].*%%/ s/%%.*//' | mmdc -i - -o schema.png
-	$(MAKE) spec
 
 main:
 	$(PYPATH) python -m generators.gen_main schema.yaml . 
@@ -124,6 +129,9 @@ code:	schema.yaml
 	$(MAKE) models
 	$(MAKE) services
 	$(MAKE) spec
+
+validator: test/validate-src
+	(cd test/validate-src && go build -o ../validate cmd/validate/main.go)
 
 # Convenience targets
 all: schema code 

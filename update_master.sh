@@ -3,6 +3,11 @@
 rm -rf ../schema2rest/src/server_generic_files
 mkdir -p ../schema2rest/src/server_generic_files
 
+mkdir -p ../schema2rest/src/server_generic_files/config
+cp mongo.json ../schema2rest/src/server_generic_files/config
+cp es.json ../schema2rest/src/server_generic_files/config
+cp sqlite.json ../schema2rest/src/server_generic_files/config
+
 # base infrastructure files
 cp Makefile ../schema2rest/src/server_generic_files
 cp requirements.txt ../schema2rest/src/server_generic_files
