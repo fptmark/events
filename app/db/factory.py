@@ -74,7 +74,7 @@ class DatabaseFactory:
             # Initialize connection
             # For SQLite, connection_str is the db_path and database_name is ignored
             if db_type.lower() == "sqlite":
-                await db.core.init(connection_str)
+                await db.core.init(connection_str, '')
             else:
                 await db.core.init(connection_str, database_name)
             

@@ -97,7 +97,7 @@ class DocumentManager(ABC):
             Tuple of (document, count) where count is 1 if found, 0 if not found
         """
         try:
-            doc, count = await self._get_impl(id, entity)
+            doc, count = await self._get_impl(entity, id)
             if count > 0 and doc:
                 model_class = ModelService.get_model_class(entity)
                 validate = Config.validation(False)
@@ -158,8 +158,8 @@ class DocumentManager(ABC):
     @abstractmethod
     async def _get_impl(
         self,
-        id: str,
         entity: str,
+        id: str,
     ) -> Tuple[Dict[str, Any], int]:
         """Database-specific implementation of get"""
         pass
@@ -196,7 +196,7 @@ class DocumentManager(ABC):
                 Notification.error(HTTP.BAD_REQUEST, "Missing 'id' field or value for update operation", entity=entity, field="id")
                 raise  # Unreachable
             try:
-                doc, count = await self._get_impl(id, entity)  # only check for existance - no validation
+                doc, count = await self._get_impl(entity, id)  # only check for existance - no validation
                 if count == 0:
                     Notification.error(HTTP.NOT_FOUND, f"Document to update not found: {id}", entity=entity)
             except DocumentNotFound:
@@ -268,7 +268,7 @@ class DocumentManager(ABC):
     async def _update_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         pass
     
-    async def delete(self, id: str, entity: str) -> Tuple[Dict[str, Any], int]:
+    async def delete(self, entity: str, id: str) -> Tuple[Dict[str, Any], int]:
         """
         Delete document by ID. Idempotent - returns success even if already deleted.
 
@@ -280,13 +280,13 @@ class DocumentManager(ABC):
             Tuple of (deleted_document, count) where count is 1 if deleted, 0 if not found
         """
         try:
-            return await self._delete_impl(id, entity)
+            return await self._delete_impl(entity, id)
         except DocumentNotFound:
             # Idempotent DELETE: already gone = success
             return {}, 0
 
     @abstractmethod
-    async def _delete_impl(self, id: str, entity: str) -> Tuple[Dict[str, Any], int]:
+    async def _delete_impl(self, entity: str, id: str) -> Tuple[Dict[str, Any], int]:
         """Database-specific implementation of delete"""
         pass
     

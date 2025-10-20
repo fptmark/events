@@ -72,7 +72,7 @@ class MongoDocuments(DocumentManager):
 
         return raw_documents, total_count
     
-    async def _get_impl(self, id: str, entity: str) -> Tuple[Dict[str, Any], int]:
+    async def _get_impl(self, entity: str, id: str) -> Tuple[Dict[str, Any], int]:
         """Get single document by ID"""
         self.database._ensure_initialized()
         db = self.database.core.get_connection()
@@ -87,7 +87,7 @@ class MongoDocuments(DocumentManager):
         # normalized_doc = self._normalize_document(doc)
         return doc, 1
 
-    async def _delete_impl(self, id: str, entity: str) -> Tuple[Dict[str, Any], int]:
+    async def _delete_impl(self, entity: str, id: str) -> Tuple[Dict[str, Any], int]:
         """Delete document by ID"""
         self.database._ensure_initialized()
         db = self.database.core.get_connection()

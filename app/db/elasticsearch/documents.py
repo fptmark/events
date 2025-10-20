@@ -115,8 +115,8 @@ class ElasticsearchDocuments(DocumentManager):
     
     async def _get_impl(
         self,
-        id: str,
         entity: str,
+        id: str,
     ) -> Tuple[Dict[str, Any], int]:
         """Get single document by ID"""
         self.database._ensure_initialized()
@@ -134,7 +134,7 @@ class ElasticsearchDocuments(DocumentManager):
         except NotFoundError as e:
             raise DocumentNotFound(e)
     
-    async def _delete_impl(self, id: str, entity: str) -> Tuple[Dict[str, Any], int]:
+    async def _delete_impl(self, entity: str, id: str) -> Tuple[Dict[str, Any], int]:
         """Delete document by ID"""
         self.database._ensure_initialized()
         es = self.database.core.get_connection()
@@ -147,7 +147,8 @@ class ElasticsearchDocuments(DocumentManager):
         # Elasticsearch doesn't return deleted doc automatically, so fetch it first
         try:
             # Get document before deleting
-            doc = await es.get(index=index, id=id)
+            response = await es.get(index=index, id=id)
+            doc = response["_source"]  # Extract _source from ObjectApiResponse
 
             # Delete with optional refresh for consistency
             # This ensures deleted documents are immediately removed from search results,
