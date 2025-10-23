@@ -59,7 +59,7 @@ class TagAffinity(BaseModel):
                                    'autoUpdate': True}},
     'operations': '',
     'ui': {'title': 'Tag Affinity', 'buttonLabel': 'Manage Event Affinity'},
-    'services': {},
+    'services': [],
     'uniques': [['profileId', 'tag']]}
 
     class Settings:

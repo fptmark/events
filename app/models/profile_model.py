@@ -74,7 +74,7 @@ class Profile(BaseModel):
     'ui': {   'title': 'Profile',
               'buttonLabel': 'Manage User Profiles',
               'description': 'Manage User Preferences'},
-    'services': {},
+    'services': [],
     'uniques': [['name', 'userId']]}
 
     class Settings:

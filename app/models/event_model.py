@@ -103,8 +103,8 @@ class Event(BaseModel):
                                    'autoUpdate': True}},
     'operations': '',
     'ui': {'title': 'Events', 'buttonLabel': 'Manage Events'},
-    'services': {},
-    'uniques': {}}
+    'services': [],
+    'uniques': []}
 
     class Settings:
         name = "event"

@@ -129,7 +129,8 @@ class User(BaseModel):
     'ui': {   'title': 'Users',
               'buttonLabel': 'Manage Users',
               'description': 'Manage User Profile'},
-    'services': {},
+    'services': {   'auth.cookies.redis': {   'fields': {   'login': 'username',
+                                                            'password': 'password'}}},
     'uniques': [['username'], ['email']]}
 
     class Settings:

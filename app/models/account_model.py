@@ -49,8 +49,8 @@ class Account(BaseModel):
                                    'autoUpdate': True}},
     'operations': '',
     'ui': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'},
-    'services': {},
-    'uniques': {}}
+    'services': [],
+    'uniques': []}
 
     class Settings:
         name = "account"

@@ -70,8 +70,8 @@ class UserEvent(BaseModel):
                                    'autoUpdate': True}},
     'operations': '',
     'ui': {'title': 'User Events', 'buttonLabel': 'Manage Event Attendance'},
-    'services': {},
-    'uniques': {}}
+    'services': [],
+    'uniques': []}
 
     class Settings:
         name = "userevent"

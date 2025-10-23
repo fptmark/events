@@ -63,8 +63,8 @@ class Crawl(BaseModel):
     'ui': {   'title': 'Crawls',
               'buttonLabel': 'Manage Crawls',
               'description': 'Manage Crawls of Event sites'},
-    'services': {},
-    'uniques': {}}
+    'services': [],
+    'uniques': []}
 
     class Settings:
         name = "crawl"

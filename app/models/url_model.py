@@ -57,8 +57,8 @@ class Url(BaseModel):
     'ui': {   'title': 'Url',
               'buttonLabel': 'Manage Urls',
               'description': 'Manage Event Urls'},
-    'services': {},
-    'uniques': {}}
+    'services': [],
+    'uniques': []}
 
     class Settings:
         name = "url"
