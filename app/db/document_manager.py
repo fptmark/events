@@ -31,7 +31,8 @@ class DocumentManager(ABC):
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
         pageSize: int = 25,
-        view_spec: Dict[str, Any] = {}
+        view_spec: Dict[str, Any] = {},
+        filter_matching: str = "contains"
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         Get paginated list of documents with explicit parameters.
@@ -43,12 +44,13 @@ class DocumentManager(ABC):
             page: Page number (1-based)
             pageSize: Number of items per page
             view_spec: View specification for field selection
+            filter_matching: Match mode - "contains" (default, substring match) or "exact" (exact match)
 
         Returns:
             Tuple of (documents, total_count)
         """
         try:
-            docs, count = await self._get_all_impl(entity, sort, filter, page, pageSize)
+            docs, count = await self._get_all_impl(entity, sort, filter, page, pageSize, filter_matching)
 
             if docs:
                 # Get the model class for validation
@@ -74,9 +76,10 @@ class DocumentManager(ABC):
         sort: Optional[List[Tuple[str, str]]] = None,
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
-        pageSize: int = 25
+        pageSize: int = 25,
+        match: str = "contains"
     ) -> Tuple[List[Dict[str, Any]], int]:
-        """Database-specific implementation of get_all"""
+        """Database-specific implementation of get_all with match mode"""
         pass
     
     async def get(
@@ -90,12 +93,13 @@ class DocumentManager(ABC):
         Get single document by ID.
 
         Args:
-            id: Document ID
             entity: Entity type (e.g., "user", "account")
+            id: Document ID
             view_spec: View specification for field selection
+            top_level: Whether this is a top-level call (affects error handling)
 
         Returns:
-            Tuple of (document, count) where count is 1 if found, 0 if not found
+            Tuple of (document, count, error) where count is 1 if found, 0 if not found
         """
         try:
             doc, count = await self._get_impl(entity, id)
@@ -162,7 +166,7 @@ class DocumentManager(ABC):
         entity: str,
         id: str,
     ) -> Tuple[Dict[str, Any], int]:
-        """Database-specific implementation of get"""
+        """Database-specific implementation of get by ID"""
         pass
     
     async def _save_document(

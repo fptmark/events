@@ -144,14 +144,14 @@ class User(BaseModel):
 
     @classmethod
     async def get_all(cls,
-                      sort: List[Tuple[str, str]],
-                      filter: Optional[Dict[str, Any]],
-                      page: int,
-                      pageSize: int,
+                      sort: List[Tuple[str, str]], 
+                      filter: Optional[Dict[str, Any]], 
+                      page: int, 
+                      pageSize: int, 
                       view_spec: Dict[str, Any],
                       filter_matching: str = "contains") -> Tuple[List[Dict[str, Any]], int]:
-        "Get paginated, sorted, and filtered list of entity."
-
+        "Get paginated, sorted, and filtered list of entity." 
+        
         db = DatabaseFactory.get_instance()
         return await db.documents.get_all("User", sort, filter, page, pageSize, view_spec, filter_matching)
         

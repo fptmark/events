@@ -72,7 +72,8 @@ class ElasticsearchDocuments(DocumentManager):
         sort: Optional[List[Tuple[str, str]]] = None,
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
-        pageSize: int = 25
+        pageSize: int = 25,
+        filter_matching: str = "contains"
     ) -> Tuple[List[Dict[str, Any]], int]:
         """Get paginated list of documents"""
         self.database._ensure_initialized()
@@ -92,7 +93,7 @@ class ElasticsearchDocuments(DocumentManager):
         query_body = {
             "from": (page - 1) * pageSize,
             "size": pageSize,
-            "query": self._build_query_filter(proper_filter, entity)
+            "query": self._build_query_filter(proper_filter, entity, filter_matching)
         }
 
         # Add sorting (only if sort spec is not empty)
@@ -198,7 +199,7 @@ class ElasticsearchDocuments(DocumentManager):
         """Get the core manager instance"""
         return self.database.core
     
-    def _build_query_filter(self, filters: Optional[Dict[str, Any]], entity: str) -> Dict[str, Any]:
+    def _build_query_filter(self, filters: Optional[Dict[str, Any]], entity: str, filter_matching: str = "contains") -> Dict[str, Any]:
         """Build Elasticsearch query from filter conditions"""
         if not filters:
             return {"match_all": {}}
@@ -221,12 +222,16 @@ class ElasticsearchDocuments(DocumentManager):
                 has_enum_values = 'enum' in field_meta
 
                 if field_type == 'String' and not has_enum_values:
-                    # Non-enum strings: substring match (anywhere in string)
-                    # Lowercase value since fields use lc normalizer
-                    value_lower = str(value).lower()
-                    must_clauses.append({"wildcard": {field: f"*{value_lower}*"}})
+                    if filter_matching == "exact":
+                        # Exact match for auth and other exact-match use cases
+                        must_clauses.append({"term": {field: value}})
+                    else:
+                        # Non-enum strings: substring match (anywhere in string)
+                        # Lowercase value since fields use lc normalizer
+                        value_lower = str(value).lower()
+                        must_clauses.append({"wildcard": {field: f"*{value_lower}*"}})
                 else:
-                    # Enum fields and non-strings: exact match
+                    # Enum fields and non-strings: always exact match
                     must_clauses.append({"term": {field: value}})
 
         return {"bool": {"must": must_clauses}} if must_clauses else {"match_all": {}}

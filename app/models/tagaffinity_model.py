@@ -77,11 +77,12 @@ class TagAffinity(BaseModel):
                       filter: Optional[Dict[str, Any]], 
                       page: int, 
                       pageSize: int, 
-                      view_spec: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int]:
+                      view_spec: Dict[str, Any],
+                      filter_matching: str = "contains") -> Tuple[List[Dict[str, Any]], int]:
         "Get paginated, sorted, and filtered list of entity." 
         
         db = DatabaseFactory.get_instance()
-        return await db.documents.get_all("TagAffinity", sort, filter, page, pageSize, view_spec)
+        return await db.documents.get_all("TagAffinity", sort, filter, page, pageSize, view_spec, filter_matching)
         
     @classmethod
     async def get(cls, id: str, view_spec: Dict[str, Any], top_level: bool = True) -> Tuple[Dict[str, Any], int, Optional[BaseException]]:

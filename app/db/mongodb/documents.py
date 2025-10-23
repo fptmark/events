@@ -29,7 +29,8 @@ class MongoDocuments(DocumentManager):
         sort: Optional[List[Tuple[str, str]]] = None,
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
-        pageSize: int = 25
+        pageSize: int = 25,
+        filter_matching: str = "contains"
     ) -> Tuple[List[Dict[str, Any]], int]:
         """Get paginated list of documents"""
         self.database._ensure_initialized()
@@ -49,7 +50,7 @@ class MongoDocuments(DocumentManager):
             case_sort.append((case_key, value))
 
         # Build query filter
-        query = self._build_query_filter(case_filter, entity) if filter else {}
+        query = self._build_query_filter(case_filter, entity, filter_matching) if filter else {}
 
         # Get total count
         total_count = await db[collection].count_documents(query)
@@ -251,15 +252,15 @@ class MongoDocuments(DocumentManager):
         """Validate unique constraints for MongoDB"""
         return True  # MongoDB handles unique constraints natively
     
-    def _build_query_filter(self, filters: Dict[str, Any], entity: str) -> Dict[str, Any]:
+    def _build_query_filter(self, filters: Dict[str, Any], entity: str, filter_matching: str = "contains") -> Dict[str, Any]:
         """Build MongoDB query from filter conditions"""
         if not filters:
             return {}
-        
+
         converted_filters = self._convert_filter_values(filters, entity)
         fields_meta = MetadataService.fields(entity)
         query: Dict[str, Any] = {}
-        
+
         for field, value in converted_filters.items():
             if isinstance(value, dict) and any(op in value for op in ['$gte', '$lte', '$gt', '$lt']):
                 # Range query
@@ -276,17 +277,21 @@ class MongoDocuments(DocumentManager):
                 field_meta = fields_meta.get(field, {})
                 field_type = field_meta.get('type', 'String')
                 has_enum_values = 'enum' in field_meta
-                
+
                 if field_type == 'String' and not has_enum_values:
-                    # Free text fields: partial match with regex
-                    query[field] = {"$regex": f".*{self._escape_regex(str(value))}.*", "$options": "i"}
+                    if filter_matching == "exact":
+                        # Exact match for auth and other exact-match use cases
+                        query[field] = value
+                    else:
+                        # Free text fields: partial match with regex (default behavior)
+                        query[field] = {"$regex": f".*{self._escape_regex(str(value))}.*", "$options": "i"}
                 else:
-                    # Enum fields and non-text fields: exact match
+                    # Enum fields and non-text fields: always exact match
                     if isinstance(value, str) and ObjectId.is_valid(value):
                         query[field] = ObjectId(value)
                     else:
                         query[field] = value
-        
+
         return query
     
     def _build_sort_spec(self, sort_fields: Optional[List[Tuple[str, str]]], entity: str) -> List[Tuple[str, int]]:

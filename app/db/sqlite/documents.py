@@ -76,7 +76,8 @@ class SqliteDocuments(DocumentManager):
         sort: Optional[List[Tuple[str, str]]] = None,
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
-        pageSize: int = 25
+        pageSize: int = 25,
+        filter_matching: str = "contains"
     ) -> Tuple[List[Dict[str, Any]], int]:
         """Get paginated list of documents with filter/sort"""
         db = self.database.core.get_connection()
@@ -103,13 +104,20 @@ class SqliteDocuments(DocumentManager):
                     has_enum_values = 'enum' in field_meta
 
                     if field_type == 'String' and not has_enum_values:
-                        # Non-enum strings: substring match (case-insensitive)
-                        where_parts.append(
-                            f"json_extract(data, '$.{field}') LIKE ? COLLATE NOCASE"
-                        )
-                        params.append(f"%{value}%")
+                        if filter_matching == "exact":
+                            # Exact match for auth and other exact-match use cases
+                            where_parts.append(
+                                f"json_extract(data, '$.{field}') = ?"
+                            )
+                            params.append(value)
+                        else:
+                            # Non-enum strings: substring match (case-insensitive)
+                            where_parts.append(
+                                f"json_extract(data, '$.{field}') LIKE ? COLLATE NOCASE"
+                            )
+                            params.append(f"%{value}%")
                     else:
-                        # Enum fields and non-strings: exact match
+                        # Enum fields and non-strings: always exact match
                         where_parts.append(
                             f"json_extract(data, '$.{field}') = ?"
                         )
