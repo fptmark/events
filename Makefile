@@ -7,7 +7,7 @@ BACKEND ?= mongo
 PROJECT_NAME ?= "Project Name Here"
 ES_DATA_DIR ?= $(HOME)/esdata
 
-.PHONY: clean code cli install setup test run help
+.PHONY: clean code cli install setup redis_test run help
 
 # Help target
 help:
@@ -39,6 +39,8 @@ help:
 	@echo "  spec        - Generate OpenAPI specification"
 	@echo "  code        - Generate all code (main, models, services, spec)"
 	@echo "  validator   - Generate test validation tool"
+	@echo "  redis_test  - Test the redis service"
+	@echo "  test        - Run validation suite"
 	@echo ""
 	@echo "Convenience targets:"
 	@echo "  all         - Generate schema and all code"
@@ -73,8 +75,11 @@ startes:
           -v $(ES_DATA_DIR):/usr/share/elasticsearch/data \
 	  elasticsearch:8.12.2
 
-test: test.py
-	pytest -s test.py
+test: validator
+	test/validate
+
+redis_test: 
+	./redis.sh
 
 cli:
 	PYTHONPATH=. python cli/cli.py
@@ -108,7 +113,7 @@ rebuild:
 	$(MAKE) spec 
 
 schema : schema.mmd 
-	$(PYPATH) python -m convert.schemaConvert schema.mmd 
+	$(PYPATH) python -m convert.schemaConvert .
 	cat schema.mmd | sed '/[[:alnum:]].*%%/ s/%%.*//' | mmdc -i - -o schema.png
 
 main:
