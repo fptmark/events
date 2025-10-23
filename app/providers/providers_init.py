@@ -3,7 +3,7 @@ Central service initialization.
 All services are initialized here and called from main.py startup hook.
 """
 from app.config import Config
-from app.services.auth.cookies.redis_provider import CookiesAuth
+from app.providers.auth.cookies.redis_provider import CookiesAuth
 
 
 async def initialize(app=None):
@@ -21,9 +21,11 @@ async def initialize(app=None):
 
     # Register service routers
     if app:
-        from app.services.redis_user import init_router as init_user_auth_router
-        init_user_auth_router(app)
-        print("✓ Service routers registered")
+        from app.routers.service_handlers import get_all_service_routers
+        service_routers = get_all_service_routers()
+        for router in service_routers:
+            app.include_router(router)
+        print(f"✓ {len(service_routers)} service router(s) registered")
 
     # Future services can be added here:
     # await NotificationService.initialize(...)

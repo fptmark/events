@@ -36,7 +36,7 @@ class RequestContext:
     view_spec: Dict[str, Any] = {}
 
     # Special flags
-    # novalidate: bool = False
+    filter_matching: str = "contains"                      # Matching strategy for filters
     no_consistency: bool = False  # Disable refresh='wait_for' for bulk operations
 
     @staticmethod
@@ -71,7 +71,7 @@ class RequestContext:
         RequestContext.page = 1
         RequestContext.pageSize = 25
         RequestContext.view_spec = {}
-        # RequestContext.novalidate = False
+        RequestContext.filter_matching = "contains"
         RequestContext.no_consistency = False
 
     
@@ -110,6 +110,7 @@ class RequestContext:
         page: int = 1,
         pageSize: int = 25,
         filters: Optional[Dict[str, Any]] = None,
+        filter_matching: str = "contains",
         sort_fields: Optional[List[Tuple[str, str]]] = None,
         view_spec: Dict[str, Any] = {}
     ) -> None:
@@ -126,6 +127,7 @@ class RequestContext:
         RequestContext.page = page
         RequestContext.pageSize = pageSize
         RequestContext.filters = filters or {}
+        RequestContext.filter_matching = filter_matching
         RequestContext.sort_fields = sort_fields or []
         RequestContext.view_spec = view_spec
     
@@ -165,6 +167,12 @@ class RequestContext:
                 elif key == 'filter':
                     RequestContext.filters = RequestContext._parse_filter_parameter(value, RequestContext.entity)
                     
+                elif key == 'filter_matching':
+                    if value.lower() in ('exact', 'contains', ''):
+                        RequestContext.filter_matching = value.lower()
+                    else:
+                        Notification.error(HTTP.BAD_REQUEST, f"Invalid match value. Use 'exact' or 'contains'. value={value}")
+                    
                 elif key == 'view':
                     RequestContext.view_spec = RequestContext._parse_view_parameter(value, RequestContext.entity)
 
@@ -176,7 +184,7 @@ class RequestContext:
 
                 else:
                     # Unknown parameter - ignore and continue
-                    valid_params = ['page', 'pageSize', 'sort', 'filter', 'view', 'no_consistency']
+                    valid_params = ['page', 'pageSize', 'sort', 'filter', 'view', 'no_consistency', 'filter_matching']
                     Notification.error(HTTP.BAD_REQUEST, f"Unknown query parameter={key}. Valid parameters: {', '.join(valid_params)}")
                     
             except ValueError as e:
@@ -189,6 +197,7 @@ class RequestContext:
             'entity': RequestContext.entity,
             'entity_id': RequestContext.entity_id,
             'filters': RequestContext.filters,
+            'filter_matching': RequestContext.filter_matching,
             'sort_fields': RequestContext.sort_fields,
             'page': RequestContext.page,
             'pageSize': RequestContext.pageSize,

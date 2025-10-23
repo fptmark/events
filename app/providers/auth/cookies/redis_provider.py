@@ -5,6 +5,19 @@ import json
 import time
 import redis.asyncio as redis
 from fastapi import Request
+from pydantic import BaseModel
+from app.providers.framework.decorators import expose_endpoint
+
+# Request/Response models
+class LoginRequest(BaseModel):
+    """Login credentials"""
+    username: str
+    password: str
+
+class AuthResponse(BaseModel):
+    """Standard auth response"""
+    success: bool
+    message: str | None = None
 
 # Configuration constants – these could be loaded from config.json later.
 SESSION_TTL = 3600              # 1 hour in seconds
@@ -88,35 +101,56 @@ class CookiesAuth:
         session = await self.cookie_store.get_session(token)
         return bool(session)
 
-    async def login(self, credentials: dict) -> str | None:
+    @expose_endpoint(method="POST", route="/login", summary="Login")
+    async def login(self, entity_name: str, credentials: dict) -> str | None:
         """
         Authenticate user and create session.
 
         Args:
-            credentials: dict with "username" and "password"
+            entity_name: Entity to authenticate against (e.g., "User", "Customer")
+            credentials: dict with login and password values
 
         Returns:
             session_id if successful, None if invalid credentials
         """
-        username = credentials.get("username")
-        password = credentials.get("password")
+        # Get service configuration from entity metadata
+        from app.services.metadata import MetadataService
 
-        if not username or not password or not self.cookie_store:
+        metadata = MetadataService.get(entity_name)
+        if not metadata:
             return None
 
-        # Query database for user
+        services = metadata.get("services", {})
+        auth_config = services.get("auth.cookies.redis", {})
+        field_map = auth_config.get("fields", {})
+
+        if not field_map:
+            return None
+
+        login_field = field_map.get("login")
+        password_field = field_map.get("password")
+
+        if not login_field or not password_field:
+            return None
+
+        login_value = credentials.get(login_field)
+        password_value = credentials.get(password_field)
+
+        if not login_value or not password_value or not self.cookie_store:
+            return None
+
+        # Query database for user with EXACT match
         from app.db.factory import DatabaseFactory
         db = DatabaseFactory.get_instance()
 
         try:
             user_docs, count = await db.documents.get_all(
-                "User",
-                filter={"username": username},
-                pageSize=1
+                entity_name,
+                filter={login_field: login_value},
+                pageSize=1,
+                filter_matching="exact"
             )
         except Exception as e:
-            # Log error but don't expose details
-            print(f"Database error during login: {e}")
             return None
 
         if count == 0:
@@ -126,14 +160,15 @@ class CookiesAuth:
 
         # TODO: Use bcrypt password verification in production
         # For now, plaintext comparison
-        if user.get("password") != password:
+        if user.get(password_field) != password_value:
             return None
 
         # Create session
         session_id = str(uuid.uuid4())
         session_data = {
             "user_id": str(user.get("id")),
-            "username": username,
+            "entity": entity_name,
+            "login_value": login_value,
             "created": time.time()
         }
 
@@ -141,6 +176,7 @@ class CookiesAuth:
 
         return session_id
 
+    @expose_endpoint(method="POST", route="/logout", summary="Logout")
     async def logout(self, request: Request) -> bool:
         token = request.cookies.get(self.cookie_name)
         if token and self.cookie_store:
@@ -148,6 +184,7 @@ class CookiesAuth:
             return True
         return False
 
+    @expose_endpoint(method="POST", route="/refresh", summary="Refresh session")
     async def refresh(self, request: Request) -> bool:
         token = request.cookies.get(self.cookie_name)
         if token and self.cookie_store:

@@ -1,0 +1,9 @@
+{
+  "auth.cookies.redis": {
+    "module": "app.providers.auth.cookies.redis_provider",
+    "class": "CookiesAuth",
+    "description": "Cookie-based authentication with Redis sessions",
+    "category": "auth"
+  }
+}
+
