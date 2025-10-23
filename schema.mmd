@@ -1,4 +1,5 @@
 %% @dictionary main { email: "^[a-zA-Z0-9](\.?[a-zA-Z0-9_+%-])*@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$",  url: "^https?://[^\s]+$" }
+
 erDiagram
     BaseEntity { 
         Date createdAt %% @validate {autoGenerate: true} @ui {readOnly: true}
@@ -12,7 +13,7 @@ erDiagram
         Date expiredAt %% @validate { required: false }
     
         %% @ui { title: "Accounts", buttonLabel: "Manage Accounts" }
-    	%% @include BaseEntity
+    	%% @include ["BaseEntity"]
         %% @ui updatedAt { displayPages: "details", displayAfterField: 'createdAt' } 
     }
 
@@ -30,8 +31,8 @@ erDiagram
         ObjectId accountId       
     
         %% @ui { title: "Users", buttonLabel: "Manage Users", description: "Manage User Profile" }
-    	%% @service auth.cookies.redis 
-    	%% @include BaseEntity  
+    	%% @service { "auth.cookies.redis" : { fields: {login : 'username', password: 'password' } } }
+    	%% @include ["BaseEntity"]  
         %% @ui createdAt { displayPages: "summary" } 
         %% @ui accountId { displayName: "Account", show: { endpoint: "account", displayInfo: [ {displayPages: "summary", fields:  ["createdAt"] }, { displayPages: "edit|create", fields: ["createdAt", "expiredAt" ]} ]} }
         %% @operations ["read", "create", "update"]
@@ -45,8 +46,8 @@ erDiagram
         ObjectId userId     %% @ui {show: { "displayInfo": [ { "displayPages": "summary", "fields": ["email"] }, { "displayPages": "create|edit", "fields": ["email", "username" ]} ]} }
     
         %% @ui { title: "Profile", buttonLabel: "Manage User Profiles", description: "Manage User Preferences" }
-    	%% @include BaseEntity
-    	%% @unique name + userId
+    	%% @include ["BaseEntity"]
+    	%% @unique ["name", "userId"]
     }
 
 
@@ -55,8 +56,8 @@ erDiagram
         Integer affinity      %% @validate { required: true, ge: -100, le: 100 }
     
         %% @ui { title: "Tag Affinity", buttonLabel: "Manage Event Affinity" }
-    	%% @include BaseEntity
-    	%% @unique profileId + tag
+    	%% @include ["BaseEntity"]
+    	%% @unique ["profileId", "tag"]
     }
 
 
@@ -71,7 +72,7 @@ erDiagram
         Array[String] tags                 %% @validate { required: false } @ui { displayPages: "details"}
     
         %% @ui { title: "Events", buttonLabel: "Manage Events" }
-    	%% @include BaseEntity
+    	%% @include ["BaseEntity"]
     }
 
 
@@ -81,7 +82,7 @@ erDiagram
         String note          %% @validate { required: false, max_length: 500 } @ui { displayPages: "details"}
     
         %% @ui { title: "User Events", buttonLabel: "Manage Event Attendance" }
-    	%% @include BaseEntity
+    	%% @include ["BaseEntity"]
     }
 
 
@@ -90,7 +91,7 @@ erDiagram
         JSON params      %% @validate { required: false }
     
         %% @ui { title: "Url", buttonLabel: "Manage Urls", description: "Manage Event Urls" }
-    	%% @include BaseEntity
+    	%% @include ["BaseEntity"]
     }
 
     Crawl {
@@ -99,7 +100,7 @@ erDiagram
         Array[String] errorsEncountered    %% @validate { required: false }
     
         %% @ui { title: "Crawls", buttonLabel: "Manage Crawls", description: "Manage Crawls of Event sites" }
-    	%% @include BaseEntity
+    	%% @include ["BaseEntity"]
         %% @operations [ "read", "delete" ]
     }
 
