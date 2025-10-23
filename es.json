@@ -8,6 +8,7 @@
     "ui_port"           : 4200,
     "log_level"		: "info",
     "environment"	: "development",
+    "elasticsearch_strict_consistency": true,
     "auth.cookies.redis" : {
        "host": "127.0.0.1",
        "port": 6379,
