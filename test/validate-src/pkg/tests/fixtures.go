@@ -280,6 +280,30 @@ func CreateFixturesFromTestCases() error {
 		}
 	}
 
+	// Create special test user for authentication tests
+	authTestAccount := "acc_auth_001"
+	if !createdAccounts[authTestAccount] {
+		if err := CreateFixtureAccount(authTestAccount, nil); err != nil && core.Verbose {
+			fmt.Printf("  ⚠ Account %s: %v\n", authTestAccount, err)
+		} else {
+			createdAccounts[authTestAccount] = true
+		}
+	}
+
+	authTestUser := map[string]interface{}{
+		"username":       "mark",
+		"password":       "12345678",
+		"email":          "mark@test.com",
+		"firstName":      "Mark",
+		"lastName":       "Test",
+		"isAccountOwner": true,
+	}
+	if err := CreateFixtureUser("usr_auth_001", authTestAccount, authTestUser); err != nil && core.Verbose {
+		fmt.Printf("  ⚠ Auth test user: %v\n", err)
+	} else {
+		createdUsers["usr_auth_001"] = true
+	}
+
 	if core.Verbose {
 		fmt.Printf("✅ Created %d accounts and %d users from test cases\n", len(createdAccounts), len(createdUsers))
 	}

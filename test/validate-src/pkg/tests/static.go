@@ -607,6 +607,13 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/api/User?view=account(id,)", TestClass: "edge", Description: "View with trailing comma"},
 		{Method: "GET", URL: "/api/User?sort=,firstName", TestClass: "edge", Description: "Sort with leading comma"},
 		{Method: "GET", URL: "/api/User?filter=,gender:male", TestClass: "edge", Description: "Filter with leading comma"},
+
+		// =============================================================================
+		// FILTER MATCHING - Test exact vs contains matching modes
+		// =============================================================================
+		{Method: "GET", URL: "/api/User?filter=username:mark&filter_matching=exact", TestClass: "filter", Description: "Filter with exact matching - single result", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=username:mark&filter_matching=contains", TestClass: "filter", Description: "Filter with contains matching - multiple results", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=username:mark", TestClass: "filter", Description: "Filter default (contains) matching", ExpectedStatus: 200},
 		{Method: "GET", URL: "/api/User?view=account(,id)", TestClass: "edge", Description: "View with leading comma"},
 		{Method: "GET", URL: "/api/User?sort=firstName,,lastName", TestClass: "edge", Description: "Sort with double comma"},
 		{Method: "GET", URL: "/api/User?filter=gender:male,,isAccountOwner:true", TestClass: "edge", Description: "Filter with double comma"},
@@ -624,6 +631,7 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "testDbReport", TestClass: "dynamic", Description: "Get database status report"},
 		{Method: "GET", URL: "testDbInit", TestClass: "dynamic", Description: "Initialize database confirmation page"},
 		{Method: "GET", URL: "testPaginationAggregation", TestClass: "dynamic", Description: "Aggregate pagination test"},
+		{Method: "GET", URL: "testAuth", TestClass: "dynamic", Description: "Redis authentication workflow (login, refresh, logout)"},
 	}
 
 	// Add ID and set default ExpectedStatus
