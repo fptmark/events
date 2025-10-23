@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Response, HTTPException, Query
 from typing import Dict, Any
 
 # Dynamically import the concrete service implementation.
-from app.services.redis_provider import CookiesAuth
+from app.services.auth.cookies.redis_provider import CookiesAuth
 
 # For metadata access
 from app.models.user_model import User
@@ -26,40 +26,53 @@ def wrap_response(data, include_metadata=True):
     return result
 
 @router.post("/login", summary="Login")
-async def login_endpoint(request: Request, response: Response, include_metadata: bool = True):
+async def login_endpoint(request: Request, response: Response):
     try:
         payload = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid request body")
-    try:
-        result = await CookiesAuth().login(payload)
-        return wrap_response(result, include_metadata)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+    # Validate required fields
+    username = payload.get("username")
+    password = payload.get("password")
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Missing username or password")
+
+    # Authenticate and get session_id
+    session_id = await CookiesAuth().login(payload)
+
+    if session_id:
+        # Set cookie
+        response.set_cookie(
+            key=CookiesAuth.cookie_name,
+            value=session_id,
+            **CookiesAuth.cookie_options
+        )
+        return {"success": True, "message": "Login successful"}
+    else:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
 @router.post("/logout", summary="Logout")
-async def logout_endpoint(request: Request, response: Response, include_metadata: bool = True):
-    try:
-        payload = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid request body")
-    try:
-        result = await CookiesAuth().logout(payload)
-        return wrap_response(result, include_metadata)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def logout_endpoint(request: Request, response: Response):
+    # Pass Request object to logout
+    success = await CookiesAuth().logout(request)
+
+    if success:
+        response.delete_cookie(key=CookiesAuth.cookie_name)
+        return {"success": True, "message": "Logout successful"}
+    else:
+        raise HTTPException(status_code=400, detail="No active session")
 
 @router.post("/refresh", summary="Refresh")
-async def refresh_endpoint(request: Request, response: Response, include_metadata: bool = True):
-    try:
-        payload = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid request body")
-    try:
-        result = await CookiesAuth().refresh(payload)
-        return wrap_response(result, include_metadata)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def refresh_endpoint(request: Request, response: Response):
+    # Pass Request object to refresh
+    success = await CookiesAuth().refresh(request)
+
+    if success:
+        return {"success": True, "message": "Session refreshed"}
+    else:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
 
 
 # GET METADATA

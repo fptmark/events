@@ -3,13 +3,6 @@ from abc import ABC, abstractmethod
 from fastapi import Request
 from framework.decorators import expose_endpoint    # resolved at runtime by modifying sys.path
 
-# def expose_endpoint(method: str, route: str):
-#     def decorator(func):
-#         # Attach metadata to the function
-#         func._expose_endpoint = {"method": method, "route": route}
-#         return func
-#     return decorator
-
 class BaseAuth(ABC):
     @abstractmethod
     async def authenticate(self, request: Request) -> bool:

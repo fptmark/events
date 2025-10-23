@@ -172,6 +172,11 @@ async def lifespan(app: FastAPI):
     ModelService.initialize(ENTITIES)
     logger.info("Metadata & Model services initialized successfully")
 
+    # Initialize services (Redis auth, etc.)
+    logger.info("Initializing services...")
+    from app.services import services_init
+    await services_init.initialize(app)
+
     logger.info(f"Registing routers")
     setup_routers(args.yaml)
 
@@ -195,6 +200,11 @@ async def lifespan(app: FastAPI):
     # Shutdown
     try:
         logger.info("Shutdown event called")
+
+        # Shutdown services
+        from app import services_init
+        await services_init.shutdown()
+
         if DatabaseFactory.is_initialized():
             await DatabaseFactory.close()
             logger.info("Database connection closed")

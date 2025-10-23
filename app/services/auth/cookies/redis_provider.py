@@ -88,17 +88,58 @@ class CookiesAuth:
         session = await self.cookie_store.get_session(token)
         return bool(session)
 
-    async def login(self, credentials: dict) -> bool:
-        # Placeholder: replace with proper credential validation in production.
-        if credentials.get("username") == "user" and credentials.get("password") == "pass" and self.cookie_store:
-            session_id = str(uuid.uuid4())
-            session_data = {
-                "user_id": credentials.get("username"),
-                "created": time.time()
-            }
-            await self.cookie_store.set_session(session_id, session_data, SESSION_TTL)
-            return True
-        return False
+    async def login(self, credentials: dict) -> str | None:
+        """
+        Authenticate user and create session.
+
+        Args:
+            credentials: dict with "username" and "password"
+
+        Returns:
+            session_id if successful, None if invalid credentials
+        """
+        username = credentials.get("username")
+        password = credentials.get("password")
+
+        if not username or not password or not self.cookie_store:
+            return None
+
+        # Query database for user
+        from app.db.factory import DatabaseFactory
+        db = DatabaseFactory.get_instance()
+
+        try:
+            user_docs, count = await db.documents.get_all(
+                "User",
+                filter={"username": username},
+                pageSize=1
+            )
+        except Exception as e:
+            # Log error but don't expose details
+            print(f"Database error during login: {e}")
+            return None
+
+        if count == 0:
+            return None
+
+        user = user_docs[0]
+
+        # TODO: Use bcrypt password verification in production
+        # For now, plaintext comparison
+        if user.get("password") != password:
+            return None
+
+        # Create session
+        session_id = str(uuid.uuid4())
+        session_data = {
+            "user_id": str(user.get("id")),
+            "username": username,
+            "created": time.time()
+        }
+
+        await self.cookie_store.set_session(session_id, session_data, SESSION_TTL)
+
+        return session_id
 
     async def logout(self, request: Request) -> bool:
         token = request.cookies.get(self.cookie_name)
