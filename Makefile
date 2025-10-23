@@ -7,7 +7,7 @@ BACKEND ?= mongo
 PROJECT_NAME ?= "Project Name Here"
 ES_DATA_DIR ?= $(HOME)/esdata
 
-.PHONY: clean code cli install setup redis_test run help
+.PHONY: clean code cli install setup redis-test run help
 
 # Help target
 help:
@@ -39,7 +39,7 @@ help:
 	@echo "  spec        - Generate OpenAPI specification"
 	@echo "  code        - Generate all code (main, models, services, spec)"
 	@echo "  validator   - Generate test validation tool"
-	@echo "  redis_test  - Test the redis service"
+	@echo "  redis-test  - Test the redis service"
 	@echo "  test        - Run validation suite"
 	@echo ""
 	@echo "Convenience targets:"
@@ -78,7 +78,7 @@ startes:
 test: validator
 	test/validate
 
-redis_test: 
+redis-test: 
 	./redis.sh
 
 cli:
@@ -123,7 +123,8 @@ models:
 	$(PYPATH) python -m generators.models.gen_model_main schema.yaml . 
 
 services: 
-	$(PYPATH) python -m generators.gen_service_routes schema.yaml $(GENERICS) .
+	echo "services are now static and don't need to be built"
+#	$(PYPATH) python -m generators.gen_service_routes schema.yaml $(GENERICS) .
 
 spec:
 	$(PYPATH) python -m generators.gen_openapi .

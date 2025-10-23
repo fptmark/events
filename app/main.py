@@ -12,8 +12,9 @@ from app.services.model import ModelService
 from app.exceptions import StopWorkError
 from app.routers.router import get_all_dynamic_routers
 from app.routers.admin import router as admin_router
+from app.providers import providers_init
 
-from app.services.auth.cookies.redis_provider import CookiesAuth as Auth
+from app.providers.auth.cookies.redis_provider import CookiesAuth as Auth
 
 ENTITIES = [
    "Account",
@@ -173,9 +174,8 @@ async def lifespan(app: FastAPI):
     logger.info("Metadata & Model services initialized successfully")
 
     # Initialize services (Redis auth, etc.)
-    logger.info("Initializing services...")
-    from app.services import services_init
-    await services_init.initialize(app)
+    logger.info("Initializing providers...")
+    await providers_init.initialize(app)
 
     logger.info(f"Registing routers")
     setup_routers(args.yaml)
@@ -202,7 +202,6 @@ async def lifespan(app: FastAPI):
         logger.info("Shutdown event called")
 
         # Shutdown services
-        from app import services_init
         await services_init.shutdown()
 
         if DatabaseFactory.is_initialized():
