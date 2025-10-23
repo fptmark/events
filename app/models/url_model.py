@@ -45,20 +45,20 @@ class Url(BaseModel):
                                             'message': 'Bad URL format'}},
                   'params': {'type': 'JSON', 'required': False},
                   'createdAt': {   'type': 'Date',
-                                   'autoGenerate': True,
-                                   'ui': {   'readOnly': True,
-                                             'displayAfterField': '-1'}},
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True},
+                                   'autoGenerate': True},
                   'updatedAt': {   'type': 'Datetime',
-                                   'autoUpdate': True,
-                                   'ui': {   'readOnly': True,
-                                             'clientEdit': True,
-                                             'displayAfterField': '-1'}}},
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True,
+                                             'clientEdit': True},
+                                   'autoUpdate': True}},
     'operations': '',
     'ui': {   'title': 'Url',
               'buttonLabel': 'Manage Urls',
               'description': 'Manage Event Urls'},
-    'services': [],
-    'uniques': []}
+    'services': {},
+    'uniques': {}}
 
     class Settings:
         name = "url"

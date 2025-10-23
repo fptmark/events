@@ -93,18 +93,18 @@ class Event(BaseModel):
                               'required': False,
                               'ui': {'displayPages': 'details'}},
                   'createdAt': {   'type': 'Date',
-                                   'autoGenerate': True,
-                                   'ui': {   'readOnly': True,
-                                             'displayAfterField': '-1'}},
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True},
+                                   'autoGenerate': True},
                   'updatedAt': {   'type': 'Datetime',
-                                   'autoUpdate': True,
-                                   'ui': {   'readOnly': True,
-                                             'clientEdit': True,
-                                             'displayAfterField': '-1'}}},
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True,
+                                             'clientEdit': True},
+                                   'autoUpdate': True}},
     'operations': '',
     'ui': {'title': 'Events', 'buttonLabel': 'Manage Events'},
-    'services': [],
-    'uniques': []}
+    'services': {},
+    'uniques': {}}
 
     class Settings:
         name = "event"

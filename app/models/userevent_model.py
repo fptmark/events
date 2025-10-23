@@ -57,21 +57,21 @@ class UserEvent(BaseModel):
                               'required': False,
                               'max_length': 500,
                               'ui': {'displayPages': 'details'}},
-                  'createdAt': {   'type': 'Date',
-                                   'autoGenerate': True,
-                                   'ui': {   'readOnly': True,
-                                             'displayAfterField': '-1'}},
-                  'updatedAt': {   'type': 'Datetime',
-                                   'autoUpdate': True,
-                                   'ui': {   'readOnly': True,
-                                             'clientEdit': True,
-                                             'displayAfterField': '-1'}},
                   'userId': {'type': 'ObjectId', 'required': True},
-                  'eventId': {'type': 'ObjectId', 'required': True}},
+                  'eventId': {'type': 'ObjectId', 'required': True},
+                  'createdAt': {   'type': 'Date',
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True},
+                                   'autoGenerate': True},
+                  'updatedAt': {   'type': 'Datetime',
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True,
+                                             'clientEdit': True},
+                                   'autoUpdate': True}},
     'operations': '',
     'ui': {'title': 'User Events', 'buttonLabel': 'Manage Event Attendance'},
-    'services': [],
-    'uniques': []}
+    'services': {},
+    'uniques': {}}
 
     class Settings:
         name = "userevent"

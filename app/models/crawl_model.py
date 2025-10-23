@@ -49,22 +49,22 @@ class Crawl(BaseModel):
                   'parseStatus': {'type': 'JSON', 'required': False},
                   'errorsEncountered': {   'type': 'Array[String]',
                                            'required': False},
+                  'urlId': {'type': 'ObjectId', 'required': True},
                   'createdAt': {   'type': 'Date',
-                                   'autoGenerate': True,
-                                   'ui': {   'readOnly': True,
-                                             'displayAfterField': '-1'}},
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True},
+                                   'autoGenerate': True},
                   'updatedAt': {   'type': 'Datetime',
-                                   'autoUpdate': True,
-                                   'ui': {   'readOnly': True,
-                                             'clientEdit': True,
-                                             'displayAfterField': '-1'}},
-                  'urlId': {'type': 'ObjectId', 'required': True}},
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True,
+                                             'clientEdit': True},
+                                   'autoUpdate': True}},
     'operations': 'rd',
     'ui': {   'title': 'Crawls',
               'buttonLabel': 'Manage Crawls',
               'description': 'Manage Crawls of Event sites'},
-    'services': [],
-    'uniques': []}
+    'services': {},
+    'uniques': {}}
 
     class Settings:
         name = "crawl"

@@ -38,19 +38,19 @@ class Account(BaseModel):
 
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'expiredAt': {'type': 'Date', 'required': False},
                   'createdAt': {   'type': 'Date',
-                                   'autoGenerate': True,
-                                   'ui': {   'readOnly': True,
-                                             'displayAfterField': '-1'}},
+                                   'ui': {   'displayAfterField': '-1',
+                                             'readOnly': True},
+                                   'autoGenerate': True},
                   'updatedAt': {   'type': 'Datetime',
-                                   'autoUpdate': True,
-                                   'ui': {   'readOnly': True,
-                                             'clientEdit': True,
-                                             'displayAfterField': 'createdAt',
-                                             'displayPages': 'details'}}},
+                                   'ui': {   'displayAfterField': 'createdAt',
+                                             'displayPages': 'details',
+                                             'readOnly': True,
+                                             'clientEdit': True},
+                                   'autoUpdate': True}},
     'operations': '',
     'ui': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'},
-    'services': [],
-    'uniques': []}
+    'services': {},
+    'uniques': {}}
 
     class Settings:
         name = "account"
