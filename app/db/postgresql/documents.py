@@ -88,12 +88,24 @@ class PostgreSQLDocuments(DocumentManager):
                 fields_meta = MetadataService.fields(entity)
                 for field, value in filter.items():
                     if isinstance(value, dict):
-                        # Range queries: {$gte: 21, $lt: 65}
+                        # Range queries: {$gte: 21, $lt: 65} or date ranges
+                        field_meta = fields_meta.get(field, {})
+                        field_type = field_meta.get('type', 'String')
+
                         for op, val in value.items():
                             sql_op = self._mongo_operator_to_sql(op)
-                            where_parts.append(
-                                f"(data->>'{field}')::NUMERIC {sql_op} ${param_idx}"
-                            )
+
+                            # Type-aware casting for range queries
+                            if field_type in ['Date', 'Datetime']:
+                                # Date/timestamp range queries
+                                where_parts.append(
+                                    f"(data->>'{field}')::TIMESTAMP {sql_op} ${param_idx}"
+                                )
+                            else:
+                                # Numeric range queries (Integer, Number, Currency, Float)
+                                where_parts.append(
+                                    f"(data->>'{field}')::NUMERIC {sql_op} ${param_idx}"
+                                )
                             params.append(val)
                             param_idx += 1
                     else:

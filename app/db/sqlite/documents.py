@@ -90,12 +90,24 @@ class SqliteDocuments(DocumentManager):
             fields_meta = MetadataService.fields(entity)
             for field, value in filter.items():
                 if isinstance(value, dict):
-                    # Range queries: {$gte: 21, $lt: 65}
+                    # Range queries: {$gte: 21, $lt: 65} or date ranges
+                    field_meta = fields_meta.get(field, {})
+                    field_type = field_meta.get('type', 'String')
+
                     for op, val in value.items():
                         sql_op = self._mongo_operator_to_sql(op)
-                        where_parts.append(
-                            f"CAST(json_extract(data, '$.{field}') AS REAL) {sql_op} ?"
-                        )
+
+                        # Type-aware casting for range queries
+                        if field_type in ['Date', 'Datetime']:
+                            # Date/timestamp range queries - ISO format sorts correctly as text
+                            where_parts.append(
+                                f"json_extract(data, '$.{field}') {sql_op} ?"
+                            )
+                        else:
+                            # Numeric range queries (Integer, Number, Currency, Float)
+                            where_parts.append(
+                                f"CAST(json_extract(data, '$.{field}') AS REAL) {sql_op} ?"
+                            )
                         params.append(val)
                 else:
                     # Check if this is an enum field or non-enum string
