@@ -30,7 +30,7 @@ class MongoDocuments(DocumentManager):
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
         pageSize: int = 25,
-        filter_matching: str = "contains"
+        substring_match: bool = True
     ) -> Tuple[List[Dict[str, Any]], int]:
         """Get paginated list of documents"""
         self.database._ensure_initialized()
@@ -50,7 +50,7 @@ class MongoDocuments(DocumentManager):
             case_sort.append((case_key, value))
 
         # Build query filter
-        query = self._build_query_filter(case_filter, entity, filter_matching) if filter else {}
+        query = self._build_query_filter(case_filter, entity, substring_match) if filter else {}
 
         # Get total count
         total_count = await db[collection].count_documents(query)
@@ -136,13 +136,13 @@ class MongoDocuments(DocumentManager):
         try:
             collection = entity
 
-            # Move 'id' from data to '_id' for MongoDB storage (DocumentManager already set 'id')
-            data['_id'] = data.pop('id')
+            # Use 'id' parameter for MongoDB '_id' (don't mutate input data)
+            doc_to_insert = {'_id': id, **data}
 
-            result = await db[collection].insert_one(data)
+            result = await db[collection].insert_one(doc_to_insert)
             if result.inserted_id:
-                # Return with 'id' for API response (move _id back to id)
-                return {'id': data.pop('_id'), **data}
+                # Return with 'id' for API response (data doesn't have _id)
+                return {'id': id, **data}
             else:
                 raise DatabaseError(message=f"MongoDB insert failed: {result}")
 
@@ -228,7 +228,7 @@ class MongoDocuments(DocumentManager):
         """Validate unique constraints for MongoDB"""
         return True  # MongoDB handles unique constraints natively
     
-    def _build_query_filter(self, filters: Dict[str, Any], entity: str, filter_matching: str = "contains") -> Dict[str, Any]:
+    def _build_query_filter(self, filters: Dict[str, Any], entity: str, substring_match: bool = True) -> Dict[str, Any]:
         """Build MongoDB query from filter conditions"""
         if not filters:
             return {}
@@ -255,12 +255,12 @@ class MongoDocuments(DocumentManager):
                 has_enum_values = 'enum' in field_meta
 
                 if field_type == 'String' and not has_enum_values:
-                    if filter_matching == "exact":
-                        # Exact match for auth and other exact-match use cases
-                        query[field] = value
-                    else:
-                        # Free text fields: partial match with regex (default behavior)
+                    if substring_match:
+                        # Substring matching: partial match with regex (default behavior)
                         query[field] = {"$regex": f".*{self._escape_regex(str(value))}.*", "$options": "i"}
+                    else:
+                        # Full string matching
+                        query[field] = value
                 else:
                     # Enum fields and non-text fields: always exact match
                     if isinstance(value, str) and ObjectId.is_valid(value):

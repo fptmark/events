@@ -77,7 +77,7 @@ class SqliteDocuments(DocumentManager):
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
         pageSize: int = 25,
-        filter_matching: str = "contains"
+        substring_match: bool = True
     ) -> Tuple[List[Dict[str, Any]], int]:
         """Get paginated list of documents with filter/sort"""
         db = self.database.core.get_connection()
@@ -95,7 +95,7 @@ class SqliteDocuments(DocumentManager):
                     field_type = field_meta.get('type', 'String')
 
                     for op, val in value.items():
-                        sql_op = self._mongo_operator_to_sql(op)
+                        sql_op = self._map_operator(op)
 
                         # Type-aware casting for range queries
                         if field_type in ['Date', 'Datetime']:
@@ -116,18 +116,18 @@ class SqliteDocuments(DocumentManager):
                     has_enum_values = 'enum' in field_meta
 
                     if field_type == 'String' and not has_enum_values:
-                        if filter_matching == "exact":
-                            # Exact match for auth and other exact-match use cases
-                            where_parts.append(
-                                f"json_extract(data, '$.{field}') = ?"
-                            )
-                            params.append(value)
-                        else:
-                            # Non-enum strings: substring match (case-insensitive)
+                        if substring_match:
+                            # Substring matching: LIKE with wildcards (case-insensitive)
                             where_parts.append(
                                 f"json_extract(data, '$.{field}') LIKE ? COLLATE NOCASE"
                             )
                             params.append(f"%{value}%")
+                        else:
+                            # Full string matching (case-insensitive)
+                            where_parts.append(
+                                f"json_extract(data, '$.{field}') = ? COLLATE NOCASE"
+                            )
+                            params.append(value)
                     else:
                         # Enum fields and non-strings: always exact match
                         where_parts.append(

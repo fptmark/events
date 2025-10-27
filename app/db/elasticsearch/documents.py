@@ -73,7 +73,7 @@ class ElasticsearchDocuments(DocumentManager):
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
         pageSize: int = 25,
-        filter_matching: str = "contains"
+        substring_match: bool = True
     ) -> Tuple[List[Dict[str, Any]], int]:
         """Get paginated list of documents"""
         self.database._ensure_initialized()
@@ -93,7 +93,7 @@ class ElasticsearchDocuments(DocumentManager):
         query_body = {
             "from": self._calculate_pagination_offset(page, pageSize),
             "size": pageSize,
-            "query": self._build_query_filter(proper_filter, entity, filter_matching)
+            "query": self._build_query_filter(proper_filter, entity, substring_match)
         }
 
         # Add sorting (only if sort spec is not empty)
@@ -108,7 +108,8 @@ class ElasticsearchDocuments(DocumentManager):
         documents = []
         for hit in hits:
             doc = hit["_source"]
-            # 'id' is already in _source, no need to extract from metadata
+            # Extract '_id' from hit metadata and add as 'id' field
+            doc['id'] = hit['_id']
             documents.append(doc)
 
         total_count = response.get("hits", {}).get("total", {}).get("value", 0)
@@ -132,7 +133,8 @@ class ElasticsearchDocuments(DocumentManager):
         try:
             response = await es.get(index=index, id=id)
             doc = response["_source"]
-            # 'id' is already in _source, no need to extract from metadata
+            # Extract '_id' from response metadata and add as 'id' field
+            doc['id'] = response['_id']
             return doc, 1
         except NotFoundError as e:
             raise DocumentNotFound(e)
@@ -152,6 +154,7 @@ class ElasticsearchDocuments(DocumentManager):
             # Get document before deleting
             response = await es.get(index=index, id=id)
             doc = response["_source"]  # Extract _source from ObjectApiResponse
+            doc['id'] = response['_id']  # Add 'id' field
 
             # Delete with optional refresh for consistency
             # This ensures deleted documents are immediately removed from search results,
@@ -175,9 +178,10 @@ class ElasticsearchDocuments(DocumentManager):
 
         index = entity.lower()
 
-        # Keep 'id' in data for sorting (ES can't sort by _id metadata without fielddata)
+        # Add 'id' to data for sorting (ES can't sort by _id metadata without fielddata)
         # Note: This duplicates the ID (~35 bytes per doc) but enables sorting functionality
-        # data already has 'id' from DocumentManager._save_document
+        # DocumentManager removes 'id' from data, so we must add it back
+        data['id'] = id
 
         # Use refresh='wait_for' if strict consistency is enabled (default)
         # This ensures document is searchable immediately, which is critical for
@@ -199,7 +203,7 @@ class ElasticsearchDocuments(DocumentManager):
         """Get the core manager instance"""
         return self.database.core
     
-    def _build_query_filter(self, filters: Optional[Dict[str, Any]], entity: str, filter_matching: str = "contains") -> Dict[str, Any]:
+    def _build_query_filter(self, filters: Optional[Dict[str, Any]], entity: str, substring_match: bool = True) -> Dict[str, Any]:
         """Build Elasticsearch query from filter conditions"""
         if not filters:
             return {"match_all": {}}
@@ -222,14 +226,14 @@ class ElasticsearchDocuments(DocumentManager):
                 has_enum_values = 'enum' in field_meta
 
                 if field_type == 'String' and not has_enum_values:
-                    if filter_matching == "exact":
-                        # Exact match for auth and other exact-match use cases
-                        must_clauses.append({"term": {field: value}})
-                    else:
-                        # Non-enum strings: substring match (anywhere in string)
+                    if substring_match:
+                        # Substring matching: wildcard match (anywhere in string)
                         # Lowercase value since fields use lc normalizer
                         value_lower = str(value).lower()
                         must_clauses.append({"wildcard": {field: f"*{value_lower}*"}})
+                    else:
+                        # Full string matching
+                        must_clauses.append({"term": {field: value}})
                 else:
                     # Enum fields and non-strings: always exact match
                     must_clauses.append({"term": {field: value}})

@@ -25,7 +25,7 @@ class EntityModelProtocol(Protocol):
     _metadata: Dict[str, Any]
 
     @classmethod
-    async def get_all(cls, sort, filter, page: int, pageSize: int, view_spec, filter_matching: str) -> tuple: ...
+    async def get_all(cls, sort, filter, page: int, pageSize: int, view_spec, substring_match: bool) -> tuple: ...
 
     @classmethod
     async def get(cls, entity_id: str, view_spec) -> tuple: ...
@@ -80,7 +80,7 @@ async def get_all_handler(entity_cls: Type[EntityModelProtocol], request: Reques
         RequestContext.page,
         RequestContext.pageSize,
         RequestContext.view_spec,
-        RequestContext.filter_matching
+        RequestContext.substring_match
     )
 
     return update_response(data, count)

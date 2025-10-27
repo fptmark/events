@@ -32,7 +32,7 @@ class DocumentManager(ABC):
         page: int = 1,
         pageSize: int = 25,
         view_spec: Dict[str, Any] = {},
-        filter_matching: str = "contains"
+        substring_match: bool = True
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         Get paginated list of documents with explicit parameters.
@@ -44,13 +44,13 @@ class DocumentManager(ABC):
             page: Page number (1-based)
             pageSize: Number of items per page
             view_spec: View specification for field selection
-            filter_matching: Match mode - "contains" (default, substring match) or "exact" (exact match)
+            substring_match: True for substring matching (default), False for full string matching
 
         Returns:
             Tuple of (documents, total_count)
         """
         try:
-            docs, count = await self._get_all_impl(entity, sort, filter, page, pageSize, filter_matching)
+            docs, count = await self._get_all_impl(entity, sort, filter, page, pageSize, substring_match)
 
             if docs:
                 # Get the model class for validation
@@ -77,9 +77,9 @@ class DocumentManager(ABC):
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
         pageSize: int = 25,
-        match: str = "contains"
+        substring_match: bool = True
     ) -> Tuple[List[Dict[str, Any]], int]:
-        """Database-specific implementation of get_all with match mode"""
+        """Database-specific implementation of get_all with substring matching flag"""
         pass
     
     async def get(
@@ -230,7 +230,7 @@ class DocumentManager(ABC):
             prepared_data = self._remove_sub_objects(entity, prepared_data)
 
             # Add ID to prepared_data (databases will convert to their native field)
-            prepared_data['id'] = id
+            # prepared_data['id'] = id
 
             # Save in database (database-specific implementation)
             try:
@@ -381,7 +381,7 @@ class DocumentManager(ABC):
         """
         return (page - 1) * pageSize
 
-    def _mongo_operator_to_sql(self, mongo_op: str) -> str:
+    def _map_operator(self, op: str) -> str:
         """Convert MongoDB-style operator ($gte, $lt, etc.) to SQL operator (>=, <, etc.)
 
         Used by SQL-based drivers (SQLite, PostgreSQL) to convert filter operators.
