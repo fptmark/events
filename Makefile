@@ -22,10 +22,14 @@ help:
 	@echo "  runmongo    - Run server with MongoDB backend"
 	@echo "  runes       - Run server with ElasticSearch backend"
 	@echo "  runlite     - Run server with sqlite backend"
+	@echo "  runpost     - Run server with postgres backend"
+	@echo "    Start Dbs/MCP/Other servers
 	@echo "  startes     - Start Elasticsearch in Docker"
-	@echo "  test        - Run tests"
-	@echo "  cli         - Run command-line interface"
+	@echo "  startpost   - Start postgreSql"
+	@echo "  startmcp    - Start MCP server"
 	@echo "  redis       - Start Redis service"
+
+	@echo "  cli         - Run command-line interface"
 	@echo ""
 	@echo "Developer targets (code generation - requires S2R_DIR):"
 	@echo "  clean       - Remove app directory and start fresh"
@@ -39,8 +43,9 @@ help:
 	@echo "  spec        - Generate OpenAPI specification"
 	@echo "  code        - Generate all code (main, models, services, spec)"
 	@echo "  validator   - Generate test validation tool"
-	@echo "  redis-test  - Test the redis service"
+	@echo "  testredis   - Test the redis service"
 	@echo "  test        - Run validation suite"
+	@echo "  testmcp     - Run validation suite"
 	@echo ""
 	@echo "Convenience targets:"
 	@echo "  all         - Generate schema and all code"
@@ -67,6 +72,9 @@ runes:
 runlite:	
 	PYTHONPATH=. python app/main.py sqlite.json 
 
+runpost:	
+	PYTHONPATH=. python app/main.py postgres.json 
+
 startes:
 	docker run -d --name es \
 	  -p 9200:9200 -p 9300:9300 \
@@ -75,10 +83,16 @@ startes:
           -v $(ES_DATA_DIR):/usr/share/elasticsearch/data \
 	  elasticsearch:8.12.2
 
+startpost:
+	brew services start postgresql@16
+
+startmcp:
+	  python mcp_server.py
+
 test: validator
 	test/validate
 
-redis-test: 
+testredis: 
 	./redis.sh
 
 cli:

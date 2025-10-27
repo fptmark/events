@@ -1,0 +1,16 @@
+{
+    "project_name"	: "Events",
+    "database"		: "postgresql",
+    "db_uri"		: "postgresql://localhost:5432",
+    "db_name"		: "eventMgr",
+    "host"		: "0.0.0.0",
+    "server_port"	: 5500,
+    "validation" 	: "multiple",
+    "log_level"		: "info",
+    "environment"	: "development",
+    "auth.cookies.redis" : {
+       "host": "127.0.0.1",
+       "port": 6379,
+       "db"  : 0
+    }
+}
