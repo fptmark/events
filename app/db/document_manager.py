@@ -311,28 +311,23 @@ class DocumentManager(ABC):
     def _prepare_datetime_fields(self, entity: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Convert datetime fields for database storage (database-specific)"""
         pass
-    
-    @abstractmethod
-    def _convert_filter_values(self, filters: Dict[str, Any], entity: str) -> Dict[str, Any]:
-        """Convert filter values to database-appropriate types (database-specific)"""
-        pass
-        
+
     @abstractmethod
     async def _validate_unique_constraints(
-        self, 
-        entity: str, 
-        data: Dict[str, Any], 
-        unique_constraints: List[List[str]], 
+        self,
+        entity: str,
+        data: Dict[str, Any],
+        unique_constraints: List[List[str]],
         exclude_id: Optional[str] = None
     ) -> bool:
         """Validate unique constraints (database-specific implementation)
-        
+
         Args:
             entity: Entity type
             data: Document data to validate
             unique_constraints: List of unique constraint field groups
             exclude_id: ID to exclude from validation (for updates)
-        
+
         Returns:
             True if constraints are valid, False if constraint violations detected
         """
@@ -347,6 +342,59 @@ class DocumentManager(ABC):
                 cleaned_data.pop(field)
 
         return cleaned_data
+
+    # Shared helper methods used by multiple drivers
+    def _convert_filter_values(self, filters: Dict[str, Any], entity: str) -> Dict[str, Any]:
+        """Convert filter values by applying type conversions
+
+        Handles both simple equality filters and range queries like {"$gte": 21, "$lt": 65}.
+        Calls _convert_single_value() for driver-specific conversions.
+
+        This implementation is shared by all drivers (MongoDB, Elasticsearch, SQLite, PostgreSQL).
+        """
+        if not filters:
+            return filters
+
+        converted_filters = {}
+        fields_meta = MetadataService.fields(entity)
+
+        for field, filter_value in filters.items():
+            field_meta = fields_meta.get(field, {})
+            field_type = field_meta.get('type', 'String')
+
+            if isinstance(filter_value, dict):
+                # Range queries like {"$gte": 21, "$lt": 65}
+                converted_range = {}
+                for op, value in filter_value.items():
+                    converted_range[op] = self._convert_single_value(value, field_type)
+                converted_filters[field] = converted_range
+            else:
+                # Simple equality filter
+                converted_filters[field] = self._convert_single_value(filter_value, field_type)
+
+        return converted_filters
+
+    def _calculate_pagination_offset(self, page: int, pageSize: int) -> int:
+        """Calculate offset for pagination
+
+        Used by all drivers to compute the skip/offset value: (page - 1) * pageSize
+        """
+        return (page - 1) * pageSize
+
+    def _mongo_operator_to_sql(self, mongo_op: str) -> str:
+        """Convert MongoDB-style operator ($gte, $lt, etc.) to SQL operator (>=, <, etc.)
+
+        Used by SQL-based drivers (SQLite, PostgreSQL) to convert filter operators.
+        MongoDB and Elasticsearch use different query syntaxes and don't need this.
+        """
+        mapping = {
+            '$gt': '>',
+            '$gte': '>=',
+            '$lt': '<',
+            '$lte': '<=',
+            '$eq': '='
+        }
+        return mapping.get(mongo_op, '=')
 
 
 async def validate_uniques(entity: str, data: Dict[str, Any], unique_constraints: List[List[str]], exclude_id: Optional[str] = None) -> None:

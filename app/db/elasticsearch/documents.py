@@ -91,7 +91,7 @@ class ElasticsearchDocuments(DocumentManager):
 
         # Build query
         query_body = {
-            "from": (page - 1) * pageSize,
+            "from": self._calculate_pagination_offset(page, pageSize),
             "size": pageSize,
             "query": self._build_query_filter(proper_filter, entity, filter_matching)
         }
@@ -267,31 +267,7 @@ class ElasticsearchDocuments(DocumentManager):
                     data_copy[field] = value.isoformat()
         
         return data_copy
-    
-    def _convert_filter_values(self, filters: Dict[str, Any], entity: str) -> Dict[str, Any]:
-        """Convert filter values to Elasticsearch-appropriate types"""
-        if not filters:
-            return filters
-            
-        converted_filters = {}
-        fields_meta = MetadataService.fields(entity)
-        
-        for field, filter_value in filters.items():
-            field_meta = fields_meta.get(field, {})
-            field_type = field_meta.get('type', 'String')
-            
-            if isinstance(filter_value, dict):
-                # Range queries like {"$gte": 21, "$lt": 65}
-                converted_range = {}
-                for op, value in filter_value.items():
-                    converted_range[op] = self._convert_single_value(value, field_type)
-                converted_filters[field] = converted_range
-            else:
-                # Simple equality filter
-                converted_filters[field] = self._convert_single_value(filter_value, field_type)
-        
-        return converted_filters
-    
+
     def _convert_single_value(self, value, field_type: str):
         """Convert a single filter value based on field type"""
         if field_type in ('Date', 'DateTime'):

@@ -59,7 +59,7 @@ class MongoDocuments(DocumentManager):
         sort_spec = self._build_sort_spec(case_sort, entity)
 
         # Execute paginated query
-        skip_count = (page - 1) * pageSize
+        skip_count = self._calculate_pagination_offset(page, pageSize)
         cursor = db[collection].find(query).sort(sort_spec).skip(skip_count).limit(pageSize)
 
         # Apply case-insensitive collation
@@ -201,31 +201,7 @@ class MongoDocuments(DocumentManager):
                     pass
         
         return prepared_data
-    
-    def _convert_filter_values(self, filters: Dict[str, Any], entity: str) -> Dict[str, Any]:
-        """Convert filter values to MongoDB-appropriate types"""
-        if not filters:
-            return filters
-            
-        converted_filters = {}
-        fields_meta = MetadataService.fields(entity)
-        
-        for field, filter_value in filters.items():
-            field_meta = fields_meta.get(field, {})
-            field_type = field_meta.get('type', 'String')
-            
-            if isinstance(filter_value, dict):
-                # Range queries like {"$gte": 21, "$lt": 65}
-                converted_range = {}
-                for op, value in filter_value.items():
-                    converted_range[op] = self._convert_single_value(value, field_type)
-                converted_filters[field] = converted_range
-            else:
-                # Simple equality filter
-                converted_filters[field] = self._convert_single_value(filter_value, field_type)
-        
-        return converted_filters
-    
+
     def _convert_single_value(self, value: Any, field_type: str) -> Any:
         """Convert a single value to appropriate type for MongoDB"""
         if value is None:

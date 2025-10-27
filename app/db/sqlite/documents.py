@@ -92,7 +92,7 @@ class SqliteDocuments(DocumentManager):
                 if isinstance(value, dict):
                     # Range queries: {$gte: 21, $lt: 65}
                     for op, val in value.items():
-                        sql_op = self._get_sql_operator(op)
+                        sql_op = self._mongo_operator_to_sql(op)
                         where_parts.append(
                             f"CAST(json_extract(data, '$.{field}') AS REAL) {sql_op} ?"
                         )
@@ -139,11 +139,27 @@ class SqliteDocuments(DocumentManager):
                     collate = "" if self.database.case_sensitive_sorting else " COLLATE NOCASE"
                     order_parts.append(f"id{collate} {direction.upper()}")
                 else:
-                    # Other fields are in JSON
-                    collate = "" if self.database.case_sensitive_sorting else " COLLATE NOCASE"
-                    order_parts.append(
-                        f"json_extract(data, '$.{proper_field}'){collate} {direction.upper()}"
-                    )
+                    # Other fields are in JSON - need type-aware casting
+                    field_meta = fields_meta.get(proper_field, {})
+                    field_type = field_meta.get('type', 'String')
+
+                    # Cast to appropriate type for proper sorting
+                    if field_type in ['Integer', 'Number', 'Currency', 'Float']:
+                        # Numeric sorting - CAST to REAL
+                        order_parts.append(
+                            f"CAST(json_extract(data, '$.{proper_field}') AS REAL) {direction.upper()}"
+                        )
+                    elif field_type in ['Date', 'Datetime']:
+                        # Date/timestamp sorting - ISO format sorts correctly as text
+                        order_parts.append(
+                            f"json_extract(data, '$.{proper_field}') {direction.upper()}"
+                        )
+                    else:
+                        # String sorting (with optional case-insensitive)
+                        collate = "" if self.database.case_sensitive_sorting else " COLLATE NOCASE"
+                        order_parts.append(
+                            f"json_extract(data, '$.{proper_field}'){collate} {direction.upper()}"
+                        )
             order_clause = f"ORDER BY {', '.join(order_parts)}"
         else:
             # Default sort by 'id' column for consistent pagination (matches MongoDB/ES behavior)
@@ -152,7 +168,7 @@ class SqliteDocuments(DocumentManager):
             order_clause = f"ORDER BY id{collate} ASC"
 
         # Pagination
-        offset = (page - 1) * pageSize
+        offset = self._calculate_pagination_offset(page, pageSize)
         limit_clause = f"LIMIT ? OFFSET ?"
         params.extend([pageSize, offset])
 
@@ -241,20 +257,9 @@ class SqliteDocuments(DocumentManager):
         """Get core manager instance"""
         return self.database.core
 
-    def _get_sql_operator(self, mongo_op: str) -> str:
-        """Convert MongoDB operator to SQL"""
-        mapping = {
-            '$gt': '>',
-            '$gte': '>=',
-            '$lt': '<',
-            '$lte': '<=',
-            '$eq': '='
-        }
-        return mapping.get(mongo_op, '=')
-
     def _prepare_datetime_fields(self, entity: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert datetime fields for SQLite storage (as ISO strings)"""
-        from datetime import datetime
+        """Convert datetime fields for SQLite storage (normalize to UTC with Z suffix)"""
+        from datetime import datetime, timezone
 
         fields_meta = MetadataService.fields(entity)
         prepared_data = data.copy()
@@ -266,45 +271,45 @@ class SqliteDocuments(DocumentManager):
             field_meta = fields_meta.get(field, {})
             field_type = field_meta.get('type')
 
-            if field_type in ['Date', 'Datetime']:
+            if field_type == 'Datetime':
                 if isinstance(value, datetime):
-                    # Convert datetime object to ISO string
-                    prepared_data[field] = value.isoformat()
+                    # Convert datetime object to UTC and format with Z suffix
+                    dt_utc = value.astimezone(timezone.utc)
+                    prepared_data[field] = dt_utc.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
                 elif isinstance(value, str):
-                    # Parse string and convert to ISO format
+                    # Parse string (any timezone), convert to UTC, format with Z
                     try:
                         date_str = value.strip()
                         if date_str.endswith('Z'):
                             date_str = date_str[:-1] + '+00:00'
-                        prepared_data[field] = datetime.fromisoformat(date_str).isoformat()
+                        dt = datetime.fromisoformat(date_str)
+                        # If naive datetime, assume UTC
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        dt_utc = dt.astimezone(timezone.utc)
+                        prepared_data[field] = dt_utc.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+                    except (ValueError, TypeError):
+                        pass
+            elif field_type == 'Date':
+                # Date fields: store as YYYY-MM-DD (no time component)
+                if isinstance(value, datetime):
+                    prepared_data[field] = value.strftime('%Y-%m-%d')
+                elif isinstance(value, str):
+                    try:
+                        date_str = value.strip()
+                        # Parse and reformat to ensure consistent YYYY-MM-DD format
+                        if 'T' in date_str:
+                            # Has time component - extract date only
+                            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                            prepared_data[field] = dt.strftime('%Y-%m-%d')
+                        else:
+                            # Already date-only, validate format
+                            dt = datetime.strptime(date_str, '%Y-%m-%d')
+                            prepared_data[field] = dt.strftime('%Y-%m-%d')
                     except (ValueError, TypeError):
                         pass
 
         return prepared_data
-
-    def _convert_filter_values(self, filters: Dict[str, Any], entity: str) -> Dict[str, Any]:
-        """Convert filter values to SQLite-appropriate types"""
-        if not filters:
-            return filters
-
-        converted_filters = {}
-        fields_meta = MetadataService.fields(entity)
-
-        for field, filter_value in filters.items():
-            field_meta = fields_meta.get(field, {})
-            field_type = field_meta.get('type', 'String')
-
-            if isinstance(filter_value, dict):
-                # Range queries like {"$gte": 21, "$lt": 65}
-                converted_range = {}
-                for op, value in filter_value.items():
-                    converted_range[op] = self._convert_single_value(value, field_type)
-                converted_filters[field] = converted_range
-            else:
-                # Simple equality filter
-                converted_filters[field] = self._convert_single_value(filter_value, field_type)
-
-        return converted_filters
 
     def _convert_single_value(self, value: Any, field_type: str) -> Any:
         """Convert a single value to appropriate type for SQLite"""
