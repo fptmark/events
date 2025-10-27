@@ -1,1015 +1,477 @@
-# Service Architecture Implementation Plan
+# Service Architecture Implementation - Current Work
 
-## Overview
-
-This document details the plan to implement a schema-driven service architecture that allows entities to declare services via `@service` decorators in the MMD schema. The first service type is authentication (`auth.cookies.redis`), with plans to support OAuth, notifications, storage, and analytics in the future.
-
----
-
-## Current State
-
-### What Exists
-```
-app/services/
-├── auth/
-│   ├── base_router.py          # BaseAuth, BaseCookieStore abstractions
-│   └── cookies/
-│       └── redis_provider.py   # CookiesAuth, RedisCookieStore implementations
-├── redis_user.py               # Generated router for User auth endpoints
-├── metadata.py                 # Entity metadata service
-├── model.py                    # Model service
-├── notify.py                   # Notification service
-└── request_context.py          # Request context management
-```
-
-### Schema Declaration
-```mermaid
-User {
-    String username
-    String email
-    String password
-    %% @service auth.cookies.redis
-}
-```
-
-### Configuration (mongo.json)
-```json
-{
-    "auth.cookies.redis": {
-        "host": "127.0.0.1",
-        "port": 6379,
-        "db": 0
-    }
-}
-```
+**Date**: 2025-10-23
+**Status**: In Progress - Implementing filter_matching parameter
 
 ---
 
-## Architecture Principles
+## Background
 
-### 1. **Schema-Driven Service Binding**
-Services are declared in the schema using `@service <type>.<method>.<provider>` syntax:
-- **type**: Service category (auth, notifications, storage, analytics)
-- **method**: Implementation method (cookies, oauth, email, s3)
-- **provider**: Specific provider (redis, google, sendgrid, aws)
-
-### 2. **Explicit Configuration Required**
-All service field mappings must be explicitly defined in schema - no conventions:
-- **Why**: Different service implementations need different fields (OAuth vs cookies vs SAML)
-- **Why**: Non-auth services (notifications, storage, analytics) have completely different configs
-- **Why**: Enables service-specific validation via config schemas
-- **Result**: Schema is self-documenting and unambiguous
-
-### 3. **Code Generation**
-Parser generates router files and wiring code from schema declarations, avoiding boilerplate.
-
-### 4. **Separation of Concerns**
-```
-Schema (@service)
-  ↓
-Service Registry (maps entity → service)
-  ↓
-Generated Router (FastAPI endpoints)
-  ↓
-Service Implementation (business logic)
-  ↓
-Provider Backend (Redis, Google, S3, etc.)
-```
+Decided to implement **configuration-driven services** instead of code generation:
+- Single provider implementation (e.g., `redis_provider.py`)
+- Configuration in schema.yaml per entity
+- Services read config from MetadataService at runtime
+- See `docs/service_arch.md` for full architectural decision
 
 ---
 
-## Why Explicit Configuration is Essential
+## Current Implementation Task
 
-### Different Auth Implementations Need Different Fields
+**Goal**: Enable exact-match filtering in `get_all()` for authentication and other use cases.
 
-**Cookie-based auth:**
-```mermaid
-User {
-    String email
-    String password
-    %% @service auth.cookies.redis {
-    %%   loginField: "email",
-    %%   passwordField: "password",
-    %%   sessionIdentifier: "id"
-    %% }
-}
-```
+**Problem**:
+- Auth needs exact username match: `username="mark"` should only match `"mark"`, not `"Mark_Williams"`
+- Current MongoDB implementation does substring matching for non-enum strings
+- Led to authentication failures (wrong user matched)
 
-**OAuth auth (completely different fields):**
-```mermaid
-User {
-    String email
-    String googleId       ← NEW field for OAuth
-    String profilePicture ← NEW field OAuth can populate
-    %% @service auth.oauth.google {
-    %%   emailField: "email",
-    %%   providerIdField: "googleId",  ← OAuth-specific
-    %%   avatarField: "profilePicture" ← OAuth-specific
-    %% }
-}
-```
-
-**SAML enterprise auth (even more different):**
-```mermaid
-User {
-    String workEmail
-    String companyId
-    Array[String] permissions
-    %% @service auth.saml.okta {
-    %%   emailField: "workEmail",        ← Different field name
-    %%   tenantIdField: "companyId",     ← SAML-specific
-    %%   rolesField: "permissions"       ← Maps SAML attributes
-    %% }
-}
-```
-
-**Conventions cannot handle this diversity.**
+**Solution**: Add `filter_matching` parameter to `get_all()` with modes:
+- `"contains"` (default) - Current behavior, substring/fuzzy matching
+- `"exact"` - Exact match only, needed for auth
 
 ---
 
-### Non-Auth Services Have Completely Different Configs
+## Work Completed
 
-**Notifications (email):**
-```mermaid
-Event {
-    String title
-    Array[String] attendeeEmails
-    Date eventDate
-    %% @service notifications.email.sendgrid {
-    %%   recipientField: "attendeeEmails",
-    %%   subjectTemplate: "{{title}} Reminder",
-    %%   bodyFields: ["description", "eventDate"],
-    %%   triggerOn: "create",
-    %%   templateId: "event-reminder-v2"
-    %% }
-}
+### 1. ✅ Services read metadata from MetadataService
+
+**File**: `app/services/auth/cookies/redis_provider.py`
+
+**Change**: Removed `field_map` parameter, now reads from entity metadata:
+
+```python
+async def login(self, entity_name: str, credentials: dict) -> str | None:
+    # Get service configuration from entity metadata
+    from app.services.metadata import MetadataService
+
+    metadata = MetadataService.get(entity_name)
+    services = metadata.get("services", {})
+    auth_config = services.get("auth.cookies.redis", {})
+    field_map = auth_config.get("fields", {})
+
+    login_field = field_map.get("login")
+    password_field = field_map.get("password")
+    # ... rest of login logic
 ```
 
-**Storage (file uploads):**
-```mermaid
-Profile {
-    Binary avatarData
-    String avatarUrl
-    %% @service storage.files.s3 {
-    %%   fileField: "avatarData",
-    %%   urlField: "avatarUrl",
-    %%   bucket: "profile-avatars",
-    %%   acl: "public-read",
-    %%   maxSize: "5MB",
-    %%   allowedTypes: ["image/jpeg", "image/png"]
-    %% }
-}
-```
-
-**Analytics (event tracking):**
-```mermaid
-UserEvent {
-    String userId
-    String eventId
-    Boolean attended
-    Integer rating
-    %% @service analytics.tracking.mixpanel {
-    %%   eventName: "event_attended",
-    %%   userIdField: "userId",
-    %%   propertiesFields: ["eventId", "rating"],
-    %%   triggerOn: "update",
-    %%   conditionalField: "attended",
-    %%   conditionalValue: true
-    %% }
-}
-```
-
-**Each service type has unique configuration requirements.**
-
----
-
-### Multiple Services on Same Entity
-
-```mermaid
-User {
-    String email
-    String password
-    String googleId
-    String githubId
-
-    %% Standard password auth
-    %% @service auth.cookies.redis {
-    %%   name: "standard",
-    %%   loginField: "email",
-    %%   passwordField: "password"
-    %% }
-
-    %% Google OAuth
-    %% @service auth.oauth.google {
-    %%   name: "google",
-    %%   emailField: "email",
-    %%   providerIdField: "googleId"
-    %% }
-
-    %% GitHub OAuth
-    %% @service auth.oauth.github {
-    %%   name: "github",
-    %%   emailField: "email",
-    %%   providerIdField: "githubId"
-    %% }
-}
-```
-
-**Three auth services on one entity - conventions are impossible.**
-
----
-
-### Service Configuration Schemas
-
-Each service type defines its own configuration schema that the parser validates:
-
-**auth.service.schema.yaml:**
+**Schema example** (already exists in `schema.yaml`):
 ```yaml
-type: auth
-required_fields:
-  - loginField
-  - passwordField
-optional_fields:
-  sessionIdentifier:
-    type: string
-    default: "id"
-  name:
-    type: string
-    description: "Name if entity has multiple auth services"
+User:
+  services:
+    auth.cookies.redis:
+      fields:
+        login: username
+        password: password
 ```
 
-**notifications.service.schema.yaml:**
-```yaml
-type: notifications
-required_fields:
-  - recipientField
-  - subjectTemplate
-  - triggerOn
-optional_fields:
-  bodyFields:
-    type: array
-    default: []
-  templateId:
-    type: string
-```
+### 2. ✅ Added filter_matching parameter to DocumentManager
 
-**storage.service.schema.yaml:**
-```yaml
-type: storage
-required_fields:
-  - fileField
-  - urlField
-  - bucket
-optional_fields:
-  maxSize:
-    type: string
-    default: "10MB"
-  allowedTypes:
-    type: array
-    default: []
-  acl:
-    type: string
-    default: "private"
-```
+**File**: `app/db/document_manager.py`
 
-**Parser validates service configs against these schemas during code generation.**
+**Changes**:
 
----
-
-## Implementation Phases
-
-## Phase 1: Foundation (Immediate - Week 1)
-
-### 1.1 Service Registry
-**File:** `app/services/service_registry.py`
-
-**Purpose:** Central registry mapping entities to service implementations
-
-**Implementation:**
+**`get_all()` signature** (line 27):
 ```python
-from typing import Dict, Any, Optional, Type
-import logging
-
-class ServiceRegistry:
-    """
-    Central registry for entity services.
-    Maps (entity, service_type) → service implementation class
-    """
-    _registry: Dict[tuple[str, str], Type] = {}
-    _service_metadata: Dict[tuple[str, str], dict] = {}
-
-    @classmethod
-    def register(cls, entity: str, service_type: str,
-                 implementation: Type, metadata: Optional[dict] = None):
-        """
-        Register a service implementation for an entity.
-
-        Args:
-            entity: Entity name (e.g., "User")
-            service_type: Service type (e.g., "auth")
-            implementation: Service class (e.g., CookiesAuth)
-            metadata: Optional service configuration/field mappings
-        """
-        key = (entity.lower(), service_type)
-        cls._registry[key] = implementation
-        cls._service_metadata[key] = metadata or {}
-        logging.info(f"Registered service: {entity}.{service_type} → {implementation.__name__}")
-
-    @classmethod
-    def get(cls, entity: str, service_type: str) -> Optional[Type]:
-        """Get service implementation for entity"""
-        return cls._registry.get((entity.lower(), service_type))
-
-    @classmethod
-    def get_metadata(cls, entity: str, service_type: str) -> dict:
-        """Get service metadata (field mappings, config)"""
-        return cls._service_metadata.get((entity.lower(), service_type), {})
-
-    @classmethod
-    def list_services(cls, entity: Optional[str] = None) -> list:
-        """List all registered services, optionally filtered by entity"""
-        if entity:
-            return [
-                {"entity": ent, "service_type": svc_type, "implementation": impl.__name__}
-                for (ent, svc_type), impl in cls._registry.items()
-                if ent == entity.lower()
-            ]
-        return [
-            {"entity": ent, "service_type": svc_type, "implementation": impl.__name__}
-            for (ent, svc_type), impl in cls._registry.items()
-        ]
+async def get_all(
+    self,
+    entity: str,
+    sort: Optional[List[Tuple[str, str]]] = None,
+    filter: Optional[Dict[str, Any]] = None,
+    page: int = 1,
+    pageSize: int = 25,
+    view_spec: Dict[str, Any] = {},
+    filter_matching: str = "contains"  # NEW
+) -> Tuple[List[Dict[str, Any]], int]:
 ```
 
----
-
-### 1.2 Service Lifecycle Manager
-**File:** `app/services/service_lifecycle.py`
-
-**Purpose:** Manage service initialization/shutdown (Redis connections, etc.)
-
-**Implementation:**
+**Abstract method** (line 73):
 ```python
-from typing import Dict, Any
-import logging
-from app.services.service_registry import ServiceRegistry
-from app.config import Config
-
-class ServiceLifecycle:
-    """
-    Manages service lifecycle (startup/shutdown).
-    Initializes services that need async setup (Redis, OAuth clients, etc.)
-    """
-    _initialized_services: Dict[str, Any] = {}
-
-    @classmethod
-    async def startup(cls):
-        """
-        Initialize all registered services at app startup.
-        Calls initialize() on service classes that need async setup.
-        """
-        logging.info("=== Service Lifecycle: Starting ===")
-
-        for (entity, service_type), service_class in ServiceRegistry._registry.items():
-            service_key = f"{entity}.{service_type}"
-
-            # Check if service needs initialization
-            if not hasattr(service_class, 'initialize'):
-                logging.debug(f"Service {service_key} does not need initialization")
-                continue
-
-            # Get service config from mongo.json
-            # Format: "auth.cookies.redis" → Config.get("auth.cookies.redis")
-            service_metadata = ServiceRegistry.get_metadata(entity, service_type)
-            provider_path = service_metadata.get("provider", "")  # e.g., "auth.cookies.redis"
-            service_config = Config.get(provider_path, {})
-
-            if not service_config:
-                logging.warning(f"No config found for {service_key} (provider: {provider_path})")
-                continue
-
-            # Initialize service
-            try:
-                logging.info(f"Initializing service: {service_key}")
-                initialized_service = await service_class.initialize(service_config)
-                cls._initialized_services[service_key] = initialized_service
-                logging.info(f"✓ Service initialized: {service_key}")
-            except Exception as e:
-                logging.error(f"✗ Failed to initialize {service_key}: {e}")
-                raise
-
-        logging.info(f"=== Service Lifecycle: Started {len(cls._initialized_services)} services ===")
-
-    @classmethod
-    async def shutdown(cls):
-        """Cleanup services at app shutdown"""
-        logging.info("=== Service Lifecycle: Shutting down ===")
-
-        for service_key, service in cls._initialized_services.items():
-            if hasattr(service, 'close'):
-                try:
-                    await service.close()
-                    logging.info(f"✓ Closed service: {service_key}")
-                except Exception as e:
-                    logging.error(f"✗ Error closing {service_key}: {e}")
-
-        cls._initialized_services.clear()
-        logging.info("=== Service Lifecycle: Shutdown complete ===")
-
-    @classmethod
-    def get_service(cls, entity: str, service_type: str) -> Any:
-        """Get initialized service instance"""
-        return cls._initialized_services.get(f"{entity.lower()}.{service_type}")
+@abstractmethod
+async def _get_all_impl(
+    self,
+    entity: str,
+    sort: Optional[List[Tuple[str, str]]] = None,
+    filter: Optional[Dict[str, Any]] = None,
+    page: int = 1,
+    pageSize: int = 25,
+    filter_matching: str = "contains"  # NEW
+) -> Tuple[List[Dict[str, Any]], int]:
 ```
+
+**Note**: Kept `get(id)` unchanged - it only does ID lookups, doesn't need filtering modes.
 
 ---
 
-### 1.3 Wire into FastAPI
-**File:** `app/main.py`
+## Work In Progress
 
-**Add startup/shutdown hooks:**
+### 3. 🔨 Update MongoDB to respect filter_matching
+
+**File**: `app/db/mongodb/documents.py`
+
+**What needs to change**:
+
+#### Part A: Update `_get_all_impl()` signature (line 26)
+
+**Current**:
 ```python
-from app.services.service_lifecycle import ServiceLifecycle
-
-@app.on_event("startup")
-async def startup_event():
-    # ... existing database init ...
-
-    # Initialize services
-    await ServiceLifecycle.startup()
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    # Shutdown services
-    await ServiceLifecycle.shutdown()
-
-    # ... existing database close ...
+async def _get_all_impl(
+    self,
+    entity: str,
+    sort: Optional[List[Tuple[str, str]]] = None,
+    filter: Optional[Dict[str, Any]] = None,
+    page: int = 1,
+    pageSize: int = 25
+) -> Tuple[List[Dict[str, Any]], int]:
 ```
 
----
-
-### 1.4 Reorganize Directory Structure
-**New structure:**
-```
-app/services/
-├── __init__.py
-├── service_registry.py          # NEW: Registry
-├── service_lifecycle.py         # NEW: Lifecycle manager
-├── generated/                   # NEW: Generated service routers
-│   └── user_auth.py            # MOVED from redis_user.py
-├── auth/
-│   ├── __init__.py
-│   ├── base_router.py          # Base abstractions
-│   └── cookies/
-│       └── redis_provider.py   # Redis implementation
-├── framework/                   # Framework utilities
-├── metadata.py
-├── model.py
-├── notify.py
-└── request_context.py
-```
-
-**Action:** Move `redis_user.py` → `generated/user_auth.py`
-
----
-
-## Phase 2: Field Mapping & Enhanced Code Generation (Week 2)
-
-### 2.1 Schema Parser Enhancement
-**File:** `test/query-src/pkg/parser/service_parser.go` (or Python equivalent)
-
-**Extract service declarations with field mappings:**
-
-**Schema syntax:**
-```mermaid
-User {
-    String email      %% @unique
-    String password
-    %% @service auth.cookies.redis { loginField: "email" }
-}
-```
-
-**Parser output (JSON/YAML):**
-```json
-{
-  "entities": {
-    "User": {
-      "services": [
-        {
-          "type": "auth",
-          "method": "cookies",
-          "provider": "redis",
-          "provider_path": "auth.cookies.redis",
-          "config": {
-            "loginField": "email",
-            "passwordField": "password",
-            "sessionIdentifier": "id"
-          }
-        }
-      ]
-    }
-  }
-}
-```
-
-**All fields must be explicitly specified in schema - no conventions.**
-
----
-
-### 2.2 Enhanced Code Generator
-**File:** `test/query-src/pkg/generator/service_generator.go` (or Python)
-
-**Generate improved router:**
-
-**Template:** `templates/service_auth_router.py.tmpl`
+**Needs to be**:
 ```python
-# GENERATED FILE - DO NOT EDIT
-# Generated from schema @service declaration for {{.Entity}}
+async def _get_all_impl(
+    self,
+    entity: str,
+    sort: Optional[List[Tuple[str, str]]] = None,
+    filter: Optional[Dict[str, Any]] = None,
+    page: int = 1,
+    pageSize: int = 25,
+    filter_matching: str = "contains"  # NEW
+) -> Tuple[List[Dict[str, Any]], int]:
+```
 
-from fastapi import APIRouter, Request, Response, HTTPException
-from typing import Dict, Any
-from app.services.service_registry import ServiceRegistry
-from app.services.service_lifecycle import ServiceLifecycle
-from app.db.factory import get_database
-from app.models.{{.entity}}_model import {{.Entity}}
-import logging
+#### Part B: Pass filter_matching to _build_query_filter (line 52)
 
-router = APIRouter()
+**Current**:
+```python
+query = self._build_query_filter(case_filter, entity) if filter else {}
+```
 
-# Service metadata from schema
-LOGIN_FIELD = "{{.LoginField}}"
-PASSWORD_FIELD = "{{.PasswordField}}"
-SESSION_ID_FIELD = "{{.SessionIdentifier}}"
+**Needs to be**:
+```python
+query = self._build_query_filter(case_filter, entity, filter_matching) if filter else {}
+```
 
-@router.post("/login", summary="Login")
-async def login_endpoint(request: Request, response: Response):
-    """
-    Login using {{.Entity}} credentials.
+#### Part C: Update _build_query_filter() signature and logic (line 254)
 
-    Expected payload:
-    {
-        "{{.LoginField}}": "user@example.com",
-        "{{.PasswordField}}": "password123"
-    }
-    """
-    try:
-        payload = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid request body")
+**Current signature**:
+```python
+def _build_query_filter(self, filters: Dict[str, Any], entity: str) -> Dict[str, Any]:
+```
 
-    # Validate required fields
-    login_value = payload.get(LOGIN_FIELD)
-    password = payload.get(PASSWORD_FIELD)
+**New signature**:
+```python
+def _build_query_filter(self, filters: Dict[str, Any], entity: str, filter_matching: str = "contains") -> Dict[str, Any]:
+```
 
-    if not login_value or not password:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Missing required fields: {LOGIN_FIELD}, {PASSWORD_FIELD}"
-        )
-
-    # Query database for user
-    db = get_database()
-    query = {LOGIN_FIELD: login_value}
-
-    try:
-        user_docs, count = await db.documents.get_all("{{.Entity}}", filter=query, pageSize=1)
-    except Exception as e:
-        logging.error(f"Database error during login: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-    if count == 0:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    user = user_docs[0]
-
-    # TODO: Verify password using bcrypt (currently placeholder)
-    # In production: bcrypt.checkpw(password.encode(), user[PASSWORD_FIELD].encode())
-    if user.get(PASSWORD_FIELD) != password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    # Get initialized auth service
-    auth_service = ServiceLifecycle.get_service("{{.Entity}}", "auth")
-    if not auth_service:
-        raise HTTPException(status_code=500, detail="Auth service not initialized")
-
-    # Create session
-    session_data = {
-        "user_id": user[SESSION_ID_FIELD],
-        "login_field": LOGIN_FIELD,
-        "login_value": login_value
-    }
-
-    session_id = await auth_service.create_session(session_data)
-
-    # Set cookie
-    response.set_cookie(
-        key=auth_service.cookie_name,
-        value=session_id,
-        **auth_service.cookie_options
-    )
-
-    return {
-        "success": True,
-        "user_id": user[SESSION_ID_FIELD],
-        "message": "Login successful"
-    }
-
-@router.post("/logout", summary="Logout")
-async def logout_endpoint(request: Request, response: Response):
-    """Logout user and clear session"""
-    auth_service = ServiceLifecycle.get_service("{{.Entity}}", "auth")
-    if not auth_service:
-        raise HTTPException(status_code=500, detail="Auth service not initialized")
-
-    success = await auth_service.logout(request)
-
-    if success:
-        response.delete_cookie(key=auth_service.cookie_name)
-        return {"success": True, "message": "Logout successful"}
+**Current logic** (lines 280-288):
+```python
+if field_type == 'String' and not has_enum_values:
+    # Free text fields: partial match with regex
+    query[field] = {"$regex": f".*{self._escape_regex(str(value))}.*", "$options": "i"}
+else:
+    # Enum fields and non-text fields: exact match
+    if isinstance(value, str) and ObjectId.is_valid(value):
+        query[field] = ObjectId(value)
     else:
-        raise HTTPException(status_code=400, detail="No active session")
-
-@router.post("/refresh", summary="Refresh session")
-async def refresh_endpoint(request: Request, response: Response):
-    """Refresh user session"""
-    auth_service = ServiceLifecycle.get_service("{{.Entity}}", "auth")
-    if not auth_service:
-        raise HTTPException(status_code=500, detail="Auth service not initialized")
-
-    success = await auth_service.refresh(request)
-
-    if success:
-        return {"success": True, "message": "Session refreshed"}
-    else:
-        raise HTTPException(status_code=401, detail="Session expired or invalid")
-
-@router.get("/metadata", summary="Get {{.Entity}} metadata")
-async def get_metadata():
-    """Get metadata for {{.Entity}} entity"""
-    return {{.Entity}}.get_metadata()
-
-def init_router(app):
-    """Register router with FastAPI app"""
-    app.include_router(router, prefix="/{{.entity}}/auth", tags=["{{.Entity}} Auth"])
-
-    # Register service in registry
-    from app.services.auth.cookies.redis_provider import CookiesAuth
-    ServiceRegistry.register(
-        entity="{{.Entity}}",
-        service_type="auth",
-        implementation=CookiesAuth,
-        metadata={
-            "provider": "{{.ProviderPath}}",
-            "loginField": LOGIN_FIELD,
-            "passwordField": PASSWORD_FIELD,
-            "sessionIdentifier": SESSION_ID_FIELD
-        }
-    )
+        query[field] = value
 ```
 
----
-
-### 2.3 Update Auth Provider Interface
-**File:** `app/services/auth/cookies/redis_provider.py`
-
-**Add `create_session()` method:**
+**New logic needed**:
 ```python
-async def create_session(self, session_data: dict) -> str:
-    """
-    Create a new session and return session ID.
-
-    Args:
-        session_data: Data to store in session (user_id, etc.)
-
-    Returns:
-        session_id: UUID session identifier
-    """
-    session_id = str(uuid.uuid4())
-    session_data["created"] = time.time()
-
-    await self.cookie_store.set_session(session_id, session_data, SESSION_TTL)
-
-    return session_id
+if field_type == 'String' and not has_enum_values:
+    if filter_matching == "exact":
+        # Exact match for auth and other exact-match use cases
+        query[field] = value
+    else:
+        # Free text fields: partial match with regex (default behavior)
+        query[field] = {"$regex": f".*{self._escape_regex(str(value))}.*", "$options": "i"}
+else:
+    # Enum fields and non-text fields: always exact match
+    if isinstance(value, str) and ObjectId.is_valid(value):
+        query[field] = ObjectId(value)
+    else:
+        query[field] = value
 ```
+
+**Key change**: When `filter_matching="exact"`, skip the regex wrapper for non-enum strings.
 
 ---
 
-## Phase 3: Configuration & Multi-Service Support (Week 3)
+## Work Remaining
 
-### 3.1 Enhanced Configuration Format
-**File:** `mongo.json` (or `config.json`)
+### 4. ⏳ Update Elasticsearch and SQLite
 
-**Current:**
-```json
-{
-    "auth.cookies.redis": {
-        "host": "127.0.0.1",
-        "port": 6379,
-        "db": 0
-    }
-}
+**Files**:
+- `app/db/elasticsearch/documents.py`
+- `app/db/sqlite/documents.py`
+
+**Changes**: Add `filter_matching` parameter to `_get_all_impl()` (match MongoDB changes)
+
+### 5. ⏳ Update redis_provider to use get_all with exact matching
+
+**File**: `app/services/auth/cookies/redis_provider.py`
+
+**Current code** (lines 120-135, has debug logging):
+```python
+# Query database for user
+from app.db.factory import DatabaseFactory
+db = DatabaseFactory.get_instance()
+
+try:
+    user_docs, count = await db.documents.get_all(
+        entity_name,
+        filter={login_field: login_value},
+        pageSize=1
+    )
+    print(f"[DEBUG] Database query - count: {count}, filter: {{{login_field}: {login_value}}}")
+except Exception as e:
+    print(f"[DEBUG] Database error during login: {e}")
+    return None
+
+if count == 0:
+    print(f"[DEBUG] No user found with {login_field}={login_value}")
+    return None
+
+user = user_docs[0]
+print(f"[DEBUG] User found - checking password")
 ```
 
-**Enhanced (structured by entity + service):**
-```json
-{
-    "services": {
-        "User.auth": {
-            "provider": "auth.cookies.redis",
-            "config": {
-                "host": "127.0.0.1",
-                "port": 6379,
-                "db": 0,
-                "session_ttl": 3600,
-                "cookie_name": "user_session"
-            }
-        }
-    }
-}
+**Needs to be**:
+```python
+# Query database for user with EXACT match
+from app.db.factory import DatabaseFactory
+db = DatabaseFactory.get_instance()
+
+try:
+    user_docs, count = await db.documents.get_all(
+        entity_name,
+        filter={login_field: login_value},
+        pageSize=1,
+        filter_matching="exact"  # NEW - exact match for auth
+    )
+except Exception as e:
+    # Log error but don't expose details
+    print(f"Database error during login: {e}")
+    return None
+
+if count == 0:
+    return None
+
+user = user_docs[0]
 ```
 
-**Backward compatibility:** Keep flat `"auth.cookies.redis"` config, but add `Config.get_service_config()`:
+### 6. ⏳ Remove debug logging from redis_provider.py
 
-**File:** `app/config.py`
+**File**: `app/services/auth/cookies/redis_provider.py`
+
+Remove all `print(f"[DEBUG]...")` statements added during debugging.
+
+### 7. ⏳ Update redis_user.py
+
+**File**: `app/services/redis_user.py`
+
+**Current** (lines 43-46):
+```python
+# Field mapping from schema
+field_map = {"login": "username", "password": "password"}
+
+# Authenticate and get session_id
+session_id = await CookiesAuth().login("User", field_map, payload)
+```
+
+**Needs to be**:
+```python
+# Authenticate and get session_id (field_map now read from metadata)
+session_id = await CookiesAuth().login("User", payload)
+```
+
+### 8. ⏳ Handle DocumentNotFound exception
+
+**File**: `app/services/auth/cookies/redis_provider.py`
+
+Add proper exception handling for case where user not found (currently returns empty list, not exception).
+
+### 9. ⏳ Test with redis.sh
+
+Run `./redis.sh` to verify:
+- Login with correct credentials succeeds
+- Session stored in Redis
+- Logout clears session
+- Exact matching works (no partial matches)
+
+### 10. ⏳ Update generated model templates
+
+**File**: `src/generators/templates/models/base.tpl`
+
+**Current** (line ~35):
 ```python
 @classmethod
-def get_service_config(cls, entity: str, service_type: str, provider: str) -> dict:
-    """
-    Get service configuration for entity.
-
-    Tries hierarchical lookup:
-    1. services.{Entity}.{service_type}.config
-    2. {provider} (flat format for backward compat)
-
-    Args:
-        entity: Entity name (e.g., "User")
-        service_type: Service type (e.g., "auth")
-        provider: Provider path (e.g., "auth.cookies.redis")
-
-    Returns:
-        Configuration dict or empty dict
-    """
-    # Try new structured format
-    services = cls._config.get('services', {})
-    service_key = f"{entity}.{service_type}"
-
-    if service_key in services:
-        return services[service_key].get('config', {})
-
-    # Fall back to flat format (backward compat)
-    return cls._config.get(provider, {})
+async def get_all(cls,
+                  sort: List[Tuple[str, str]],
+                  filter: Optional[Dict[str, Any]],
+                  page: int,
+                  pageSize: int,
+                  view_spec: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int]:
+    db = DatabaseFactory.get_instance()
+    return await db.documents.get_all("{{Entity}}", sort, filter, page, pageSize, view_spec)
 ```
 
----
-
-### 3.2 Multi-Service Support
-**Schema with multiple services:**
-```mermaid
-Event {
-    String title
-    String description
-    %% @service notifications.email.sendgrid
-    %% @service analytics.tracking.mixpanel
-}
-```
-
-**Registry supports multiple services per entity:**
+**Needs**:
 ```python
-ServiceRegistry.register("Event", "notifications", SendgridService)
-ServiceRegistry.register("Event", "analytics", MixpanelService)
+@classmethod
+async def get_all(cls,
+                  sort: List[Tuple[str, str]],
+                  filter: Optional[Dict[str, Any]],
+                  page: int,
+                  pageSize: int,
+                  view_spec: Dict[str, Any],
+                  filter_matching: str = "contains") -> Tuple[List[Dict[str, Any]], int]:
+    db = DatabaseFactory.get_instance()
+    return await db.documents.get_all("{{Entity}}", sort, filter, page, pageSize, view_spec, filter_matching)
 ```
 
-**Generated routers:** `generated/event_notifications.py`, `generated/event_analytics.py`
+### 11. ⏳ Regenerate models
 
----
+Run model generator to update all entity models with new signature.
 
-## Phase 4: OAuth & Additional Auth Methods (Week 4)
+### 12. ⏳ Dynamic route registration
 
-### 4.1 OAuth Provider
-**File:** `app/services/auth/oauth/google_provider.py`
+**Goal**: Replace `redis_user.py` file with dynamic route registration at startup.
 
-**Implementation:**
+**File**: `app/services/services_init.py`
+
+**Concept**:
 ```python
-from authlib.integrations.starlette_client import OAuth
-from app.services.auth.base_router import BaseAuth, AuthContext
+async def initialize(app=None):
+    # Load service registry
+    ServiceRegistry.initialize()
 
-class GoogleOAuth(BaseAuth):
-    """Google OAuth2 authentication provider"""
+    # Initialize Redis
+    redis_config = Config.get("auth.cookies.redis", {})
+    await CookiesAuth.initialize(redis_config)
 
-    oauth = OAuth()
+    # Dynamic route registration for auth services
+    if app:
+        for entity_name in MetadataService.list_entities():
+            metadata = MetadataService.get(entity_name)
+            services = metadata.get("services", {})
 
-    @classmethod
-    async def initialize(cls, config: dict):
-        """Initialize OAuth client"""
-        cls.oauth.register(
-            name='google',
-            client_id=config['client_id'],
-            client_secret=config['client_secret'],
-            server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-            client_kwargs={'scope': 'openid email profile'}
-        )
-        return cls
-
-    async def login(self, username: str, password: str) -> AuthContext:
-        """Not used for OAuth - handled by redirect flow"""
-        raise NotImplementedError("OAuth uses redirect flow")
-
-    async def authenticate(self, request: Request) -> AuthContext:
-        """Validate OAuth token"""
-        token = request.session.get('user')
-        if token:
-            return AuthContext(
-                authenticated=True,
-                user_id=token['email'],
-                session_data=token
-            )
-        return AuthContext(authenticated=False)
+            if "auth.cookies.redis" in services:
+                register_auth_routes(app, entity_name, CookiesAuth)
 ```
 
-**Schema:**
-```mermaid
-User {
-    String email
-    %% @service auth.oauth.google
-}
-```
+**Implementation needed**: Create `register_auth_routes()` function that dynamically creates FastAPI routes.
 
-**Config:**
-```json
-{
-    "auth.oauth.google": {
-        "client_id": "xxx",
-        "client_secret": "yyy",
-        "redirect_uri": "http://localhost:5500/user/auth/callback"
-    }
-}
-```
+### 13. ⏳ Prune services directory
+
+Remove build-time files no longer needed:
+- `app/services/auth/base_router.py` (was for code generation)
+- `app/services/auth/base_model.py` (was for code generation)
+- `app/services/framework/decorators.py` (was for code generation)
+- Consider keeping `services_registry.json` for validation
 
 ---
 
-## Phase 5: Testing & Documentation (Week 5)
+## Files Modified So Far
 
-### 5.1 Service Testing Framework
-**File:** `test/services/test_auth_service.py`
+1. ✅ `app/services/auth/cookies/redis_provider.py` - Reads field_map from metadata
+2. ✅ `app/db/document_manager.py` - Added filter_matching parameter
+3. ✅ `redis.sh` - Better error display, shows session ID on success
 
-**Mock service for testing:**
+---
+
+## Files Pending Changes
+
+1. 🔨 `app/db/mongodb/documents.py` - Implement filter_matching logic
+2. ⏳ `app/db/elasticsearch/documents.py` - Add filter_matching parameter
+3. ⏳ `app/db/sqlite/documents.py` - Add filter_matching parameter
+4. ⏳ `app/services/redis_user.py` - Remove hardcoded field_map
+5. ⏳ `src/generators/templates/models/base.tpl` - Add filter_matching parameter
+6. ⏳ `app/services/services_init.py` - Add dynamic route registration
+
+---
+
+## Testing Status
+
+**Current issue**: Authentication failing because:
+- MongoDB doing substring match on username
+- "mark" matches "Mark_Williams_hotmail.com"
+- Wrong user returned, password mismatch
+
+**Fix**: Once filter_matching="exact" is implemented, auth will work correctly.
+
+**Test command**: `./redis.sh`
+
+---
+
+## Next Steps (In Order)
+
+1. Finish MongoDB filter_matching implementation (Part C above)
+2. Update Elasticsearch and SQLite for consistency
+3. Update redis_provider to use filter_matching="exact"
+4. Remove debug logging
+5. Update redis_user.py to use new signature
+6. Test with redis.sh
+7. Update model templates and regenerate
+8. Implement dynamic route registration
+9. Clean up services directory
+
+---
+
+## Related Documentation
+
+- `docs/service_arch.md` - Architectural decision document
+- `redis_todo.md` - Remaining Redis auth tasks (password hashing, etc.)
+- `schema.yaml` - Service configurations per entity
+
+---
+
+## Decision Log
+
+### Why filter_matching instead of match?
+- `match` conflicts with Python's `re.match()`
+- `filter_matching` is clearer about what it's matching
+- Consistent with being a parameter about how filters work
+
+### Why not use filter for get(id)?
+- `get(id)` is a fast path for 90% of single-doc lookups
+- ID lookups are always exact, no need for matching modes
+- Keeps router code simple: `User.get(id)` vs `User.get_all(filter={"id": id})`
+
+### Why add to get_all() instead of new method?
+- Single method with modes is simpler than multiple methods
+- Default "contains" preserves current behavior (no breaking changes)
+- "exact" mode available when needed (auth, unique lookups)
+
+---
+
+## Code Snippets for Reference
+
+### Schema Service Configuration
+```yaml
+User:
+  services:
+    auth.cookies.redis:
+      fields:
+        login: username
+        password: password
+```
+
+### Auth Usage Pattern
 ```python
-class MockAuthService(BaseAuth):
-    """Mock auth for testing without Redis"""
-
-    _sessions = {}  # In-memory session store
-
-    async def login(self, username: str, password: str) -> AuthContext:
-        if username == "testuser" and password == "testpass":
-            session_id = "mock-session-123"
-            self._sessions[session_id] = {"user_id": "test-user-id"}
-            return AuthContext(authenticated=True, user_id="test-user-id")
-        return AuthContext(authenticated=False, error="Invalid credentials")
+# In redis_provider.py
+user_docs, count = await db.documents.get_all(
+    entity_name,
+    filter={login_field: login_value},
+    pageSize=1,
+    filter_matching="exact"
+)
 ```
 
-**Register mock in tests:**
+### Search Usage Pattern (current behavior)
 ```python
-@pytest.fixture
-def mock_auth():
-    ServiceRegistry.register("User", "auth", MockAuthService)
-    yield
-    ServiceRegistry._registry.clear()
+# In search endpoints
+users, count = await db.documents.get_all(
+    "User",
+    filter={"username": "mar"},
+    pageSize=10,
+    filter_matching="contains"  # or omit, it's the default
+)
 ```
-
----
-
-### 5.2 Documentation Generation
-**File:** `docs/services.md` (auto-generated)
-
-**Generator script:**
-```python
-def generate_service_docs():
-    """Generate service documentation from registry"""
-    services = ServiceRegistry.list_services()
-
-    output = "# Active Services\n\n"
-
-    for service in services:
-        entity = service['entity']
-        service_type = service['service_type']
-        impl = service['implementation']
-        metadata = ServiceRegistry.get_metadata(entity, service_type)
-
-        output += f"## {entity}.{service_type}\n"
-        output += f"- **Implementation:** {impl}\n"
-        output += f"- **Provider:** {metadata.get('provider', 'N/A')}\n"
-        output += f"- **Endpoints:** `/api/{entity.lower()}/{service_type}/...`\n\n"
-
-    return output
-```
-
----
-
-## Testing Strategy
-
-### Unit Tests
-1. **Service Registry:** Test register/get/list operations
-2. **Lifecycle Manager:** Test startup/shutdown with mock services
-3. **Auth Providers:** Test login/logout/refresh logic with mock stores
-
-### Integration Tests
-1. **Full auth flow:** Login → authenticated request → logout
-2. **Multiple services:** Entity with both auth + notifications
-3. **Service initialization:** Verify Redis connection, OAuth client setup
-
-### End-to-End Tests
-1. Use existing `test/validate` framework
-2. Add auth-specific test cases (login, authenticated CRUD, logout)
-
----
-
-## Migration Path
-
-### Step 1: Current → Phase 1 (No Breaking Changes)
-- Keep `redis_user.py` working
-- Add registry + lifecycle alongside existing code
-- Wire startup hooks (no-op if no services registered)
-
-### Step 2: Phase 1 → Phase 2 (Generate New Code)
-- Generate `user_auth.py` with new template
-- Keep old `redis_user.py` for backward compat
-- Test both routers in parallel
-
-### Step 3: Phase 2 → Phase 3 (Deprecate Old)
-- Remove `redis_user.py`
-- Update schema parser to generate new format
-- Migrate all configs to new structure
-
----
-
-## Success Metrics
-
-### Phase 1 Complete When:
-- ✅ ServiceRegistry implemented and tested
-- ✅ ServiceLifecycle manages Redis connection
-- ✅ FastAPI startup/shutdown hooks wire services
-- ✅ Existing auth functionality still works
-
-### Phase 2 Complete When:
-- ✅ Schema parser extracts `@service` with field mappings
-- ✅ Generator creates auth router using template
-- ✅ Generated code authenticates against database
-- ✅ Field conventions (username/email/password) work
-
-### Phase 3 Complete When:
-- ✅ Multiple services can be declared per entity
-- ✅ Config supports hierarchical service settings
-- ✅ Backward compatibility with flat config maintained
-
-### Phase 4 Complete When:
-- ✅ OAuth provider implemented (Google)
-- ✅ Can switch auth method via schema change
-- ✅ Both cookie and OAuth auth coexist
-
-### Phase 5 Complete When:
-- ✅ Mock services enable testing without Redis
-- ✅ Service documentation auto-generated
-- ✅ Integration tests cover all auth flows
-
----
-
-## Future Service Types
-
-### Notifications
-```mermaid
-Event {
-    %% @service notifications.email.sendgrid { recipientField: "attendees" }
-}
-```
-
-### Storage
-```mermaid
-Profile {
-    String avatarUrl
-    %% @service storage.files.s3 { bucket: "profile-avatars" }
-}
-```
-
-### Analytics
-```mermaid
-UserEvent {
-    %% @service analytics.tracking.mixpanel { event: "event_attended" }
-}
-```
-
----
-
-## Open Questions
-
-1. **Password Hashing:** Should we auto-hash password field in DocumentManager or leave to auth service?
-2. **Session Storage:** Support multiple stores (Redis, Memcached, Database)?
-3. **Multi-Tenancy:** How do services handle tenant isolation?
-4. **Service Dependencies:** Can services depend on other services (e.g., auth requires notifications)?
-
----
-
-## References
-
-- Schema: `schema.mmd`
-- Config: `mongo.json`
-- Parser: `test/query-src/pkg/parser/`
-- Current implementation: `app/services/auth/cookies/redis_provider.py`
