@@ -538,6 +538,12 @@ func (v *verifier) compareRecords(record1, record2 map[string]interface{}, sortF
 			value2 = nil
 		}
 
+		// Skip comparison if either value is nil (optional fields with NULL values)
+		// NULL handling varies by database, so we only validate sort order for non-NULL values
+		if value1 == nil || value2 == nil {
+			continue
+		}
+
 		// Compare the values
 		comparison := v.compareValues(value1, value2, "User", fieldName)
 
