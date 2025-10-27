@@ -168,7 +168,7 @@ class RequestContext:
                 elif key == 'filter':
                     RequestContext.filters = RequestContext._parse_filter_parameter(value, RequestContext.entity)
 
-                elif key == 'filter_match':
+                elif key == 'substring_match':
                     if value.lower() in ('full', 'substring', ''):
                         # Convert string to boolean: "substring" -> True, "full" -> False, "" -> True (default)
                         RequestContext.substring_match = (value.lower() != "full")
@@ -186,7 +186,7 @@ class RequestContext:
 
                 else:
                     # Unknown parameter - ignore and continue
-                    valid_params = ['page', 'pageSize', 'sort', 'filter', 'view', 'no_consistency', 'filter_match']
+                    valid_params = ['page', 'pageSize', 'sort', 'filter', 'view', 'no_consistency', 'substring_match']
                     Notification.error(HTTP.BAD_REQUEST, f"Unknown query parameter={key}. Valid parameters: {', '.join(valid_params)}")
                     
             except ValueError as e:

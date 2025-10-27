@@ -148,9 +148,10 @@ class CookiesAuth:
                 entity_name,
                 filter={login_field: login_value},
                 pageSize=1,
-                filter_matching="exact"
+                substring_match="exact"
             )
         except Exception as e:
+            print(f"Error during user lookup: {str(e)}")
             return None
 
         if count == 0:
