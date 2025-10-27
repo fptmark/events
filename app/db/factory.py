@@ -12,6 +12,7 @@ from .base import DatabaseInterface
 from .mongodb import MongoDatabase
 from .elasticsearch import ElasticsearchDatabase
 from .sqlite import SQLiteDatabase
+from .postgresql import PostgreSQLDatabase
 
 
 class DatabaseFactory:
@@ -47,7 +48,7 @@ class DatabaseFactory:
         Initialize database connection with new architecture.
         
         Args:
-            db_type: Database type ("mongodb", "elasticsearch", or "sqlite")
+            db_type: Database type ("mongodb", "elasticsearch", "sqlite", or "postgresql")
             connection_str: Database connection string (or file path for SQLite)
             database_name: Database name (unused for SQLite)
             case_sensitive_sorting: Whether to use case-sensitive sorting
@@ -68,6 +69,8 @@ class DatabaseFactory:
                 db = ElasticsearchDatabase(case_sensitive_sorting=case_sensitive_sorting)
             elif db_type.lower() == "sqlite":
                 db = SQLiteDatabase(db_path=connection_str, case_sensitive_sorting=case_sensitive_sorting)
+            elif db_type.lower() == "postgresql":
+                db = PostgreSQLDatabase(db_uri=connection_str, case_sensitive_sorting=case_sensitive_sorting)
             else:
                 raise ValueError(f"Unsupported database type: {db_type}")
 
@@ -75,6 +78,14 @@ class DatabaseFactory:
             # For SQLite, connection_str is the db_path and database_name is ignored
             if db_type.lower() == "sqlite":
                 await db.core.init(connection_str, '')
+            elif db_type.lower() == "postgresql":
+                # For PostgreSQL, append database name to URI if not already included
+                if database_name and database_name not in connection_str:
+                    # Ensure URI ends with /database_name
+                    pg_uri = connection_str.rstrip('/') + '/' + database_name
+                else:
+                    pg_uri = connection_str
+                await db.core.init(pg_uri, database_name)
             else:
                 await db.core.init(connection_str, database_name)
             

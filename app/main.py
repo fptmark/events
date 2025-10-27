@@ -152,7 +152,7 @@ if (db_uri == '' or db_name == '' or db_type == ''):
     sys.exit(1)
 
 # Validate database type is supported
-supported_types = ["mongodb", "elasticsearch", "sqlite"]
+supported_types = ["mongodb", "elasticsearch", "sqlite", "postgresql"]
 if db_type.lower() not in supported_types:
     logger.error(f"Unsupported database type: {db_type}. Supported types: {supported_types}")
     sys.exit(1)
@@ -202,7 +202,7 @@ async def lifespan(app: FastAPI):
         logger.info("Shutdown event called")
 
         # Shutdown services
-        await services_init.shutdown()
+        await providers_init.shutdown()
 
         if DatabaseFactory.is_initialized():
             await DatabaseFactory.close()

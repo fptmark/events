@@ -16,10 +16,11 @@ cp requirements.txt ../schema2rest/src/server_generic_files
 cp app/*.py ../schema2rest/src/server_generic_files
 rm ../schema2rest/src/server_generic_files/main.py
 
-# db, services and router are app independent
+# db, services, providers and router are app independent
 cp -r app/db ../schema2rest/src/server_generic_files
 cp -r app/routers ../schema2rest/src/server_generic_files
 cp -r app/services ../schema2rest/src/server_generic_files
+cp -r app/providers ../schema2rest/src/server_generic_files
 
 # model files that are app independend
 #cp -r app/models/utils.py ../schema2rest/src/server_generic_files/models
