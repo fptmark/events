@@ -27,7 +27,7 @@ func Verify(data []map[string]interface{}, params types.TestParams, entity strin
 	// Extract and verify filter fields
 	if len(params.Filter) > 0 {
 		v.extractFilterFields(data, params.Filter, result)
-		v.verifyFilterData(data, params.Filter, result)
+		v.verifyFilterData(data, params.Filter, params.FilterMatch, result)
 	}
 
 	// Extract view fields
@@ -137,7 +137,7 @@ func (v *verifier) verifySortData(data []map[string]interface{}, sortFields []ty
 }
 
 // verifyFilterData verifies that data matches filter criteria
-func (v *verifier) verifyFilterData(data []map[string]interface{}, filters map[string][]types.FilterValue, result *types.TestResult) {
+func (v *verifier) verifyFilterData(data []map[string]interface{}, filters map[string][]types.FilterValue, filterMatch string, result *types.TestResult) {
 	if len(data) == 0 {
 		return // No data to verify
 	}
@@ -166,7 +166,7 @@ func (v *verifier) verifyFilterData(data []map[string]interface{}, filters map[s
 		for i, record := range data {
 			if value, exists := record[fieldName]; exists {
 				for _, filterValue := range activeFilters {
-					if !v.checkFilterMatch(value, filterValue, fieldName) {
+					if !v.checkFilterMatch(value, filterValue, fieldName, filterMatch) {
 						result.Issues = append(result.Issues, fmt.Sprintf("Filter field '%s' value at index %d (%v) doesn't match criteria %s:%v",
 							fieldName, i, value, filterValue.Operator, filterValue.Value))
 						result.Passed = false
@@ -200,7 +200,7 @@ func (v *verifier) checkSortOrder(values []interface{}, direction, entityType, f
 
 // checkFilterMatch checks if a value matches the filter criteria
 // Both MongoDB and Elasticsearch use substring matching for non-enum strings, exact matching for enums
-func (v *verifier) checkFilterMatch(value interface{}, filter types.FilterValue, fieldName string) bool {
+func (v *verifier) checkFilterMatch(value interface{}, filter types.FilterValue, fieldName string, filterMatch string) bool {
 	// Special handling for datetime comparisons
 	if filter.Operator == "eq" && v.isDateTimeComparison(value, filter.Value) {
 		return v.compareDateTimeValues(value, filter.Value) == 0
@@ -221,8 +221,14 @@ func (v *verifier) checkFilterMatch(value interface{}, filter types.FilterValue,
 				// Enum fields: exact match (case-insensitive)
 				return strings.EqualFold(valueStr, filterStr)
 			}
-			// Non-enum strings: substring/contains matching (both databases)
-			return strings.Contains(valueLower, filterLower)
+			// Non-enum strings: use filterMatch setting
+			if filterMatch == "full" {
+				// Full string matching
+				return strings.EqualFold(valueStr, filterStr)
+			} else {
+				// Substring matching (default)
+				return strings.Contains(valueLower, filterLower)
+			}
 		}
 	}
 

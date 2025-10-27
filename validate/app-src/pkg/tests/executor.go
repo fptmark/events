@@ -105,11 +105,12 @@ func parseTestURL(urlStr string) (*types.TestParams, error) {
 	}
 
 	params := &types.TestParams{
-		Sort:     []types.SortField{},
-		Filter:   make(map[string][]types.FilterValue),
-		View:     make(map[string][]string),
-		Page:     1,
-		PageSize: 25,
+		Sort:        []types.SortField{},
+		Filter:      make(map[string][]types.FilterValue),
+		FilterMatch: "substring", // default to substring matching
+		View:        make(map[string][]string),
+		Page:        1,
+		PageSize:    25,
 	}
 
 	query := u.Query()
@@ -131,6 +132,14 @@ func parseTestURL(urlStr string) (*types.TestParams, error) {
 			params.Sort = parseSortParam(lastValue)
 		case "filter":
 			params.Filter = parseFilterParam(lastValue)
+		case "filter_match":
+			if lastValue == "" || lastValue == "substring" || lastValue == "full" {
+				if lastValue == "" {
+					params.FilterMatch = "substring"
+				} else {
+					params.FilterMatch = lastValue
+				}
+			}
 		case "view":
 			params.View = parseViewParam(lastValue)
 		}

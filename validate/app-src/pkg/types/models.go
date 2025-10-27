@@ -27,11 +27,12 @@ type TestResult struct {
 
 // TestParams represents parsed URL parameters from a test
 type TestParams struct {
-	Sort     []SortField              `json:"sort"`
-	Filter   map[string][]FilterValue `json:"filter"`
-	View     map[string][]string      `json:"view"`
-	Page     int                      `json:"page"`
-	PageSize int                      `json:"pageSize"`
+	Sort        []SortField              `json:"sort"`
+	Filter      map[string][]FilterValue `json:"filter"`
+	FilterMatch string                   `json:"filter_match"` // "substring" (default) or "full"
+	View        map[string][]string      `json:"view"`
+	Page        int                      `json:"page"`
+	PageSize    int                      `json:"pageSize"`
 }
 
 // SortField represents a sort parameter field:direction
