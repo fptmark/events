@@ -27,13 +27,14 @@ help:
 	@echo "  startes     - Start Elasticsearch in Docker"
 	@echo "  startpost   - Start postgreSql"
 	@echo "  startmcp    - Start MCP server"
-	@echo "  redis       - Start Redis service"
+	@echo "  startredis  - Start Redis service"
 
 	@echo "  cli         - Run command-line interface"
 	@echo ""
 	@echo "Developer targets (code generation - requires S2R_DIR):"
 	@echo "  clean       - Remove app directory and start fresh"
 	@echo "  generic     - Copy server generic files"
+	@echo "Build"
 	@echo "  firsttime   - Copy server generic files and setup config files"
 	@echo "  rebuild     - Full rebuild: schema + all generators"
 	@echo "  schema      - Convert schema.mmd to schema.yaml and generate diagram"
@@ -42,9 +43,10 @@ help:
 	@echo "  services    - Generate service routes"
 	@echo "  spec        - Generate OpenAPI specification"
 	@echo "  code        - Generate all code (main, models, services, spec)"
-	@echo "  validator   - Generate test validation tool"
+	@echo "test"
+	@echo "  buildtests  - Generate test validation tools (app and mcp)"
 	@echo "  testredis   - Test the redis service"
-	@echo "  test        - Run validation suite"
+	@echo "  testapp     - Run validation suite"
 	@echo "  testmcp     - Run validation suite"
 	@echo ""
 	@echo "Convenience targets:"
@@ -89,17 +91,23 @@ startpost:
 startmcp:
 	  python mcp_server.py
 
-test: validator
-	test/validate
+startredis:
+	brew services start redis
+
+buildtests: 
+	(cd validate/app-src && go build -o ../app cmd/validate/main.go)
+
+testapp:
+	validate/app
+
+testmcp: 
+	python validate/mcp-src/validate_mcp.py
 
 testredis: 
 	./redis.sh
 
 cli:
 	PYTHONPATH=. python cli/cli.py
-
-redis:
-	brew services start redis
 
 # Developer targets (code generation)
 clean: 
@@ -150,8 +158,8 @@ code:	schema.yaml
 	$(MAKE) services
 	$(MAKE) spec
 
-validator: test/validate-src
-	(cd test/validate-src && go build -o ../validate cmd/validate/main.go)
+validators: validate/*
+	(cd validate/app && go build -o ../app cmd/validate/main.go)
 
 # Convenience targets
 all: schema code 
