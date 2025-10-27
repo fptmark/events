@@ -13,59 +13,157 @@ from app.services.metadata import MetadataService
 
 
 class PostgreSQLDocuments(DocumentManager):
-    """PostgreSQL implementation of document operations using JSONB storage"""
+    """PostgreSQL implementation of document operations using proper typed columns"""
 
     def __init__(self, database):
         super().__init__(database)
 
+    def _get_postgres_type(self, field_meta: Dict[str, Any]) -> str:
+        """Map schema field type to PostgreSQL column type"""
+        field_type = field_meta.get('type', 'String')
+
+        type_map = {
+            'String': 'TEXT',
+            'Boolean': 'BOOLEAN',
+            'Integer': 'INTEGER',
+            'Number': 'NUMERIC',
+            'Currency': 'NUMERIC(15,2)',
+            'Float': 'DOUBLE PRECISION',
+            'Date': 'DATE',
+            'Datetime': 'TIMESTAMPTZ',
+            'ObjectId': 'TEXT',
+            'JSON': 'JSONB',
+        }
+
+        # Handle Array types: Array[String] -> TEXT[]
+        if field_type.startswith('Array['):
+            inner_type = field_type[6:-1]  # Extract 'String' from 'Array[String]'
+            if inner_type == 'String':
+                return 'TEXT[]'
+            # Add other array types as needed
+            return 'TEXT[]'
+
+        return type_map.get(field_type, 'TEXT')
+
+    def _build_create_table_sql(self, entity: str) -> Tuple[str, List[str], List[Tuple[str, ...]]]:
+        """Build CREATE TABLE statement from entity metadata
+
+        Returns:
+            Tuple of (create_sql, unique_indexes, regular_indexes)
+        """
+        fields_meta = MetadataService.fields(entity)
+        columns = ['id TEXT PRIMARY KEY']
+        unique_indexes = []
+        regular_indexes = []
+
+        for field_name, field_meta in fields_meta.items():
+            if field_name != 'id':
+                col_type = self._get_postgres_type(field_meta)
+                not_null = ' NOT NULL' if field_meta.get('required', False) else ''
+                columns.append(f'"{field_name}" {col_type}{not_null}')
+
+        # Get unique constraints from metadata
+        entity_meta = MetadataService.get(entity)
+        unique_constraints = entity_meta.get('uniques', []) if entity_meta else []
+
+        for constraint_fields in unique_constraints:
+            field_list = ', '.join([f'"{f}"' for f in constraint_fields])
+            unique_indexes.append(f'CREATE UNIQUE INDEX IF NOT EXISTS "{entity.lower()}_{("_".join(constraint_fields))}_unique" ON "{entity}" ({field_list})')
+
+        # Index all ObjectId fields (foreign keys)
+        for field_name, field_meta in fields_meta.items():
+            if field_meta.get('type') == 'ObjectId':
+                regular_indexes.append((f'CREATE INDEX IF NOT EXISTS "{entity.lower()}_{field_name}_idx" ON "{entity}" ("{field_name}")',))
+
+        create_sql = f'CREATE TABLE IF NOT EXISTS "{entity}" ({", ".join(columns)})'
+        return create_sql, unique_indexes, regular_indexes
+
+    def _prepare_values_for_postgres(self, entity: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert Python values to PostgreSQL-compatible format"""
+        from datetime import datetime, date, timezone
+
+        fields_meta = MetadataService.fields(entity)
+        prepared = {}
+
+        for field_name, value in data.items():
+            if value is None:
+                prepared[field_name] = None
+                continue
+
+            field_meta = fields_meta.get(field_name, {})
+            field_type = field_meta.get('type', 'String')
+
+            if field_type == 'Date':
+                # Convert to date object - DATE ONLY, no time component
+                if isinstance(value, date) and not isinstance(value, datetime):
+                    prepared[field_name] = value
+                elif isinstance(value, str):
+                    # Parse and extract date only
+                    dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                    prepared[field_name] = dt.date()
+                elif isinstance(value, datetime):
+                    # Extract date only
+                    prepared[field_name] = value.date()
+                else:
+                    prepared[field_name] = value
+            elif field_type == 'Datetime':
+                # Convert to timezone-aware datetime
+                if isinstance(value, str):
+                    dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                    prepared[field_name] = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+                elif isinstance(value, datetime):
+                    prepared[field_name] = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+                else:
+                    prepared[field_name] = value
+            else:
+                # All other types pass through (asyncpg handles arrays, JSON, etc.)
+                prepared[field_name] = value
+
+        return prepared
+
     async def _create_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create document in PostgreSQL"""
-        # Remove 'id' from data - stored in separate column
+        """Create document in PostgreSQL with proper columns"""
         data.pop('id', None)
 
         async with self.database.core.pool.acquire() as conn:
-            # Ensure table exists
-            await conn.execute(f'''
-                CREATE TABLE IF NOT EXISTS "{entity}" (
-                    id TEXT PRIMARY KEY,
-                    data JSONB NOT NULL
-                )
-            ''')
+            # Prepare values
+            prepared_data = self._prepare_values_for_postgres(entity, data)
+            prepared_data.pop('id', None)  # Ensure 'id' is not in prepared_data
+
+            # Build INSERT statement dynamically
+            fields = ['id'] + list(prepared_data.keys())
+            placeholders = [f'${i+1}' for i in range(len(fields))]
+            values = [id] + list(prepared_data.values())
+
+            field_list = ', '.join([f'"{f}"' for f in fields])
+            insert_sql = f'INSERT INTO "{entity}" ({field_list}) VALUES ({", ".join(placeholders)})'
 
             try:
-                # Insert document (convert dict to JSON string)
-                await conn.execute(
-                    f'INSERT INTO "{entity}" (id, data) VALUES ($1, $2::jsonb)',
-                    id, json.dumps(data)
-                )
-                # Return with 'id' for API response
+                await conn.execute(insert_sql, *values)
                 return {'id': id, **data}
-
             except asyncpg.UniqueViolationError as e:
-                # Unique constraint violation
                 raise DuplicateConstraintError(
                     message=f"Duplicate key error",
                     entity=entity,
-                    field="id",
+                    field="unknown",
                     entity_id=id
                 )
             except asyncpg.PostgresError as e:
                 raise DatabaseError(f"PostgreSQL error: {str(e)}")
 
     async def _get_impl(self, entity: str, id: str) -> Tuple[Dict[str, Any], int]:
-        """Get single document by ID"""
+        """Get single document by ID from proper columns"""
         async with self.database.core.pool.acquire() as conn:
             row = await conn.fetchrow(
-                f'SELECT id, data FROM "{entity}" WHERE id = $1',
+                f'SELECT * FROM "{entity}" WHERE id = $1',
                 id
             )
 
             if not row:
                 raise DocumentNotFound(entity, id)
 
-            # Parse JSON string from JSONB column
-            document = json.loads(row['data']) if isinstance(row['data'], str) else row['data']
-            document['id'] = row['id']
+            # Convert row to dict
+            document = dict(row)
             return document, 1
 
     async def _get_all_impl(
@@ -75,7 +173,7 @@ class PostgreSQLDocuments(DocumentManager):
         filter: Optional[Dict[str, Any]] = None,
         page: int = 1,
         pageSize: int = 25,
-        filter_matching: str = "contains"
+        substring_match: bool = True
     ) -> Tuple[List[Dict[str, Any]], int]:
         """Get paginated list of documents with filter/sort"""
         async with self.database.core.pool.acquire() as conn:
@@ -85,53 +183,33 @@ class PostgreSQLDocuments(DocumentManager):
             param_idx = 1
 
             if filter:
-                fields_meta = MetadataService.fields(entity)
                 for field, value in filter.items():
+                    # Get properly cased field name
+                    proper_field = MetadataService.get_proper_name(entity, field)
+                    field_type = MetadataService.get(entity, proper_field, 'type') or 'String'
+
                     if isinstance(value, dict):
                         # Range queries: {$gte: 21, $lt: 65} or date ranges
-                        field_meta = fields_meta.get(field, {})
-                        field_type = field_meta.get('type', 'String')
-
                         for op, val in value.items():
-                            sql_op = self._mongo_operator_to_sql(op)
-
-                            # Type-aware casting for range queries
-                            if field_type in ['Date', 'Datetime']:
-                                # Date/timestamp range queries
-                                where_parts.append(
-                                    f"(data->>'{field}')::TIMESTAMP {sql_op} ${param_idx}"
-                                )
-                            else:
-                                # Numeric range queries (Integer, Number, Currency, Float)
-                                where_parts.append(
-                                    f"(data->>'{field}')::NUMERIC {sql_op} ${param_idx}"
-                                )
+                            sql_op = self._map_operator(op)
+                            where_parts.append(f'"{proper_field}" {sql_op} ${param_idx}')
                             params.append(val)
                             param_idx += 1
                     else:
-                        # Check if this is an enum field or non-enum string
-                        field_meta = fields_meta.get(field, {})
-                        field_type = field_meta.get('type', 'String')
-                        has_enum_values = 'enum' in field_meta
+                        # Equality or substring match
+                        field_enum = MetadataService.get(entity, proper_field, 'enum')
+                        has_enum_values = field_enum is not None
 
                         if field_type == 'String' and not has_enum_values:
-                            if filter_matching == "exact":
-                                # Exact match for auth and other exact-match use cases
-                                where_parts.append(
-                                    f"data->>'{field}' = ${param_idx}"
-                                )
-                                params.append(value)
-                            else:
-                                # Non-enum strings: substring match (case-insensitive with ILIKE)
-                                where_parts.append(
-                                    f"data->>'{field}' ILIKE ${param_idx}"
-                                )
+                            if substring_match:
+                                where_parts.append(f'"{proper_field}" ILIKE ${param_idx}')
                                 params.append(f"%{value}%")
+                            else:
+                                where_parts.append(f'"{proper_field}" ILIKE ${param_idx}')
+                                params.append(value)
                         else:
-                            # Enum fields and non-strings: always exact match
-                            where_parts.append(
-                                f"data->>'{field}' = ${param_idx}"
-                            )
+                            # Exact match for enums, numbers, booleans, dates
+                            where_parts.append(f'"{proper_field}" = ${param_idx}')
                             params.append(value)
 
                         param_idx += 1
@@ -141,36 +219,20 @@ class PostgreSQLDocuments(DocumentManager):
             # Build ORDER BY clause
             order_clause = ""
             if sort:
-                fields_meta = MetadataService.fields(entity)
                 order_parts = []
                 for field, direction in sort:
                     # Convert field name to proper case (e.g., 'firstname' -> 'firstName')
                     proper_field = MetadataService.get_proper_name(entity, field)
+                    field_type = MetadataService.get(entity, proper_field, 'type') or 'String'
 
-                    # Special case: 'id' is stored in table column, not JSON
-                    if proper_field == 'id':
-                        if self.database.case_sensitive_sorting:
-                            order_parts.append(f"id {direction.upper()}")
-                        else:
-                            order_parts.append(f"LOWER(id) {direction.upper()}")
+                    # Only apply LOWER() to String fields (not numeric, date, etc.)
+                    if self.database.case_sensitive_sorting:
+                        order_parts.append(f'"{proper_field}" {direction.upper()}')
                     else:
-                        # Other fields are in JSONB - need type-aware casting
-                        field_meta = fields_meta.get(proper_field, {})
-                        field_type = field_meta.get('type', 'String')
-
-                        # Cast to appropriate type for proper sorting
-                        if field_type in ['Integer', 'Number', 'Currency', 'Float']:
-                            # Numeric sorting
-                            order_parts.append(f"(data->>'{proper_field}')::NUMERIC {direction.upper()}")
-                        elif field_type in ['Date', 'Datetime']:
-                            # Date/timestamp sorting
-                            order_parts.append(f"(data->>'{proper_field}')::TIMESTAMP {direction.upper()}")
+                        if field_type == 'String':
+                            order_parts.append(f'LOWER("{proper_field}") {direction.upper()}')
                         else:
-                            # String sorting (with optional case-insensitive)
-                            if self.database.case_sensitive_sorting:
-                                order_parts.append(f"data->>'{proper_field}' {direction.upper()}")
-                            else:
-                                order_parts.append(f"LOWER(data->>'{proper_field}') {direction.upper()}")
+                            order_parts.append(f'"{proper_field}" {direction.upper()}')
                 order_clause = f"ORDER BY {', '.join(order_parts)}"
             else:
                 # Default sort by 'id' column for consistent pagination
@@ -186,7 +248,7 @@ class PostgreSQLDocuments(DocumentManager):
 
             # Execute main query
             query = f'''
-                SELECT id, data FROM "{entity}"
+                SELECT * FROM "{entity}"
                 {where_clause}
                 {order_clause}
                 {limit_clause}
@@ -199,26 +261,34 @@ class PostgreSQLDocuments(DocumentManager):
             count_query = f'SELECT COUNT(*) FROM "{entity}" {where_clause}'
             total = await conn.fetchval(count_query, *count_params) if count_params else await conn.fetchval(count_query)
 
-            # Parse JSONB documents
-            documents = []
-            for row in rows:
-                doc = json.loads(row['data']) if isinstance(row['data'], str) else row['data']
-                doc['id'] = row['id']
-                documents.append(doc)
+            # Convert rows to dicts
+            documents = [dict(row) for row in rows]
 
             return documents, total
 
     async def _update_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Update existing document"""
-        # Remove 'id' from data - stored in separate column
+        """Update document with proper columns"""
         data.pop('id', None)
 
         async with self.database.core.pool.acquire() as conn:
+            # Prepare values
+            prepared_data = self._prepare_values_for_postgres(entity, data)
+            prepared_data.pop('id', None)  # Ensure 'id' is not in prepared_data
+
+            # Build UPDATE statement dynamically
+            set_parts = []
+            values = []
+            param_idx = 1
+            for field_name, value in prepared_data.items():
+                set_parts.append(f'"{field_name}" = ${param_idx}')
+                values.append(value)
+                param_idx += 1
+
+            values.append(id)  # Add id for WHERE clause
+            update_sql = f'UPDATE "{entity}" SET {", ".join(set_parts)} WHERE id = ${param_idx}'
+
             try:
-                result = await conn.execute(
-                    f'UPDATE "{entity}" SET data = $1::jsonb WHERE id = $2',
-                    json.dumps(data), id
-                )
+                result = await conn.execute(update_sql, *values)
 
                 # asyncpg returns "UPDATE N" where N is row count
                 if result == "UPDATE 0":
@@ -238,20 +308,19 @@ class PostgreSQLDocuments(DocumentManager):
                 raise DatabaseError(f"PostgreSQL error: {str(e)}")
 
     async def _delete_impl(self, entity: str, id: str) -> Tuple[Dict[str, Any], int]:
-        """Delete document by ID"""
+        """Delete document by ID from proper columns"""
         async with self.database.core.pool.acquire() as conn:
             # Fetch document before deleting
             row = await conn.fetchrow(
-                f'SELECT id, data FROM "{entity}" WHERE id = $1',
+                f'SELECT * FROM "{entity}" WHERE id = $1',
                 id
             )
 
             if not row:
                 raise DocumentNotFound(entity, id)
 
-            # Parse JSON string from JSONB column
-            document = json.loads(row['data']) if isinstance(row['data'], str) else row['data']
-            document['id'] = row['id']
+            # Convert row to dict
+            document = dict(row)
 
             # Delete document
             await conn.execute(
@@ -261,80 +330,31 @@ class PostgreSQLDocuments(DocumentManager):
 
             return document, 1
 
+    async def initialize_schema(self) -> None:
+        """Create all tables and indexes for all entities (called during wipe_and_reinit)"""
+        from app.services.metadata import MetadataService
+
+        async with self.database.core.pool.acquire() as conn:
+            for entity in MetadataService.list_entities():
+                # Build and execute CREATE TABLE
+                create_sql, unique_indexes, regular_indexes = self._build_create_table_sql(entity)
+                await conn.execute(create_sql)
+
+                # Create unique indexes
+                for idx_sql in unique_indexes:
+                    await conn.execute(idx_sql)
+
+                # Create regular indexes
+                for idx_sql in regular_indexes:
+                    await conn.execute(idx_sql[0])
+
     def _get_core_manager(self) -> CoreManager:
         """Get core manager instance"""
         return self.database.core
 
     def _prepare_datetime_fields(self, entity: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert datetime fields for PostgreSQL storage (normalize to UTC with Z suffix)"""
-        from datetime import datetime, timezone
-
-        fields_meta = MetadataService.fields(entity)
-        prepared_data = data.copy()
-
-        for field, value in prepared_data.items():
-            if value is None:
-                continue
-
-            field_meta = fields_meta.get(field, {})
-            field_type = field_meta.get('type')
-
-            if field_type == 'Datetime':
-                if isinstance(value, datetime):
-                    # Convert datetime object to UTC and format with Z suffix
-                    dt_utc = value.astimezone(timezone.utc)
-                    prepared_data[field] = dt_utc.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
-                elif isinstance(value, str):
-                    # Parse string (any timezone), convert to UTC, format with Z
-                    try:
-                        date_str = value.strip()
-                        if date_str.endswith('Z'):
-                            date_str = date_str[:-1] + '+00:00'
-                        dt = datetime.fromisoformat(date_str)
-                        # If naive datetime, assume UTC
-                        if dt.tzinfo is None:
-                            dt = dt.replace(tzinfo=timezone.utc)
-                        dt_utc = dt.astimezone(timezone.utc)
-                        prepared_data[field] = dt_utc.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
-                    except (ValueError, TypeError):
-                        pass
-            elif field_type == 'Date':
-                # Date fields: store as YYYY-MM-DD (no time component)
-                if isinstance(value, datetime):
-                    prepared_data[field] = value.strftime('%Y-%m-%d')
-                elif isinstance(value, str):
-                    try:
-                        date_str = value.strip()
-                        # Parse and reformat to ensure consistent YYYY-MM-DD format
-                        if 'T' in date_str:
-                            # Has time component - extract date only
-                            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                            prepared_data[field] = dt.strftime('%Y-%m-%d')
-                        else:
-                            # Already date-only, validate format
-                            dt = datetime.strptime(date_str, '%Y-%m-%d')
-                            prepared_data[field] = dt.strftime('%Y-%m-%d')
-                    except (ValueError, TypeError):
-                        pass
-
-        return prepared_data
-
-    def _convert_single_value(self, value: Any, field_type: str) -> Any:
-        """Convert a single value to appropriate type for PostgreSQL"""
-        if value is None:
-            return value
-
-        if field_type in ['Date', 'Datetime'] and isinstance(value, str):
-            try:
-                date_str = value.strip()
-                if date_str.endswith('Z'):
-                    date_str = date_str[:-1] + '+00:00'
-                from datetime import datetime
-                return datetime.fromisoformat(date_str).isoformat()
-            except (ValueError, TypeError):
-                return value
-
-        return value
+        """Prepare datetime fields - delegates to _prepare_values_for_postgres"""
+        return self._prepare_values_for_postgres(entity, data)
 
     async def _validate_unique_constraints(
         self,

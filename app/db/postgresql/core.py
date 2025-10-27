@@ -110,11 +110,11 @@ class PostgreSQLCore(CoreManager):
                     table_name = table_row['tablename']
                     await conn.execute(f'DROP TABLE IF EXISTS "{table_name}" CASCADE')
 
-                # Recreate indexes from schema
-                await self.database.indexes.initialize()
+            # Recreate tables and indexes from schema
+            await self.database.documents.initialize_schema()
 
-                logging.info("PostgreSQL: Database wiped and reinitialized")
-                return True
+            logging.info("PostgreSQL: Database wiped and reinitialized")
+            return True
 
         except Exception as e:
             logging.error(f"PostgreSQL wipe and reinit failed: {e}")

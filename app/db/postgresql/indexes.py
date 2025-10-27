@@ -18,51 +18,23 @@ class PostgreSQLIndexes(IndexManager):
 
     async def create(self, entity: str, fields: List[str], unique: bool = True, name: Optional[str] = None) -> None:
         """Create index on entity"""
+        # For PostgreSQL with proper columns, indexes are created during table creation
+        # Ensure table exists first by calling initialize_schema for this entity
         async with self.database.core.pool.acquire() as conn:
-            try:
-                # Check if table exists first
-                table_exists = await conn.fetchval("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables
-                        WHERE table_schema = 'public'
-                        AND table_name = $1
-                    )
-                """, entity)
+            # Check if table exists
+            table_exists = await conn.fetchval("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = $1
+                )
+            """, entity)
 
-                if not table_exists:
-                    # Create table if it doesn't exist
-                    await conn.execute(f'''
-                        CREATE TABLE IF NOT EXISTS "{entity}" (
-                            id TEXT PRIMARY KEY,
-                            data JSONB NOT NULL
-                        )
-                    ''')
+            if not table_exists:
+                # Table doesn't exist - call initialize_schema to create all tables
+                await self.database.documents.initialize_schema()
 
-                # Generate index name if not provided
-                if not name:
-                    field_str = '_'.join(fields)
-                    suffix = '_unique' if unique else ''
-                    name = f"idx_{entity}_{field_str}{suffix}"
-
-                # Build field expressions for JSONB
-                if len(fields) == 1:
-                    # Single field index
-                    field = fields[0]
-                    index_expr = f"(data->>'{field}')"
-                else:
-                    # Composite index
-                    field_exprs = [f"(data->>'{field}')" for field in fields]
-                    index_expr = ', '.join(field_exprs)
-
-                # Create index
-                unique_clause = 'UNIQUE' if unique else ''
-                await conn.execute(f'''
-                    CREATE {unique_clause} INDEX IF NOT EXISTS {name}
-                    ON "{entity}"({index_expr})
-                ''')
-
-            except asyncpg.PostgresError as e:
-                raise DatabaseError(f"PostgreSQL create index error: {str(e)}")
+        # Index already created with table, nothing more to do
 
     async def get_all(self, entity: str) -> List[List[str]]:
         """Get all unique indexes for entity as field lists"""
