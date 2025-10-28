@@ -6,6 +6,29 @@ import (
 	"net/http"
 )
 
+var reportData interface{} = nil
+
+func LoadReportDataFunc() {
+	response, err := ExecuteGet("/api/db/report")
+	if err == nil {
+		reportData = response
+	}
+	if val := GetFromResponse(reportData, "database", "unknown"); val != "unknown" {
+		if dbType, ok := val.(string); ok {
+			DatabaseType = dbType
+		} else {
+			DatabaseType = "unknown"
+		}
+	}
+	if val := GetFromResponse(reportData, "report", "config", "case_sensitive", "unknown"); val != "unknown" {
+		if case_sensitive, ok := val.(bool); ok {
+			CaseSensitive = case_sensitive
+		} else {
+			CaseSensitive = false
+		}
+	}
+}
+
 // PopulateDataFunc is a function type for creating test data
 // Implementation should create bulk test data and fixtures
 type PopulateDataFunc func(numAccounts, numUsers int) error
@@ -43,44 +66,44 @@ func CleanDatabase() error {
 func GetEntityCountsFromReport() (int, int) {
 	users := 0
 	accounts := 0
+
+	// Fetch fresh data instead of using cached reportData
 	response, err := ExecuteGet("/api/db/report")
-	if err == nil {
-		// Extract entity count from report.entities.EntityName
-		// GetFromResponse navigates: response -> report -> entities -> Users (with default "0")
-		if val := GetFromResponse(response, "report", "entities", "User", "0"); val != "0" {
-			if numVal, ok := val.(float64); ok {
-				users = int(numVal)
-			}
-		}
-		if val := GetFromResponse(response, "report", "entities", "Account", "0"); val != "0" {
-			if numVal, ok := val.(float64); ok {
-				accounts = int(numVal)
-			}
+	if err != nil {
+		return 0, 0
+	}
+
+	// Extract entity count from report.entities.EntityName
+	if val := GetFromResponse(response, "report", "entities", "User", "0"); val != "0" {
+		if numVal, ok := val.(float64); ok {
+			users = int(numVal)
 		}
 	}
+	if val := GetFromResponse(response, "report", "entities", "Account", "0"); val != "0" {
+		if numVal, ok := val.(float64); ok {
+			accounts = int(numVal)
+		}
+	}
+
 	return users, accounts
 }
 
-// GetDatabaseType returns the database type from /api/db/report
-func GetDatabaseType() string {
-	response, err := ExecuteGet("/api/db/report")
-	if err != nil {
-		return "unknown"
-	}
+// // GetDatabaseType returns the database type from /api/db/report
+// func GetDatabaseType() string {
+// 	if reportData != nil {}
+// 	// Extract database type from response.database
+// 	if val := GetFromResponse(reportData, "database", "unknown"); val != "unknown" {
+// 		if dbType, ok := val.(string); ok {
+// 			return dbType
+// 		}
+// 	}
+// 	return "unknown"
+// }
 
-	// Extract database type from response.database
-	if val := GetFromResponse(response, "database", "unknown"); val != "unknown" {
-		if dbType, ok := val.(string); ok {
-			return dbType
-		}
-	}
-	return "unknown"
-}
-
-// DetectAndSetDatabaseType detects the database type and sets the global DatabaseType variable
-func DetectAndSetDatabaseType() {
-	DatabaseType = GetDatabaseType()
-	if Verbose {
-		fmt.Printf("Detected database type: %s\n", DatabaseType)
-	}
-}
+// // DetectAndSetDatabaseType detects the database type and sets the global DatabaseType variable
+// func DetectAndSetDatabaseType() {
+// 	DatabaseType = GetDatabaseType()
+// 	if Verbose {
+// 		fmt.Printf("Detected database type: %s\n", DatabaseType)
+// 	}
+// }

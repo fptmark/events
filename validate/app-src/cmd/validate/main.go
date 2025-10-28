@@ -148,8 +148,8 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 	// Set global config (now in core package)
 	core.SetConfig(DefaultServerURL, verbose, numUsers, numAccounts, pauseMs)
 
-	// Detect database type for filter matching logic
-	core.DetectAndSetDatabaseType()
+	// Load database config from /api/db/report (sets DatabaseType and CaseSensitive)
+	core.LoadReportDataFunc()
 
 	// Always show database type as first line
 	fmt.Printf("Database: %s\n", core.DatabaseType)

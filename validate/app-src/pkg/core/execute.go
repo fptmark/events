@@ -11,11 +11,12 @@ import (
 
 // Global config for all packages
 var (
-	ServerURL    string
-	Verbose      bool
-	NumUsers     int
-	NumAccounts  int
-	DatabaseType string // Detected database type: "mongodb", "elasticsearch", or "unknown"
+	ServerURL      string
+	Verbose        bool
+	NumUsers       int
+	NumAccounts    int
+	DatabaseType   string // Detected database type: "mongodb", "elasticsearch", or "unknown"
+	CaseSensitive  bool   // Detected case_sensitive setting from config (default: false)
 )
 
 // SetConfig sets the global configuration
