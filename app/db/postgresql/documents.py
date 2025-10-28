@@ -78,47 +78,35 @@ class PostgreSQLDocuments(DocumentManager):
         create_sql = f'CREATE TABLE IF NOT EXISTS "{entity}" ({", ".join(columns)})'
         return create_sql, unique_indexes, regular_indexes
 
+    def _convert_datetime(self, value: str) -> Any:
+        """Convert ISO datetime string to timezone-aware datetime object"""
+        from datetime import datetime, timezone
+        if not isinstance(value, str):
+            return value
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    def _convert_date(self, value: str) -> Any:
+        """Convert ISO date string to date object (strips time if present)"""
+        from datetime import datetime
+        if not isinstance(value, str):
+            return value
+        return datetime.fromisoformat(value.replace('Z', '+00:00')).date()
+
     def _prepare_values_for_postgres(self, entity: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Convert Python values to PostgreSQL-compatible format"""
-        from datetime import datetime, date, timezone
-
-        fields_meta = MetadataService.fields(entity)
         prepared = {}
-
         for field_name, value in data.items():
             if value is None:
                 prepared[field_name] = None
-                continue
-
-            field_meta = fields_meta.get(field_name, {})
-            field_type = field_meta.get('type', 'String')
-
-            if field_type == 'Date':
-                # Convert to date object - DATE ONLY, no time component
-                if isinstance(value, date) and not isinstance(value, datetime):
-                    prepared[field_name] = value
-                elif isinstance(value, str):
-                    # Parse and extract date only
-                    dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                    prepared[field_name] = dt.date()
-                elif isinstance(value, datetime):
-                    # Extract date only
-                    prepared[field_name] = value.date()
-                else:
-                    prepared[field_name] = value
-            elif field_type == 'Datetime':
-                # Convert to timezone-aware datetime
-                if isinstance(value, str):
-                    dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                    prepared[field_name] = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-                elif isinstance(value, datetime):
-                    prepared[field_name] = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-                else:
-                    prepared[field_name] = value
             else:
-                # All other types pass through (asyncpg handles arrays, JSON, etc.)
-                prepared[field_name] = value
-
+                field_type = MetadataService.get(entity, field_name, 'type')
+                if field_type == 'Date':
+                    prepared[field_name] = self._convert_date(value)
+                elif field_type == 'Datetime':
+                    prepared[field_name] = self._convert_datetime(value)
+                else:
+                    prepared[field_name] = value
         return prepared
 
     async def _create_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -192,13 +180,19 @@ class PostgreSQLDocuments(DocumentManager):
                         # Range queries: {$gte: 21, $lt: 65} or date ranges
                         for op, val in value.items():
                             sql_op = self._map_operator(op)
+                            # Convert date/datetime values for filters
+                            if field_type == 'Date':
+                                val = self._convert_date(val)
+                            elif field_type == 'Datetime':
+                                val = self._convert_datetime(val)
                             where_parts.append(f'"{proper_field}" {sql_op} ${param_idx}')
                             params.append(val)
                             param_idx += 1
                     else:
                         # Equality or substring match
-                        field_enum = MetadataService.get(entity, proper_field, 'enum')
-                        has_enum_values = field_enum is not None
+                        field_meta = MetadataService.get(entity, proper_field) or {}
+                        enum_values = field_meta.get('enum', None)
+                        has_enum_values = enum_values is not None
 
                         if field_type == 'String' and not has_enum_values:
                             if substring_match:
@@ -209,6 +203,11 @@ class PostgreSQLDocuments(DocumentManager):
                                 params.append(value)
                         else:
                             # Exact match for enums, numbers, booleans, dates
+                            # Convert date/datetime values for filters
+                            if field_type == 'Date':
+                                value = self._convert_date(value)
+                            elif field_type == 'Datetime':
+                                value = self._convert_datetime(value)
                             where_parts.append(f'"{proper_field}" = ${param_idx}')
                             params.append(value)
 
@@ -227,12 +226,16 @@ class PostgreSQLDocuments(DocumentManager):
 
                     # Only apply LOWER() to String fields (not numeric, date, etc.)
                     if self.database.case_sensitive_sorting:
-                        order_parts.append(f'"{proper_field}" {direction.upper()}')
+                        sort_expr = f'"{proper_field}" {direction.upper()}'
                     else:
                         if field_type == 'String':
-                            order_parts.append(f'LOWER("{proper_field}") {direction.upper()}')
+                            sort_expr = f'LOWER("{proper_field}") {direction.upper()}'
                         else:
-                            order_parts.append(f'"{proper_field}" {direction.upper()}')
+                            sort_expr = f'"{proper_field}" {direction.upper()}'
+
+                    # Always put NULLs last for better UX - users want to see actual data first
+                    sort_expr += ' NULLS LAST'
+                    order_parts.append(sort_expr)
                 order_clause = f"ORDER BY {', '.join(order_parts)}"
             else:
                 # Default sort by 'id' column for consistent pagination

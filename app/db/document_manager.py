@@ -394,7 +394,7 @@ class DocumentManager(ABC):
             '$lte': '<=',
             '$eq': '='
         }
-        return mapping.get(mongo_op, '=')
+        return mapping.get(op, '=')
 
 
 async def validate_uniques(entity: str, data: Dict[str, Any], unique_constraints: List[List[str]], exclude_id: Optional[str] = None) -> None:
