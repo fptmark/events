@@ -11,7 +11,7 @@ from ..base import DatabaseInterface
 from ..core_manager import CoreManager
 from ..index_manager import IndexManager
 from app.exceptions import DatabaseError
-
+from app.config import Config
 
 class MongoCore(CoreManager):
     """MongoDB implementation of core operations"""
@@ -139,6 +139,7 @@ class MongoCore(CoreManager):
                 return {
                     "database": "mongodb",
                     "status": "healthy",  # MongoDB doesn't have mapping validation issues
+                    "config": Config.get(""),
                     "entities": entities,
                     "details": {
                         "server": {

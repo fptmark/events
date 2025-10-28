@@ -12,7 +12,7 @@ from ..base import DatabaseInterface
 from ..core_manager import CoreManager
 from ..index_manager import IndexManager
 from app.services.metadata import MetadataService
-
+from app.config import Config
 
 class ElasticsearchCore(CoreManager):
     """Elasticsearch implementation of core operations"""
@@ -431,6 +431,7 @@ class ElasticsearchCore(CoreManager):
             return {
                 "database": "elasticsearch",
                 "status": status,
+                "config": Config.get(""),
                 "entities": entities,
                 "details": {
                     "template_ok": template_ok,

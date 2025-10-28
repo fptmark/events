@@ -7,6 +7,7 @@ import logging
 from typing import Dict, Any, Optional
 from urllib.parse import urlparse, urlunparse
 from ..core_manager import CoreManager
+from app.config import Config
 
 
 class PostgreSQLCore(CoreManager):
@@ -163,6 +164,7 @@ class PostgreSQLCore(CoreManager):
                 return {
                     "database": "postgresql",
                     "status": "healthy",
+                    "config": Config.get(""),
                     "entities": entities,
                     "details": {
                         "db_info": {

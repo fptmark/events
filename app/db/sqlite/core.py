@@ -6,7 +6,7 @@ import aiosqlite
 import logging
 from typing import Dict, Any, Optional
 from ..core_manager import CoreManager
-
+from app.config import Config
 
 class SQLiteCore(CoreManager):
     """SQLite connection management"""
@@ -131,6 +131,7 @@ class SQLiteCore(CoreManager):
             return {
                 "database": "sqlite",
                 "status": "healthy",
+                "config": Config.get(""),
                 "entities": entities,
                 "details": {
                     "db_info": {
