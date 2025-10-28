@@ -222,7 +222,10 @@ export class MetadataService {
     const displayFields = this.modeService.getViewFields(entityMetadata, mode);
     
     for (const fieldName of displayFields) {
-      // For each field that is an ObjectId
+      // Skip the primary key 'id' field - it's not a foreign key
+      if (fieldName === 'id') continue;
+
+      // For each field that is an ObjectId (foreign key)
       if (entityMetadata.fields[fieldName]?.type === 'ObjectId') {
         let showConfig = this.getShowConfig(entityType, fieldName, mode);
         
@@ -240,11 +243,14 @@ export class MetadataService {
       }
     }
     
-    // Return URL-encoded JSON parameter
+    // Convert viewSpec to new format: entity1(field1,field2),entity2(field3,field4)
     if (Object.keys(viewSpec).length > 0) {
-      return `?view=${encodeURIComponent(JSON.stringify(viewSpec))}`;
+      const viewParts = Object.entries(viewSpec).map(([entity, fields]) =>
+        `${entity}(${fields.join(',')})`
+      );
+      return `?view=${viewParts.join(',')}`;
     }
-    
+
     return '';
   }
 
