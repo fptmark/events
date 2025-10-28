@@ -71,6 +71,12 @@ func validatePagination(testNum int, result *types.TestResult) []string {
 		return issues // Skip pagination validation for single resource requests
 	}
 
+	// CRITICAL: Collection requests must never return null data
+	if hasNullData(result.RawResponseBody) {
+		issues = append(issues, "CRITICAL: Collection request returned null data (should be empty array [] instead)")
+		return issues
+	}
+
 	// Extract pagination data from raw response
 	pagination := extractPagination(result.RawResponseBody)
 	if pagination == nil {
@@ -286,4 +292,20 @@ func extractEntityFromURL(url string) string {
 	}
 
 	return "User" // Default fallback
+}
+
+// hasNullData checks if the response contains "data": null
+func hasNullData(rawJSON json.RawMessage) bool {
+	var response map[string]interface{}
+	if err := json.Unmarshal(rawJSON, &response); err != nil {
+		return false
+	}
+
+	dataVal, exists := response["data"]
+	if !exists {
+		return false
+	}
+
+	// Check if data is explicitly null
+	return dataVal == nil
 }
