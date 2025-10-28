@@ -81,7 +81,7 @@ export class EntityService {
 
     // Date field handling
     if (type === 'Date' || type === 'Datetime') {
-      value = this.getDefaultValue(metadata, mode) || value;
+      value = value || this.getDefaultValue(metadata, mode);
         // const isEditMode = this.modeService.inEditMode(mode)
         // const isCreateMode = this.modeService.inCreateMode(mode)
 
