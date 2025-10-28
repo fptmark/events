@@ -688,24 +688,26 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/api/", TestClass: "edge", Description: "API root endpoint", ExpectedStatus: 404},
 		{Method: "GET", URL: "/", TestClass: "edge", Description: "Root endpoint", ExpectedStatus: 404},
 		{Method: "GET", URL: "/invalid-url", TestClass: "edge", Description: "Invalid URL path", ExpectedStatus: 404},
-
-		// =============================================================================
-		// DYNAMIC TESTS (Multi-step programmatic tests and admin endpoints)
-		// =============================================================================
-		{Method: "GET", URL: "testMetadata", TestClass: "dynamic", Description: "Get system metadata"},
-		{Method: "GET", URL: "testDbReport", TestClass: "dynamic", Description: "Get database status report"},
-		{Method: "GET", URL: "testDbInit", TestClass: "dynamic", Description: "Initialize database confirmation page"},
-		{Method: "GET", URL: "testPaginationAggregation", TestClass: "dynamic", Description: "Aggregate pagination test"},
-		{Method: "GET", URL: "testAuth", TestClass: "dynamic", Description: "Redis authentication workflow (login, refresh, logout)"},
 	}
 
-	// Add ID and set default ExpectedStatus
+	// Add ID and set default ExpectedStatus for static tests
 	for i := range testCases {
 		testCases[i].ID = i + 1
 		if testCases[i].ExpectedStatus == 0 {
 			testCases[i].ExpectedStatus = 200
 		}
 	}
+
+	// Append dynamic tests (defined in dynamic.go)
+	dynamicTests := GetDynamicTestCases()
+	startID := len(testCases) + 1
+	for i := range dynamicTests {
+		dynamicTests[i].ID = startID + i
+		if dynamicTests[i].ExpectedStatus == 0 {
+			dynamicTests[i].ExpectedStatus = 200
+		}
+	}
+	testCases = append(testCases, dynamicTests...)
 
 	return testCases
 }

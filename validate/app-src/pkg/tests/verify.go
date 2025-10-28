@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"validate/pkg/core"
 	"validate/pkg/metadata"
 	"validate/pkg/types"
 )
@@ -345,7 +346,12 @@ func (v *verifier) looksLikeBool(s string) bool {
 func (v *verifier) compareString(a, b interface{}) int {
 	aStr := v.toString(a)
 	bStr := v.toString(b)
-	return strings.Compare(aStr, bStr)
+
+	if core.CaseSensitive {
+		return strings.Compare(aStr, bStr)
+	}
+	// Case-insensitive comparison
+	return strings.Compare(strings.ToLower(aStr), strings.ToLower(bStr))
 }
 
 // compareNumeric compares two values as numbers
@@ -571,4 +577,42 @@ func (v *verifier) compareRecords(record1, record2 map[string]interface{}, sortF
 // valuesEqual compares two values for equality
 func (v *verifier) valuesEqual(a, b interface{}) bool {
 	return v.compareValues(a, b, "User", "") == 0
+}
+
+// compareValues is a standalone comparison function for use by dynamic tests
+// Returns negative if a < b, zero if a == b, positive if a > b
+func compareValues(a, b interface{}) int {
+	// Handle nil values
+	if a == nil && b == nil {
+		return 0
+	}
+	if a == nil {
+		return -1
+	}
+	if b == nil {
+		return 1
+	}
+
+	// Handle numeric values (float64 from JSON)
+	aNum, aIsNum := a.(float64)
+	bNum, bIsNum := b.(float64)
+	if aIsNum && bIsNum {
+		if aNum < bNum {
+			return -1
+		}
+		if aNum > bNum {
+			return 1
+		}
+		return 0
+	}
+
+	// Handle string values
+	aStr := fmt.Sprintf("%v", a)
+	bStr := fmt.Sprintf("%v", b)
+
+	if core.CaseSensitive {
+		return strings.Compare(aStr, bStr)
+	}
+	// Case-insensitive comparison
+	return strings.Compare(strings.ToLower(aStr), strings.ToLower(bStr))
 }

@@ -12,25 +12,64 @@ import (
 	"validate/pkg/types"
 )
 
-// Map of dynamic test function names to function pointers
-var dynamicTests = map[string]func() (*types.TestResult, error){
-	"testPaginationAggregation": testPaginationAggregation,
-	"testMetadata":              testMetadata,
-	"testDbReport":              testDbReport,
-	"testDbInit":                testDbInit,
-	"testAuth":                  testAuth,
+// Dynamic test definitions - each entry has its implementation function
+var dynamicTestCases = []struct {
+	name        string
+	description string
+	function    func() (*types.TestResult, error)
+}{
+	{"testPaginationDefault", "Pagination test - sorted by ID", testPaginationDefault},
+	{"testPaginationById", "Pagination test - sorted by ID", testPaginationById},
+	{"testPaginationByUserName", "Pagination test - sorted by username", testPaginationByUserName},
+	{"testMetadata", "Get system metadata", testMetadata},
+	{"testDbReport", "Get database status report", testDbReport},
+	{"testDbInit", "Initialize database confirmation page", testDbInit},
+	{"testAuth", "Redis authentication workflow (login, refresh, logout)", testAuth},
+}
+
+// GetDynamicTestCases returns test case definitions for dynamic tests
+func GetDynamicTestCases() []types.TestCase {
+	testCases := make([]types.TestCase, len(dynamicTestCases))
+	for i, dt := range dynamicTestCases {
+		testCases[i] = types.TestCase{
+			Method:      "GET",
+			URL:         dt.name,
+			TestClass:   "dynamic",
+			Description: dt.description,
+		}
+	}
+	return testCases
 }
 
 // GetDynamicTest returns the dynamic test function for the given name, or nil if not found
 func GetDynamicTest(functionName string) func() (*types.TestResult, error) {
-	if fn, exists := dynamicTests[functionName]; exists {
-		return fn
+	for _, dt := range dynamicTestCases {
+		if dt.name == functionName {
+			return dt.function
+		}
 	}
 	return nil
 }
 
+func testPaginationDefault() (*types.TestResult, error) {
+	return testPaginationAggregation("")
+}
+
+func testPaginationById() (*types.TestResult, error) {
+	return testPaginationAggregation("id")
+}
+
+func testPaginationByUserName() (*types.TestResult, error) {
+	return testPaginationAggregation("username")
+}
+
 // testPaginationAggregation validates that pagination is working correctly
-func testPaginationAggregation() (*types.TestResult, error) {
+func testPaginationAggregation(key string) (*types.TestResult, error) {
+	// Use default id field if key is empty
+	if key == "" {
+		key = "id"
+	}
+
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	// Create result that will be returned in all cases
@@ -47,7 +86,7 @@ func testPaginationAggregation() (*types.TestResult, error) {
 
 	// Step 2: Fetch all pages with pageSize=8
 	pageSize := 8
-	allRecords, pageCount, err := fetchAllPages(client, pageSize)
+	allRecords, pageCount, err := fetchAllPages(client, pageSize, key)
 	if err != nil {
 		// Return error for execution failures (can't connect, etc.)
 		return result, fmt.Errorf("failed to fetch all pages: %w", err)
@@ -66,40 +105,42 @@ func testPaginationAggregation() (*types.TestResult, error) {
 		result.Issues = append(result.Issues, fmt.Sprintf("Record count mismatch: expected %d records, got %d records", totalUsers, len(allRecords)))
 	}
 
-	// Step 5: Validate all user IDs are unique
-	seenIDs := make(map[interface{}]bool)
-	var lastID interface{}
+	// Step 5: Validate sort key field is unique and in order
+	seenKeyValues := make(map[interface{}]bool)
+	var lastKeyValue interface{}
 	for i, record := range allRecords {
-		id, exists := record["id"]
+		keyValue, exists := record[key]
 		if !exists {
-			result.Issues = append(result.Issues, fmt.Sprintf("Record %d missing 'id' field", i))
+			result.Issues = append(result.Issues, fmt.Sprintf("Record %d missing '%s' field", i, key))
 			continue
 		}
 
-		// Check for duplicates
-		if seenIDs[id] {
-			result.Issues = append(result.Issues, fmt.Sprintf("Duplicate ID found: %v", id))
+		// Check for duplicate key values
+		if seenKeyValues[keyValue] {
+			result.Issues = append(result.Issues, fmt.Sprintf("Duplicate %s found: %v", key, keyValue))
 		}
-		seenIDs[id] = true
+		seenKeyValues[keyValue] = true
 
-		// Step 6: Validate IDs are increasing (default sort order)
+		// Step 6: Validate sort key values are in increasing order
 		if i > 0 {
-			if !isIDIncreasing(lastID, id) {
-				result.Issues = append(result.Issues, fmt.Sprintf("IDs not in increasing order: %v followed by %v at index %d", lastID, id, i))
+			comparison := compareValues(lastKeyValue, keyValue)
+			if comparison >= 0 { // lastKeyValue should be < keyValue for ascending order
+				result.Issues = append(result.Issues, fmt.Sprintf("%s not in increasing order: %v followed by %v at index %d", key, lastKeyValue, keyValue, i))
 			}
 		}
-		lastID = id
+		lastKeyValue = keyValue
 	}
 
 	// Create synthetic summary data
 	result.Data = []map[string]interface{}{
 		{
-			"totalRecords":   len(allRecords),
+			"totalRecords":    len(allRecords),
 			"expectedRecords": totalUsers,
-			"pageCount":      pageCount,
-			"expectedPages":  expectedPageCount,
-			"uniqueIDs":      len(seenIDs),
-			"sortOrder":      "ascending",
+			"pageCount":       pageCount,
+			"expectedPages":   expectedPageCount,
+			"uniqueValues":    len(seenKeyValues),
+			"sortKey":         key,
+			"sortOrder":       "ascending",
 		},
 	}
 
@@ -109,13 +150,18 @@ func testPaginationAggregation() (*types.TestResult, error) {
 }
 
 // fetchAllPages fetches all user pages with the given pageSize
-func fetchAllPages(client *http.Client, pageSize int) ([]map[string]interface{}, int, error) {
+func fetchAllPages(client *http.Client, pageSize int, key string) ([]map[string]interface{}, int, error) {
 	var allRecords []map[string]interface{}
 	page := 1
 	totalPages := 0
 
 	for {
-		url := fmt.Sprintf("%s/api/User?page=%d&pageSize=%d", core.ServerURL, page, pageSize)
+		var url string
+		if key == "" {
+			url = fmt.Sprintf("%s/api/User?page=%d&pageSize=%d", core.ServerURL, page, pageSize)
+		} else {
+			url = fmt.Sprintf("%s/api/User?sort=%s&page=%d&pageSize=%d", core.ServerURL, key, page, pageSize)
+		}
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			return nil, 0, err
@@ -167,26 +213,6 @@ func fetchAllPages(client *http.Client, pageSize int) ([]map[string]interface{},
 	}
 
 	return allRecords, totalPages, nil
-}
-
-// isIDIncreasing checks if id2 > id1
-func isIDIncreasing(id1, id2 interface{}) bool {
-	// Handle string IDs
-	str1, ok1 := id1.(string)
-	str2, ok2 := id2.(string)
-	if ok1 && ok2 {
-		return str2 > str1
-	}
-
-	// Handle numeric IDs
-	num1, ok1 := id1.(float64)
-	num2, ok2 := id2.(float64)
-	if ok1 && ok2 {
-		return num2 > num1
-	}
-
-	// Fallback: convert to string and compare
-	return fmt.Sprintf("%v", id2) > fmt.Sprintf("%v", id1)
 }
 
 // testAdminEndpoint is a generic test for admin endpoints - validates 200 status and expected data type
