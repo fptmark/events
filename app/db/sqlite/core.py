@@ -56,7 +56,7 @@ class SQLiteCore(CoreManager):
         return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
     async def wipe_and_reinit(self) -> bool:
-        """Wipe all data and reinitialize database"""
+        """Wipe all data and reinitialize database with proper schema"""
         if self.connection is None:
             return False
 
@@ -73,10 +73,15 @@ class SQLiteCore(CoreManager):
 
             await self.connection.commit()
 
-            # Recreate indexes from schema
-            await self.database.indexes.initialize()
+            # Recreate all tables with proper schemas from metadata
+            from app.services.metadata import MetadataService
+            for entity in MetadataService.list_entities():
+                create_sql = self.database.documents._build_create_table_sql(entity)
+                await self.connection.execute(create_sql)
 
-            logging.info("SQLite: Database wiped and reinitialized")
+            await self.connection.commit()
+
+            logging.info("SQLite: Database wiped and reinitialized with proper schemas")
             return True
 
         except Exception as e:

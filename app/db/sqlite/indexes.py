@@ -16,7 +16,7 @@ class SqliteIndexes(IndexManager):
         super().__init__(database)
 
     async def create(self, entity: str, fields: List[str], unique: bool = True, name: Optional[str] = None) -> None:
-        """Create index on entity"""
+        """Create index on entity with proper columns"""
         db = self.database.core.get_connection()
 
         try:
@@ -28,13 +28,9 @@ class SqliteIndexes(IndexManager):
             table_exists = await cursor.fetchone()
 
             if not table_exists:
-                # Create table if it doesn't exist (similar to MongoDB pattern)
-                await db.execute(f'''
-                    CREATE TABLE IF NOT EXISTS "{entity}" (
-                        id TEXT PRIMARY KEY,
-                        data TEXT NOT NULL
-                    )
-                ''')
+                # Table should exist from initialize_schema, but create it if not
+                create_sql = self.database.documents._build_create_table_sql(entity)
+                await db.execute(create_sql)
                 await db.commit()
 
             # Generate index name if not provided
@@ -43,21 +39,14 @@ class SqliteIndexes(IndexManager):
                 suffix = '_unique' if unique else ''
                 name = f"idx_{entity}_{field_str}{suffix}"
 
-            # Build field extracts for json_extract
-            if len(fields) == 1:
-                # Single field index
-                field = fields[0]
-                index_expr = f"json_extract(data, '$.{field}')"
-            else:
-                # Composite index
-                field_extracts = [f"json_extract(data, '$.{field}')" for field in fields]
-                index_expr = ', '.join(field_extracts)
+            # Build field list for proper columns
+            fields_str = ', '.join(f'"{field}"' for field in fields)
 
             # Create index
             unique_clause = 'UNIQUE' if unique else ''
             await db.execute(f'''
                 CREATE {unique_clause} INDEX IF NOT EXISTS {name}
-                ON "{entity}"({index_expr})
+                ON "{entity}"({fields_str})
             ''')
             await db.commit()
 
@@ -201,13 +190,24 @@ class SqliteIndexes(IndexManager):
 
     def _parse_fields_from_sql(self, sql: str) -> List[str]:
         """Parse field names from CREATE INDEX SQL statement"""
-        # Example: CREATE UNIQUE INDEX idx_User_email ON "User"(json_extract(data, '$.email'))
-        # Example: CREATE UNIQUE INDEX idx_User_email_username ON "User"(json_extract(data, '$.email'), json_extract(data, '$.username'))
+        # Example (new): CREATE UNIQUE INDEX idx_User_email ON "User"("email")
+        # Example (new): CREATE UNIQUE INDEX idx_User_email_username ON "User"("email", "username")
+        # Example (old): CREATE UNIQUE INDEX idx_User_email ON "User"(json_extract(data, '$.email'))
 
         import re
         fields = []
 
-        # Find all json_extract patterns
+        # Try new format first (proper columns): ("field1", "field2")
+        pattern = r'"(\w+)"'
+        # Find content between ON table_name( and )
+        on_match = re.search(r'ON\s+"\w+"\s*\((.*)\)', sql, re.IGNORECASE)
+        if on_match:
+            content = on_match.group(1)
+            matches = re.findall(pattern, content)
+            if matches:
+                return matches
+
+        # Fall back to old json_extract format for backward compatibility
         pattern = r"json_extract\(data,\s*'\$\.(\w+)'\)"
         matches = re.findall(pattern, sql)
 

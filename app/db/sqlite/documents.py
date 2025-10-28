@@ -4,6 +4,7 @@ SQLite document operations - CRUD with JSON storage.
 
 import json
 import uuid
+import sqlite3
 import aiosqlite
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -19,46 +20,137 @@ class SqliteDocuments(DocumentManager):
     def __init__(self, database):
         super().__init__(database)
 
-    async def _create_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create document in SQLite"""
-        db = self.database.core.get_connection()
+    def _get_sqlite_type(self, field_type: str) -> str:
+        """Map schema field type to SQLite type"""
+        type_map = {
+            'String': 'TEXT',
+            'Integer': 'INTEGER',
+            'Boolean': 'INTEGER',  # SQLite uses 0/1 for boolean
+            'Number': 'REAL',
+            'Currency': 'REAL',
+            'Float': 'REAL',
+            'Date': 'TEXT',  # Store as ISO date string YYYY-MM-DD
+            'Datetime': 'TEXT',  # Store as ISO datetime string
+            'ObjectId': 'TEXT',
+            'JSON': 'TEXT',  # Store as JSON string
+        }
+        return type_map.get(field_type, 'TEXT')
 
-        # Remove 'id' from data - table column is sufficient (don't duplicate in JSON)
+    def _build_create_table_sql(self, entity: str) -> str:
+        """Build CREATE TABLE statement from entity metadata"""
+        fields_meta = MetadataService.fields(entity)
+        columns = ['id TEXT PRIMARY KEY']
+
+        # Get uniques list from metadata
+        uniques_list = MetadataService.get(entity).get('uniques') or []
+
+        for field_name, field_meta in fields_meta.items():
+            if field_name != 'id':
+                field_type = field_meta.get('type', 'String')
+                sql_type = self._get_sqlite_type(field_type)
+                required = field_meta.get('required', False) or field_meta.get('autoGenerate', False) or field_meta.get('autoUpdate', False)
+
+                column_def = f'{field_name} {sql_type}'
+                if required:
+                    column_def += ' NOT NULL'
+                if [field_name] in uniques_list:
+                    column_def += ' UNIQUE'
+                columns.append(column_def)
+            
+        for constraint_fields in uniques_list:
+            if len(constraint_fields) > 1:
+                fields_str = ', '.join(f'"{f}"' for f in constraint_fields)
+                columns.append(f'UNIQUE({fields_str})')
+
+        return f'CREATE TABLE IF NOT EXISTS "{entity}" ({", ".join(columns)})'
+
+    def _convert_datetime(self, value: str) -> str:
+        """Convert datetime value to ISO string for SQLite storage"""
+        from datetime import datetime, timezone
+        if not isinstance(value, str):
+            if hasattr(value, 'isoformat'):
+                return value.isoformat()
+            return str(value)
+        # Normalize to ISO format
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        dt_utc = dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return dt_utc.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+
+    def _convert_date(self, value: str) -> str:
+        """Convert date value to YYYY-MM-DD string for SQLite storage"""
+        from datetime import datetime
+        if not isinstance(value, str):
+            if hasattr(value, 'strftime'):
+                return value.strftime('%Y-%m-%d')
+            return str(value)
+        # Parse and extract date only
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return dt.strftime('%Y-%m-%d')
+
+    def _prepare_values_for_sqlite(self, entity: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert Python values to SQLite-compatible format"""
+        prepared = {}
+        for field_name, value in data.items():
+            if value is None:
+                prepared[field_name] = None
+            else:
+                field_type = MetadataService.get(entity, field_name, 'type')
+                if field_type == 'Date':
+                    prepared[field_name] = self._convert_date(value)
+                elif field_type == 'Datetime':
+                    prepared[field_name] = self._convert_datetime(value)
+                elif field_type == 'Boolean':
+                    prepared[field_name] = 1 if value else 0
+                elif field_type == 'JSON':
+                    prepared[field_name] = json.dumps(value) if not isinstance(value, str) else value
+                else:
+                    prepared[field_name] = value
+        return prepared
+
+    async def initialize_schema(self):
+        """Create all tables with proper schemas from metadata"""
+        db = self.database.core.get_connection()
+        for entity in MetadataService.list_entities():
+            create_sql = self._build_create_table_sql(entity)
+            await db.execute(create_sql)
+        await db.commit()
+
+    async def _create_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create document in SQLite with proper columns"""
+        db = self.database.core.get_connection()
         data.pop('id', None)
 
-        # Ensure table exists
-        await db.execute(f'''
-            CREATE TABLE IF NOT EXISTS "{entity}" (
-                id TEXT PRIMARY KEY,
-                data TEXT NOT NULL
-            )
-        ''')
+        # Prepare values
+        prepared_data = self._prepare_values_for_sqlite(entity, data)
+
+        # Build INSERT statement dynamically
+        fields = ['id'] + list(prepared_data.keys())
+        placeholders = ', '.join(['?' for _ in fields])
+        fields_str = ', '.join(f'"{f}"' for f in fields)
+        values = [id] + list(prepared_data.values())
 
         try:
-            # Insert document as JSON text (without 'id' field)
             await db.execute(
-                f'INSERT INTO "{entity}" (id, data) VALUES (?, ?)',
-                (id, json.dumps(data))
+                f'INSERT INTO "{entity}" ({fields_str}) VALUES ({placeholders})',
+                values
             )
             await db.commit()
-            # Return with 'id' for API response
             return {'id': id, **data}
 
-        except aiosqlite.IntegrityError as e:
-            # Unique constraint violation
+        except (aiosqlite.IntegrityError, sqlite3.IntegrityError) as e:
             raise DuplicateConstraintError(
                 message=f"Duplicate key error",
                 entity=entity,
-                field="unknown",  # SQLite doesn't provide field name easily
+                field="unknown",
                 entity_id=id
             )
 
     async def _get_impl(self, entity: str, id: str) -> Tuple[Dict[str, Any], int]:
-        """Get single document by ID"""
+        """Get single document by ID from proper columns"""
         db = self.database.core.get_connection()
 
         cursor = await db.execute(
-            f'SELECT id, data FROM "{entity}" WHERE id = ?',
+            f'SELECT * FROM "{entity}" WHERE id = ?',
             (id,)
         )
         row = await cursor.fetchone()
@@ -66,8 +158,19 @@ class SqliteDocuments(DocumentManager):
         if not row:
             raise DocumentNotFound(entity, id)
 
-        document = json.loads(row[1])  # row[1] = data
-        document['id'] = row[0]  # row[0] = id - add for _normalize_document
+        # Convert row to dict using column names
+        document = dict(zip([d[0] for d in cursor.description], row))
+
+        # Convert boolean values back from 0/1
+        fields_meta = MetadataService.fields(entity)
+        for field_name, value in document.items():
+            if value is not None:
+                field_type = MetadataService.get(entity, field_name, 'type')
+                if field_type == 'Boolean':
+                    document[field_name] = bool(value)
+                elif field_type == 'JSON' and isinstance(value, str):
+                    document[field_name] = json.loads(value)
+
         return document, 1
 
     async def _get_all_impl(
@@ -79,7 +182,7 @@ class SqliteDocuments(DocumentManager):
         pageSize: int = 25,
         substring_match: bool = True
     ) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated list of documents with filter/sort"""
+        """Get paginated list of documents with filter/sort on proper columns"""
         db = self.database.core.get_connection()
 
         # Build WHERE clause from filters
@@ -87,95 +190,69 @@ class SqliteDocuments(DocumentManager):
         params = []
 
         if filter:
-            fields_meta = MetadataService.fields(entity)
             for field, value in filter.items():
+                proper_field = MetadataService.get_proper_name(entity, field)
+                field_type = MetadataService.get(entity, proper_field, 'type') or 'String'
+
                 if isinstance(value, dict):
                     # Range queries: {$gte: 21, $lt: 65} or date ranges
-                    field_meta = fields_meta.get(field, {})
-                    field_type = field_meta.get('type', 'String')
-
                     for op, val in value.items():
                         sql_op = self._map_operator(op)
-
-                        # Type-aware casting for range queries
-                        if field_type in ['Date', 'Datetime']:
-                            # Date/timestamp range queries - ISO format sorts correctly as text
-                            where_parts.append(
-                                f"json_extract(data, '$.{field}') {sql_op} ?"
-                            )
-                        else:
-                            # Numeric range queries (Integer, Number, Currency, Float)
-                            where_parts.append(
-                                f"CAST(json_extract(data, '$.{field}') AS REAL) {sql_op} ?"
-                            )
+                        # Convert date/datetime values for filters
+                        if field_type == 'Date':
+                            val = self._convert_date(val)
+                        elif field_type == 'Datetime':
+                            val = self._convert_datetime(val)
+                        where_parts.append(f'"{proper_field}" {sql_op} ?')
                         params.append(val)
                 else:
-                    # Check if this is an enum field or non-enum string
-                    field_meta = fields_meta.get(field, {})
-                    field_type = field_meta.get('type', 'String')
-                    has_enum_values = 'enum' in field_meta
+                    # Equality or substring match
+                    field_meta = MetadataService.get(entity, proper_field) or {}
+                    enum_values = field_meta.get('enum', None)
+                    has_enum_values = enum_values is not None
 
                     if field_type == 'String' and not has_enum_values:
                         if substring_match:
-                            # Substring matching: LIKE with wildcards (case-insensitive)
-                            where_parts.append(
-                                f"json_extract(data, '$.{field}') LIKE ? COLLATE NOCASE"
-                            )
+                            where_parts.append(f'"{proper_field}" LIKE ? COLLATE NOCASE')
                             params.append(f"%{value}%")
                         else:
-                            # Full string matching (case-insensitive)
-                            where_parts.append(
-                                f"json_extract(data, '$.{field}') = ? COLLATE NOCASE"
-                            )
+                            where_parts.append(f'"{proper_field}" = ? COLLATE NOCASE')
                             params.append(value)
                     else:
-                        # Enum fields and non-strings: always exact match
-                        where_parts.append(
-                            f"json_extract(data, '$.{field}') = ?"
-                        )
+                        # Exact match for enums, numbers, booleans, dates
+                        # Convert date/datetime values for filters
+                        if field_type == 'Date':
+                            value = self._convert_date(value)
+                        elif field_type == 'Datetime':
+                            value = self._convert_datetime(value)
+                        elif field_type == 'Boolean':
+                            value = 1 if value else 0
+                        where_parts.append(f'"{proper_field}" = ?')
                         params.append(value)
 
         where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
 
-        # Build ORDER BY clause with proper collation
+        # Build ORDER BY clause
         order_clause = ""
         if sort:
-            fields_meta = MetadataService.fields(entity)
             order_parts = []
             for field, direction in sort:
-                # Convert field name to proper case (e.g., 'firstname' -> 'firstName')
                 proper_field = MetadataService.get_proper_name(entity, field)
+                field_type = MetadataService.get(entity, proper_field, 'type') or 'String'
 
-                # Special case: 'id' is stored in table column, not JSON
-                if proper_field == 'id':
-                    collate = "" if self.database.case_sensitive_sorting else " COLLATE NOCASE"
-                    order_parts.append(f"id{collate} {direction.upper()}")
+                # Only apply COLLATE NOCASE to String fields (not numeric, date, etc.)
+                if self.database.case_sensitive_sorting:
+                    sort_expr = f'"{proper_field}" {direction.upper()}'
                 else:
-                    # Other fields are in JSON - need type-aware casting
-                    field_meta = fields_meta.get(proper_field, {})
-                    field_type = field_meta.get('type', 'String')
-
-                    # Cast to appropriate type for proper sorting
-                    if field_type in ['Integer', 'Number', 'Currency', 'Float']:
-                        # Numeric sorting - CAST to REAL
-                        order_parts.append(
-                            f"CAST(json_extract(data, '$.{proper_field}') AS REAL) {direction.upper()}"
-                        )
-                    elif field_type in ['Date', 'Datetime']:
-                        # Date/timestamp sorting - ISO format sorts correctly as text
-                        order_parts.append(
-                            f"json_extract(data, '$.{proper_field}') {direction.upper()}"
-                        )
+                    if field_type == 'String':
+                        sort_expr = f'"{proper_field}" COLLATE NOCASE {direction.upper()}'
                     else:
-                        # String sorting (with optional case-insensitive)
-                        collate = "" if self.database.case_sensitive_sorting else " COLLATE NOCASE"
-                        order_parts.append(
-                            f"json_extract(data, '$.{proper_field}'){collate} {direction.upper()}"
-                        )
+                        sort_expr = f'"{proper_field}" {direction.upper()}'
+
+                order_parts.append(sort_expr)
             order_clause = f"ORDER BY {', '.join(order_parts)}"
         else:
-            # Default sort by 'id' column for consistent pagination (matches MongoDB/ES behavior)
-            # MongoDB: ORDER BY _id ASC, Elasticsearch: ORDER BY id ASC, SQLite: ORDER BY id ASC
+            # Default sort by 'id' column for consistent pagination
             collate = "" if self.database.case_sensitive_sorting else " COLLATE NOCASE"
             order_clause = f"ORDER BY id{collate} ASC"
 
@@ -185,67 +262,84 @@ class SqliteDocuments(DocumentManager):
         params.extend([pageSize, offset])
 
         # Execute main query
-        query = f'''
-            SELECT id, data FROM "{entity}"
-            {where_clause}
-            {order_clause}
-            {limit_clause}
-        '''
-
+        query = f'SELECT * FROM "{entity}" {where_clause} {order_clause} {limit_clause}'
         cursor = await db.execute(query, params)
         rows = await cursor.fetchall()
+
+        # Save column names before executing COUNT query
+        column_names = [d[0] for d in cursor.description]
 
         # Get total count (without pagination)
         count_params = params[:-2]  # Exclude LIMIT/OFFSET params
         count_query = f'SELECT COUNT(*) FROM "{entity}" {where_clause}'
-        cursor = await db.execute(count_query, count_params)
-        total = (await cursor.fetchone())[0]
+        count_cursor = await db.execute(count_query, count_params)
+        total = (await count_cursor.fetchone())[0]
 
-        # Parse JSON documents
+        # Convert rows to documents
         documents = []
         for row in rows:
-            doc = json.loads(row[1])  # row[1] = data
-            doc['id'] = row[0]  # row[0] = id - add for _normalize_document
-            documents.append(doc)
+            document = dict(zip(column_names, row))
+
+            # Convert boolean values back from 0/1
+            for field_name, value in document.items():
+                if value is not None:
+                    field_type = MetadataService.get(entity, field_name, 'type')
+                    if field_type == 'Boolean':
+                        document[field_name] = bool(value)
+                    elif field_type == 'JSON' and isinstance(value, str):
+                        document[field_name] = json.loads(value)
+
+            documents.append(document)
 
         return documents, total
 
     async def _update_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Update existing document"""
+        """Update document with proper columns"""
         db = self.database.core.get_connection()
-
-        # Remove 'id' from data - table column is sufficient (don't duplicate in JSON)
         data.pop('id', None)
+
+        # Prepare values
+        prepared_data = self._prepare_values_for_sqlite(entity, data)
+
+        # Build UPDATE statement dynamically
+        set_parts = []
+        values = []
+        for field_name, value in prepared_data.items():
+            set_parts.append(f'"{field_name}" = ?')
+            values.append(value)
+
+        values.append(id)  # Add id for WHERE clause
 
         try:
             cursor = await db.execute(
-                f'UPDATE "{entity}" SET data = ? WHERE id = ?',
-                (json.dumps(data), id)
+                f'UPDATE "{entity}" SET {", ".join(set_parts)} WHERE id = ?',
+                values
             )
             await db.commit()
 
-            # Check if row was actually updated
             if cursor.rowcount == 0:
                 raise DocumentNotFound(entity, id)
 
-            # Return with 'id' for API response
             return {'id': id, **data}
 
-        except aiosqlite.IntegrityError as e:
+        except (aiosqlite.IntegrityError, sqlite3.IntegrityError) as e:
             raise DuplicateConstraintError(
                 message=f"Duplicate key error on update",
                 entity=entity,
                 field="unknown",
                 entity_id=id
             )
+        except Exception as e:
+            print(f"Database error during update: {str(e)}")
+            raise DatabaseError(f"Database error during update: {str(e)}")
 
     async def _delete_impl(self, entity: str, id: str) -> Tuple[Dict[str, Any], int]:
-        """Delete document by ID"""
+        """Delete document by ID from proper columns"""
         db = self.database.core.get_connection()
 
         # Fetch document before deleting
         cursor = await db.execute(
-            f'SELECT id, data FROM "{entity}" WHERE id = ?',
+            f'SELECT * FROM "{entity}" WHERE id = ?',
             (id,)
         )
         row = await cursor.fetchone()
@@ -253,8 +347,17 @@ class SqliteDocuments(DocumentManager):
         if not row:
             raise DocumentNotFound(entity, id)
 
-        document = json.loads(row[1])  # row[1] = data
-        document['id'] = row[0]  # row[0] = id - add for _normalize_document
+        # Convert row to dict using column names
+        document = dict(zip([d[0] for d in cursor.description], row))
+
+        # Convert boolean values back from 0/1
+        for field_name, value in document.items():
+            if value is not None:
+                field_type = MetadataService.get(entity, field_name, 'type')
+                if field_type == 'Boolean':
+                    document[field_name] = bool(value)
+                elif field_type == 'JSON' and isinstance(value, str):
+                    document[field_name] = json.loads(value)
 
         # Delete document
         await db.execute(

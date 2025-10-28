@@ -31,5 +31,6 @@ class SQLiteDatabase(DatabaseInterface):
     async def initialize(self):
         """Initialize SQLite database"""
         await self.core.init(self.db_path)
+        await self.documents.initialize_schema()
         self._initialized = True
         self._health_state = "healthy"
