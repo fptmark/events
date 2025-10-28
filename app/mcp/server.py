@@ -22,108 +22,91 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Create server instance
+server = Server("events-api")
 
-class EventsMCPServer:
-    """MCP server wrapping Events API"""
+# Global state
+_db_initialized = False
+_tools = []
 
-    def __init__(self):
-        self.server = Server("events-api")
-        self.db = None
-        self.mcp_user = None
-        self.auth_context = None
-        self._initialized = False
 
-    async def initialize(self):
-        """Initialize database and services"""
-        if self._initialized:
-            return
+async def initialize_database():
+    """Initialize database and services"""
+    global _db_initialized
+    if _db_initialized:
+        return
 
-        logger.info("Initializing MCP server...")
+    logger.info("Initializing database...")
 
-        # Load config (default to mongo.json, can be overridden with env var)
-        config_path = os.getenv("MCP_CONFIG", "mongo.json")
-        logger.info(f"Loading config from: {config_path}")
-        Config.initialize(config_path)
+    # Load config
+    config_path = os.getenv("MCP_CONFIG", "mongo.json")
+    Config.initialize(config_path)
 
-        # Initialize database
-        db_config = Config.get("database")
-        db_type = db_config.get("type", "mongodb")
-        db_uri = db_config.get("uri")
-        db_name = db_config.get("name")
+    # Initialize database
+    db_type = Config.get("database")
+    db_uri = Config.get("db_uri")
+    db_name = Config.get("db_name")
 
-        logger.info(f"Connecting to {db_type} database...")
-        self.db = await DatabaseFactory.initialize(db_type, db_uri, db_name)
-        logger.info(f"Connected to {db_type} successfully")
+    await DatabaseFactory.initialize(db_type, db_uri, db_name)
 
-        # Initialize metadata service
-        entities = [
-            "Account", "User", "Profile", "TagAffinity",
-            "Event", "UserEvent", "Url", "Crawl"
-        ]
-        MetadataService.initialize(entities)
-        ModelService.initialize(entities)
-        logger.info(f"Initialized {len(entities)} entities")
+    # Initialize metadata
+    entities = ["Account", "User", "Profile", "TagAffinity", "Event", "UserEvent", "Url", "Crawl"]
+    MetadataService.initialize(entities)
+    ModelService.initialize(entities)
 
-        # TODO: Authenticate as MCP service user
-        # Will implement in Phase 2 Day 4
-        logger.info("MCP authentication (will be implemented in Phase 2)")
+    _db_initialized = True
+    logger.info("Database initialized")
 
-        self._initialized = True
-        logger.info("MCP server initialized successfully")
 
-    async def shutdown(self):
-        """Cleanup on server shutdown"""
-        logger.info("Shutting down MCP server...")
-        if self.db:
-            await DatabaseFactory.close()
-            logger.info("Database connection closed")
+# Load tool registry
+from app.mcp.tools import get_all_tools
+_tools = get_all_tools()
+logger.info(f"Loaded {len(_tools)} tools from registry")
 
-    def register_tools(self):
-        """Register all MCP tools"""
-        # Import tools registry
-        from .tools import get_all_tools
 
-        tools = get_all_tools()
-        logger.info(f"Registering {len(tools)} MCP tools...")
+@server.list_tools()
+async def handle_list_tools():
+    """List available tools"""
+    return [
+        {
+            "name": tool["name"],
+            "description": tool["description"],
+            "inputSchema": tool["input_schema"]
+        }
+        for tool in _tools
+    ]
 
-        for tool in tools:
-            self.server.add_tool(
-                name=tool["name"],
-                description=tool["description"],
-                input_schema=tool["input_schema"],
-                handler=tool["handler"]
-            )
 
-        logger.info(f"Registered {len(tools)} tools successfully")
+@server.call_tool()
+async def handle_call_tool(name: str, arguments: dict):
+    """Handle tool calls"""
+    await initialize_database()
 
-    async def run(self):
-        """Run the MCP server"""
-        await self.initialize()
-        self.register_tools()
+    # Find the tool
+    tool = next((t for t in _tools if t["name"] == name), None)
+    if not tool:
+        raise ValueError(f"Unknown tool: {name}")
 
-        logger.info("Starting MCP server (stdio transport)...")
-
-        # Run stdio server
-        async with stdio_server() as (read_stream, write_stream):
-            await self.server.run(
-                read_stream,
-                write_stream,
-                self.server.create_initialization_options()
-            )
+    # Call the handler
+    result = await tool["handler"](**arguments)
+    return result
 
 
 async def main():
-    """Entry point for MCP server"""
-    server = EventsMCPServer()
+    """Entry point"""
     try:
-        await server.run()
+        logger.info("Starting MCP server...")
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(
+                read_stream,
+                write_stream,
+                server.create_initialization_options()
+            )
     except KeyboardInterrupt:
-        logger.info("Received shutdown signal")
-    except Exception as e:
-        logger.exception(f"Server error: {e}")
-        raise
+        logger.info("Shutdown")
     finally:
-        await server.shutdown()
+        if _db_initialized:
+            await DatabaseFactory.close()
 
 
 if __name__ == "__main__":
