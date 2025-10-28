@@ -62,9 +62,13 @@ class MongoDocuments(DocumentManager):
         skip_count = self._calculate_pagination_offset(page, pageSize)
         cursor = db[collection].find(query).sort(sort_spec).skip(skip_count).limit(pageSize)
 
-        # Apply case-insensitive collation
-        strength = 3 if self.database.case_sensitive_sorting else 1
-        cursor = cursor.collation({"locale": "simple", "strength": strength})
+        # Apply collation for sorting
+        if self.database.case_sensitive_sorting:
+            # Case-sensitive: use simple locale with strength 3
+            cursor = cursor.collation({"locale": "simple", "strength": 3})
+        else:
+            # Case-insensitive: use en locale with strength 1
+            cursor = cursor.collation({"locale": "en", "strength": 1})
 
         raw_documents = await cursor.to_list(length=pageSize)
 
@@ -255,12 +259,21 @@ class MongoDocuments(DocumentManager):
                 has_enum_values = 'enum' in field_meta
 
                 if field_type == 'String' and not has_enum_values:
+                    # Handle all 4 combinations of case_sensitive and substring_match
+                    case_sensitive = self.database.case_sensitive_sorting
+                    regex_options = "" if case_sensitive else "i"
+
                     if substring_match:
-                        # Substring matching: partial match with regex (default behavior)
-                        query[field] = {"$regex": f".*{self._escape_regex(str(value))}.*", "$options": "i"}
+                        # Substring matching: partial match with regex
+                        query[field] = {"$regex": f".*{self._escape_regex(str(value))}.*", "$options": regex_options}
                     else:
-                        # Full string matching
-                        query[field] = value
+                        # Exact matching: anchored regex for case control
+                        if case_sensitive:
+                            # Case-sensitive exact: simple equality is faster
+                            query[field] = value
+                        else:
+                            # Case-insensitive exact: use anchored regex
+                            query[field] = {"$regex": f"^{self._escape_regex(str(value))}$", "$options": "i"}
                 else:
                     # Enum fields and non-text fields: always exact match
                     if isinstance(value, str) and ObjectId.is_valid(value):
@@ -273,9 +286,11 @@ class MongoDocuments(DocumentManager):
     def _build_sort_spec(self, sort_fields: Optional[List[Tuple[str, str]]], entity: str) -> List[Tuple[str, int]]:
         """Build MongoDB sort specification"""
         if sort_fields:
-            return [(field, 1 if direction == "asc" else -1) for field, direction in sort_fields]
+            # Translate 'id' to '_id' for MongoDB
+            return [(self.database.core.id_field if field == "id" else field, 1 if direction == "asc" else -1)
+                    for field, direction in sort_fields]
         else:
-            return [("_id", 1)]  # Default sort by _id ascending
+            return [(self.database.core.id_field, 1)]  # Default sort by _id ascending
     
     # def _parse_duplicate_key_error(self, error: DuplicateKeyError) -> Tuple[str, str]:
     #     """Parse MongoDB duplicate key error to extract field and value"""
