@@ -182,7 +182,8 @@ async def lifespan(app: FastAPI):
 
     try:
         # Initialize database connection for normal server operation
-        db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name)
+        case_sensitive = Config.get('case_sensitive', False)
+        db_instance = await DatabaseFactory.initialize(db_type, db_uri, db_name, case_sensitive)
         logger.info(f"Connected to {db_type} successfully")
                 
         # Auto-run database initialization unless --noinitdb flag is set

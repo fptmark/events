@@ -16,7 +16,9 @@ class Config:
     @classmethod
     def get(cls, key: str, default: Any = None) -> Any:
         """Get a configuration value by key"""
-        return cls._config.get(key, default)
+        if key:
+            return cls._config.get(key, default)
+        return cls._config
 
     @classmethod
     def get_db_params(cls) -> Tuple[str, str, str]:
