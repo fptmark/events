@@ -3,6 +3,7 @@ MCP server for Events API.
 Exposes database entities and operations as MCP tools via HTTP REST API.
 """
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -82,7 +83,9 @@ async def handle_call_tool(name: str, arguments: dict):
 
     # Call the handler
     result = await tool["handler"](**arguments)
-    return result
+
+    # Format result as text content (MCP SDK requirement)
+    return [{"type": "text", "text": json.dumps(result, indent=2)}]
 
 
 async def main():

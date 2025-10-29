@@ -57,7 +57,8 @@ class HTTPToolRegistry:
                     "pageSize": {"type": "integer", "description": "Records per page (default: 50)"},
                     "sort_by": {"type": "string", "description": "Sort field (prefix with - for desc)"},
                     "filter_field": {"type": "string", "description": "Field to filter on"},
-                    "filter_value": {"type": "string", "description": "Filter value"}
+                    "filter_value": {"type": "string", "description": "Filter value"},
+                    "substring_match": {"type": "string", "description": "Set to 'full' for exact match. Omit for substring matching (default).", "enum": ["full"]}
                 }
             },
             "handler": self._create_list_handler(entity)
@@ -184,6 +185,36 @@ class HTTPToolRegistry:
 
         return schema
 
+    def _format_error_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Format unified notification structure into user-friendly error message"""
+        notifications = data.get("notifications", {})
+        error_messages = []
+
+        # Extract all error messages from entity-grouped notifications
+        for entity_id, entity_notif in notifications.items():
+            if entity_id == "request_warnings":
+                continue
+
+            errors = entity_notif.get("errors", [])
+            for error in errors:
+                msg = error.get("message", "Unknown error")
+                field = error.get("field")
+                if field:
+                    msg = f"{field}: {msg}"
+                error_messages.append(msg)
+
+            warnings = entity_notif.get("warnings", [])
+            for warning in warnings:
+                msg = warning.get("message", "Unknown warning")
+                field = warning.get("field")
+                if field:
+                    msg = f"{field}: {msg}"
+                error_messages.append(msg)
+
+        # Format for MCP response
+        error_text = "; ".join(error_messages) if error_messages else "Operation failed"
+        return {"error": error_text, "status": data.get("status", "error")}
+
     def _create_list_handler(self, entity: str) -> Callable:
         """Create list handler that calls REST API"""
         async def handler(
@@ -191,7 +222,8 @@ class HTTPToolRegistry:
             pageSize: int = 50,
             sort_by: str | None = None,
             filter_field: str | None = None,
-            filter_value: str | None = None
+            filter_value: str | None = None,
+            substring_match: str | None = None
         ) -> Dict[str, Any]:
             logger.info(f"list_{entity.lower()} called: page={page}, pageSize={pageSize}")
 
@@ -204,12 +236,18 @@ class HTTPToolRegistry:
             if filter_field and filter_value:
                 params["filter"] = f"{filter_field}:{filter_value}"
 
+            if substring_match:
+                params["substring_match"] = substring_match
+
             # Make HTTP GET request
             url = f"{self.api_base_url}/{entity.lower()}"
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, params=params)
-                response.raise_for_status()
                 data = response.json()
+
+                # Handle error responses with unified notification format
+                if response.status_code >= 400:
+                    return self._format_error_response(data)
 
             items = data.get("data", [])
             pagination = data.get("pagination", {})
@@ -233,8 +271,11 @@ class HTTPToolRegistry:
             url = f"{self.api_base_url}/{entity.lower()}/{id}"
             async with httpx.AsyncClient() as client:
                 response = await client.get(url)
-                response.raise_for_status()
                 data = response.json()
+
+                # Handle error responses with unified notification format
+                if response.status_code >= 400:
+                    return self._format_error_response(data)
 
             item = data.get("data", {})
             if isinstance(item, list) and len(item) > 0:
@@ -253,8 +294,11 @@ class HTTPToolRegistry:
             url = f"{self.api_base_url}/{entity.lower()}"
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, json=kwargs)
-                response.raise_for_status()
                 data = response.json()
+
+                # Handle error responses with unified notification format
+                if response.status_code >= 400:
+                    return self._format_error_response(data)
 
             item = data.get("data", {})
             if isinstance(item, list) and len(item) > 0:
@@ -277,8 +321,11 @@ class HTTPToolRegistry:
             async with httpx.AsyncClient() as client:
                 # Fetch existing record
                 get_response = await client.get(get_url)
-                get_response.raise_for_status()
                 get_data = get_response.json()
+
+                # Handle error responses with unified notification format
+                if get_response.status_code >= 400:
+                    return self._format_error_response(get_data)
 
                 existing = get_data.get("data", {})
                 if isinstance(existing, list) and len(existing) > 0:
@@ -290,8 +337,11 @@ class HTTPToolRegistry:
 
                 # PUT merged data
                 put_response = await client.put(put_url, json=merged)
-                put_response.raise_for_status()
                 put_data = put_response.json()
+
+                # Handle error responses with unified notification format
+                if put_response.status_code >= 400:
+                    return self._format_error_response(put_data)
 
             item = put_data.get("data", {})
             if isinstance(item, list) and len(item) > 0:
@@ -310,8 +360,11 @@ class HTTPToolRegistry:
             url = f"{self.api_base_url}/{entity.lower()}/{id}"
             async with httpx.AsyncClient() as client:
                 response = await client.delete(url)
-                response.raise_for_status()
                 data = response.json()
+
+                # Handle error responses with unified notification format
+                if response.status_code >= 400:
+                    return self._format_error_response(data)
 
             logger.info(f"delete_{entity.lower()} deleted: {id}")
             return {"success": True, "id": id}
