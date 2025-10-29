@@ -115,13 +115,13 @@ class DocumentManager(ABC):
             if top_level:
                 msg = str(e.message) if e.message else str(e.error)
                 Notification.warning(Warning.NOT_FOUND, message=msg, entity=entity, entity_id=id)
-                Notification.error(HTTP.NOT_FOUND, msg, entity=entity)
+                Notification.error(HTTP.NOT_FOUND, msg, entity=entity, entity_id=id)
             else:
                 return {}, 0, e
             raise  # Unreachable
         except Exception as e:
             if top_level:
-                Notification.error(HTTP.INTERNAL_ERROR, f"Database get error: {str(e)}")
+                Notification.error(HTTP.INTERNAL_ERROR, f"Database get error: {str(e)}", entity=entity, entity_id=id)
             else:
                 return {}, 0, e
             raise  # Unreachable
@@ -151,10 +151,10 @@ class DocumentManager(ABC):
         except DocumentNotFound as e:
             msg = str(e.message) if e.message else str(e.error)
             Notification.warning(Warning.NOT_FOUND, message=msg, entity=entity, entity_id=id)
-            Notification.error(HTTP.NOT_FOUND, msg, entity=entity)
+            Notification.error(HTTP.NOT_FOUND, msg, entity=entity, entity_id=id)
             raise  # Unreachable
         except Exception as e:
-            Notification.error(HTTP.INTERNAL_ERROR, f"Database retrieve error: {str(e)}")
+            Notification.error(HTTP.INTERNAL_ERROR, f"Database retrieve error: {str(e)}", entity=entity, entity_id=id)
             raise  # Unreachable
 
         return the_doc or {}
@@ -202,11 +202,11 @@ class DocumentManager(ABC):
             try:
                 doc, count = await self._get_impl(entity, id)  # only check for existance - no validation
                 if count == 0:
-                    Notification.error(HTTP.NOT_FOUND, f"Document to update not found: {id}", entity=entity)
+                    Notification.error(HTTP.NOT_FOUND, f"Document to update not found: {id}", entity=entity, entity_id=id)
             except DocumentNotFound:
-                Notification.error(HTTP.NOT_FOUND, f"Document to update not found: {id}", entity=entity)
+                Notification.error(HTTP.NOT_FOUND, f"Document to update not found: {id}", entity=entity, entity_id=id)
             except:
-                Notification.error(HTTP.INTERNAL_ERROR, f"Document error in update: {id}", entity=entity)
+                Notification.error(HTTP.INTERNAL_ERROR, f"Document error in update: {id}", entity=entity, entity_id=id)
         else:
             # Generate lowercase ULID if no ID provided (CREATE only)
             if not id:
@@ -241,15 +241,16 @@ class DocumentManager(ABC):
                     doc = await self._create_impl(entity, id, prepared_data)
                     return doc, 1
             except DuplicateConstraintError as e:
-                Notification.error(HTTP.CONFLICT, f"Duplicate key error: {str(e)}")
+                # Use handle_duplicate_constraint which includes field info
+                Notification.handle_duplicate_constraint(e, is_validation=False)
                 raise  # Unreachable
             except Exception as e:
                 operation = "update" if is_update else "create"
-                Notification.error(HTTP.INTERNAL_ERROR, f"{operation} error: {str(e)}")
+                Notification.error(HTTP.INTERNAL_ERROR, f"{operation} error: {str(e)}", entity=entity, entity_id=id)
                 raise  # Unreachable
         else:
             operation = "update" if is_update else "create"
-            Notification.error(HTTP.UNPROCESSABLE, f"Foreign key validation of {result} failed for {operation}")
+            Notification.error(HTTP.UNPROCESSABLE, f"Foreign key validation of {result} failed for {operation}", entity=entity, entity_id=id)
             raise  # Unreachable
         
     async def create(
@@ -481,7 +482,8 @@ async def process_fks(entity: str, data: Dict[str, Any], validate: bool, view_sp
                             related_data, count, excpt = await fk_cls.get(fk_field_id, None, False)
                         if count == 0:
                             # FK record not found - validation warning if validating
-                            Notification.error(HTTP.UNPROCESSABLE, "Referenced ID does not exist", entity=entity, field=field)
+                            entity_id = data.get('id', 'general')
+                            Notification.error(HTTP.UNPROCESSABLE, "Referenced ID does not exist", entity=entity, entity_id=entity_id, field=field)
                         # if there is more than one fk record, something is very wrong
                         elif count == 1:
                             fk_data["exists"] = True

@@ -151,7 +151,24 @@ class MongoDocuments(DocumentManager):
                 raise DatabaseError(message=f"MongoDB insert failed: {result}")
 
         except DuplicateKeyError as e:
-            raise DuplicateConstraintError(e)
+            # Extract field name from MongoDB error details (keyPattern contains field names)
+            field = None
+            if hasattr(e, 'details') and e.details:
+                key_pattern = e.details.get('keyPattern', {})
+                if key_pattern:
+                    # Get first field name from the pattern (usually only one for unique constraints)
+                    field = list(key_pattern.keys())[0]
+
+            # Create user-friendly message instead of raw MongoDB error
+            field_display = field.capitalize() if field else "Field"
+            message = f"{field_display} already exists"
+
+            raise DuplicateConstraintError(
+                message=message,
+                entity=entity,
+                field=field,
+                entity_id=id
+            )
 
         except Exception as e:
             # Wrap all other errors as DatabaseError
@@ -171,7 +188,24 @@ class MongoDocuments(DocumentManager):
             return {'id': id, **data}
 
         except DuplicateKeyError as e:
-            raise DuplicateConstraintError(e)
+            # Extract field name from MongoDB error details (keyPattern contains field names)
+            field = None
+            if hasattr(e, 'details') and e.details:
+                key_pattern = e.details.get('keyPattern', {})
+                if key_pattern:
+                    # Get first field name from the pattern (usually only one for unique constraints)
+                    field = list(key_pattern.keys())[0]
+
+            # Create user-friendly message instead of raw MongoDB error
+            field_display = field.capitalize() if field else "Field"
+            message = f"{field_display} already exists"
+
+            raise DuplicateConstraintError(
+                message=message,
+                entity=entity,
+                field=field,
+                entity_id=id
+            )
         except Exception as e:
             # Wrap all other errors as DatabaseError
             raise DatabaseError(f"MongoDB update error: {str(e)}", e)
