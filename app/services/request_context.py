@@ -243,13 +243,13 @@ class RequestContext:
                 direction = "asc"
                 
             if not field:
-                Notification.error(HTTP.BAD_REQUEST, "Empty field name in sort")
+                Notification.error(HTTP.BAD_REQUEST, "Empty field name in sort", entity=entity)
 
             if not MetadataService.get(entity, field):
-                Notification.error(HTTP.BAD_REQUEST, f"Unknown sort field={field}")
-            
+                Notification.error(HTTP.BAD_REQUEST, f"Unknown sort field", entity=entity, field=field)
+
             if direction not in ['asc', 'desc']:
-                Notification.error(HTTP.BAD_REQUEST, f"Invalid sort direction. Use 'asc' or 'desc' value={field}:{direction}")
+                Notification.error(HTTP.BAD_REQUEST, f"Invalid sort direction. Use 'asc' or 'desc'", entity=entity, field=field)
             
             # Use lowercase field name - proper casing handled by database driver
             sort_fields.append((field, direction))
@@ -296,7 +296,7 @@ class RequestContext:
 
             field = parts[0].strip()
             if not MetadataService.get(entity, field):
-                Notification.error(HTTP.BAD_REQUEST, f"Invalid filter field {field}")
+                Notification.error(HTTP.BAD_REQUEST, f"Invalid filter field", entity=entity, field=field)
 
             if len(parts) > 2:
                 operator, value = parts[1].strip(), parts[2]
