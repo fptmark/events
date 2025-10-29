@@ -47,9 +47,9 @@ class Warning:
 
 class Notification:
     """Static notification collection system"""
-    
-    _errors: List[str] = []
-    _warnings: Dict[str, Dict[str, List[Dict[str, str]]]] = {}  # Already in final format
+
+    _errors: Dict[str, Dict[str, List[Dict[str, str]]]] = {}  # Entity-grouped: {entity: {entity_id: [errors]}}
+    _warnings: Dict[str, Dict[str, List[Dict[str, str]]]] = {}  # Entity-grouped: {entity: {entity_id: [warnings]}}
     _request_warnings: List[Dict[str, str]] = []
     _suppress_warnings: bool = False
     
@@ -73,7 +73,7 @@ class Notification:
     
     @classmethod
     def get(cls) -> Dict[str, Any]:
-        """Return formatted response"""
+        """Return formatted response in unified entity-grouped format"""
         # Build response
         if cls._errors:
             status = "error"
@@ -81,28 +81,49 @@ class Notification:
             status = "warning"
         else:
             status = "success"
-            
+
         response: Dict[str, Any] = {"status": status}
-        
-        # Add notifications if any exist
-        if cls._errors or cls._warnings or cls._request_warnings:
+
+        # Build unified entity-grouped notifications
+        if cls._errors or cls._warnings:
             notifications: Dict[str, Any] = {}
-            
+
+            # Collect all unique entity/entity_id combinations
+            all_entities = set()
             if cls._errors:
-                notifications["errors"] = [{"message": error} for error in cls._errors]
-            
+                for entity in cls._errors:
+                    for entity_id in cls._errors[entity]:
+                        all_entities.add((entity, entity_id))
             if cls._warnings:
-                notifications["warnings"] = cls._warnings
-            
-            if cls._request_warnings:
-                notifications["request_warnings"] = cls._request_warnings
-            
+                for entity in cls._warnings:
+                    for entity_id in cls._warnings[entity]:
+                        all_entities.add((entity, entity_id))
+
+            # Build unified structure: {entity_id: {errors: [], warnings: []}}
+            for entity, entity_id in all_entities:
+                key = entity_id  # Use entity_id as the key (e.g., "usr_001")
+
+                if key not in notifications:
+                    notifications[key] = {"errors": [], "warnings": []}
+
+                # Add errors for this entity_id
+                if entity in cls._errors and entity_id in cls._errors[entity]:
+                    notifications[key]["errors"] = cls._errors[entity][entity_id]
+
+                # Add warnings for this entity_id
+                if entity in cls._warnings and entity_id in cls._warnings[entity]:
+                    notifications[key]["warnings"] = cls._warnings[entity][entity_id]
+
             response["notifications"] = notifications
-        
+
+        # Add request-level warnings separately (no entity context)
+        if cls._request_warnings:
+            response["request_warnings"] = cls._request_warnings
+
         return response
     
     @classmethod
-    def error(cls, status_code: int, message: str, entity: Optional[str] = None, field: Optional[str] = None, value: Optional[str] = None, raise_exception: bool = True) -> None:
+    def error(cls, status_code: int, message: str, entity: Optional[str] = None, entity_id: Optional[str] = None, field: Optional[str] = None, value: Optional[str] = None, raise_exception: bool = True) -> None:
         """
         Add stop-work error and raise StopWorkError with HTTP status code.
 
@@ -110,12 +131,34 @@ class Notification:
             status_code: HTTP status code (use HTTP.NOT_FOUND, HTTP.BAD_REQUEST, etc.)
             message: Error message
             entity: Entity name (optional, for context)
+            entity_id: Entity ID (optional, for entity-grouped errors)
             field: Field name (optional, for validation errors)
             value: Field value (optional, for validation errors)
             raise_exception: If True, raises StopWorkError immediately
         """
         category = get_error_category(status_code)
-        cls._errors.append(f"[{category}] {message}")
+
+        # Build error dict
+        error = {
+            'type': category,
+            'message': message
+        }
+        if field:
+            error['field'] = field
+        if value is not None:
+            error['value'] = value
+
+        # Store in entity-grouped format (same structure as warnings)
+        entity = entity or 'system'
+        entity_id = entity_id or 'general'
+
+        if entity not in cls._errors:
+            cls._errors[entity] = {}
+        if entity_id not in cls._errors[entity]:
+            cls._errors[entity][entity_id] = []
+
+        cls._errors[entity][entity_id].append(error)
+
         logging.error(f"[{status_code}] {message}")
 
         if raise_exception:
@@ -175,12 +218,12 @@ class Notification:
     @classmethod
     def handle_duplicate_constraint(cls, error, is_validation=False):
         """Handle DuplicateConstraintError with context-sensitive behavior"""
-        # Always add warning for UI field highlighting
-        cls.warning(Warning.UNIQUE_VIOLATION, error.message,
-                   entity=error.entity, entity_id=error.entity_id, field=error.field)
-
         if not is_validation:
             # Data operations (create, update) - stop work with 409 Conflict
-            cls.error(HTTP.CONFLICT, f"Cannot save: {error.message}",
-                     entity=error.entity, field=error.field)
-        # else: validation only - just continue with warning
+            # Add error WITH field for display under field AND in banner
+            cls.error(HTTP.CONFLICT, error.message,
+                     entity=error.entity, entity_id=error.entity_id, field=error.field)
+        else:
+            # Validation only - add warning with field
+            cls.warning(Warning.UNIQUE_VIOLATION, error.message,
+                       entity=error.entity, entity_id=error.entity_id, field=error.field)
