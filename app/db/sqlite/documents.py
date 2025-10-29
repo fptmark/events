@@ -138,12 +138,47 @@ class SqliteDocuments(DocumentManager):
             return {'id': id, **data}
 
         except (aiosqlite.IntegrityError, sqlite3.IntegrityError) as e:
-            raise DuplicateConstraintError(
-                message=f"Duplicate key error",
-                entity=entity,
-                field="unknown",
-                entity_id=id
-            )
+            error_msg = str(e)
+            field = None
+
+            # Check for UNIQUE constraint violation
+            if 'UNIQUE constraint failed:' in error_msg:
+                # Parse "UNIQUE constraint failed: User.username" -> "username"
+                parts = error_msg.split('UNIQUE constraint failed:')[1].strip()
+                # Handle both single field "User.username" and multi-field "User.field1, User.field2"
+                if '.' in parts:
+                    # Extract first field from "User.username" or "User.field1, User.field2"
+                    first_field_part = parts.split(',')[0].strip()  # Get "User.username"
+                    field = first_field_part.split('.')[1] if '.' in first_field_part else None
+
+                # Create user-friendly message
+                field_display = field.capitalize() if field else "Field"
+                message = f"{field_display} already exists"
+
+                raise DuplicateConstraintError(
+                    message=message,
+                    entity=entity,
+                    field=field,
+                    entity_id=id
+                )
+
+            # Check for NOT NULL constraint violation
+            elif 'NOT NULL constraint failed:' in error_msg:
+                # Parse "NOT NULL constraint failed: User.username" -> "username"
+                parts = error_msg.split('NOT NULL constraint failed:')[1].strip()
+                if '.' in parts:
+                    field = parts.split('.')[1].strip()
+
+                # Create user-friendly message
+                field_display = field.capitalize() if field else "Field"
+                message = f"{field_display} is required"
+
+                from app.services.notify import Notification, HTTP
+                Notification.error(HTTP.BAD_REQUEST, message, entity=entity, entity_id=id, field=field)
+                raise  # Unreachable
+
+            # Unknown integrity error
+            raise DatabaseError(f"SQLite integrity error: {error_msg}")
 
     async def _get_impl(self, entity: str, id: str) -> Tuple[Dict[str, Any], int]:
         """Get single document by ID from proper columns"""
@@ -323,12 +358,47 @@ class SqliteDocuments(DocumentManager):
             return {'id': id, **data}
 
         except (aiosqlite.IntegrityError, sqlite3.IntegrityError) as e:
-            raise DuplicateConstraintError(
-                message=f"Duplicate key error on update",
-                entity=entity,
-                field="unknown",
-                entity_id=id
-            )
+            error_msg = str(e)
+            field = None
+
+            # Check for UNIQUE constraint violation
+            if 'UNIQUE constraint failed:' in error_msg:
+                # Parse "UNIQUE constraint failed: User.username" -> "username"
+                parts = error_msg.split('UNIQUE constraint failed:')[1].strip()
+                # Handle both single field "User.username" and multi-field "User.field1, User.field2"
+                if '.' in parts:
+                    # Extract first field from "User.username" or "User.field1, User.field2"
+                    first_field_part = parts.split(',')[0].strip()  # Get "User.username"
+                    field = first_field_part.split('.')[1] if '.' in first_field_part else None
+
+                # Create user-friendly message
+                field_display = field.capitalize() if field else "Field"
+                message = f"{field_display} already exists"
+
+                raise DuplicateConstraintError(
+                    message=message,
+                    entity=entity,
+                    field=field,
+                    entity_id=id
+                )
+
+            # Check for NOT NULL constraint violation
+            elif 'NOT NULL constraint failed:' in error_msg:
+                # Parse "NOT NULL constraint failed: User.username" -> "username"
+                parts = error_msg.split('NOT NULL constraint failed:')[1].strip()
+                if '.' in parts:
+                    field = parts.split('.')[1].strip()
+
+                # Create user-friendly message
+                field_display = field.capitalize() if field else "Field"
+                message = f"{field_display} is required"
+
+                from app.services.notify import Notification, HTTP
+                Notification.error(HTTP.BAD_REQUEST, message, entity=entity, entity_id=id, field=field)
+                raise  # Unreachable
+
+            # Unknown integrity error
+            raise DatabaseError(f"SQLite integrity error: {error_msg}")
         except Exception as e:
             print(f"Database error during update: {str(e)}")
             raise DatabaseError(f"Database error during update: {str(e)}")

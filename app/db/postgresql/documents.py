@@ -130,12 +130,37 @@ class PostgreSQLDocuments(DocumentManager):
                 await conn.execute(insert_sql, *values)
                 return {'id': id, **data}
             except asyncpg.UniqueViolationError as e:
+                # Extract field name from constraint name (e.g., "user_username_unique" -> "username")
+                field = None
+                if hasattr(e, 'constraint_name') and e.constraint_name:
+                    # Parse constraint name: entity_field1_field2_unique -> [field1, field2]
+                    parts = e.constraint_name.split('_')
+                    if parts[-1] == 'unique' and len(parts) > 2:
+                        # Remove entity prefix and 'unique' suffix to get field name(s)
+                        field_parts = parts[1:-1]
+                        field = field_parts[0] if field_parts else None
+
+                # Create user-friendly message
+                field_display = field.capitalize() if field else "Field"
+                message = f"{field_display} already exists"
+
                 raise DuplicateConstraintError(
-                    message=f"Duplicate key error",
+                    message=message,
                     entity=entity,
-                    field="unknown",
+                    field=field,
                     entity_id=id
                 )
+            except asyncpg.NotNullViolationError as e:
+                # Extract field name from column_name attribute
+                field = e.column_name if hasattr(e, 'column_name') else None
+
+                # Create user-friendly message
+                field_display = field.capitalize() if field else "Field"
+                message = f"{field_display} is required"
+
+                from app.services.notify import Notification, HTTP
+                Notification.error(HTTP.BAD_REQUEST, message, entity=entity, entity_id=id, field=field)
+                raise  # Unreachable
             except asyncpg.PostgresError as e:
                 raise DatabaseError(f"PostgreSQL error: {str(e)}")
 
@@ -301,12 +326,37 @@ class PostgreSQLDocuments(DocumentManager):
                 return {'id': id, **data}
 
             except asyncpg.UniqueViolationError as e:
+                # Extract field name from constraint name (e.g., "user_username_unique" -> "username")
+                field = None
+                if hasattr(e, 'constraint_name') and e.constraint_name:
+                    # Parse constraint name: entity_field1_field2_unique -> [field1, field2]
+                    parts = e.constraint_name.split('_')
+                    if parts[-1] == 'unique' and len(parts) > 2:
+                        # Remove entity prefix and 'unique' suffix to get field name(s)
+                        field_parts = parts[1:-1]
+                        field = field_parts[0] if field_parts else None
+
+                # Create user-friendly message
+                field_display = field.capitalize() if field else "Field"
+                message = f"{field_display} already exists"
+
                 raise DuplicateConstraintError(
-                    message=f"Duplicate key error on update",
+                    message=message,
                     entity=entity,
-                    field="unknown",
+                    field=field,
                     entity_id=id
                 )
+            except asyncpg.NotNullViolationError as e:
+                # Extract field name from column_name attribute
+                field = e.column_name if hasattr(e, 'column_name') else None
+
+                # Create user-friendly message
+                field_display = field.capitalize() if field else "Field"
+                message = f"{field_display} is required"
+
+                from app.services.notify import Notification, HTTP
+                Notification.error(HTTP.BAD_REQUEST, message, entity=entity, entity_id=id, field=field)
+                raise  # Unreachable
             except asyncpg.PostgresError as e:
                 raise DatabaseError(f"PostgreSQL error: {str(e)}")
 

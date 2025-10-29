@@ -344,8 +344,12 @@ class ElasticsearchDocuments(DocumentManager):
                 # Use first field in constraint (matches MongoDB pattern)
                 duplicate_field = constraint_fields[0]
 
+                # Create user-friendly message matching other database drivers
+                field_display = duplicate_field.capitalize() if duplicate_field else "Field"
+                message = f"{field_display} already exists"
+
                 error = DuplicateConstraintError(
-                    message=f"Duplicate value for field '{duplicate_field}'",
+                    message=message,
                     entity=entity,
                     field=duplicate_field,
                     entity_id=exclude_id or "new"
