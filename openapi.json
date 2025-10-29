@@ -1349,6 +1349,240 @@
         }
       }
     },
+    "/user/auth/login": {
+      "post": {
+        "summary": "Login",
+        "tags": [
+          "User"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "nullable": true
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "level": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "nullable": true
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "level": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "login": {
+                    "type": "string",
+                    "example": "example_login"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "example_password"
+                  }
+                },
+                "required": [
+                  "login",
+                  "password"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/auth/logout": {
+      "post": {
+        "summary": "Logout",
+        "tags": [
+          "User"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "nullable": true
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "level": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "nullable": true
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "level": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/auth/refresh": {
+      "post": {
+        "summary": "Refresh session",
+        "tags": [
+          "User"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "nullable": true
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "level": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "nullable": true
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "level": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/profile": {
       "get": {
         "summary": "List Profiles",
@@ -2003,6 +2237,10 @@
                             "maximum": 100,
                             "example": 42
                           },
+                          "profileId": {
+                            "type": "string",
+                            "example": "507f1f77bcf86cd799439011"
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time",
@@ -2012,10 +2250,6 @@
                             "type": "string",
                             "format": "date-time",
                             "example": "2024-07-15T14:30:00Z"
-                          },
-                          "profileId": {
-                            "type": "string",
-                            "example": "507f1f77bcf86cd799439011"
                           }
                         },
                         "required": [
@@ -2116,6 +2350,10 @@
                           "maximum": 100,
                           "example": 42
                         },
+                        "profileId": {
+                          "type": "string",
+                          "example": "507f1f77bcf86cd799439011"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time",
@@ -2125,10 +2363,6 @@
                           "type": "string",
                           "format": "date-time",
                           "example": "2024-07-15T14:30:00Z"
-                        },
-                        "profileId": {
-                          "type": "string",
-                          "example": "507f1f77bcf86cd799439011"
                         }
                       },
                       "required": [
@@ -2250,6 +2484,10 @@
                           "maximum": 100,
                           "example": 42
                         },
+                        "profileId": {
+                          "type": "string",
+                          "example": "507f1f77bcf86cd799439011"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time",
@@ -2259,10 +2497,6 @@
                           "type": "string",
                           "format": "date-time",
                           "example": "2024-07-15T14:30:00Z"
-                        },
-                        "profileId": {
-                          "type": "string",
-                          "example": "507f1f77bcf86cd799439011"
                         }
                       },
                       "required": [
@@ -2388,6 +2622,10 @@
                           "maximum": 100,
                           "example": 42
                         },
+                        "profileId": {
+                          "type": "string",
+                          "example": "507f1f77bcf86cd799439011"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time",
@@ -2397,10 +2635,6 @@
                           "type": "string",
                           "format": "date-time",
                           "example": "2024-07-15T14:30:00Z"
-                        },
-                        "profileId": {
-                          "type": "string",
-                          "example": "507f1f77bcf86cd799439011"
                         }
                       },
                       "required": [
@@ -3395,6 +3629,14 @@
                             "maxLength": 500,
                             "example": "example_value"
                           },
+                          "userId": {
+                            "type": "string",
+                            "example": "507f1f77bcf86cd799439011"
+                          },
+                          "eventId": {
+                            "type": "string",
+                            "example": "507f1f77bcf86cd799439011"
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time",
@@ -3404,14 +3646,6 @@
                             "type": "string",
                             "format": "date-time",
                             "example": "2024-07-15T14:30:00Z"
-                          },
-                          "userId": {
-                            "type": "string",
-                            "example": "507f1f77bcf86cd799439011"
-                          },
-                          "eventId": {
-                            "type": "string",
-                            "example": "507f1f77bcf86cd799439011"
                           }
                         },
                         "required": [
@@ -3522,6 +3756,14 @@
                           "maxLength": 500,
                           "example": "example_value"
                         },
+                        "userId": {
+                          "type": "string",
+                          "example": "507f1f77bcf86cd799439011"
+                        },
+                        "eventId": {
+                          "type": "string",
+                          "example": "507f1f77bcf86cd799439011"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time",
@@ -3531,14 +3773,6 @@
                           "type": "string",
                           "format": "date-time",
                           "example": "2024-07-15T14:30:00Z"
-                        },
-                        "userId": {
-                          "type": "string",
-                          "example": "507f1f77bcf86cd799439011"
-                        },
-                        "eventId": {
-                          "type": "string",
-                          "example": "507f1f77bcf86cd799439011"
                         }
                       },
                       "required": [
@@ -3663,6 +3897,14 @@
                           "maxLength": 500,
                           "example": "example_value"
                         },
+                        "userId": {
+                          "type": "string",
+                          "example": "507f1f77bcf86cd799439011"
+                        },
+                        "eventId": {
+                          "type": "string",
+                          "example": "507f1f77bcf86cd799439011"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time",
@@ -3672,14 +3914,6 @@
                           "type": "string",
                           "format": "date-time",
                           "example": "2024-07-15T14:30:00Z"
-                        },
-                        "userId": {
-                          "type": "string",
-                          "example": "507f1f77bcf86cd799439011"
-                        },
-                        "eventId": {
-                          "type": "string",
-                          "example": "507f1f77bcf86cd799439011"
                         }
                       },
                       "required": [
@@ -3816,6 +4050,14 @@
                           "maxLength": 500,
                           "example": "example_value"
                         },
+                        "userId": {
+                          "type": "string",
+                          "example": "507f1f77bcf86cd799439011"
+                        },
+                        "eventId": {
+                          "type": "string",
+                          "example": "507f1f77bcf86cd799439011"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time",
@@ -3825,14 +4067,6 @@
                           "type": "string",
                           "format": "date-time",
                           "example": "2024-07-15T14:30:00Z"
-                        },
-                        "userId": {
-                          "type": "string",
-                          "example": "507f1f77bcf86cd799439011"
-                        },
-                        "eventId": {
-                          "type": "string",
-                          "example": "507f1f77bcf86cd799439011"
                         }
                       },
                       "required": [
@@ -4604,6 +4838,10 @@
                             "type": "string",
                             "example": "example"
                           },
+                          "urlId": {
+                            "type": "string",
+                            "example": "507f1f77bcf86cd799439011"
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time",
@@ -4613,10 +4851,6 @@
                             "type": "string",
                             "format": "date-time",
                             "example": "2024-07-15T14:30:00Z"
-                          },
-                          "urlId": {
-                            "type": "string",
-                            "example": "507f1f77bcf86cd799439011"
                           }
                         },
                         "required": [
@@ -4697,6 +4931,10 @@
                           "type": "string",
                           "example": "example"
                         },
+                        "urlId": {
+                          "type": "string",
+                          "example": "507f1f77bcf86cd799439011"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time",
@@ -4706,10 +4944,6 @@
                           "type": "string",
                           "format": "date-time",
                           "example": "2024-07-15T14:30:00Z"
-                        },
-                        "urlId": {
-                          "type": "string",
-                          "example": "507f1f77bcf86cd799439011"
                         }
                       },
                       "required": [
@@ -5220,6 +5454,10 @@
             "maximum": 100,
             "example": 42
           },
+          "profileId": {
+            "type": "string",
+            "example": "507f1f77bcf86cd799439011"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -5229,10 +5467,6 @@
             "type": "string",
             "format": "date-time",
             "example": "2024-07-15T14:30:00Z"
-          },
-          "profileId": {
-            "type": "string",
-            "example": "507f1f77bcf86cd799439011"
           }
         },
         "required": [
@@ -5479,6 +5713,14 @@
             "maxLength": 500,
             "example": "example_value"
           },
+          "userId": {
+            "type": "string",
+            "example": "507f1f77bcf86cd799439011"
+          },
+          "eventId": {
+            "type": "string",
+            "example": "507f1f77bcf86cd799439011"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -5488,14 +5730,6 @@
             "type": "string",
             "format": "date-time",
             "example": "2024-07-15T14:30:00Z"
-          },
-          "userId": {
-            "type": "string",
-            "example": "507f1f77bcf86cd799439011"
-          },
-          "eventId": {
-            "type": "string",
-            "example": "507f1f77bcf86cd799439011"
           }
         },
         "required": [
@@ -5645,6 +5879,10 @@
             "type": "string",
             "example": "example"
           },
+          "urlId": {
+            "type": "string",
+            "example": "507f1f77bcf86cd799439011"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -5654,10 +5892,6 @@
             "type": "string",
             "format": "date-time",
             "example": "2024-07-15T14:30:00Z"
-          },
-          "urlId": {
-            "type": "string",
-            "example": "507f1f77bcf86cd799439011"
           }
         },
         "required": [

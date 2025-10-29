@@ -60,28 +60,42 @@ for CONFIG in "${CONFIGS[@]}"; do
     # Run tests
     echo "  Running validation tests..."
     ./validate/app -f > "test_${DB_NAME}.log" 2>&1
-    TEST_RESULT=$?
+    TEST_RESULT_APP=$?
+
+    echo "  Running mcp tests..."
+    python validate/mcp-src/test_mcp.py > "test_mcp_${DB_NAME}.log" 2>&1
+    TEST_RESULT_MCP=$?
 
     # Stop server
     echo "  Stopping server..."
     kill $SERVER_PID 2>/dev/null
     wait $SERVER_PID 2>/dev/null
 
-    # Parse summary line to check for failures
+    # Parse summary line from validation tests
     # Format: "Summary: 258/1/259 tests passed/failed/total (99.6%)"
     SUMMARY_LINE=$(grep "Summary:" "test_${DB_NAME}.log" | tail -1)
     FAILED_COUNT=$(echo "$SUMMARY_LINE" | grep -oE "[0-9]+/[0-9]+/[0-9]+" | cut -d'/' -f2)
 
-    # Record result based on failure count
-    if [ -z "$FAILED_COUNT" ]; then
-        echo -e "  ${RED}FAILED - Could not parse test results${NC} (see test_${DB_NAME}.log)"
+    # Parse MCP test summary
+    # Format: "Passed: 40" and "Failed: 32"
+    MCP_PASSED=$(grep "^Passed:" "test_mcp_${DB_NAME}.log" | grep -oE "[0-9]+" || echo "")
+    MCP_FAILED=$(grep "^Failed:" "test_mcp_${DB_NAME}.log" | grep -oE "[0-9]+" || echo "")
+
+    # Check if we got valid counts
+    if [ -z "$FAILED_COUNT" ] || [ -z "$MCP_FAILED" ]; then
+        echo -e "  ${RED}FAILED - Could not parse test results${NC}"
+        echo -e "    API failed count: ${FAILED_COUNT:-"NOT FOUND"}"
+        echo -e "    MCP failed count: ${MCP_FAILED:-"NOT FOUND"}"
+        echo -e "    See test_${DB_NAME}.log and test_mcp_${DB_NAME}.log"
         RESULTS+=("$DB_NAME: FAILED - Could not parse test results")
-    elif [ "$FAILED_COUNT" -eq 0 ]; then
-        echo -e "  ${GREEN}PASSED${NC}"
+    elif [ "$FAILED_COUNT" -eq 0 ] && [ "$MCP_FAILED" -eq 0 ]; then
+        echo -e "  ${GREEN}PASSED${NC} (API: 0 failed, MCP: 0 failed)"
         RESULTS+=("$DB_NAME: PASSED")
     else
-        echo -e "  ${RED}FAILED - $FAILED_COUNT test(s) failed${NC} (see test_${DB_NAME}.log)"
-        RESULTS+=("$DB_NAME: FAILED - $FAILED_COUNT test(s) failed")
+        TOTAL_FAILED=$((FAILED_COUNT + MCP_FAILED))
+        echo -e "  ${RED}FAILED - $TOTAL_FAILED test(s) failed${NC} (API: $FAILED_COUNT, MCP: $MCP_FAILED)"
+        echo -e "    See test_${DB_NAME}.log and test_mcp_${DB_NAME}.log"
+        RESULTS+=("$DB_NAME: FAILED - $TOTAL_FAILED test(s) failed (API: $FAILED_COUNT, MCP: $MCP_FAILED)")
     fi
 
     echo

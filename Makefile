@@ -28,6 +28,8 @@ help:
 	@echo "  startpost   - Start postgreSql"
 	@echo "  startmcp    - Start MCP server"
 	@echo "  startredis  - Start Redis service"
+	@echo "Claude"
+	@echo "   mcp        - Start the mcp server"
 
 	@echo "  cli         - Run command-line interface"
 	@echo ""
@@ -47,7 +49,7 @@ help:
 	@echo "  buildtests  - Generate test validation tools (app and mcp)"
 	@echo "  testredis   - Test the redis service"
 	@echo "  testapp     - Run validation suite"
-	@echo "  testmcp     - Run validation suite"
+	@echo "  testmcp     - Test MCP data shapes
 	@echo ""
 	@echo "Convenience targets:"
 	@echo "  all         - Generate schema and all code"
@@ -89,7 +91,7 @@ startpost:
 	brew services start postgresql@16
 
 startmcp:
-	  python mcp_server.py
+	  python app/mcp/mcp_server.py
 
 startredis:
 	brew services start redis
@@ -100,8 +102,11 @@ buildtests:
 testapp:
 	validate/app
 
-testmcp: 
-	python validate/mcp-src/validate_mcp.py
+testmcp:
+	python validate/mcp-src/test_mcp.py
+
+mcp: 
+	python app/mcp/mcp_server.py
 
 testredis: 
 	./redis.sh
@@ -137,6 +142,7 @@ rebuild:
 schema : schema.mmd 
 	$(PYPATH) python -m convert.schemaConvert .
 	cat schema.mmd | sed '/[[:alnum:]].*%%/ s/%%.*//' | mmdc -i - -o schema.png
+	$(MAKE) spec
 
 main:
 	$(PYPATH) python -m generators.gen_main schema.yaml . 

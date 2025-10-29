@@ -1,3 +1,4 @@
+aiosqlite>=0.21.0
 asyncpg>=0.29.0
 beanie==1.29.0
 black==25.1.0
@@ -10,9 +11,9 @@ jsonschema==4.23.0
 mcp==1.0.0
 motor==3.6.1
 pathspec==0.12.1
-pipreqs==0.5.0
 pydantic==2.11.3
 pymongo==4.9.2
+python-ulid>=3.1.0
 PyYAML==6.0.2
 redis==5.2.1
 starlette==0.46.2
