@@ -233,14 +233,23 @@ export class EntityFormService {
       }
     }
 
-    // Check number validations
-    if (typeof value === 'number') {
+    // Check number validations for numeric types (Currency, Number, Integer, Float)
+    const isNumericType = ['Currency', 'Number', 'Integer', 'Float'].includes(fieldMeta.type || '');
+    if (isNumericType) {
+      // Convert string to number if needed
+      const numValue = typeof value === 'number' ? value : parseFloat(value);
+
+      // Check if it's a valid number
+      if (isNaN(numValue)) {
+        return `${this.getFieldDisplayName(entityType, fieldName)} must be a valid number.`;
+      }
+
       // Min value
-      if (fieldMeta.ge !== undefined && value < fieldMeta.ge) {
+      if (fieldMeta.ge !== undefined && numValue < fieldMeta.ge) {
         return `${this.getFieldDisplayName(entityType, fieldName)} must be at least ${fieldMeta.ge}.`;
       }
       // Max value
-      if (fieldMeta.le !== undefined && value > fieldMeta.le) {
+      if (fieldMeta.le !== undefined && numValue > fieldMeta.le) {
         return `${this.getFieldDisplayName(entityType, fieldName)} cannot exceed ${fieldMeta.le}.`;
       }
     }

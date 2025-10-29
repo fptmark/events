@@ -82,14 +82,6 @@ export class EntityService {
     // Date field handling
     if (type === 'Date' || type === 'Datetime') {
       value = value || this.getDefaultValue(metadata, mode);
-        // const isEditMode = this.modeService.inEditMode(mode)
-        // const isCreateMode = this.modeService.inCreateMode(mode)
-
-        // if ((isEditMode && metadata?.autoUpdate) || (isCreateMode && (metadata?.autoGenerate || metadata?.autoUpdate))) {
-        //   let date_value = new Date().toISOString()
-        //   value = type == 'Datetime' ? date_value: date_value.slice(0, 10); 
-        // } 
-
       return this.formatDate(value, mode, type)
     }
     

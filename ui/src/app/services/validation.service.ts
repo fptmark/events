@@ -48,34 +48,56 @@ export class ValidationService {
   }
 
   /**
-   * Convert API error response to ValidationFailures
-   * ONLY handles the unified notification system format
+   * Convert API error response to ValidationFailures - UNIFIED FORMAT ONLY
+   * Extracts field errors from entity-grouped notifications
+   * @param error API response with notifications in format: {notifications: {entity_id: {errors: [], warnings: []}}}
+   * @param entityId Optional entity ID to filter errors for specific entity (Option B)
    */
-  convertApiErrorToValidationFailures(error: any): ValidationFailure[] {
-    console.log('DEBUG: convertApiErrorToValidationFailures called with:', error);
-    
-    // Check for notification system format with field-specific errors and warnings
-    if (error.notifications?.length) {
-      console.log('DEBUG: Found notifications:', error.notifications);
-      
-      const validationFailures = error.notifications
-        .filter((notif: any) => {
-          const hasField = !!notif.field;
-          const isErrorOrWarning = notif.level === 'error' || notif.level === 'warning';
-          console.log(`DEBUG: Notification - field: ${notif.field}, level: ${notif.level}, message: ${notif.message}, hasField: ${hasField}, isErrorOrWarning: ${isErrorOrWarning}`);
-          return hasField && isErrorOrWarning;
-        })
-        .map((notif: any) => ({
-          field: notif.field,
-          constraint: notif.message
-        }));
-      
-      console.log('DEBUG: Extracted ValidationFailures:', validationFailures);
-      return validationFailures;
+  convertApiErrorToValidationFailures(error: any, entityId?: string): ValidationFailure[] {
+    const validationFailures: ValidationFailure[] = [];
+
+    console.log('convertApiErrorToValidationFailures called with:', error, 'entityId filter:', entityId);
+
+    // Handle unified entity-grouped format
+    if (error.notifications && typeof error.notifications === 'object') {
+      // Iterate through all entity_ids
+      Object.entries(error.notifications).forEach(([notifEntityId, entityNotif]: [string, any]) => {
+        console.log('Checking entity:', notifEntityId, 'against filter:', entityId);
+        // If entityId filter provided, only process matching entity
+        if (entityId && notifEntityId !== entityId && notifEntityId !== 'general') {
+          console.log('Skipping entity:', notifEntityId);
+          return; // Skip this entity
+        }
+        console.log('Processing entity:', notifEntityId, 'notifications:', entityNotif);
+
+        // Extract errors with field information
+        if (entityNotif.errors && Array.isArray(entityNotif.errors)) {
+          entityNotif.errors.forEach((error: any) => {
+            if (error.field) {
+              validationFailures.push({
+                field: error.field,
+                constraint: error.message || 'Validation error'
+              });
+            }
+          });
+        }
+
+        // Extract warnings with field information
+        if (entityNotif.warnings && Array.isArray(entityNotif.warnings)) {
+          entityNotif.warnings.forEach((warning: any) => {
+            if (warning.field) {
+              validationFailures.push({
+                field: warning.field,
+                constraint: warning.message || 'Validation warning'
+              });
+            }
+          });
+        }
+      });
     }
-    
-    console.log('DEBUG: No notifications found');
-    return [];
+
+    console.log('Extracted ValidationFailures:', validationFailures);
+    return validationFailures;
   }
 
   /**

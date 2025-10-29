@@ -185,7 +185,7 @@ export class EntityFormComponent implements OnInit {
         this.entityFormService.populateFormFields(this.entityType, this.entityForm!, this.entity, this.sortedFields, this.mode);
         
         // P3: Populate field errors below each field from payload (use FULL response)
-        const validationFailures = this.validationService.convertApiErrorToValidationFailures(fullResponse);
+        const validationFailures = this.validationService.convertApiErrorToValidationFailures(fullResponse, this.entityId);
         this.validationErrors = validationFailures;
         console.log('P3: Edit mode validation errors:', this.validationErrors);
         console.log('P3: Full server response:', fullResponse);
@@ -226,7 +226,7 @@ export class EntityFormComponent implements OnInit {
         this.entityFormService.populateFormFields(this.entityType, this.entityForm!, this.entity, this.sortedFields, this.mode);
         
         // P3: Populate field errors below each field from payload (use FULL response)
-        const validationFailures = this.validationService.convertApiErrorToValidationFailures(fullResponse);
+        const validationFailures = this.validationService.convertApiErrorToValidationFailures(fullResponse, this.entityId);
         this.validationErrors = validationFailures;
         this.entityFormService.populateFieldErrors(this.validationErrors);
         
@@ -376,8 +376,8 @@ export class EntityFormComponent implements OnInit {
     }
     
     // Extract field-specific validation errors from server response
-    const validationFailures = this.validationService.convertApiErrorToValidationFailures(err.error);
-    
+    const validationFailures = this.validationService.convertApiErrorToValidationFailures(err.error, this.entityId);
+
     if (validationFailures.length > 0) {
       // "Goto Edit Mode and use payload" - store validation errors for P3/P5 display
       this.validationErrors = validationFailures;
@@ -398,7 +398,7 @@ export class EntityFormComponent implements OnInit {
     if (err.status) {
       // This is an HTTP error - REST service already showed notification
       // Only extract validation failures for form field highlighting
-      const validationFailures = this.validationService.convertApiErrorToValidationFailures(err.error);
+      const validationFailures = this.validationService.convertApiErrorToValidationFailures(err.error, this.entityId);
       if (validationFailures.length > 0) {
         this.validationErrors = validationFailures;
       }

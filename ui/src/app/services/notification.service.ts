@@ -58,193 +58,130 @@ export class NotificationService {
   constructor() {}
 
   /**
-   * Handle backend API response with enhanced notification support
-   * @param response The backend API response
+   * Handle backend API response - UNIFIED FORMAT ONLY
+   * Expected format: {status: "error|warning|success", notifications: {entity_id: {errors: [], warnings: []}}}
    */
   handleApiResponse(response: any): void {
     this.clear();
-    
-    // Handle simple error messages from current backend
+
+    console.log('handleApiResponse called with:', response);
+
+    // Handle simple string errors
     if (typeof response === 'string') {
       this.showError(response);
       return;
     }
 
-    // Handle new entity-grouped format (status: perfect/completed/failed)
-    if (response.status) {
-      this.handleEntityGroupedResponse(response);
+    // Don't show notification for success with no notifications
+    if (response.status === 'success' && !response.notifications) {
       return;
     }
-    
-    // Handle direct message/level format (still used for some simple cases)
-    if (response.message && response.level && !response.notifications) {
-      switch (response.level) {
-        case 'success':
-          this.showSuccess(response.message);
+
+    // Handle unified entity-grouped format
+    if (response.status && response.notifications) {
+      console.log('Processing unified format, notifications:', response.notifications);
+      const messages: string[] = [];
+      const allNotifications: any[] = [];
+      let totalErrors = 0;
+      let totalWarnings = 0;
+
+      // Extract all errors and warnings from all entities
+      Object.entries(response.notifications).forEach(([entityId, entityNotif]: [string, any]) => {
+        console.log('Processing entity:', entityId, 'notifications:', entityNotif);
+        if (entityNotif.errors && Array.isArray(entityNotif.errors)) {
+          entityNotif.errors.forEach((error: any) => {
+            totalErrors++;
+            allNotifications.push({
+              ...error,
+              level: 'error',
+              entity_id: entityId
+            });
+            // Only add to banner if no field (field-specific errors show under field only)
+            if (!error.field && !messages.includes(error.message)) {
+              messages.push(error.message);
+            }
+          });
+        }
+
+        if (entityNotif.warnings && Array.isArray(entityNotif.warnings)) {
+          entityNotif.warnings.forEach((warning: any) => {
+            totalWarnings++;
+            allNotifications.push({
+              ...warning,
+              level: 'warning',
+              entity_id: entityId
+            });
+            // Only add to banner if no field (field-specific warnings show under field only)
+            if (!warning.field && !messages.includes(warning.message)) {
+              messages.push(warning.message);
+            }
+          });
+        }
+      });
+
+      // Add request warnings if present
+      if (response.request_warnings && Array.isArray(response.request_warnings)) {
+        response.request_warnings.forEach((warning: any) => {
+          totalWarnings++;
+          allNotifications.push({
+            ...warning,
+            level: 'warning'
+          });
+          if (!messages.includes(warning.message)) {
+            messages.push(warning.message);
+          }
+        });
+      }
+
+      // Determine notification type based on status
+      let notificationType: NotificationType;
+      switch (response.status) {
+        case 'error':
+          notificationType = NOTIFICATION_ERROR;
           break;
         case 'warning':
-          this.showWarning(response.message);
+          notificationType = NOTIFICATION_WARNING;
           break;
-        case 'error':
-          this.showError(response.message);
+        case 'success':
+          notificationType = NOTIFICATION_SUCCESS;
           break;
         default:
-          this.showInfo(response.message);
+          notificationType = NOTIFICATION_INFO;
       }
-      return;
-    }
-    
-    // Don't show notification for simple success cases
-    if (response.level === 'success' && !response.notifications?.length) {
-      return;
-    }
-    
-    if (response.message && response.level) {
-      const messages: string[] = [response.message];
-      
-      // Add summary if there are multiple notifications
-      if (response.summary && response.notifications?.length > 1) {
-        const summaryParts: string[] = [];
-        if (response.summary.error > 0) summaryParts.push(`${response.summary.error} error${response.summary.error !== 1 ? 's' : ''}`);
-        if (response.summary.warning > 0) summaryParts.push(`${response.summary.warning} warning${response.summary.warning !== 1 ? 's' : ''}`);
-        
-        if (summaryParts.length > 0) {
-          messages.push(`(${summaryParts.join(', ')})`);
-        }
+
+      // If no banner messages but we have field errors, add generic summary
+      if (messages.length === 0 && totalErrors > 0) {
+        messages.push('Please fix the errors highlighted below');
+      } else if (messages.length === 0 && totalWarnings > 0) {
+        messages.push('Please review the warnings highlighted below');
       }
-      
-      // Convert backend notifications to error context format
-      let error: ErrorDetail | undefined;
-      if (response.notifications?.length) {
-        const invalid_fields: ValidationFailure[] = [];
-        const allMessages: string[] = [];
-        
-        response.notifications.forEach((notif: any) => {
-          if (notif.field && notif.level === 'error') {
-            invalid_fields.push({
-              field: notif.field,
-              constraint: notif.message
-            });
-          }
-          
-          allMessages.push(notif.message);
-          
-          // Add nested details
-          if (notif.details?.length) {
-            notif.details.forEach((detail: any) => {
-              allMessages.push(`• ${detail.message}`);
-            });
-          }
+
+      // Filter notifications for Details section - only show non-field-specific ones
+      // (field-specific errors are already shown under the fields)
+      const detailsNotifications = allNotifications.filter(n => !n.field);
+
+      // Show notification with all collected messages
+      if (messages.length > 0) {
+        this.notificationSubject.next({
+          type: notificationType,
+          title: this.getNotificationTitle(notificationType),
+          messages,
+          autoClose: notificationType === NOTIFICATION_SUCCESS,
+          expandable: detailsNotifications.length > 0,
+          expanded: false,
+          notifications: detailsNotifications,
+          responseData: response.data
         });
-        
-        // Add detailed messages
-        messages.push(...allMessages);
-        
-        if (invalid_fields.length > 0) {
-          error = {
-            message: response.message || 'Validation errors occurred',
-            error_type: 'ValidationError',
-            context: {
-              entity: response.notifications[0]?.entity,
-              invalid_fields
-            }
-          };
+
+        if (notificationType === NOTIFICATION_SUCCESS) {
+          this.setAutoCloseTimer();
         }
       }
-      
-      const notificationType = this.mapLevelToType(response.level);
-      const hasDetailedNotifications = response.notifications?.length > 0;
-      
-      this.notificationSubject.next({
-        type: notificationType,
-        title: this.getNotificationTitle(notificationType),
-        messages,
-        error,
-        autoClose: notificationType === NOTIFICATION_SUCCESS,
-        expandable: hasDetailedNotifications,
-        expanded: false,
-        notifications: response.notifications || [],
-        responseData: response.data
-      });
-      
-      if (notificationType === NOTIFICATION_SUCCESS) {
-        this.setAutoCloseTimer();
-      }
-    }
-  }
-
-  /**
-   * Handle new entity-grouped response format
-   * @param response Response with status: perfect/completed/failed and entity-grouped notifications
-   */
-  private handleEntityGroupedResponse(response: any): void {
-    // Don't show notification for perfect responses
-    if (response.status === 'perfect') {
       return;
     }
 
-    const messages: string[] = [];
-    const flatNotifications: any[] = [];
-
-    // Create summary message
-    if (response.summary) {
-      const summary = response.summary;
-      const summaryParts: string[] = [];
-      
-      if (summary.errors > 0) summaryParts.push(`${summary.errors} error${summary.errors !== 1 ? 's' : ''}`);
-      if (summary.warnings > 0) summaryParts.push(`${summary.warnings} warning${summary.warnings !== 1 ? 's' : ''}`);
-      
-      if (summaryParts.length > 0) {
-        const statusText = response.status === 'failed' ? 'Failed' : 'Completed with issues';
-        messages.push(`${statusText}: ${summaryParts.join(', ')}`);
-        
-        if (summary.total_entities > 1) {
-          const successfulCount = summary.successful || summary.perfect;
-          messages.push(`${successfulCount} of ${summary.total_entities} entities processed successfully`);
-        }
-      }
-    }
-
-    // Flatten entity notifications for display
-    if (response.notifications) {
-      Object.entries(response.notifications).forEach(([entityId, entityNotif]: [string, any]) => {
-        // Add entity context to each notification
-        [...entityNotif.errors, ...entityNotif.warnings].forEach((notif: any) => {
-          flatNotifications.push({
-            ...notif,
-            level: notif.severity, // Map severity to level for existing UI
-            entity_id: entityId === 'null' ? null : entityId,
-            entity_type: entityNotif.entity_type
-          });
-        });
-      });
-    }
-
-    // Determine notification type based on status
-    let notificationType: NotificationType;
-    switch (response.status) {
-      case 'failed':
-        notificationType = NOTIFICATION_ERROR;
-        break;
-      case 'completed':
-        notificationType = NOTIFICATION_WARNING;
-        break;
-      default:
-        notificationType = NOTIFICATION_INFO;
-    }
-
-    const hasDetailedNotifications = flatNotifications.length > 0;
-
-    this.notificationSubject.next({
-      type: notificationType,
-      title: this.getNotificationTitle(notificationType),
-      messages,
-      autoClose: false, // Don't auto-close when there are issues
-      expandable: hasDetailedNotifications,
-      expanded: false,
-      notifications: flatNotifications,
-      responseData: response.data
-    });
+    // Fallback: no valid format detected
+    console.warn('Unknown response format:', response);
   }
 
   /**
