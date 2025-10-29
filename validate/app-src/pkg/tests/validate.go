@@ -49,6 +49,10 @@ func ValidateTest(testNum int, result *types.TestResult) {
 	// Add CRUD validation if expected data exists
 	crudIssues := validateCRUDResult(testNum, result)
 	result.Issues = append(result.Issues, crudIssues...)
+
+	// Add notification structure validation
+	// Validates: structure, entity grouping, field context, error types, HTTP status
+	ValidateNotifications(result)
 }
 
 // validatePagination validates pagination data for collection requests
