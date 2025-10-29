@@ -1,19 +1,23 @@
 """
 MCP server for Events API.
-Exposes database entities and operations as MCP tools.
+Exposes database entities and operations as MCP tools via HTTP REST API.
 """
 import asyncio
 import logging
 import os
-from typing import Optional
+import sys
+from pathlib import Path
+
+# Add project root to Python path (so imports work without PYTHONPATH)
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 from app.config import Config
-from app.db import DatabaseFactory
-from app.services.metadata import MetadataService
-from app.services.model import ModelService
+from app.mcp.registry_http import HTTPToolRegistry
 
 # Configure logging
 logging.basicConfig(
@@ -26,64 +30,53 @@ logger = logging.getLogger(__name__)
 server = Server("events-api")
 
 # Global state
-_db_initialized = False
-_tools = []
+_registry = None
+_initialized = False
 
 
-async def initialize_database():
-    """Initialize database and services"""
-    global _db_initialized
-    if _db_initialized:
+async def initialize_registry():
+    """Initialize HTTP tool registry from REST API metadata"""
+    global _registry, _initialized
+    if _initialized:
         return
 
-    logger.info("Initializing database...")
+    logger.info("Initializing HTTP tool registry...")
 
     # Load config
     config_path = os.getenv("MCP_CONFIG", "mongo.json")
     Config.initialize(config_path)
 
-    # Initialize database
-    db_type = Config.get("database")
-    db_uri = Config.get("db_uri")
-    db_name = Config.get("db_name")
+    # Create and initialize HTTP registry
+    _registry = HTTPToolRegistry()
+    await _registry.initialize()
 
-    await DatabaseFactory.initialize(db_type, db_uri, db_name)
-
-    # Initialize metadata
-    entities = ["Account", "User", "Profile", "TagAffinity", "Event", "UserEvent", "Url", "Crawl"]
-    MetadataService.initialize(entities)
-    ModelService.initialize(entities)
-
-    _db_initialized = True
-    logger.info("Database initialized")
-
-
-# Load tool registry
-from app.mcp.tools import get_all_tools
-_tools = get_all_tools()
-logger.info(f"Loaded {len(_tools)} tools from registry")
+    _initialized = True
+    logger.info(f"Registry initialized with {len(_registry.get_tools())} tools")
 
 
 @server.list_tools()
 async def handle_list_tools():
     """List available tools"""
+    await initialize_registry()
+
     return [
         {
             "name": tool["name"],
             "description": tool["description"],
-            "inputSchema": tool["input_schema"]
+            "inputSchema": tool["inputSchema"]
         }
-        for tool in _tools
+        for tool in _registry.get_tools()
     ]
 
 
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict):
     """Handle tool calls"""
-    await initialize_database()
+    await initialize_registry()
 
     # Find the tool
-    tool = next((t for t in _tools if t["name"] == name), None)
+    tools = _registry.get_tools()
+    tool = next((t for t in tools if t["name"] == name), None)
     if not tool:
         raise ValueError(f"Unknown tool: {name}")
 
@@ -95,7 +88,8 @@ async def handle_call_tool(name: str, arguments: dict):
 async def main():
     """Entry point"""
     try:
-        logger.info("Starting MCP server...")
+        logger.info("Starting HTTP-based MCP server...")
+        logger.info("NOTE: REST API server must be running at http://localhost:5500")
         async with stdio_server() as (read_stream, write_stream):
             await server.run(
                 read_stream,
@@ -104,9 +98,9 @@ async def main():
             )
     except KeyboardInterrupt:
         logger.info("Shutdown")
-    finally:
-        if _db_initialized:
-            await DatabaseFactory.close()
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise
 
 
 if __name__ == "__main__":
