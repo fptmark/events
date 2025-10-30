@@ -9,10 +9,10 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.services.metadata import MetadataService
 from app.services.model import ModelService
+from app.providers import providers_init
 from app.exceptions import StopWorkError
 from app.routers.router import get_all_dynamic_routers
 from app.routers.admin import router as admin_router
-from app.providers import providers_init
 
 from app.providers.auth.cookies.redis_provider import CookiesAuth as Auth
 
@@ -25,6 +25,8 @@ ENTITIES = [
    "UserEvent",
    "Url",
    "Crawl",
+   "Auth",
+   "Roles",
 ]
 
 import logging
@@ -173,7 +175,7 @@ async def lifespan(app: FastAPI):
     ModelService.initialize(ENTITIES)
     logger.info("Metadata & Model services initialized successfully")
 
-    # Initialize services (Redis auth, etc.)
+    # Initialize providers (Redis auth, etc.)
     logger.info("Initializing providers...")
     await providers_init.initialize(app)
 
@@ -202,7 +204,6 @@ async def lifespan(app: FastAPI):
     try:
         logger.info("Shutdown event called")
 
-        # Shutdown services
         await providers_init.shutdown()
 
         if DatabaseFactory.is_initialized():

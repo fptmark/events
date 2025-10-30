@@ -8,7 +8,10 @@ from app.services.metadata import MetadataService
 
 class AccountCreate(BaseModel):
     id: str | None = Field(default=None)
-    expiredAt: datetime | None = Field(default=None)
+    name: str = Field(..., min_length=6)
+    credit: float | None = Field(default=None)
+    expireDate: datetime | None = Field(default=None)
+    enabled: bool = Field(default=True, strict=True)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     model_config = ConfigDict(
@@ -19,7 +22,10 @@ class AccountCreate(BaseModel):
 
 class AccountUpdate(BaseModel):
     id: str | None = Field(default=None)
-    expiredAt: datetime | None = Field(default=None)
+    name: str = Field(..., min_length=6)
+    credit: float | None = Field(default=None)
+    expireDate: datetime | None = Field(default=None)
+    enabled: bool = Field(default=True, strict=True)
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     model_config = ConfigDict(
         from_attributes=True,
@@ -30,13 +36,19 @@ class AccountUpdate(BaseModel):
 
 class Account(BaseModel):
     id: str | None = Field(default=None)
-    expiredAt: datetime | None = Field(default=None)
+    name: str = Field(..., min_length=6)
+    credit: float | None = Field(default=None)
+    expireDate: datetime | None = Field(default=None)
+    enabled: bool = Field(default=True, strict=True)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict()
 
-    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'expiredAt': {'type': 'Date', 'required': False},
+    _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'name': {'type': 'String', 'required': True, 'min_length': 6},
+                  'credit': {'type': 'Currency', 'required': False},
+                  'expireDate': {'type': 'Date', 'required': False},
+                  'enabled': {'type': 'Bool', 'default': True},
                   'createdAt': {   'type': 'Date',
                                    'ui': {   'displayAfterField': '-1',
                                              'readOnly': True},

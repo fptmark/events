@@ -20,6 +20,10 @@ class UserCreate(BaseModel):
     lastName: str = Field(..., min_length=3, max_length=100)
     gender: GenderEnum | None = Field(default=None)
     dob: datetime | None = Field(default=None)
+    address: str | None = Field(default=None)
+    city: str | None = Field(default=None)
+    state: str | None = Field(default=None)
+    zip: str | None = Field(default=None)
     isAccountOwner: bool = Field(..., strict=True)
     netWorth: float | None = Field(default=None, ge=0, le=10000000)
     accountId: str = Field(...)
@@ -40,6 +44,10 @@ class UserUpdate(BaseModel):
     lastName: str = Field(..., min_length=3, max_length=100)
     gender: GenderEnum | None = Field(default=None)
     dob: datetime | None = Field(default=None)
+    address: str | None = Field(default=None)
+    city: str | None = Field(default=None)
+    state: str | None = Field(default=None)
+    zip: str | None = Field(default=None)
     isAccountOwner: bool = Field(..., strict=True)
     netWorth: float | None = Field(default=None, ge=0, le=10000000)
     accountId: str = Field(...)
@@ -60,6 +68,10 @@ class User(BaseModel):
     lastName: str = Field(..., min_length=3, max_length=100)
     gender: GenderEnum | None = Field(default=None)
     dob: datetime | None = Field(default=None)
+    address: str | None = Field(default=None)
+    city: str | None = Field(default=None)
+    state: str | None = Field(default=None)
+    zip: str | None = Field(default=None)
     isAccountOwner: bool = Field(..., strict=True)
     netWorth: float | None = Field(default=None, ge=0, le=10000000)
     accountId: str = Field(...)
@@ -102,6 +114,10 @@ class User(BaseModel):
                                             'message': 'must be male or '
                                                        'female'}},
                   'dob': {'type': 'Date', 'required': False},
+                  'address': {'type': 'String', 'required': False},
+                  'city': {'type': 'String', 'required': False},
+                  'state': {'type': 'String', 'required': False},
+                  'zip': {'type': 'String', 'required': False},
                   'isAccountOwner': {   'type': 'Boolean',
                                         'required': True,
                                         'ui': {'displayName': 'Owner'}},
@@ -114,7 +130,7 @@ class User(BaseModel):
                                                                                 'fields': [   'createdAt']},
                                                                             {   'displayPages': 'edit|create',
                                                                                 'fields': [   'createdAt',
-                                                                                              'expiredAt']}]}}},
+                                                                                              'expireDate']}]}}},
                   'createdAt': {   'type': 'Date',
                                    'ui': {   'displayAfterField': '-1',
                                              'displayPages': 'summary',
@@ -129,8 +145,7 @@ class User(BaseModel):
     'ui': {   'title': 'Users',
               'buttonLabel': 'Manage Users',
               'description': 'Manage User Profile'},
-    'services': {   'auth.cookies.redis': {   'fields': {   'login': 'username',
-                                                            'password': 'password'}}},
+    'services': [],
     'uniques': [['username'], ['email']]}
 
     class Settings:

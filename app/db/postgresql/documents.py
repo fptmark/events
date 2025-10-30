@@ -22,9 +22,12 @@ class PostgreSQLDocuments(DocumentManager):
         """Map schema field type to PostgreSQL column type"""
         field_type = field_meta.get('type', 'String')
 
+        # Handle boolean types (Bool, Boolean) using first 4 chars for type safety
+        if len(field_type) >= 4 and field_type[:4].lower() == 'bool':
+            return 'BOOLEAN'
+
         type_map = {
             'String': 'TEXT',
-            'Boolean': 'BOOLEAN',
             'Integer': 'INTEGER',
             'Number': 'NUMERIC',
             'Currency': 'NUMERIC(15,2)',
@@ -101,7 +104,10 @@ class PostgreSQLDocuments(DocumentManager):
                 prepared[field_name] = None
             else:
                 field_type = MetadataService.get(entity, field_name, 'type')
-                if field_type == 'Date':
+                # Handle boolean types (Bool, Boolean) using first 4 chars for type safety
+                if field_type and len(field_type) >= 4 and field_type[:4].lower() == 'bool':
+                    prepared[field_name] = bool(value)
+                elif field_type == 'Date':
                     prepared[field_name] = self._convert_date(value)
                 elif field_type == 'Datetime':
                     prepared[field_name] = self._convert_datetime(value)

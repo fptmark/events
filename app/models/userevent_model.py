@@ -8,7 +8,7 @@ from app.services.metadata import MetadataService
 
 class UserEventCreate(BaseModel):
     id: str | None = Field(default=None)
-    attended: bool | None = Field(default=None)
+    attended: bool | None = Field(..., strict=True)
     rating: int | None = Field(default=None, ge=1, le=5)
     note: str | None = Field(default=None, max_length=500)
     userId: str = Field(...)
@@ -23,7 +23,7 @@ class UserEventCreate(BaseModel):
 
 class UserEventUpdate(BaseModel):
     id: str | None = Field(default=None)
-    attended: bool | None = Field(default=None)
+    attended: bool | None = Field(..., strict=True)
     rating: int | None = Field(default=None, ge=1, le=5)
     note: str | None = Field(default=None, max_length=500)
     userId: str = Field(...)
@@ -38,7 +38,7 @@ class UserEventUpdate(BaseModel):
 
 class UserEvent(BaseModel):
     id: str | None = Field(default=None)
-    attended: bool | None = Field(default=None)
+    attended: bool | None = Field(..., strict=True)
     rating: int | None = Field(default=None, ge=1, le=5)
     note: str | None = Field(default=None, max_length=500)
     userId: str = Field(...)

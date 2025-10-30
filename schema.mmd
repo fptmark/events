@@ -10,7 +10,10 @@ erDiagram
 
 
     Account {
-        Date expiredAt %% @validate { required: false }
+	String name	%% @validate { required: true, min_length: 6 }
+	Currency credit %% @validate { required: false }
+        Date expireDate %% @validate { required: false }
+	Bool    enabled	%% @validate { default: true }
     
         %% @ui { title: "Accounts", buttonLabel: "Manage Accounts" }
     	%% @include ["BaseEntity"]
@@ -24,17 +27,20 @@ erDiagram
         String password          %% @validate { required: true, min_length: 8 } @ui { displayPages: "details", display: "secret" }
         String firstName         %% @validate { required: true, min_length: 3, max_length: 100 }, @ui { displayName: "First Name" }
         String lastName          %% @validate { required: true, min_length: 3, max_length: 100 }, @ui { displayName: "Last Name" }
-        String gender            %% @validate { required: false, enum: { values: ["male", "female", "other"], message: "must be male or female" } }
+        Enum gender              %% @validate { required: false, values: ["male", "female", "other"], message: "must be male or female" }
         Date dob                 %% @validate { required: false }
+	String address		 %% @validate { required: false }
+	String city		 %% @validate { required: false }
+	String state		 %% @validate { required: false }
+	String zip		 %% @validate { required: false }
         Boolean isAccountOwner   %% @validate { required: true }, @ui { displayName: "Owner"}
         Currency netWorth        %% @validate { ge: 0, le:10000000 }
         ObjectId accountId       
     
         %% @ui { title: "Users", buttonLabel: "Manage Users", description: "Manage User Profile" }
-    	%% @service { "auth.cookies.redis" : { fields: {login : 'username', password: 'password' } } }
     	%% @include ["BaseEntity"]  
         %% @ui createdAt { displayPages: "summary" } 
-        %% @ui accountId { displayName: "Account", show: { endpoint: "account", displayInfo: [ {displayPages: "summary", fields:  ["createdAt"] }, { displayPages: "edit|create", fields: ["createdAt", "expiredAt" ]} ]} }
+        %% @ui accountId { displayName: "Account", show: { endpoint: "account", displayInfo: [ {displayPages: "summary", fields:  ["createdAt"] }, { displayPages: "edit|create", fields: ["createdAt", "expireDate" ]} ]} }
         %% @operations ["read", "create", "update"]
     }
 
@@ -104,7 +110,18 @@ erDiagram
         %% @operations [ "read", "delete" ]
     }
 
+    Auth {
+	String name	%% @validate { required: true, min_length: 4 }
+	String password %% @validate { required: true, min_length: 8, encrypt: true }
+    	%% @service { "auth.cookies.redis" : { fields: {login : 'name', password: 'password' } } }
+    }
 
+    Roles {
+	String role     %% @validate { required: true, enum: { values: ["admin", "mgr", "custsvc"] } }
+	Json permissions %% @validate { required: true } %% entity:crud | entity:field:crud
+    }
+
+    Role ||--o{ Auth: ""
     Account ||--o{ User: ""
     User ||--o{ Profile: ""
     Profile ||--o{ TagAffinity: ""
