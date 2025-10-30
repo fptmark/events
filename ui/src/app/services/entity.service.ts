@@ -88,7 +88,7 @@ export class EntityService {
     // Boolean handling
     if (typeof value === 'boolean') {
       return value ? 'Yes' : 'No';
-    } else if (metadata?.type === 'Boolean' && typeof value === 'string') {
+    } else if ((metadata?.type === 'Boolean' || metadata?.type === 'Bool') && typeof value === 'string') {
       return value.toLowerCase() === 'true' ? 'Yes' : 'No';
     }
     
@@ -244,6 +244,7 @@ export class EntityService {
       case 'Integer':
         return required ? 0 : null;
       case 'Boolean':
+      case 'Bool':
         // For boolean fields, always return false as default
         // This ensures they are included in forms but don't block validation
         return false;

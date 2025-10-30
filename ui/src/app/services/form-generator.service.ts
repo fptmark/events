@@ -84,6 +84,7 @@ export class FormGeneratorService {
       case 'text':
         return ''; // Empty string prevents required validation from triggering immediately
       case 'Boolean':
+      case 'Bool':
         return false; // Booleans always need a value
       case 'Currency':
       case 'Number':
@@ -105,9 +106,9 @@ export class FormGeneratorService {
     const validators = [];
 
     // Required is at the root level according to sample payload
-    // Never add required validator for Boolean fields regardless of required flag
+    // Never add required validator for Boolean/Bool fields regardless of required flag
     // This is because Booleans always have a value (true/false)
-    if (fieldMeta.required && fieldMeta.type !== 'Boolean') {
+    if (fieldMeta.required && fieldMeta.type !== 'Boolean' && fieldMeta.type !== 'Bool') {
       validators.push(Validators.required);
     }
 
@@ -197,8 +198,8 @@ export class FormGeneratorService {
 
     // For details mode, use appropriate read-only controls
     if (this.modeService.inDetailsMode(mode)) {
-      // Special case for Boolean fields - use checkbox even in details mode
-      if (fieldMeta.type === 'Boolean') {
+      // Special case for Boolean/Bool fields - use checkbox even in details mode
+      if (fieldMeta.type === 'Boolean' || fieldMeta.type === 'Bool') {
         return { fieldType: 'checkbox', enabled: false };
       }
       // For other fields, use text inputs in details mode
@@ -220,6 +221,7 @@ export class FormGeneratorService {
       let fieldType = fieldMeta.type;
       switch (fieldType) {
         case 'Boolean':
+        case 'Bool':
           fieldType = 'checkbox'; break;
         case 'Date':
           fieldType = 'date'; break;
