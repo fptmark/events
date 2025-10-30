@@ -48,18 +48,22 @@ func CreateFixtureAccount(id string, overrides map[string]interface{}) error {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	// Build account with required fields only
+	// Build account with required fields
+	// Generate account name from ID
+	accountName := fmt.Sprintf("Account %s", id)
+
 	account := map[string]interface{}{
 		"id":        id,
+		"name":      accountName,
 		"createdAt": now,
 		"updatedAt": now,
 	}
 
-	// Only include expiredAt for some accounts (based on hash)
+	// Only include expireDate for some accounts (based on hash)
 	if hash%3 == 0 {
 		// Generate an expired date in the past for some accounts
 		expiredDate := time.Now().AddDate(0, 0, -int(hash%365)).Format("2006-01-02")
-		account["expiredAt"] = expiredDate
+		account["expireDate"] = expiredDate
 	}
 
 	// Apply overrides

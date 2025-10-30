@@ -414,24 +414,27 @@ func GetAllTestCases() []types.TestCase {
 
 		// POST ACCOUNT - SUCCESS
 		{Method: "POST", URL: "/api/Account", TestClass: "create", Description: "Create account with minimal fields", ExpectedStatus: 201,
-			RequestBody: map[string]interface{}{},
+			RequestBody: map[string]interface{}{
+				"name": "Test Account"},
 			ExpectedData: &types.CRUDExpectation{
-				ShouldContainFields: []string{"id", "createdAt", "updatedAt"},
+				ShouldContainFields: []string{"id", "name", "createdAt", "updatedAt"},
 			}},
 
 		{Method: "POST", URL: "/api/Account", TestClass: "create", Description: "Create account with expiredAt", ExpectedStatus: 201,
 			RequestBody: map[string]interface{}{
-				"expiredAt": "2025-12-31"},
+				"name":       "Test Account with Expiry",
+				"expireDate": "2025-12-31"},
 			ExpectedData: &types.CRUDExpectation{
-				ShouldContainFields: []string{"id", "createdAt", "updatedAt", "expiredAt"},
+				ShouldContainFields: []string{"id", "name", "createdAt", "updatedAt", "expireDate"},
 			}},
 
 		// PUT ACCOUNT - SUCCESS
 		{Method: "PUT", URL: "/api/Account/acc_update_001", TestClass: "update", Description: "Update account with expiredAt", ExpectedStatus: 200,
 			RequestBody: map[string]interface{}{
-				"expiredAt": "2026-01-01"},
+				"name":       "Updated Account",
+				"expireDate": "2026-01-01"},
 			ExpectedData: &types.CRUDExpectation{
-				ShouldContainFields: []string{"id", "updatedAt"},
+				ShouldContainFields: []string{"id", "name", "updatedAt"},
 			}},
 
 		// DELETE ACCOUNT
@@ -442,7 +445,7 @@ func GetAllTestCases() []types.TestCase {
 		// PHASE 2: PARAMETERIZED SINGLE-ENTITY GET - Query parameters on specific entities
 		// =============================================================================
 
-		// VIEW (FK EXPANSION) TESTS - Account only has: id, expiredAt, createdAt, updatedAt
+		// VIEW (FK EXPANSION) TESTS - Account has: id, name, expireDate, createdAt, updatedAt, enabled, credit
 		{Method: "GET", URL: "/api/User/usr_view_001?view=account(id)", TestClass: "view", Description: "Get user with account ID view"},
 		{Method: "GET", URL: "/api/User/usr_view_001?view=account(id,createdAt)", TestClass: "view", Description: "Get user with account view"},
 		{Method: "GET", URL: "/api/User/usr_view_001?view=account(id,createdAt,updatedAt)", TestClass: "view", Description: "Get user with full account view"},
@@ -549,7 +552,7 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/api/User?view=account(id)", TestClass: "view", Description: "Get user list with account ID view"},
 		{Method: "GET", URL: "/api/User?view=account(id,createdAt,updatedAt)", TestClass: "view", Description: "Get user list with full account view"},
 		{Method: "GET", URL: "/api/User?pageSize=3&view=account(id)", TestClass: "view", Description: "Get user list with pagination and view"},
-		{Method: "GET", URL: "/api/User?pageSize=1&view=account(id,createdAt,updatedAt,expiredAt)", TestClass: "view", Description: "Get user list with all account fields"},
+		{Method: "GET", URL: "/api/User?pageSize=1&view=account(id,createdAt,updatedAt,expireDate)", TestClass: "view", Description: "Get user list with all account fields"},
 
 		// COMBO PARAMETER TESTS
 		{Method: "GET", URL: "/api/User?view=account(id)&sort=firstName", TestClass: "combo", Description: "View with sort"},

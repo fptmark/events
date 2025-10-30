@@ -23,8 +23,10 @@ func CreateBulkData(numAccounts int, numUsers int) error {
 	// Create accounts with new ID convention: acc_r001, acc_r002, etc.
 	for i := 1; i <= numAccounts; i++ {
 		accountID := fmt.Sprintf("acc_r%03d", i)
+		accountName := fmt.Sprintf("Account %s", accountID)
 		account := map[string]interface{}{
 			"id":        accountID,
+			"name":      accountName,
 			"createdAt": time.Now().UTC().Format(time.RFC3339),
 			"updatedAt": time.Now().UTC().Format(time.RFC3339),
 		}
