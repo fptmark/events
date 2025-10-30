@@ -45,8 +45,9 @@ help:
 	@echo "  services    - Generate service routes"
 	@echo "  spec        - Generate OpenAPI specification"
 	@echo "  code        - Generate all code (main, models, services, spec)"
+	@echo "  mmd         - Generate mmd from the default config file
 	@echo "test"
-	@echo "  buildtests  - Generate test validation tools (app and mcp)"
+	@echo "  tests       - Generate test validation tools (app and mcp)"
 	@echo "  testredis   - Test the redis service"
 	@echo "  testapp     - Run validation suite"
 	@echo "  testmcp     - Test MCP data shapes
@@ -96,7 +97,7 @@ startmcp:
 startredis:
 	brew services start redis
 
-buildtests: 
+tests: 
 	(cd validate/app-src && go build -o ../app cmd/validate/main.go)
 
 testapp:
@@ -118,6 +119,9 @@ cli:
 clean: 
 	rm -rf app
 	rm -f openapi.json
+
+mmd:
+	python tools/schema_extractor/main.py $(BACKEND).json -v 
 
 generic:
 	cp -r $(GENERICS)/* app/
