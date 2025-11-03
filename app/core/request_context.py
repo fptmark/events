@@ -3,41 +3,100 @@ RequestContext for managing request parameters and entity context.
 
 This service manages request state and entity context for API operations,
 replacing URL-specific logic with generic request context management.
+
+Uses contextvars for async-safe, request-scoped state management.
 """
 
 import json
 import re
-from dataclasses import dataclass, field
+from contextvars import ContextVar
 from typing import Optional, Dict, Any, List, Tuple, Union
-from urllib.parse import unquote
-from app.services.metadata import MetadataService
-from app.services.notify import Notification, HTTP
+from app.core.metadata import MetadataService
+from app.core.notify import Notification, HTTP
 from app.utils import parse_url_path
+
+
+# Context variables for request-scoped state (async-safe)
+_entity: ContextVar[str] = ContextVar('entity', default="")
+_entity_metadata: ContextVar[Dict[str, Any]] = ContextVar('entity_metadata', default={})
+_entity_id: ContextVar[Optional[str]] = ContextVar('entity_id', default=None)
+_filters: ContextVar[Dict[str, Any]] = ContextVar('filters', default={})
+_sort_fields: ContextVar[List[Tuple[str, str]]] = ContextVar('sort_fields', default=[])
+_page: ContextVar[int] = ContextVar('page', default=1)
+_pageSize: ContextVar[int] = ContextVar('pageSize', default=25)
+_view_spec: ContextVar[Dict[str, Any]] = ContextVar('view_spec', default={})
+_substring_match: ContextVar[bool] = ContextVar('substring_match', default=True)
+_no_consistency: ContextVar[bool] = ContextVar('no_consistency', default=False)
+_session_id: ContextVar[Optional[str]] = ContextVar('session_id', default=None)
+_bypass_rbac: ContextVar[bool] = ContextVar('bypass_rbac', default=False)
 
 
 class RequestContext:
     """
-    Static service for managing request parameters and entity context.
-    Replaces UrlService with cleaner, more generic request context management. 
+    Service for managing request parameters and entity context using contextvars.
+    Provides async-safe, request-scoped state management for API operations.
     """
-    
-    # Core entity info
-    entity: str = ""                             # Lowercase entity type for database
-    entity_metadata: Dict[str, Any] = {}
-    entity_id: Optional[str] = None                   # Document ID from URL path
-    
-    # Query parameters  
-    filters: Dict[str, Any] = {}
-    sort_fields: List[Tuple[str, str]] = []
-    page: int = 1
-    pageSize: int = 25
-    
-    # View/expansion
-    view_spec: Dict[str, Any] = {}
 
-    # Special flags
-    substring_match: bool = True                         # True for substring matching (default), False for full string matching
-    no_consistency: bool = False  # Disable refresh='wait_for' for bulk operations
+    # Property accessors for context variables
+    @staticmethod
+    def get_entity() -> str:
+        return _entity.get()
+
+    @staticmethod
+    def get_entity_metadata() -> Dict[str, Any]:
+        return _entity_metadata.get()
+
+    @staticmethod
+    def get_entity_id() -> Optional[str]:
+        return _entity_id.get()
+
+    @staticmethod
+    def get_filters() -> Dict[str, Any]:
+        return _filters.get()
+
+    @staticmethod
+    def get_sort_fields() -> List[Tuple[str, str]]:
+        return _sort_fields.get()
+
+    @staticmethod
+    def get_page() -> int:
+        return _page.get()
+
+    @staticmethod
+    def get_pageSize() -> int:
+        return _pageSize.get()
+
+    @staticmethod
+    def get_view_spec() -> Dict[str, Any]:
+        return _view_spec.get()
+
+    @staticmethod
+    def get_substring_match() -> bool:
+        return _substring_match.get()
+
+    @staticmethod
+    def get_no_consistency() -> bool:
+        return _no_consistency.get()
+
+    @staticmethod
+    def get_session_id() -> Optional[str]:
+        """Get session ID from request context"""
+        return _session_id.get()
+
+    @staticmethod
+    def set_session_id(session_id: Optional[str]) -> None:
+        """Set session ID in request context"""
+        _session_id.set(session_id)
+
+    @staticmethod
+    def get_bypass_rbac() -> bool:
+        """Check if current request should bypass RBAC checks"""
+        return _bypass_rbac.get()
+
+    @staticmethod
+    def set_bypass_rbac(bypass: bool) -> None:
+        """Set RBAC bypass flag for current request (use with @no_permission_required)"""
+        _bypass_rbac.set(bypass)
 
     @staticmethod
     def parse_request(path: str, query_params: Dict[str, str]) -> None:
@@ -63,16 +122,18 @@ class RequestContext:
     @staticmethod
     def reset():
         """Reset context for new request"""
-        RequestContext.entity = ""
-        RequestContext.entity_metadata = {}
-        RequestContext.entity_id = None
-        RequestContext.filters = {}
-        RequestContext.sort_fields = []
-        RequestContext.page = 1
-        RequestContext.pageSize = 25
-        RequestContext.view_spec = {}
-        RequestContext.substring_match = True
-        RequestContext.no_consistency = False
+        _entity.set("")
+        _entity_metadata.set({})
+        _entity_id.set(None)
+        _filters.set({})
+        _sort_fields.set([])
+        _page.set(1)
+        _pageSize.set(25)
+        _view_spec.set({})
+        _substring_match.set(True)
+        _no_consistency.set(False)
+        _session_id.set(None)
+        _bypass_rbac.set(False)
 
     
     @staticmethod
@@ -87,23 +148,26 @@ class RequestContext:
     
     @staticmethod
     def setup_entity(
-        entity: str, 
+        entity: str,
         entity_id: Optional[str] = None
     ) -> None:
         """
         Setup entity context for operations (programmatic or URL-based).
-        
+
         Args:
             entity: Entity name (will be normalized via metadata)
             entity_id: Optional document ID
         """
         # Normalize entity name and get metadata
-        RequestContext.entity = MetadataService.get_proper_name(entity)
-        RequestContext.entity_metadata = MetadataService.get(RequestContext.entity)
-        RequestContext.entity_id = entity_id
-        
-        if not RequestContext.entity_metadata:
-            Notification.error(HTTP.BAD_REQUEST, f"Entity metadata not found: {RequestContext.entity}")
+        entity_name = MetadataService.get_proper_name(entity)
+        entity_metadata = MetadataService.get(entity_name)
+
+        _entity.set(entity_name)
+        _entity_metadata.set(entity_metadata)
+        _entity_id.set(entity_id)
+
+        if not entity_metadata:
+            Notification.error(HTTP.BAD_REQUEST, f"Entity metadata not found: {entity_name}")
     
     @staticmethod
     def set_parameters(
@@ -125,12 +189,12 @@ class RequestContext:
             sort_fields: List of (field, direction) tuples
             view_spec: View specification dict
         """
-        RequestContext.page = page
-        RequestContext.pageSize = pageSize
-        RequestContext.filters = filters or {}
-        RequestContext.substring_match = substring_match
-        RequestContext.sort_fields = sort_fields or []
-        RequestContext.view_spec = view_spec
+        _page.set(page)
+        _pageSize.set(pageSize)
+        _filters.set(filters or {})
+        _substring_match.set(substring_match)
+        _sort_fields.set(sort_fields or [])
+        _view_spec.set(view_spec)
     
     @staticmethod
     def _parse_url_query_params(query_params: Dict[str, str]) -> None:
@@ -149,8 +213,8 @@ class RequestContext:
                             Notification.error(HTTP.BAD_REQUEST, f"Page Number must be >= 1. Page={value}")
                     except ValueError:
                         Notification.error(HTTP.BAD_REQUEST, f"Bad Page Number {value}")
-                    RequestContext.page = page_val
-                        
+                    _page.set(page_val)
+
                 elif key == 'pagesize':  # URL param is pageSize but gets lowercased
                     try:
                         size_val = int(value)
@@ -160,33 +224,31 @@ class RequestContext:
                             Notification.error(HTTP.BAD_REQUEST, f"Page Size must be < 1000. PageSize={value}")
                     except ValueError:
                         Notification.error(HTTP.BAD_REQUEST, f"Bad Page Size {value}")
-                    RequestContext.pageSize = size_val
-                        
-                elif key == 'sort':
-                    RequestContext.sort_fields = RequestContext._parse_sort_parameter(value, RequestContext.entity)
-                    
-                elif key == 'filter':
-                    RequestContext.filters = RequestContext._parse_filter_parameter(value, RequestContext.entity)
+                    _pageSize.set(size_val)
 
-                elif key == 'substring_match':
-                    if value.lower() in ('full', 'substring', ''):
-                        # Convert string to boolean: "substring" -> True, "full" -> False, "" -> True (default)
-                        RequestContext.substring_match = (value.lower() != "full")
-                    else:
-                        Notification.error(HTTP.BAD_REQUEST, f"Invalid filter_match value. Use 'substring' or 'full'. value={value}")
-                    
+                elif key == 'sort':
+                    _sort_fields.set(RequestContext._parse_sort_parameter(value, _entity.get()))
+
+                elif key == 'filter':
+                    _filters.set(RequestContext._parse_filter_parameter(value, _entity.get()))
+
+                elif key == 'full_match':
+                    # Presence of full_match parameter means exact matching (substring_match=False)
+                    # Absence means substring matching (substring_match=True, default)
+                    _substring_match.set(False)
+
                 elif key == 'view':
-                    RequestContext.view_spec = RequestContext._parse_view_parameter(value, RequestContext.entity)
+                    _view_spec.set(RequestContext._parse_view_parameter(value, _entity.get()))
 
                 # elif key == 'novalidate':
                 #     RequestContext.novalidate = True
 
                 elif key == 'no_consistency':
-                    RequestContext.no_consistency = (value.lower() in ('true', '1', 'yes'))
+                    _no_consistency.set(value.lower() in ('true', '1', 'yes'))
 
                 else:
                     # Unknown parameter - ignore and continue
-                    valid_params = ['page', 'pageSize', 'sort', 'filter', 'view', 'no_consistency', 'substring_match']
+                    valid_params = ['page', 'pageSize', 'sort', 'filter', 'view', 'no_consistency', 'full_match']
                     Notification.error(HTTP.BAD_REQUEST, f"Unknown query parameter={key}. Valid parameters: {', '.join(valid_params)}")
                     
             except ValueError as e:
@@ -196,21 +258,22 @@ class RequestContext:
     def to_dict() -> Dict[str, Any]:
         """Convert RequestContext to dictionary for serialization/debugging."""
         return {
-            'entity': RequestContext.entity,
-            'entity_id': RequestContext.entity_id,
-            'filters': RequestContext.filters,
-            'substring_match': RequestContext.substring_match,
-            'sort_fields': RequestContext.sort_fields,
-            'page': RequestContext.page,
-            'pageSize': RequestContext.pageSize,
-            'view_spec': RequestContext.view_spec,
-            'has_metadata': bool(RequestContext.entity_metadata)
+            'entity': _entity.get(),
+            'entity_id': _entity_id.get(),
+            'filters': _filters.get(),
+            'substring_match': _substring_match.get(),
+            'sort_fields': _sort_fields.get(),
+            'page': _page.get(),
+            'pageSize': _pageSize.get(),
+            'view_spec': _view_spec.get(),
+            'has_metadata': bool(_entity_metadata.get()),
+            'session_id': _session_id.get()
         }
-    
+
     @staticmethod
     def get_debug_string() -> str:
         """String representation for debugging."""
-        return f"RequestContext(entity={RequestContext.entity}, id={RequestContext.entity_id}, page={RequestContext.page}/{RequestContext.pageSize})"
+        return f"RequestContext(entity={_entity.get()}, id={_entity_id.get()}, page={_page.get()}/{_pageSize.get()})"
     
     @staticmethod
     def _parse_sort_parameter(sort_str: str, entity: str) -> List[Tuple[str, str]]:

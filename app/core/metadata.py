@@ -1,9 +1,10 @@
 from typing import Dict, List, Any, Optional, Tuple
-from app.services.notify import Notification, HTTP
+from app.core.notify import Notification, HTTP
 from app.utils import merge_overrides
 
 class MetadataService:
     _metadata: Dict[str, Dict[str, Any]] = {}
+    _entity_services : Dict[str, Any] = {}   ## { svc_type: <type>, { svc_name : <name>,  entity: entity_name , config: {...} } } }  - entity is optional for true system level services not tied to an entity
 
     @staticmethod
     def initialize(entities: List[str]) -> None:
@@ -17,7 +18,17 @@ class MetadataService:
             merged_md = merge_overrides(entity, md.copy()) # type: ignore
             merged_md['fields']['id'] = {'type': 'ObjectId', 'required': True}
             MetadataService._metadata[entity] = merged_md
+
+            for svc_name, svc_info in md.get('services', {}).items():
+                words = svc_name.split('.')
+                svc = { svc_name : { 'entity': entity, 'settings': svc_info } }
+                MetadataService._entity_services[words[0]] = svc
      
+    @staticmethod
+    def get_service(svc_name: str) -> Optional[Dict[str, Any]]:
+        """Get service configuration by service name."""
+        return MetadataService._entity_services.get(svc_name)
+
     @staticmethod
     def list_entities() -> List[str]:
         """List all entities with metadata."""
