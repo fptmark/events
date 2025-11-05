@@ -16,7 +16,9 @@ var (
 	NumUsers       int
 	NumAccounts    int
 	DatabaseType   string // Detected database type: "mongodb", "elasticsearch", or "unknown"
+	DatabaseName   string // Database name from config (e.g., "eventMgr", "events")
 	CaseSensitive  bool   // Detected case_sensitive setting from config (default: false)
+	SessionID      string // Authentication session cookie
 )
 
 // SetConfig sets the global configuration
@@ -27,12 +29,60 @@ func SetConfig(serverURL string, verbose bool, numUsers int, numAccounts int, pa
 	NumAccounts = numAccounts
 }
 
+// Login authenticates with the API and stores the session cookie
+func Login(username, password string) error {
+	url := ServerURL + "/api/login"
+
+	payload := map[string]string{
+		"login":    username,
+		"password": password,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal login data: %w", err)
+	}
+
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to POST login: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("login failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Extract session ID from Set-Cookie header
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "sessionId" {
+			SessionID = cookie.Value
+			fmt.Printf("✅ Logged in as %s (session: %s)\n", username, SessionID)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("no sessionId cookie in login response")
+}
+
 // ExecuteGet makes a GET request and returns the parsed JSON response
 // Prints errors to stderr and returns nil on failure
 func ExecuteGet(endpoint string) (interface{}, error) {
 	url := ServerURL + endpoint
 
-	resp, err := http.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to create GET request for %s: %v\n", url, err)
+		return nil, err
+	}
+
+	// Add session cookie if authenticated
+	if SessionID != "" {
+		req.Header.Set("Cookie", "sessionId="+SessionID)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to GET %s: %v\n", url, err)
 		return nil, err
@@ -108,7 +158,20 @@ func CreateEntity(entityType string, payload map[string]interface{}) error {
 		return err
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to create POST request for %s: %v\n", entityType, err)
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Add session cookie if authenticated
+	if SessionID != "" {
+		req.Header.Set("Cookie", "sessionId="+SessionID)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create %s: %v\n", entityType, err)
 		return err

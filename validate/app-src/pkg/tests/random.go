@@ -212,6 +212,7 @@ func generateConstrainedNumber(r *rand.Rand, schemaCache *schema.SchemaCache, en
 
 // PopulateTestData creates all test data (bulk + fixtures)
 // This is the populate function used by core.ResetAndPopulate
+// Note: Auth bootstrap (Role and Auth entities) is now handled by BootstrapAuthData() in main.go
 func PopulateTestData(numAccounts, numUsers int) error {
 	// Step 1: Create bulk random data for get_all/sort/filter tests
 	if err := CreateBulkData(numAccounts, numUsers); err != nil {

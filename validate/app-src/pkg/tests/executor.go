@@ -302,6 +302,11 @@ func executeUrl(fullURL, method string, body interface{}) (*http.Response, []byt
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	// Add session cookie if authenticated
+	if core.SessionID != "" {
+		req.Header.Set("Cookie", "sessionId="+core.SessionID)
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to execute request: %w", err)

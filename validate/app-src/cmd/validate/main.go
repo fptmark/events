@@ -154,6 +154,10 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 	// Always show database type as first line
 	fmt.Printf("Database: %s\n", core.DatabaseType)
 
+	// Try to login with default test credentials (may fail if user doesn't exist yet)
+	// Will re-authenticate after database reset if needed
+	_ = core.Login("mark", "12345678")
+
 	// Load metadata for field type lookups
 	if err := metadata.LoadMetadata(); err != nil {
 		if verbose {
@@ -308,7 +312,12 @@ func ResetAndPopulate() error {
 		return fmt.Errorf("failed to clean database: %w", err)
 	}
 
-	// Step 2: Populate test data
+	// Step 2: Bootstrap authentication data (Role and Auth) using DB CLI tools
+	if err := core.BootstrapAuthData(); err != nil {
+		return fmt.Errorf("failed to bootstrap auth data: %w", err)
+	}
+
+	// Step 3: Populate test data
 	if err := tests.PopulateTestData(core.NumAccounts, core.NumUsers); err != nil {
 		return fmt.Errorf("failed to populate test data: %w", err)
 	}
@@ -317,6 +326,11 @@ func ResetAndPopulate() error {
 	time.Sleep(time.Duration(1000 * time.Millisecond))
 	users, accounts = core.GetEntityCountsFromReport()
 	fmt.Printf("After Reset:   users=%d, accounts=%d\n", users, accounts)
+
+	// Re-authenticate after database reset (previous session was cleared)
+	if err := core.Login("mark", "12345678"); err != nil {
+		return fmt.Errorf("authentication failed after reset: %w", err)
+	}
 
 	return nil
 }

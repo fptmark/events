@@ -6,16 +6,11 @@ import time
 import redis.asyncio as redis
 from fastapi import Request, Response
 from pydantic import BaseModel
-from app.services.framework.decorators import expose_endpoint, no_permission_required
+from app.services.framework import decorators
 from app.core.metadata import MetadataService
 from app.core.notify import Notification
 
 # Request/Response models
-class LoginRequest(BaseModel):
-    """Login credentials"""
-    username: str
-    password: str
-
 class AuthResponse(BaseModel):
     """Standard authn response"""
     success: bool
@@ -77,6 +72,11 @@ class RedisCookieStore:
         return session_data
 
 # --- Auth Service Implementation Using Cookies + Redis ---
+@decorators.service_config(
+    entity=True,
+    inputs={"login": str, "password": str},
+    store=["roleId"]
+)
 class Authn:
     # Default cookie configuration; can be overridden via config.
     cookie_name = "sessionId"
@@ -198,8 +198,7 @@ class Authn:
         session = await self.cookie_store.get_session(token)
         return bool(session)
 
-    @expose_endpoint(method="POST", route="/login", summary="Login")
-    # @no_permission_required
+    @decorators.expose_endpoint(method="POST", route="/login", summary="Login")
     async def login(self, request: Request, response: Response) -> Dict[str, any]:
         """
         Authenticate user and create session.
@@ -214,37 +213,31 @@ class Authn:
         # Extract credentials from request body
         credentials = await request.json()
 
-        # Get entity and field mappings from service config
-        if not self.service_config:
-            print("ERROR: Authn service not configured properly")
-            return {"success": False, "message": "Authn service not configured"}
+        # Get config values (already validated by @service_config decorator at startup)
+        entity_name = self.service_config.get(decorators.SCHEMA_ENTITY)
+        field_mappings = self.service_config.get(decorators.SCHEMA_INPUTS)
 
-        field_mappings = self.service_config.get("inputs", {})
+        # Build input query dynamically from decorator schema
+        input_query = {}
+        for semantic_field in self._service_schema[decorators.SCHEMA_INPUTS].keys():
+            entity_field = field_mappings.get(semantic_field)
+            credential_value = credentials.get(semantic_field)
 
-        entity_name = self.service_config.get("entity", "")
-        login_field = field_mappings.get("login", "")
-        password_field = field_mappings.get("password", "")
-        if entity_name == "" or login_field == "" or password_field == "":
-            print("ERROR: Authn service config error")
-            return {"success": False, "message": "Authn service entity not specified"}
+            if not entity_field or not credential_value:
+                Notification.error(HTTP.UNAUTHORIZED, "Invalid credentials")
+                return {"success": False, "message": "Invalid credentials"}
 
-        login_value = credentials.get("login")
-        password_value = credentials.get("password")
+            input_query[entity_field] = credential_value
 
-        if not login_value or not password_value or not self.cookie_store:
+        if not self.cookie_store:
             Notification.error(HTTP.UNAUTHORIZED, "Invalid credentials")
 
         # Query database for user with EXACT match
         from app.db.factory import DatabaseFactory
         db = DatabaseFactory.get_instance()
 
-        try:
-            input = { login_field: login_value, password_field: password_value }
-            output = ['Id', *self.service_config.get("store", []) ] 
-            doc = await db.documents.bypass(entity_name, input, output)
-        except Exception as e:
-            print(f"Error during user lookup: {str(e)}")
-            return {"success": False, "message": "Database error"}
+        output = ['Id', *self.service_config.get(decorators.SCHEMA_STORE, [])]
+        doc = await db.documents.bypass(entity_name, input_query, output)
 
         if doc is None:
             return {"success": False, "message": "Invalid credentials"}
@@ -253,8 +246,7 @@ class Authn:
         session_id = str(uuid.uuid4())
         current_time = time.time()
         session_data = {
-            **doc,       # Include all returned fields from doc
-            "login_value": login_value,
+            **doc,       # Include all returned fields from doc (Id, roleId, etc.)
             "created": current_time,
             "absolute_expiry": current_time + ABSOLUTE_SESSION_MAX  # Force re-login after absolute max
         }
@@ -277,7 +269,7 @@ class Authn:
 
         return {"success": True, "message": "Login successful"}
 
-    @expose_endpoint(method="POST", route="/logout", summary="Logout")
+    @decorators.expose_endpoint(method="POST", route="/logout", summary="Logout")
     async def logout(self, request: Request, response: Response) -> Dict[str, any]:
         # Set up RequestContext with session from cookie
         from app.core.request_context import RequestContext
@@ -291,7 +283,7 @@ class Authn:
             return {"success": True, "message": "Logout successful"}
         return {"success": False, "message": "No active session"}
 
-    @expose_endpoint(method="POST", route="/refresh", summary="Refresh session")
+    @decorators.expose_endpoint(method="POST", route="/refresh", summary="Refresh session")
     async def refresh(self, request: Request, response: Response) -> Dict[str, any]:
         # Set up RequestContext with session from cookie
         from app.core.request_context import RequestContext

@@ -20,6 +20,13 @@ func LoadReportDataFunc() {
 			DatabaseType = "unknown"
 		}
 	}
+	if val := GetFromResponse(reportData, "report", "config", "db_name", "unknown"); val != "unknown" {
+		if dbName, ok := val.(string); ok {
+			DatabaseName = dbName
+		} else {
+			DatabaseName = ""
+		}
+	}
 	if val := GetFromResponse(reportData, "report", "config", "case_sensitive", "unknown"); val != "unknown" {
 		if case_sensitive, ok := val.(bool); ok {
 			CaseSensitive = case_sensitive
@@ -43,6 +50,11 @@ func CleanDatabase() error {
 	req, err := http.NewRequest("POST", ServerURL+"/api/db/init/confirmed", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create database init request: %w", err)
+	}
+
+	// Add session cookie if authenticated
+	if SessionID != "" {
+		req.Header.Set("Cookie", "sessionId="+SessionID)
 	}
 
 	resp, err := client.Do(req)

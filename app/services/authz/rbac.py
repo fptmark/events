@@ -9,7 +9,13 @@ from app.core.notify import Notification, HTTP
 from app.core.metadata import MetadataService
 from app.core.request_context import RequestContext
 from app.services.services import ServiceManager
+from app.services.framework import decorators
 
+@decorators.service_config(
+    entity=True,
+    inputs={"roleId": str},
+    outputs=["permissions"]
+)
 class Rbac:
     """RBAC service - utility class with no initialization required"""
 
@@ -53,7 +59,7 @@ class Rbac:
         import json5
 
         db = DatabaseFactory.get_instance()
-        role_doc = await db.documents.bypass(entity, {'Id': roleId}, settings.get("outputs"))
+        role_doc = await db.documents.bypass(entity, {'Id': roleId}, settings.get(decorators.SCHEMA_OUTPUTS))
 
         if role_doc:
             return json5.loads(role_doc.get('permissions', '{}'))
@@ -89,7 +95,7 @@ class Rbac:
         if not rbac_settings:
             return {}
 
-        permissions_field = rbac_settings.get("outputs")[0]
+        permissions_field = rbac_settings.get(decorators.SCHEMA_OUTPUTS)[0]
         permissions = await authn_svc.get(permissions_field)
 
         return permissions or {}
@@ -141,7 +147,7 @@ class Rbac:
             return False
 
         # Get field names from metadata
-        permissions_field = rbac_settings.get("outputs")[0]
+        permissions_field = rbac_settings.get(decorators.SCHEMA_OUTPUTS)[0]
 
         # Try to get cached permissions from authn service
         permissions = authn.get(permissions_field) 
@@ -163,8 +169,8 @@ class Rbac:
         if not rbac_settings:
             return  # Can't add permissions without metadata
 
-        input_mappings = rbac_settings.get("inputs", {})
-        permissions_field = rbac_settings.get("outputs")[0]
+        input_mappings = rbac_settings.get(decorators.SCHEMA_INPUTS, {})
+        permissions_field = rbac_settings.get(decorators.SCHEMA_OUTPUTS)[0]
 
         roleId_field = list(input_mappings.keys())[0]
         roleId = authn_store.get(roleId_field)
