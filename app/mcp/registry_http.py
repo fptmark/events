@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Callable
 import logging
 import httpx
 
-from app.config import Config
+from app.core.config import Config
 
 logger = logging.getLogger(__name__)
 

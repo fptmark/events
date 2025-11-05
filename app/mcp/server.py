@@ -17,7 +17,7 @@ if str(project_root) not in sys.path:
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
-from app.config import Config
+from app.core.config import Config
 from app.mcp.registry_http import HTTPToolRegistry
 
 # Configure logging
