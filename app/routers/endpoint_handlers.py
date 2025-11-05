@@ -117,7 +117,7 @@ async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id
 
 
 @parse_request_context
-async def delete_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str) -> Dict[str, Any]:
+async def delete_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str, request: Request) -> Dict[str, Any]:
     """Reusable handler for DELETE endpoint."""
     # Notification.start(entity=entity_cls.__name__, operation="delete")
 

@@ -158,8 +158,8 @@ class SimpleDynamicRouterFactory:
                 500: {"description": "Server error"}
             }
         )
-        async def delete_entity(entity_id: str) -> Dict[str, Any]:  # noqa: F811
-            return await delete_entity_handler(entity_cls, entity_id)
+        async def delete_entity(entity_id: str, request: Request) -> Dict[str, Any]:  # noqa: F811
+            return await delete_entity_handler(entity_cls, entity_id, request)
         
         # logger.info(f"Created dynamic router for entity: {entity}")
         return router
