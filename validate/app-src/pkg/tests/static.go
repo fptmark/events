@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"validate/pkg/tests/dynamic"
 	"validate/pkg/types"
 )
 
@@ -493,6 +494,7 @@ func GetAllTestCases() []types.TestCase {
 		{Method: "GET", URL: "/api/User?sort=gender,netWorth:desc", TestClass: "sort", Description: "Sort by gender then netWorth desc"},
 
 		// FILTERING TESTS
+		{Method: "GET", URL: "/api/User?filter=id:usr_get_001", TestClass: "filter", Description: "Filter by id (internally remaps to get)"},
 		{Method: "GET", URL: "/api/User?filter=firstName:James", TestClass: "filter", Description: "Filter by firstName contains James"},
 		{Method: "GET", URL: "/api/User?filter=lastName:Smith", TestClass: "filter", Description: "Filter by lastName contains Smith"},
 		{Method: "GET", URL: "/api/User?filter=gender:male", TestClass: "filter", Description: "Filter by gender male"},
@@ -616,71 +618,72 @@ func GetAllTestCases() []types.TestCase {
 		// =============================================================================
 
 		// Basic exact matching tests - single field
-		{Method: "GET", URL: "/api/User?filter=username:mark&substring_match=full", TestClass: "filter", Description: "Filter username exact match - full value", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=username:mar&substring_match=full", TestClass: "filter", Description: "Filter username exact match - partial (no match)", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=username:mark&substring_match=substring", TestClass: "filter", Description: "Filter username contains - multiple results", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=username:mark&full_match", TestClass: "filter", Description: "Filter username exact match - full value", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=username:mar&full_match", TestClass: "filter", Description: "Filter username exact match - partial (no match)", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=username:mark", TestClass: "filter", Description: "Filter username contains - multiple results", ExpectedStatus: 200},
 		{Method: "GET", URL: "/api/User?filter=username:mark", TestClass: "filter", Description: "Filter username default (contains)", ExpectedStatus: 200},
 
-		{Method: "GET", URL: "/api/User?filter=firstName:James&substring_match=full", TestClass: "filter", Description: "Filter firstName exact match", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=firstName:Jam&substring_match=full", TestClass: "filter", Description: "Filter firstName exact - partial (no match)", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=firstName:James&substring_match=substring", TestClass: "filter", Description: "Filter firstName contains", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:James&full_match", TestClass: "filter", Description: "Filter firstName exact match", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:Jam&full_match", TestClass: "filter", Description: "Filter firstName exact - partial (no match)", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:James", TestClass: "filter", Description: "Filter firstName contains", ExpectedStatus: 200},
 
-		{Method: "GET", URL: "/api/User?filter=lastName:Smith&substring_match=full", TestClass: "filter", Description: "Filter lastName exact match", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=lastName:Smi&substring_match=full", TestClass: "filter", Description: "Filter lastName exact - partial (no match)", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=lastName:Smith&substring_match=substring", TestClass: "filter", Description: "Filter lastName contains", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=lastName:Smith&full_match", TestClass: "filter", Description: "Filter lastName exact match", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=lastName:Smi&full_match", TestClass: "filter", Description: "Filter lastName exact - partial (no match)", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=lastName:Smith", TestClass: "filter", Description: "Filter lastName contains", ExpectedStatus: 200},
 
-		{Method: "GET", URL: "/api/User?filter=email:example.com&substring_match=full", TestClass: "filter", Description: "Filter email exact - domain only (no match)", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=email:test@example.com&substring_match=full", TestClass: "filter", Description: "Filter email exact - full address", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=email:example.com&substring_match=substring", TestClass: "filter", Description: "Filter email contains - domain", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=email:example.com&full_match", TestClass: "filter", Description: "Filter email exact - domain only (no match)", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=email:test@example.com&full_match", TestClass: "filter", Description: "Filter email exact - full address", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=email:example.com", TestClass: "filter", Description: "Filter email contains - domain", ExpectedStatus: 200},
 
 		// Exact matching on enum fields (should behave same as default)
-		{Method: "GET", URL: "/api/User?filter=gender:male&substring_match=full", TestClass: "filter", Description: "Filter gender exact match", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=gender:female&substring_match=full", TestClass: "filter", Description: "Filter gender female exact match", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=gender:other&substring_match=full", TestClass: "filter", Description: "Filter gender other exact match", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=gender:male&full_match", TestClass: "filter", Description: "Filter gender exact match", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=gender:female&full_match", TestClass: "filter", Description: "Filter gender female exact match", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=gender:other&full_match", TestClass: "filter", Description: "Filter gender other exact match", ExpectedStatus: 200},
 
 		// Exact matching on boolean fields
-		{Method: "GET", URL: "/api/User?filter=isAccountOwner:true&substring_match=full", TestClass: "filter", Description: "Filter isAccountOwner true exact", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=isAccountOwner:false&substring_match=full", TestClass: "filter", Description: "Filter isAccountOwner false exact", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=isAccountOwner:true&full_match", TestClass: "filter", Description: "Filter isAccountOwner true exact", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=isAccountOwner:false&full_match", TestClass: "filter", Description: "Filter isAccountOwner false exact", ExpectedStatus: 200},
 
 		// Exact matching on numeric fields
-		{Method: "GET", URL: "/api/User?filter=netWorth:50000&substring_match=full", TestClass: "filter", Description: "Filter netWorth exact value", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=netWorth:eq:50000&substring_match=full", TestClass: "filter", Description: "Filter netWorth eq with exact mode", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=netWorth:gt:50000&substring_match=full", TestClass: "filter", Description: "Filter netWorth gt with exact mode", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=netWorth:50000&full_match", TestClass: "filter", Description: "Filter netWorth exact value", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=netWorth:eq:50000&full_match", TestClass: "filter", Description: "Filter netWorth eq with exact mode", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=netWorth:gt:50000&full_match", TestClass: "filter", Description: "Filter netWorth gt with exact mode", ExpectedStatus: 200},
 
 		// Exact matching on date fields
-		{Method: "GET", URL: "/api/User?filter=dob:1990-01-01&substring_match=full", TestClass: "filter", Description: "Filter dob exact date", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=dob:gt:1990-01-01&substring_match=full", TestClass: "filter", Description: "Filter dob gt with exact mode", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=createdAt:gte:2023-01-01&substring_match=full", TestClass: "filter", Description: "Filter createdAt gte with exact mode", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=dob:1990-01-01&full_match", TestClass: "filter", Description: "Filter dob exact date", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=dob:gt:1990-01-01&full_match", TestClass: "filter", Description: "Filter dob gt with exact mode", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=createdAt:gte:2023-01-01&full_match", TestClass: "filter", Description: "Filter createdAt gte with exact mode", ExpectedStatus: 200},
 
 		// Multi-field exact matching
-		{Method: "GET", URL: "/api/User?filter=firstName:James,lastName:Smith&substring_match=full", TestClass: "filter", Description: "Filter multiple fields exact match", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=firstName:James,gender:male&substring_match=full", TestClass: "filter", Description: "Filter firstName and gender exact", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=gender:female,isAccountOwner:true&substring_match=full", TestClass: "filter", Description: "Filter gender and owner exact", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=username:mark,gender:male&substring_match=full", TestClass: "filter", Description: "Filter username and gender exact", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:James,lastName:Smith&full_match", TestClass: "filter", Description: "Filter multiple fields exact match", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:James,gender:male&full_match", TestClass: "filter", Description: "Filter firstName and gender exact", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=gender:female,isAccountOwner:true&full_match", TestClass: "filter", Description: "Filter gender and owner exact", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=username:mark,gender:male&full_match", TestClass: "filter", Description: "Filter username and gender exact", ExpectedStatus: 200},
 
 		// Exact matching combined with other parameters
-		{Method: "GET", URL: "/api/User?filter=firstName:James&substring_match=full&sort=lastName", TestClass: "combo", Description: "Exact filter with sort", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=gender:male&substring_match=full&sort=netWorth:desc", TestClass: "combo", Description: "Exact filter with sort desc", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=firstName:James&substring_match=full&pageSize=5", TestClass: "combo", Description: "Exact filter with pagination", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=gender:female&substring_match=full&page=1&pageSize=3", TestClass: "combo", Description: "Exact filter with page and size", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=lastName:Smith&substring_match=full&view=account(id)", TestClass: "combo", Description: "Exact filter with view", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=gender:male&substring_match=full&view=account(id,createdAt)&sort=firstName", TestClass: "combo", Description: "Exact filter with view and sort", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=firstName:James,gender:male&substring_match=full&sort=netWorth:desc&pageSize=5", TestClass: "combo", Description: "Multi-field exact with sort and page", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:James&full_match&sort=lastName", TestClass: "combo", Description: "Exact filter with sort", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=gender:male&full_match&sort=netWorth:desc", TestClass: "combo", Description: "Exact filter with sort desc", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:James&full_match&pageSize=5", TestClass: "combo", Description: "Exact filter with pagination", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=gender:female&full_match&page=1&pageSize=3", TestClass: "combo", Description: "Exact filter with page and size", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=lastName:Smith&full_match&view=account(id)", TestClass: "combo", Description: "Exact filter with view", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=gender:male&full_match&view=account(id,createdAt)&sort=firstName", TestClass: "combo", Description: "Exact filter with view and sort", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:James,gender:male&full_match&sort=netWorth:desc&pageSize=5", TestClass: "combo", Description: "Multi-field exact with sort and page", ExpectedStatus: 200},
 
 		// Case sensitivity tests with exact matching
-		{Method: "GET", URL: "/api/User?filter=firstName:james&substring_match=full", TestClass: "filter", Description: "Exact filter lowercase (case insensitive)", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=firstName:JAMES&substring_match=full", TestClass: "filter", Description: "Exact filter uppercase (case insensitive)", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=email:TEST@EXAMPLE.COM&substring_match=full", TestClass: "filter", Description: "Exact email uppercase", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=gender:MALE&substring_match=full", TestClass: "filter", Description: "Exact gender uppercase", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:james&full_match", TestClass: "filter", Description: "Exact filter lowercase (case insensitive)", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:JAMES&full_match", TestClass: "filter", Description: "Exact filter uppercase (case insensitive)", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=email:TEST@EXAMPLE.COM&full_match", TestClass: "filter", Description: "Exact email uppercase", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=gender:MALE&full_match", TestClass: "filter", Description: "Exact gender uppercase", ExpectedStatus: 200},
 
-		// Invalid substring_match values
-		{Method: "GET", URL: "/api/User?filter=firstName:James&substring_match=invalid", TestClass: "edge", Description: "Invalid substring_match value", ExpectedStatus: 400},
-		{Method: "GET", URL: "/api/User?filter=firstName:James&substring_match=", TestClass: "edge", Description: "Empty substring_match value", ExpectedStatus: 200},
-		{Method: "GET", URL: "/api/User?filter=firstName:James&substring_match=partial", TestClass: "edge", Description: "Unsupported substring_match mode", ExpectedStatus: 400},
+		// full_match parameter - values are ignored (presence flag only)
+		{Method: "GET", URL: "/api/User?filter=firstName:James&full_match=true", TestClass: "filter", Description: "full_match with =true (value ignored)", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:James&full_match=false", TestClass: "filter", Description: "full_match with =false (value ignored, still exact)", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:James&full_match=", TestClass: "filter", Description: "full_match with empty value", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:James&full_match=1", TestClass: "filter", Description: "full_match with =1 (value ignored)", ExpectedStatus: 200},
 
-		// Case insensitivity for substring_match parameter itself
-		{Method: "GET", URL: "/api/User?filter=firstName:James&SUBSTRING_MATCH=exact", TestClass: "case", Description: "SUBSTRING_MATCH uppercase", ExpectedStatus: 400},
-		{Method: "GET", URL: "/api/User?filter=firstName:James&Substring_Match=exact", TestClass: "case", Description: "Substring_Match mixed case", ExpectedStatus: 400},
+		// Case insensitivity for full_match parameter NAME (params are case-insensitive)
+		{Method: "GET", URL: "/api/User?filter=firstName:James&FULL_MATCH", TestClass: "case", Description: "FULL_MATCH uppercase param name (normalized to lowercase)", ExpectedStatus: 200},
+		{Method: "GET", URL: "/api/User?filter=firstName:James&Full_Match", TestClass: "case", Description: "Full_Match mixed case param name (normalized to lowercase)", ExpectedStatus: 200},
 
 		{Method: "GET", URL: "/api/User?view=account(,id)", TestClass: "edge", Description: "View with leading comma"},
 		{Method: "GET", URL: "/api/User?sort=firstName,,lastName", TestClass: "edge", Description: "Sort with double comma"},
@@ -701,8 +704,8 @@ func GetAllTestCases() []types.TestCase {
 		}
 	}
 
-	// Append dynamic tests (defined in dynamic.go)
-	dynamicTests := GetDynamicTestCases()
+	// Append dynamic tests (defined in dynamic package)
+	dynamicTests := dynamic.GetDynamicTestCases()
 	startID := len(testCases) + 1
 	for i := range dynamicTests {
 		dynamicTests[i].ID = startID + i

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"validate/pkg/core"
+	"validate/pkg/tests/dynamic"
 	"validate/pkg/types"
 )
 
@@ -47,8 +48,9 @@ func (e *HTTPExecutor) ExecuteTest(testNumber int) (*types.TestResult, error) {
 	allTests := GetAllTestCases()
 	testCase := allTests[testNumber-1] // testNumber is 1-based
 
-	if testCase.TestClass == "dynamic" {
-		function_if := GetDynamicTest(testCase.URL)
+	// Handle dynamic tests (includes "dynamic" and "authz" test classes)
+	if testCase.TestClass == "dynamic" || testCase.TestClass == "authz" {
+		function_if := dynamic.GetDynamicTest(testCase.URL)
 		if function_if == nil {
 			fmt.Fprintf(os.Stderr, "no dynamic function found for URL: %s\n", testCase.URL)
 			os.Exit(1)

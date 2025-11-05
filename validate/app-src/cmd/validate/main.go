@@ -42,6 +42,9 @@ var (
 	// Database reset (always honored)
 	resetSpec string
 
+	// User credentials for testing
+	userCreds string
+
 	// Test execution options
 	pauseMs int // Pause between tests in milliseconds
 
@@ -97,6 +100,9 @@ Database reset (applies to all run modes):
 	// Database reset (always honored)
 	rootCmd.Flags().StringVarP(&resetSpec, "reset", "r", "", "Reset database and populate test data (optional: users,accounts)")
 	rootCmd.Flag("reset").NoOptDefVal = "defaults" // Allow --reset without value (uses defaults)
+
+	// User credentials for testing
+	rootCmd.Flags().StringVarP(&userCreds, "user", "u", "", "User credentials for testing (format: username/password)")
 
 	// Test execution options
 	rootCmd.Flags().IntVarP(&pauseMs, "pause", "p", 250, "Pause between tests in milliseconds (for eventual consistency)")
@@ -154,9 +160,10 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 	// Always show database type as first line
 	fmt.Printf("Database: %s\n", core.DatabaseType)
 
-	// Try to login with default test credentials (may fail if user doesn't exist yet)
+	// Try to login with test credentials (may fail if user doesn't exist yet)
 	// Will re-authenticate after database reset if needed
-	_ = core.Login("mark", "12345678")
+	username, password := parseUserCredentials(cmd)
+	_ = core.Login(username, password)
 
 	// Load metadata for field type lookups
 	if err := metadata.LoadMetadata(); err != nil {
@@ -251,6 +258,26 @@ func validateAndExecute(cmd *cobra.Command, args []string) error {
 
 // Helper functions for the simplified interface
 
+func parseUserCredentials(cmd *cobra.Command) (string, string) {
+	// Default credentials (used for reset and general testing)
+	defaultUsername := "test_auth"
+	defaultPassword := "12345678"
+
+	// Check if --user/-u flag was provided
+	if !cmd.Flags().Changed("user") {
+		return defaultUsername, defaultPassword
+	}
+
+	// Parse username/password from userCreds
+	parts := strings.Split(userCreds, "/")
+	if len(parts) != 2 {
+		fmt.Fprintf(os.Stderr, "Warning: invalid user format '%s', expected 'username/password'. Using defaults.\n", userCreds)
+		return defaultUsername, defaultPassword
+	}
+
+	return parts[0], parts[1]
+}
+
 func getTestNumbers(categoriesStr string) []int {
 	// Parse categories and return matching test numbers
 	categories := strings.Split(categoriesStr, ",")
@@ -290,7 +317,9 @@ func runTests(testNums []int) error {
 	} else if interactiveMode {
 		modes.RunInteractive(testNums[0])
 	} else {
-		ResetAndPopulate()
+		if err := ResetAndPopulate(); err != nil {
+			return fmt.Errorf("reset and populate failed: %w", err)
+		}
 		if summaryMode {
 			modes.RunSummary(testNums)
 		} else {
@@ -317,7 +346,12 @@ func ResetAndPopulate() error {
 		return fmt.Errorf("failed to bootstrap auth data: %w", err)
 	}
 
-	// Step 3: Populate test data
+	// Step 3: Re-authenticate with bootstrapped credentials (needed for populating test data)
+	if err := core.Login("test_auth", "12345678"); err != nil {
+		return fmt.Errorf("authentication failed after bootstrap: %w", err)
+	}
+
+	// Step 4: Populate test data (requires authentication)
 	if err := tests.PopulateTestData(core.NumAccounts, core.NumUsers); err != nil {
 		return fmt.Errorf("failed to populate test data: %w", err)
 	}
@@ -326,11 +360,6 @@ func ResetAndPopulate() error {
 	time.Sleep(time.Duration(1000 * time.Millisecond))
 	users, accounts = core.GetEntityCountsFromReport()
 	fmt.Printf("After Reset:   users=%d, accounts=%d\n", users, accounts)
-
-	// Re-authenticate after database reset (previous session was cleared)
-	if err := core.Login("mark", "12345678"); err != nil {
-		return fmt.Errorf("authentication failed after reset: %w", err)
-	}
 
 	return nil
 }
@@ -344,6 +373,9 @@ func EnsureTestData() {
 			users, accounts, core.NumUsers, core.NumAccounts)
 		fmt.Println("Auto-resetting and populating database...")
 
-		ResetAndPopulate()
+		if err := ResetAndPopulate(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: reset and populate failed: %v\n", err)
+			os.Exit(1)
+		}
 	}
 }
