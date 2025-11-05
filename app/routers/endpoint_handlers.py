@@ -153,11 +153,6 @@ async def update_response(data: Any, records: Optional[int] = None) -> Dict[str,
     from app.core.metadata import MetadataService
 
     authz_service = ServiceManager.get_service_instance("authz")
-    # if authz_service:
-    #     _, _, authz_settings = MetadataService.get_service("authz")
-    #     if authz_settings:
-    #         permissions_field = authz_settings.get("output")
-    #         if permissions_field:
     permissions = await authz_service.get_permissions() or {}
 
     result["permissions"] = permissions
