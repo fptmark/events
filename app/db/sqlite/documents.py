@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..document_manager import DocumentManager
 from ..core_manager import CoreManager
-from app.exceptions import DocumentNotFound, DatabaseError, DuplicateConstraintError
-from app.services.metadata import MetadataService
+from app.core.exceptions import DocumentNotFound, DatabaseError, DuplicateConstraintError
+from app.core.metadata import MetadataService
 
 
 class SqliteDocuments(DocumentManager):
@@ -173,7 +173,7 @@ class SqliteDocuments(DocumentManager):
                 field_display = field.capitalize() if field else "Field"
                 message = f"{field_display} is required"
 
-                from app.services.notify import Notification, HTTP
+                from app.core.notify import Notification, HTTP
                 Notification.error(HTTP.BAD_REQUEST, message, entity=entity, entity_id=id, field=field)
                 raise  # Unreachable
 
@@ -393,7 +393,7 @@ class SqliteDocuments(DocumentManager):
                 field_display = field.capitalize() if field else "Field"
                 message = f"{field_display} is required"
 
-                from app.services.notify import Notification, HTTP
+                from app.core.notify import Notification, HTTP
                 Notification.error(HTTP.BAD_REQUEST, message, entity=entity, entity_id=id, field=field)
                 raise  # Unreachable
 

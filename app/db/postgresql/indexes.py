@@ -7,7 +7,7 @@ from typing import List, Optional
 import re
 
 from ..index_manager import IndexManager
-from app.exceptions import DatabaseError
+from app.core.exceptions import DatabaseError
 
 
 class PostgreSQLIndexes(IndexManager):

@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional, Type, Protocol
 from pydantic import BaseModel, Field
 import logging
 
-from app.services.model import ModelService
+from app.core.model import ModelService
 from app.routers.endpoint_handlers import (
     get_all_handler, get_entity_handler, create_entity_handler,
     update_entity_handler, delete_entity_handler, EntityModelProtocol

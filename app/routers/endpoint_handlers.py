@@ -15,8 +15,8 @@ from functools import wraps
 from fastapi import Request, HTTPException
 from pydantic import BaseModel
 
-from app.services.notify import Notification
-from app.services.request_context import RequestContext
+from app.core.notify import Notification
+from app.core.request_context import RequestContext
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +46,14 @@ def parse_request_context(handler: Callable) -> Callable:
         # Initialize notifications and reset the request params for each request
         Notification.start()
         RequestContext.reset()
-        
+
         # Find request parameter
         request = None
         for arg in args:
             if isinstance(arg, Request):
                 request = arg
                 break
-        
+
         # Parse and normalize URL using RequestContext
         if request:
             # Convert entire query string to lowercase for case-insensitive handling
@@ -63,7 +63,11 @@ def parse_request_context(handler: Callable) -> Callable:
             # Convert URL path to lowercase for case-insensitive handling
             lowercase_path = str(request.url.path).lower()
             RequestContext.parse_request(lowercase_path, lowercase_params)
-        
+
+            # Extract session ID from cookies for RBAC
+            session_id = request.cookies.get('sessionId')
+            RequestContext.set_session_id(session_id)
+
         return await handler(*args, **kwargs)
     return wrapper
 
@@ -75,26 +79,26 @@ async def get_all_handler(entity_cls: Type[EntityModelProtocol], request: Reques
 
     # Model handles notifications internally, just call and return
     data, count = await entity_cls.get_all(
-        RequestContext.sort_fields,
-        RequestContext.filters,
-        RequestContext.page,
-        RequestContext.pageSize,
-        RequestContext.view_spec,
-        RequestContext.substring_match
+        RequestContext.get_sort_fields(),
+        RequestContext.get_filters(),
+        RequestContext.get_page(),
+        RequestContext.get_pageSize(),
+        RequestContext.get_view_spec(),
+        RequestContext.get_substring_match()
     )
 
-    return update_response(data, count)
+    return await update_response(data, count)
 
 
 @parse_request_context
 async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str, request: Request) -> Dict[str, Any]:
     """Reusable handler for GET endpoint."""
     # Notification.set(entity=entity_cls.__name__, operation="get")
-    
+
     # Model handles notifications internally, just call and return
-    response, _, _ = await entity_cls.get(entity_id, RequestContext.view_spec)
-    
-    return update_response(response)   
+    response, _, _ = await entity_cls.get(entity_id, RequestContext.get_view_spec())
+
+    return await update_response(response)
 
 
 @parse_request_context
@@ -102,14 +106,14 @@ async def create_entity_handler(entity_cls: Type[EntityModelProtocol], entity_da
     """Reusable handler for POST endpoint."""
     # Model handles notifications internally, just call and return
     response, _ = await entity_cls.create(entity_data)
-    return update_response(response)   
+    return await update_response(response)
 
 @parse_request_context
 async def update_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: str, entity_data: BaseModel, request: Request) -> Dict[str, Any]:
     """Reusable handler for PUT endpoint - True PUT semantics (full replacement)."""
     # Model handles notifications internally, just call and return
     response, _ = await entity_cls.update(entity_id, entity_data)
-    return update_response(response)
+    return await update_response(response)
 
 
 @parse_request_context
@@ -119,19 +123,19 @@ async def delete_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id
 
     # Model handles notifications internally, just call and return
     response, _ = await entity_cls.delete(entity_id)
-    return update_response(response)
+    return await update_response(response)
 
 
-def update_response(data: Any, records: Optional[int] = None) -> Dict[str, Any]:
+async def update_response(data: Any, records: Optional[int] = None) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
 
     result['data'] = data
 
     if records is not None:
-        totalPages = (records + RequestContext.pageSize - 1) // RequestContext.pageSize if records > 0 else 0
+        totalPages = (records + RequestContext.get_pageSize() - 1) // RequestContext.get_pageSize() if records > 0 else 0
         result['pagination'] = {
-            "page": RequestContext.page,
-            "pageSize": RequestContext.pageSize,
+            "page": RequestContext.get_page(),
+            "pageSize": RequestContext.get_pageSize(),
             "total": records,
             "totalPages": totalPages
         }
@@ -143,4 +147,19 @@ def update_response(data: Any, records: Optional[int] = None) -> Dict[str, Any]:
     # errors = notifications.get('errors', [])
     # warnings = notifications.get('warnings', {})
     result["status"] = notification_response.get('status', "missing")
+
+    # Add user permissions to response for UI consumption
+    from app.services.services import ServiceManager
+    from app.core.metadata import MetadataService
+
+    authz_service = ServiceManager.get_service_instance("authz")
+    # if authz_service:
+    #     _, _, authz_settings = MetadataService.get_service("authz")
+    #     if authz_settings:
+    #         permissions_field = authz_settings.get("output")
+    #         if permissions_field:
+    permissions = await authz_service.get_permissions() or {}
+
+    result["permissions"] = permissions
+
     return result

@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any, Self, ClassVar, Tuple
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
 from app.db import DatabaseFactory
-from app.services.metadata import MetadataService
+from app.core.metadata import MetadataService
 
 
 class AccountCreate(BaseModel):
@@ -48,7 +48,7 @@ class Account(BaseModel):
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'name': {'type': 'String', 'required': True, 'min_length': 6},
                   'credit': {'type': 'Currency', 'required': False},
                   'expireDate': {'type': 'Date', 'required': False},
-                  'enabled': {'type': 'Bool', 'default': True},
+                  'enabled': {'type': 'Boolean', 'default': True},
                   'createdAt': {   'type': 'Date',
                                    'ui': {   'displayAfterField': '-1',
                                              'readOnly': True},
@@ -59,9 +59,8 @@ class Account(BaseModel):
                                              'readOnly': True,
                                              'clientEdit': True},
                                    'autoUpdate': True}},
-    'operations': '',
     'ui': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'},
-    'services': [],
+    'services': {},
     'uniques': []}
 
     class Settings:

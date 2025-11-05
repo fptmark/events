@@ -11,8 +11,8 @@ from elasticsearch import AsyncElasticsearch
 from ..base import DatabaseInterface
 from ..core_manager import CoreManager
 from ..index_manager import IndexManager
-from app.services.metadata import MetadataService
-from app.config import Config
+from app.core.metadata import MetadataService
+from app.core.config import Config
 
 class ElasticsearchCore(CoreManager):
     """Elasticsearch implementation of core operations"""
@@ -313,7 +313,7 @@ class ElasticsearchCore(CoreManager):
                         schema_type = "unknown"
                         is_enum = False
                         try:
-                            from app.services.metadata import MetadataService
+                            from app.core.metadata import MetadataService
                             # Get entity name from index name (capitalize first letter)
                             entity_name = index_name.capitalize()
                             schema_type = MetadataService.get(entity_name, field, 'type') or "unknown"
@@ -549,7 +549,7 @@ class ElasticsearchIndexes(IndexManager):
 
     async def get_all_detailed(self, entity: str) -> dict:
         """Get all synthetic unique constraints from metadata"""
-        from app.services.metadata import MetadataService
+        from app.core.metadata import MetadataService
 
         indexes = {}
         try:

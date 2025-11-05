@@ -12,8 +12,8 @@ from pymongo.errors import DuplicateKeyError, ConnectionFailure, ServerSelection
 
 from ..document_manager import DocumentManager
 from ..core_manager import CoreManager
-from app.exceptions import DocumentNotFound, DatabaseError, DuplicateConstraintError
-from app.services.metadata import MetadataService
+from app.core.exceptions import DocumentNotFound, DatabaseError, DuplicateConstraintError
+from app.core.metadata import MetadataService
 
 
 class MongoDocuments(DocumentManager):
@@ -63,7 +63,9 @@ class MongoDocuments(DocumentManager):
         cursor = db[collection].find(query).sort(sort_spec).skip(skip_count).limit(pageSize)
 
         # Apply collation for sorting
-        if self.database.case_sensitive_sorting:
+        from app.core.config import Config
+        case_sensitive = Config.get("case_sensitive", False)
+        if case_sensitive:
             # Case-sensitive: use simple locale with strength 3
             cursor = cursor.collation({"locale": "simple", "strength": 3})
         else:
@@ -113,26 +115,7 @@ class MongoDocuments(DocumentManager):
             raise  # Re-raise to let DocumentManager handle it
         except Exception as e:
             raise DatabaseError(f"MongoDB delete error: {str(e)}")
-    
-    # async def _validate_document_exists_for_update(self, entity: str, id: str) -> bool:
-    #     """Validate that document exists for update operations"""
-    #     self.database._ensure_initialized()
-    #     db = self.database.core.get_connection()
-        
-    #     try:
-    #         collection = entity
-    #         mongo_id = ObjectId(id) if ObjectId.is_valid(id) else id
-    #         existing_doc = await db[collection].find_one({"_id": mongo_id})
-            
-    #         if not existing_doc:
-    #             Notification.warning(Warning.NOT_FOUND, "Document not found for update", entity=entity, entity_id=id)
-    #             return False
-            
-    #         return True
-    #     except Exception:
-    #         Notification.warning(Warning.NOT_FOUND, "Document not found for update", entity=entity, entity_id=id)
-    #         return False
-    
+
     async def _create_impl(self, entity: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create document in MongoDB"""
         db = self.database.core.get_connection()
@@ -294,7 +277,8 @@ class MongoDocuments(DocumentManager):
 
                 if field_type == 'String' and not has_enum_values:
                     # Handle all 4 combinations of case_sensitive and substring_match
-                    case_sensitive = self.database.case_sensitive_sorting
+                    from app.core.config import Config
+                    case_sensitive = Config.get("case_sensitive", False)
                     regex_options = "" if case_sensitive else "i"
 
                     if substring_match:

@@ -42,9 +42,8 @@ help:
 	@echo "  schema      - Convert schema.mmd to schema.yaml and generate diagram"
 	@echo "  main        - Generate main.py"
 	@echo "  models      - Generate model files"
-	@echo "  services    - Generate service routes"
 	@echo "  spec        - Generate OpenAPI specification"
-	@echo "  code        - Generate all code (main, models, services, spec)"
+	@echo "  code        - Generate all code (main, models, spec)"
 	@echo "  mmd         - Generate mmd from the default config file
 	@echo "test"
 	@echo "  tests       - Generate test validation tools (app and mcp)"
@@ -140,23 +139,18 @@ rebuild:
 	$(MAKE) schema
 	$(MAKE) main
 	$(MAKE) models
-	$(MAKE) services
 	$(MAKE) spec 
 
 schema : schema.mmd 
 	$(PYPATH) python -m convert.schemaConvert .
 	cat schema.mmd | sed '/[[:alnum:]].*%%/ s/%%.*//' | mmdc -i - -o schema.png
-	$(MAKE) spec
 
 main:
 	$(PYPATH) python -m generators.gen_main schema.yaml . 
 
 models:
 	$(PYPATH) python -m generators.models.gen_model_main schema.yaml . 
-
-services: 
-	echo "services are now static and don't need to be built"
-#	$(PYPATH) python -m generators.gen_service_routes schema.yaml $(GENERICS) .
+	$(MAKE) spec
 
 spec:
 	$(PYPATH) python -m generators.gen_openapi .
@@ -165,7 +159,6 @@ code:	schema.yaml
 	mkdir -p app/utilities
 	$(MAKE) main
 	$(MAKE) models
-	$(MAKE) services
 	$(MAKE) spec
 
 validators: validate/*

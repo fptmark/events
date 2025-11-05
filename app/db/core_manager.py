@@ -41,7 +41,7 @@ class CoreManager(ABC):
         pass
 
     def _get_default_sort_field(self, entity: str) -> str:
-        from app.services.metadata import MetadataService
+        from app.core.metadata import MetadataService
 
         fields = MetadataService.fields(entity)
         for field, field_info in fields.items():

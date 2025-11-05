@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any, Optional
 from urllib.parse import urlparse, urlunparse
 from ..core_manager import CoreManager
-from app.config import Config
+from app.core.config import Config
 
 
 class PostgreSQLCore(CoreManager):

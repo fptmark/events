@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from typing import Dict, List, Optional, Any
 from fastapi import HTTPException
 
-from app.exceptions import DuplicateConstraintError, StopWorkError
+from app.core.exceptions import DuplicateConstraintError, StopWorkError
 
 
 class HTTP:

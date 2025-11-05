@@ -13,7 +13,7 @@ from contextvars import ContextVar
 from typing import Optional, Dict, Any, List, Tuple, Union
 from app.core.metadata import MetadataService
 from app.core.notify import Notification, HTTP
-from app.utils import parse_url_path
+from app.core.utils import parse_url_path
 
 
 # Context variables for request-scoped state (async-safe)
@@ -92,11 +92,6 @@ class RequestContext:
     def get_bypass_rbac() -> bool:
         """Check if current request should bypass RBAC checks"""
         return _bypass_rbac.get()
-
-    @staticmethod
-    def set_bypass_rbac(bypass: bool) -> None:
-        """Set RBAC bypass flag for current request (use with @no_permission_required)"""
-        _bypass_rbac.set(bypass)
 
     @staticmethod
     def parse_request(path: str, query_params: Dict[str, str]) -> None:

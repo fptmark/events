@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/db", tags=["Admin"])
 @router.get('/init')
 async def db_init_confirmation():
     """Show confirmation page before wiping database"""
-    from app.config import Config
+    from app.core.config import Config
 
     db_type, db_uri, db_name = Config.get_db_params()
 

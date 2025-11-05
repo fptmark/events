@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict, Any, Tuple
 import json
-from app.utils import load_settings
+from app.core.utils import load_settings
 
 class Config:
     """Static configuration class - no instances, only class methods"""

@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any, Self, ClassVar, Tuple
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
 from app.db import DatabaseFactory
-from app.services.metadata import MetadataService
+from app.core.metadata import MetadataService
 
 
 class AuthCreate(BaseModel):
@@ -42,12 +42,16 @@ class Auth(BaseModel):
                                   'required': True,
                                   'min_length': 8,
                                   'encrypt': True},
-                  'roleId': {'type': 'ObjectId', 'required': True}},
-    'operations': '',
+                  'roleId': {   'type': 'ObjectId',
+                                'required': True,
+                                'ui': {   'displayName': 'Role',
+                                          'show': {   'displayInfo': [   {   'fields': [   'role',
+                                                                                           'permissions']}]}}}},
     'ui': {},
-    'services': {   'auth.cookies.redis': {   'fields': {   'login': 'name',
-                                                            'password': 'password'}}},
-    'uniques': []}
+    'services': {   'auth.cookies.redis': {   'inputs': {   'login': 'name',
+                                                            'password': 'password'},
+                                              'store': ['roleId']}},
+    'uniques': [['name']]}
 
     class Settings:
         name = "auth"

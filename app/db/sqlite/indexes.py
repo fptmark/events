@@ -6,7 +6,7 @@ import aiosqlite
 from typing import List, Optional
 
 from ..index_manager import IndexManager
-from app.exceptions import DatabaseError
+from app.core.exceptions import DatabaseError
 
 
 class SqliteIndexes(IndexManager):

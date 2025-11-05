@@ -72,7 +72,7 @@ class ModelService:
             RuntimeError: If ModelService not initialized
             ModelNotFound: If entity type is not found
         """
-        from app.exceptions import ModelNotFound
+        from app.core.exceptions import ModelNotFound
 
         # Case-insensitive lookup
         for name, model_class in cls._models.items():

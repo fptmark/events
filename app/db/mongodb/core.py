@@ -10,8 +10,8 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from ..base import DatabaseInterface
 from ..core_manager import CoreManager
 from ..index_manager import IndexManager
-from app.exceptions import DatabaseError
-from app.config import Config
+from app.core.exceptions import DatabaseError
+from app.core.config import Config
 
 class MongoCore(CoreManager):
     """MongoDB implementation of core operations"""

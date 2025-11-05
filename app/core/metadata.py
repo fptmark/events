@@ -1,10 +1,10 @@
 from typing import Dict, List, Any, Optional, Tuple
 from app.core.notify import Notification, HTTP
-from app.utils import merge_overrides
+from app.core.utils import merge_overrides
 
 class MetadataService:
     _metadata: Dict[str, Dict[str, Any]] = {}
-    _entity_services : Dict[str, Any] = {}   ## { svc_type: <type>, { svc_name : <name>,  entity: entity_name , config: {...} } } }  - entity is optional for true system level services not tied to an entity
+    _entity_services : Dict[str, Any] = {}   ## { 'type' : 'auth', 'provider': 'auth.cookies.redis', 'entity': '<entity>', 'settings': { ... } }
 
     @staticmethod
     def initialize(entities: List[str]) -> None:
@@ -21,13 +21,22 @@ class MetadataService:
 
             for svc_name, svc_info in md.get('services', {}).items():
                 words = svc_name.split('.')
-                svc = { svc_name : { 'entity': entity, 'settings': svc_info } }
-                MetadataService._entity_services[words[0]] = svc
+                svc_info['entity'] = entity
+                # svc = { svc_name : { 'entity': entity, 'settings': svc_info } }
+                MetadataService._entity_services[words[0]] = { 'provider': svc_name, 'entity': entity, 'settings': svc_info }
      
     @staticmethod
-    def get_service(svc_name: str) -> Optional[Dict[str, Any]]:
+    def get_services() -> Dict[str, Any]:
         """Get service configuration by service name."""
-        return MetadataService._entity_services.get(svc_name)
+        return MetadataService._entity_services
+
+    @staticmethod
+    def get_service(service_type: str) -> Tuple[str, str, Any]:     # provider, entity, settings
+        """Get service configuration by service name."""
+        for svc_type, svc_data in MetadataService._entity_services.items():
+            if svc_type == service_type:
+                return svc_data['provider'], svc_data.get('entity', ''), svc_data['settings']
+        return '', '', None
 
     @staticmethod
     def list_entities() -> List[str]:

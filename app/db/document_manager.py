@@ -9,13 +9,14 @@ import warnings as python_warnings
 from pydantic import ValidationError as PydanticValidationError
 from ulid import ULID
 
-from app.services.notify import Notification, Warning, HTTP
+from app.core.notify import Notification, Warning, HTTP
 from app.db.core_manager import CoreManager
-from app.exceptions import DocumentNotFound, DuplicateConstraintError
-from app.services.metadata import MetadataService
-from app.services.model import ModelService
-from app.services.request_context import RequestContext
-from app.config import Config
+from app.core.exceptions import DocumentNotFound, DuplicateConstraintError
+from app.core.metadata import MetadataService
+from app.core.model import ModelService
+from app.core.request_context import RequestContext
+from app.core.config import Config
+from app.core.gating import GatingService
 
 class DocumentManager(ABC):
     """Document CRUD operations with clean, focused interface"""
@@ -24,6 +25,47 @@ class DocumentManager(ABC):
         """Initialize with database interface reference for cleaner access patterns"""
         self.database = database
     
+    async def bypass(self, entity: str, inputs: Dict[str, Any], outputs: List[str]) -> Optional[Dict[str, Any]]:
+        """
+        bypass - bypass normal security for authentication and authorization purposes.
+        Bypasses security - should only be called by auth or rbac service 
+
+        Args:
+            inputs: Dict of input fields to match (e.g., {"username":
+            outputs: List of fields to return (e.g., ["Id", "roleId"])
+
+        Returns:
+            Dict with outputs
+        """
+
+        # Query database with exact match
+        proper_name = MetadataService.get_proper_name(entity)
+
+        # short-circut if the id is in the filter as there must be only one match
+        id = inputs.get("Id") or inputs.get("id") if inputs else None
+        if id:
+            doc, count = await self._get_impl(proper_name, str(id))
+        else:
+            docs, count = await self._get_all_impl(proper_name, filter=inputs, page=1, pageSize=1, substring_match=False)
+            doc = docs[0] if docs else None
+
+        if count == 0 or count > 1:
+            return None
+
+        # Success - return userId + stored fields
+        core = self._get_core_manager()
+
+        user_id = doc.get(core.id_field)
+
+        result = {"Id": str(user_id)}
+
+        # Add any stored fields (like roleId)
+        for store_field in outputs:
+            if store_field != 'Id' and store_field in doc:
+                result[store_field] = doc[store_field]
+
+        return result
+
     async def get_all(
         self,
         entity: str,
@@ -49,8 +91,14 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (documents, total_count)
         """
+        await GatingService.permitted(entity, 'r')  # check for bypass, login and rbac
+
         try:
-            docs, count = await self._get_all_impl(entity, sort, filter, page, pageSize, substring_match)
+            id = filter.get('id') or filter.get('Id') if filter else None
+            if id:
+                doc, count = await self._get_impl(entity, str(filter[id]))
+            else:
+                docs, count = await self._get_all_impl(entity, sort, filter, page, pageSize, substring_match)
 
             if docs:
                 # Get the model class for validation
@@ -101,6 +149,8 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (document, count, error) where count is 1 if found, 0 if not found
         """
+        await GatingService.permitted(entity, 'r')  # check for bypass, login and rbac
+
         try:
             doc, count = await self._get_impl(entity, id)
             if count > 0 and doc:
@@ -186,6 +236,9 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (saved_document, count) where count is 1 if created, 0 if failed
         """
+        # Check create or update permission (unless bypassed by @no_permission_required)
+        await GatingService.permitted(entity, 'u' if is_update else 'c')
+
         # Remove the id from the data and normalize to lowercase
         id = (data.pop('id', '') or '').strip().lower()
 
@@ -291,6 +344,8 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (deleted_document, count) where count is 1 if deleted, 0 if not found
         """
+        await GatingService.permitted(entity, 'd')
+
         try:
             return await self._delete_impl(entity, id)
         except DocumentNotFound:
@@ -522,3 +577,4 @@ async def process_fks(entity: str, data: Dict[str, Any], validate: bool, view_sp
                 if validate and not fk_data.get("exists"):
                     return fk_name  # FK validation failed
     return True  # All FKs valid or no validation needed
+

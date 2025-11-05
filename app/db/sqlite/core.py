@@ -6,7 +6,7 @@ import aiosqlite
 import logging
 from typing import Dict, Any, Optional
 from ..core_manager import CoreManager
-from app.config import Config
+from app.core.config import Config
 
 class SQLiteCore(CoreManager):
     """SQLite connection management"""
@@ -74,7 +74,7 @@ class SQLiteCore(CoreManager):
             await self.connection.commit()
 
             # Recreate all tables with proper schemas from metadata
-            from app.services.metadata import MetadataService
+            from app.core.metadata import MetadataService
             for entity in MetadataService.list_entities():
                 create_sql = self.database.documents._build_create_table_sql(entity)
                 await self.connection.execute(create_sql)

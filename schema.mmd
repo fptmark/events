@@ -13,7 +13,7 @@ erDiagram
 	String name	%% @validate { required: true, min_length: 6 }
 	Currency credit %% @validate { required: false }
         Date expireDate %% @validate { required: false }
-	Bool    enabled	%% @validate { default: true }
+	Boolean enabled	%% @validate { default: true }
     
         %% @ui { title: "Accounts", buttonLabel: "Manage Accounts" }
     	%% @include ["BaseEntity"]
@@ -41,7 +41,6 @@ erDiagram
     	%% @include ["BaseEntity"]  
         %% @ui createdAt { displayPages: "summary" } 
         %% @ui accountId { displayName: "Account", show: { endpoint: "account", displayInfo: [ {displayPages: "summary", fields:  ["createdAt"] }, { displayPages: "edit|create", fields: ["createdAt", "expireDate" ]} ]} }
-        %% @operations ["read", "create", "update"]
     }
 
 
@@ -107,19 +106,22 @@ erDiagram
     
         %% @ui { title: "Crawls", buttonLabel: "Manage Crawls", description: "Manage Crawls of Event sites" }
     	%% @include ["BaseEntity"]
-        %% @operations [ "read", "delete" ]
     }
 
     Auth {
-	String name	%% @validate { required: true, min_length: 4 }
+	String name	%% @validate { required: true, min_length: 4 } @unique
 	String password %% @validate { required: true, min_length: 8, encrypt: true }
-    	%% @service { "auth.cookies.redis" : { fields: {login : 'name', password: 'password' } } }
+
+        %% @service { "auth.cookies.redis" : { inputs: {'login': 'name', 'password': 'password' }, store: ["roleId"] } }
+	%% @ui roleId { displayName: "Role", show: { displayInfo: [ {fields:  ["role", "permissions"] } ]} }
     }
 
-    Roles {
-	String role     %% @validate { required: true, enum: { values: ["admin", "mgr", "custsvc"] } }
-	Json permissions %% @validate { required: true } %% entity:crud | entity:field:crud
+    Role {
+	String role     %% @validate { required: true } @unique
+	String permissions %% @validate { required: true } %% entity:crud | entity:field:crud
+	%% @service { "authz.rbac" : { depends: ["auth"], inputs: { "roleId": "Id" }, outputs: ["permissions"] } }
     }
+
 
     Role ||--o{ Auth: ""
     Account ||--o{ User: ""

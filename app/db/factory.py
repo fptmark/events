@@ -6,7 +6,7 @@ Creates and manages database instances with clean manager separation.
 import logging
 from typing import Optional, Dict, Any, List, Tuple
 
-from app.services.notify import Notification, HTTP
+from app.core.notify import Notification, HTTP
 
 from .base import DatabaseInterface
 from .mongodb import MongoDatabase

@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any, Self, ClassVar, Tuple
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
 from app.db import DatabaseFactory
-from app.services.metadata import MetadataService
+from app.core.metadata import MetadataService
 
 
 class ProfileCreate(BaseModel):
@@ -70,11 +70,10 @@ class Profile(BaseModel):
                                              'readOnly': True,
                                              'clientEdit': True},
                                    'autoUpdate': True}},
-    'operations': '',
     'ui': {   'title': 'Profile',
               'buttonLabel': 'Manage User Profiles',
               'description': 'Manage User Preferences'},
-    'services': [],
+    'services': {},
     'uniques': [['name', 'userId']]}
 
     class Settings:

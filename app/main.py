@@ -2,19 +2,18 @@ from contextlib import asynccontextmanager
 import sys
 import argparse
 from pathlib import Path
-from app.config import Config
+from app.core.config import Config
 from app.db import DatabaseFactory
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.services.metadata import MetadataService
-from app.services.model import ModelService
-from app.providers import providers_init
-from app.exceptions import StopWorkError
+from app.core.metadata import MetadataService
+from app.core.model import ModelService
+from app.services import ServiceManager
+from app.core.exceptions import StopWorkError
 from app.routers.router import get_all_dynamic_routers
 from app.routers.admin import router as admin_router
 
-from app.providers.auth.cookies.redis_provider import CookiesAuth as Auth
 
 ENTITIES = [
    "Account",
@@ -26,7 +25,7 @@ ENTITIES = [
    "Url",
    "Crawl",
    "Auth",
-   "Roles",
+   "Role",
 ]
 
 import logging
@@ -175,9 +174,9 @@ async def lifespan(app: FastAPI):
     ModelService.initialize(ENTITIES)
     logger.info("Metadata & Model services initialized successfully")
 
-    # Initialize providers (Redis auth, etc.)
-    logger.info("Initializing providers...")
-    await providers_init.initialize(app)
+    # Initialize services (Redis auth, etc.)
+    logger.info("Initializing services...")
+    await ServiceManager.initialize(app)
 
     logger.info(f"Registing routers")
     setup_routers(args.yaml)
@@ -204,7 +203,7 @@ async def lifespan(app: FastAPI):
     try:
         logger.info("Shutdown event called")
 
-        await providers_init.shutdown()
+        await ServiceManager.shutdown()
 
         if DatabaseFactory.is_initialized():
             await DatabaseFactory.close()
@@ -310,13 +309,13 @@ app.add_middleware(
 async def stop_work_handler(request: Request, exc: StopWorkError):
     """Handle all stop-work errors with unified response"""
     from app.routers.endpoint_handlers import update_response
-    
+
     logger.error(f"Stop-work error [{exc.error_type}]: {exc.detail}")
-    
+
     # Notification system already populated by notify.py
     # Use update_response to maintain consistent API structure
-    response_data = update_response(data=None)
-    
+    response_data = await update_response(data=None)
+
     return JSONResponse(
         status_code=exc.status_code,
         content=response_data
@@ -326,12 +325,12 @@ async def stop_work_handler(request: Request, exc: StopWorkError):
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Handle HTTP exceptions using consistent response format"""
     from app.routers.endpoint_handlers import update_response
-    
+
     logger.info(f"HTTP {exc.status_code}: {exc.detail}")
-    
+
     # Use update_response to maintain consistent API structure
-    response_data = update_response(data=None)
-    
+    response_data = await update_response(data=None)
+
     return JSONResponse(
         status_code=exc.status_code,
         content=response_data

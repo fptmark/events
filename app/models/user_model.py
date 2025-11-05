@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any, Self, ClassVar, Tuple
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError as PydanticValidationError, BeforeValidator, Json
 from app.db import DatabaseFactory
-from app.services.metadata import MetadataService
+from app.core.metadata import MetadataService
 
 class GenderEnum(str, Enum):
     MALE = 'male'
@@ -141,11 +141,10 @@ class User(BaseModel):
                                              'readOnly': True,
                                              'clientEdit': True},
                                    'autoUpdate': True}},
-    'operations': 'rcu',
     'ui': {   'title': 'Users',
               'buttonLabel': 'Manage Users',
               'description': 'Manage User Profile'},
-    'services': [],
+    'services': {},
     'uniques': [['username'], ['email']]}
 
     class Settings:

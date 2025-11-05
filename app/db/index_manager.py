@@ -5,7 +5,7 @@ Index management operations.
 import logging
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from app.services.metadata import MetadataService
+from app.core.metadata import MetadataService
 
 
 class IndexManager(ABC):
