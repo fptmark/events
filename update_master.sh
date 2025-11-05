@@ -20,11 +20,11 @@ rm ../schema2rest/src/server_generic_files/main.py
 # mcp files
 cp -r app/mcp ../schema2rest/src/server_generic_files
 
-# db, services, providers and router are app independent
+# db, services, core and routers
 cp -r app/db ../schema2rest/src/server_generic_files
 cp -r app/routers ../schema2rest/src/server_generic_files
+cp -r app/core ../schema2rest/src/server_generic_files
 cp -r app/services ../schema2rest/src/server_generic_files
-cp -r app/providers ../schema2rest/src/server_generic_files
 
 # test framework
 cp -r validate/app-src ../schema2rest/src/server_generic_files/validate

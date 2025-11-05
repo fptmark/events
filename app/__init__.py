@@ -9,7 +9,7 @@ __version__ = "1.0.0"
 
 from . import models
 from . import routers
-from . import utils
+from .core import utils
 from . import db
 
 __all__ = ["models", "routers", "utils", "db"] 
