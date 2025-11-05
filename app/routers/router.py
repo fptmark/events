@@ -31,13 +31,15 @@ def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[
         notifications: Optional[Dict[str, Any]] = None
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
-    
+        permissions: Optional[Dict[str, str]] = Field(default_factory=dict)
+
     class EntityAllResponse(BaseModel):
         data: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
         notifications: Optional[Dict[str, Any]] = None
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
         pagination: Optional[Dict[str, Any]]
+        permissions: Optional[Dict[str, str]] = Field(default_factory=dict)
     
     # Dynamically set the class names for better OpenAPI docs
     EntityResponse.__name__ = f"{entity}Response"

@@ -63,16 +63,15 @@ class Rbac:
     @staticmethod
     async def get_permissions(session_id: str = "") -> Dict[str, str]:
         """
-        Extract user permissions from the authn service session.
-        If no session, return read-only access to authn entity (for login).
+        Get user permissions from the authn service session.
+        Permissions are loaded at login via add_permissions(), so this just retrieves them.
 
         Args:
-            session_id: Session ID from cookie
+            session_id: Session ID from cookie (optional, will use RequestContext if not provided)
 
         Returns:
             Dict mapping entity names to permission strings (e.g., {"User": "crud", "Account": "r"})
-            For unauthenticated users, returns read access to authn entity only
-            Empty dict if session expired (absolute max exceeded)
+            Empty dict if no session or permissions not found
         """
         if not session_id:
             session_id = RequestContext.get_session_id()
@@ -84,25 +83,14 @@ class Rbac:
 
         authn_svc = ServiceManager.get_service_instance("authn")
         if not authn_svc:
-            Notification.error(HTTP.INTERNAL_ERROR, "Authn service not found")
+            return {}
 
-        _, rbac_entity, rbac_settings = MetadataService.get_service("authz")
+        _, _, rbac_settings = MetadataService.get_service("authz")
         if not rbac_settings:
-            Notification.error(HTTP.INTERNAL_ERROR, "Authz service not found")
+            return {}
 
-        permissions_field = rbac_settings.get("output")
+        permissions_field = rbac_settings.get("outputs")[0]
         permissions = await authn_svc.get(permissions_field)
-
-        if not permissions:
-            # Get session to retrieve roleId
-            authn = await authn_svc.authorized()
-            if authn:
-                roleId_field = rbac_settings.get("input")
-                roleId = authn.get(roleId_field)
-                if roleId:
-                    permissions = await Rbac._load_permissions_from_role(rbac_entity, rbac_settings, roleId)
-                    if permissions:
-                        await authn_svc.set(permissions_field, permissions)
 
         return permissions or {}
 
