@@ -28,7 +28,6 @@ _view_spec: ContextVar[Dict[str, Any]] = ContextVar('view_spec', default={})
 _substring_match: ContextVar[bool] = ContextVar('substring_match', default=True)
 _no_consistency: ContextVar[bool] = ContextVar('no_consistency', default=False)
 _session_id: ContextVar[Optional[str]] = ContextVar('session_id', default=None)
-_bypass_rbac: ContextVar[bool] = ContextVar('bypass_rbac', default=False)
 
 
 class RequestContext:
@@ -89,11 +88,6 @@ class RequestContext:
         _session_id.set(session_id)
 
     @staticmethod
-    def get_bypass_rbac() -> bool:
-        """Check if current request should bypass RBAC checks"""
-        return _bypass_rbac.get()
-
-    @staticmethod
     def parse_request(path: str, query_params: Dict[str, str]) -> None:
         """
         Parse URL path and query parameters and set RequestContext state.
@@ -128,7 +122,6 @@ class RequestContext:
         _substring_match.set(True)
         _no_consistency.set(False)
         _session_id.set(None)
-        _bypass_rbac.set(False)
 
     
     @staticmethod
