@@ -17,7 +17,7 @@ class LoginRequest(BaseModel):
     password: str
 
 class AuthResponse(BaseModel):
-    """Standard auth response"""
+    """Standard authn response"""
     success: bool
     message: str | None = None
 
@@ -64,6 +64,12 @@ class RedisCookieStore:
             raise RuntimeError("Redis client not connected")
         await self.redis_client.delete(session_id)
 
+    async def get_session_ttl(self, session_id: str) -> int:
+        """Get remaining TTL for session key in seconds. Returns -1 if key doesn't exist."""
+        if self.redis_client is None:
+            raise RuntimeError("Redis client not connected")
+        return await self.redis_client.ttl(session_id)
+
     async def renew_session(self, session_id: str, session_data: dict, ttl: int) -> dict:
         if self.redis_client is None:
             raise RuntimeError("Redis client not connected")
@@ -71,7 +77,7 @@ class RedisCookieStore:
         return session_data
 
 # --- Auth Service Implementation Using Cookies + Redis ---
-class Auth:
+class Authn:
     # Default cookie configuration; can be overridden via config.
     cookie_name = "sessionId"
     cookie_options = {
@@ -87,7 +93,7 @@ class Auth:
     @classmethod
     async def initialize(cls, config: dict):
         """
-        Initialize the auth service using settings from config.
+        Initialize the authn service using settings from config.
         Expected config keys: host, port, db (for Redis), entity, fields, etc.
         """
         store = RedisCookieStore(
@@ -98,7 +104,7 @@ class Auth:
         await store.connect()
         cls.cookie_store = store
         cls.service_config = config
-        print(f"  Auth service configured for entity: {config.get('entity', 'User')}")
+        print(f"  Authn service configured for entity: {config.get('entity', 'User')}")
         return cls
 
     @classmethod
@@ -133,8 +139,11 @@ class Auth:
             await cls.cookie_store.delete_session(session_id)
             return None
 
-        # Sliding window: Renew session TTL on each authenticated request
-        await cls.cookie_store.renew_session(session_id, session, SESSION_TTL)
+        # Lazy TTL renewal: Only renew if TTL is below threshold (avoid Redis write on every request)
+        remaining_ttl = await cls.cookie_store.get_session_ttl(session_id)
+        if remaining_ttl > 0 and remaining_ttl < NEAR_EXPIRY_THRESHOLD:
+            # TTL is getting low - renew the sliding window
+            await cls.cookie_store.renew_session(session_id, session, SESSION_TTL)
 
         return session
 
@@ -207,8 +216,8 @@ class Auth:
 
         # Get entity and field mappings from service config
         if not self.service_config:
-            print("ERROR: Auth service not configured properly")
-            return {"success": False, "message": "Auth service not configured"}
+            print("ERROR: Authn service not configured properly")
+            return {"success": False, "message": "Authn service not configured"}
 
         field_mappings = self.service_config.get("inputs", {})
 
@@ -216,8 +225,8 @@ class Auth:
         login_field = field_mappings.get("login", "")
         password_field = field_mappings.get("password", "")
         if entity_name == "" or login_field == "" or password_field == "":
-            print("ERROR: Auth service config error")
-            return {"success": False, "message": "Auth service entity not specified"}
+            print("ERROR: Authn service config error")
+            return {"success": False, "message": "Authn service entity not specified"}
 
         login_value = credentials.get("login")
         password_value = credentials.get("password")
@@ -249,6 +258,13 @@ class Auth:
             "created": current_time,
             "absolute_expiry": current_time + ABSOLUTE_SESSION_MAX  # Force re-login after absolute max
         }
+
+        # Ask authz service to enrich session with permissions (if running)
+        from app.services.services import ServiceManager
+        if ServiceManager.isServiceStarted("authz"):
+            authz_service = ServiceManager.get_service_instance("authz")
+            if authz_service:
+                await authz_service.add_permissions(session_data)
 
         await self.cookie_store.set_session(session_id, session_data, SESSION_TTL)
 

@@ -32,7 +32,7 @@ class MetadataService:
 
     @staticmethod
     def get_service(service_type: str) -> Tuple[str, str, Any]:     # provider, entity, settings
-        """Get service configuration by service name."""
+        """Get service (provider, entity, settings) by service name."""
         for svc_type, svc_data in MetadataService._entity_services.items():
             if svc_type == service_type:
                 return svc_data['provider'], svc_data.get('entity', ''), svc_data['settings']

@@ -2,9 +2,9 @@
 Core gating service for authentication and authorization.
 
 Implements 3-phase gating:
-  1. No auth service → no gating at all
-  2. Auth service only → validate session exists
-  3. Auth + RBAC service → validate session + check permissions
+  1. No authn service → no gating at all
+  2. authn service only → validate session exists
+  3. authn + authz service → validate session + check permissions
 """
 
 from typing import Optional
@@ -15,7 +15,7 @@ from app.services.services import ServiceManager
 
 
 class GatingService:
-    """Centralized gating logic for auth and RBAC checks"""
+    """Centralized gating logic for authn and authz checks"""
 
     @staticmethod
     async def permitted(entity: str, operation: str) -> None:
@@ -29,22 +29,22 @@ class GatingService:
         Raises:
             StopWorkError: If access is denied (via Notification system)
         """
-        if not ServiceManager.isServiceStarted("auth"):
-            # Phase 1: No auth service = no gating
+        if not ServiceManager.isServiceStarted("authn"):
+            # Phase 1: No authn service = no gating
             return
 
-        # Get the auth service class instance
-        auth_service = ServiceManager.get_service_instance("auth")
-        if not auth_service:
-            Notification.error(HTTP.INTERNAL_ERROR, "Auth service not found")
+        # Get the authn service class instance
+        authn_service = ServiceManager.get_service_instance("authn")
+        if not authn_service:
+            Notification.error(HTTP.INTERNAL_ERROR, "Authn service not found")
 
         # Check if the session is valid
-        auth = await auth_service.authorized()
-        if not auth:
+        authn = await authn_service.authorized()
+        if not authn:
             Notification.error(HTTP.UNAUTHORIZED, "Authentication required")
 
         if not ServiceManager.isServiceStarted("authz"):
-            # Phase 2: Auth service exists - validate session only
+            # Phase 2: authn service exists - validate session only
             return
 
         # Get the rbac service class instance
@@ -52,11 +52,7 @@ class GatingService:
         if not rbac_service:
             Notification.error(HTTP.INTERNAL_ERROR, "RBAC service not found")
 
-        if RequestContext.get_bypass_rbac():
-            print("GatingService: Bypassing rbac gating due to RequestContext setting")
-            return
-
-        # Use the auth service with the auth info to get the role permissions from rbac service
-        # The auth service will get the permissions from the auth store or if they don't exist get them from the rbac service and cache them for next time
-        if not await rbac_service.check_permissions(entity, operation, auth, auth_service):
+        # Use the Authn service with the Authn info to get the role permissions from authz service
+        # The Authn service will get the permissions from the Authn store or if they don't exist get them from the rbac service and cache them for next time
+        if not await rbac_service.check_permissions(entity, operation, authn):
             Notification.error(HTTP.FORBIDDEN, "Unauthorized operation")

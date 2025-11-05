@@ -22,8 +22,8 @@ class Rbac:
     @staticmethod
     async def get(field: str) -> Any:
         """
-        Get authorization field from auth service.
-        Delegates to auth service for session storage.
+        Get authorization field from authn service.
+        Delegates to authn service for session storage.
 
         Args:
             field: Field name to retrieve (e.g., "permissions")
@@ -31,11 +31,11 @@ class Rbac:
         Returns:
             Field value or None if not found
         """
-        auth_service = ServiceManager.get_service_instance("auth")
-        if not auth_service or not ServiceManager.isServiceStarted("authz"):
+        authn_service = ServiceManager.get_service_instance("authn")
+        if not authn_service or not ServiceManager.isServiceStarted("authz"):
             return None
 
-        return await auth_service.get(field)
+        return await authn_service.get(field)
 
     @staticmethod
     async def _load_permissions_from_role(entity: str, settings: {}, roleId: str) -> Optional[Any]:
@@ -63,15 +63,15 @@ class Rbac:
     @staticmethod
     async def get_permissions(session_id: str = "") -> Dict[str, str]:
         """
-        Extract user permissions from the Auth service session.
-        If no session, return read-only access to auth entity (for login).
+        Extract user permissions from the authn service session.
+        If no session, return read-only access to authn entity (for login).
 
         Args:
             session_id: Session ID from cookie
 
         Returns:
             Dict mapping entity names to permission strings (e.g., {"User": "crud", "Account": "r"})
-            For unauthenticated users, returns read access to auth entity only
+            For unauthenticated users, returns read access to authn entity only
             Empty dict if session expired (absolute max exceeded)
         """
         if not session_id:
@@ -82,27 +82,27 @@ class Rbac:
 
         from app.services.services import ServiceManager
 
-        auth_svc = ServiceManager.get_service_instance("auth")
-        if not auth_svc:
-            Notification.error(HTTP.INTERNAL_ERROR, "Auth service not found")
+        authn_svc = ServiceManager.get_service_instance("authn")
+        if not authn_svc:
+            Notification.error(HTTP.INTERNAL_ERROR, "Authn service not found")
 
         _, rbac_entity, rbac_settings = MetadataService.get_service("authz")
         if not rbac_settings:
             Notification.error(HTTP.INTERNAL_ERROR, "Authz service not found")
 
         permissions_field = rbac_settings.get("output")
-        permissions = await auth_svc.get(permissions_field)
+        permissions = await authn_svc.get(permissions_field)
 
         if not permissions:
             # Get session to retrieve roleId
-            auth = await auth_svc.authorized()
-            if auth:
+            authn = await authn_svc.authorized()
+            if authn:
                 roleId_field = rbac_settings.get("input")
-                roleId = auth.get(roleId_field)
+                roleId = authn.get(roleId_field)
                 if roleId:
                     permissions = await Rbac._load_permissions_from_role(rbac_entity, rbac_settings, roleId)
                     if permissions:
-                        await auth_svc.set(permissions_field, permissions)
+                        await authn_svc.set(permissions_field, permissions)
 
         return permissions or {}
 
@@ -130,7 +130,7 @@ class Rbac:
         return False
 
     @staticmethod
-    async def check_permissions(entity: str, operation: str, auth: Dict, auth_service) -> bool:
+    async def check_permissions(entity: str, operation: str, authn: Dict) -> bool:
         """
         Check if user has permission for the given operation on entity.
         Called by GatingService to validate RBAC permissions.
@@ -138,13 +138,13 @@ class Rbac:
         Args:
             entity: Entity name being accessed
             operation: Operation type ('c', 'r', 'u', 'd')
-            auth: Session data from auth service (contains userId, roleId, permissions, etc.)
-            auth_service: Auth service class for accessing cookie store
+            authn: Session data from authn service (contains userId, roleId, permissions, etc.)
+            authn_service: authn service class for accessing cookie store
 
         Returns:
             True if permission granted, False otherwise
         """
-        if not auth:
+        if not authn:
             return False
 
         # Get metadata for RBAC service
@@ -154,21 +154,33 @@ class Rbac:
 
         # Get field names from metadata
         permissions_field = rbac_settings.get("outputs")[0]
-        input_mappings = rbac_settings.get("inputs", {})
 
-        # Try to get cached permissions from auth service
-        permissions = auth.get(permissions_field) or await auth_service.get(permissions_field)
-
-        # If not cached, load from Role entity and cache it
-        if not permissions:
-            roleId_field = list(input_mappings.keys())[0]
-            roleId = auth.get(roleId_field)
-            if roleId:
-                permissions = await Rbac._load_permissions_from_role(rbac_entity, rbac_settings, roleId)
-                if permissions:
-                    await auth_service.set(permissions_field, permissions)
-                else:
-                    return False
+        # Try to get cached permissions from authn service
+        permissions = authn.get(permissions_field) 
 
         # Check permission using existing has_permission logic
         return Rbac.has_permission(permissions, entity, operation)
+
+    @staticmethod
+    async def add_permissions(authn_store: Dict) -> None:
+        """
+        Add permissions to authn store dict for caching.
+        Used by authn service when creating sessions.
+
+        Args:
+            authn_store: Authn store dict to add permissions to (modified in place)
+        """
+        # Load from Role entity and cache it
+        _, rbac_entity, rbac_settings = MetadataService.get_service("authz")
+        if not rbac_settings:
+            return  # Can't add permissions without metadata
+
+        input_mappings = rbac_settings.get("inputs", {})
+        permissions_field = rbac_settings.get("outputs")[0]
+
+        roleId_field = list(input_mappings.keys())[0]
+        roleId = authn_store.get(roleId_field)
+        if roleId:
+            permissions = await Rbac._load_permissions_from_role(rbac_entity, rbac_settings, roleId)
+            if permissions:
+                authn_store[permissions_field] = permissions

@@ -7,8 +7,8 @@ uses deterministic naming to load provider classes from app.services, and dynami
 creates API routes based on @expose_endpoint decorators.
 
 Naming convention:
-  Service name: "auth.cookies.redis"
-  Module: app.services.auth.cookies.redis
+  Service name: "authn.cookies.redis"
+  Module: app.services.authn.cookies.redis
   Class: Scanned for classes with @expose_endpoint decorators
 """
 import importlib
@@ -33,10 +33,10 @@ def get_service_module(service_name: str):
     Load service module (lazy cached).
 
     Args:
-        service_name: Service name like "auth.cookies.redis"
+        service_name: Service name like "authn.cookies.redis"
 
     Returns:
-        Module object (e.g., app.services.auth.cookies.redis)
+        Module object (e.g., app.services.authn.cookies.redis)
     """
     try:
         return _module_cache[service_name]
@@ -73,7 +73,7 @@ class ServiceRouter:
         Scans module for any @expose_endpoint decorated methods - class-agnostic.
 
         Args:
-            service_name: Service name like "auth.cookies.redis"
+            service_name: Service name like "authn.cookies.redis"
             module: Optional pre-loaded module (avoids re-loading)
             app: Optional FastAPI app to register router with
         """
@@ -174,7 +174,7 @@ class ServiceManager:
 
     @staticmethod
     def get_service_instance(service_type: str) -> Any:
-        """Get service instance by type (e.g., 'auth', 'rbac')"""
+        """Get service instance by type (e.g., 'authn', 'rbac')"""
         return ServiceManager._service_instances.get(service_type)
 
     @staticmethod
