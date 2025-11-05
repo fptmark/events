@@ -13,7 +13,7 @@ from app.services import ServiceManager
 from app.core.exceptions import StopWorkError
 from app.routers.router import get_all_dynamic_routers
 from app.routers.admin import router as admin_router
-
+from app.routers.endpoint_handlers import update_response
 
 ENTITIES = [
    "Account",
@@ -308,14 +308,13 @@ app.add_middleware(
 @app.exception_handler(StopWorkError)
 async def stop_work_handler(request: Request, exc: StopWorkError):
     """Handle all stop-work errors with unified response"""
-    from app.routers.endpoint_handlers import update_response
-
+    
     logger.error(f"Stop-work error [{exc.error_type}]: {exc.detail}")
-
+    
     # Notification system already populated by notify.py
     # Use update_response to maintain consistent API structure
     response_data = await update_response(data=None)
-
+    
     return JSONResponse(
         status_code=exc.status_code,
         content=response_data
@@ -324,13 +323,12 @@ async def stop_work_handler(request: Request, exc: StopWorkError):
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Handle HTTP exceptions using consistent response format"""
-    from app.routers.endpoint_handlers import update_response
-
+    
     logger.info(f"HTTP {exc.status_code}: {exc.detail}")
-
+    
     # Use update_response to maintain consistent API structure
     response_data = await update_response(data=None)
-
+    
     return JSONResponse(
         status_code=exc.status_code,
         content=response_data
