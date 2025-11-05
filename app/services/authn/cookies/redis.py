@@ -104,7 +104,7 @@ class Authn:
         await store.connect()
         cls.cookie_store = store
         cls.service_config = config
-        print(f"  Authn service configured for entity: {config.get('entity', 'User')}")
+        print(f"  Authn service configured for entity: {config.get('entity', 'Missing')}")
         return cls
 
     @classmethod
@@ -213,9 +213,18 @@ class Authn:
         # Extract credentials from request body
         credentials = await request.json()
 
-        # Get config values (already validated by @service_config decorator at startup)
-        entity_name = self.service_config.get(decorators.SCHEMA_ENTITY)
-        field_mappings = self.service_config.get(decorators.SCHEMA_INPUTS)
+        # Get entity and field mappings from service config
+        if not self.service_config:
+            print("ERROR: Authn service not configured properly")
+            return {"success": False, "message": "Authn service not configured"}
+
+        # Get config values using constants
+        entity_name = self.service_config.get(decorators.SCHEMA_ENTITY, "")
+        field_mappings = self.service_config.get(decorators.SCHEMA_INPUTS, {})
+
+        if not entity_name:
+            print("ERROR: Authn service config error - entity not specified")
+            return {"success": False, "message": "Authn service entity not specified"}
 
         # Build input query dynamically from decorator schema
         input_query = {}
@@ -236,8 +245,12 @@ class Authn:
         from app.db.factory import DatabaseFactory
         db = DatabaseFactory.get_instance()
 
-        output = ['Id', *self.service_config.get(decorators.SCHEMA_STORE, [])]
-        doc = await db.documents.bypass(entity_name, input_query, output)
+        try:
+            output = ['Id', *self.service_config.get(decorators.SCHEMA_STORE, [])]
+            doc = await db.documents.bypass(entity_name, input_query, output)
+        except Exception as e:
+            print(f"Error during user lookup: {str(e)}")
+            return {"success": False, "message": "Database error"}
 
         if doc is None:
             return {"success": False, "message": "Invalid credentials"}
@@ -246,7 +259,8 @@ class Authn:
         session_id = str(uuid.uuid4())
         current_time = time.time()
         session_data = {
-            **doc,       # Include all returned fields from doc (Id, roleId, etc.)
+            **doc,       # Include all returned fields from doc
+            "login_value": list(input_query.values())[0],  # First value is the username
             "created": current_time,
             "absolute_expiry": current_time + ABSOLUTE_SESSION_MAX  # Force re-login after absolute max
         }

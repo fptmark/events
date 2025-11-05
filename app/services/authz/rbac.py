@@ -26,24 +26,6 @@ class Rbac:
         return cls
 
     @staticmethod
-    async def get(field: str) -> Any:
-        """
-        Get authorization field from authn service.
-        Delegates to authn service for session storage.
-
-        Args:
-            field: Field name to retrieve (e.g., "permissions")
-
-        Returns:
-            Field value or None if not found
-        """
-        authn_service = ServiceManager.get_service_instance("authn")
-        if not authn_service or not ServiceManager.isServiceStarted("authz"):
-            return None
-
-        return await authn_service.get(field)
-
-    @staticmethod
     async def _load_permissions_from_role(entity: str, settings: {}, roleId: str) -> Optional[Any]:
         """
         Load permissions from Role entity by roleId.
@@ -119,41 +101,9 @@ class Rbac:
         # Check entity-specific permission first
         for perm_entity, perm_ops in permissions.items():
             if perm_entity.lower() == entity.lower() or perm_entity == "*":
-                return operation in perm_ops    
+                return operation in perm_ops
 
         return False
-
-    @staticmethod
-    async def check_permissions(entity: str, operation: str, authn: Dict) -> bool:
-        """
-        Check if user has permission for the given operation on entity.
-        Called by GatingService to validate RBAC permissions.
-
-        Args:
-            entity: Entity name being accessed
-            operation: Operation type ('c', 'r', 'u', 'd')
-            authn: Session data from authn service (contains userId, roleId, permissions, etc.)
-            authn_service: authn service class for accessing cookie store
-
-        Returns:
-            True if permission granted, False otherwise
-        """
-        if not authn:
-            return False
-
-        # Get metadata for RBAC service
-        _, rbac_entity, rbac_settings = MetadataService.get_service("authz")
-        if not rbac_settings:
-            return False
-
-        # Get field names from metadata
-        permissions_field = rbac_settings.get(decorators.SCHEMA_OUTPUTS)[0]
-
-        # Try to get cached permissions from authn service
-        permissions = authn.get(permissions_field) 
-
-        # Check permission using existing has_permission logic
-        return Rbac.has_permission(permissions, entity, operation)
 
     @staticmethod
     async def add_permissions(authn_store: Dict) -> None:

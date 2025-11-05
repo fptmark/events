@@ -12,6 +12,7 @@ from app.core.metadata import MetadataService
 from app.core.request_context import RequestContext
 from app.core.notify import Notification, HTTP
 from app.services.services import ServiceManager
+from app.services.authz.rbac import Rbac
 
 
 class GatingService:
@@ -28,6 +29,8 @@ class GatingService:
 
         Raises:
             StopWorkError: If access is denied (via Notification system)
+
+        Note: Permissions are enriched into the authn session at login by the authz service.
         """
         if not ServiceManager.isServiceStarted("authn"):
             # Phase 1: No authn service = no gating
@@ -36,7 +39,7 @@ class GatingService:
         # Get the authn service class instance
         authn_service = ServiceManager.get_service_instance("authn")
         if not authn_service:
-            Notification.error(HTTP.INTERNAL_ERROR, "Authn service not found")
+            Notification.error(HTTP.INTERNAL_ERROR, "Authentication service internal error")
 
         # Check if the session is valid
         authn = await authn_service.authorized()
@@ -44,15 +47,16 @@ class GatingService:
             Notification.error(HTTP.UNAUTHORIZED, "Authentication required")
 
         if not ServiceManager.isServiceStarted("authz"):
-            # Phase 2: authn service exists - validate session only
+            # Phase 2: authz service not started - validate session only
             return
 
-        # Get the rbac service class instance
-        rbac_service = ServiceManager.get_service_instance("authz")
-        if not rbac_service:
-            Notification.error(HTTP.INTERNAL_ERROR, "RBAC service not found")
+        # Phase 3: authz enabled - check permissions
+        # Permissions are already in authn object (enriched at login)
+        permissions = authn.get('permissions', None)
+        if permissions is None:
+            Notification.error(HTTP.INTERNAL_ERROR, "Permissions missing from authn data")
 
-        # Use the Authn service with the Authn info to get the role permissions from authz service
-        # The Authn service will get the permissions from the Authn store or if they don't exist get them from the rbac service and cache them for next time
-        if not await rbac_service.check_permissions(entity, operation, authn):
+        # Check permission
+        if not Rbac.has_permission(permissions, entity, operation):
             Notification.error(HTTP.FORBIDDEN, "Unauthorized operation")
+    
