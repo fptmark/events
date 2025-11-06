@@ -64,9 +64,15 @@ def parse_request_context(handler: Callable) -> Callable:
             lowercase_path = str(request.url.path).lower()
             RequestContext.parse_request(lowercase_path, lowercase_params)
 
-            # Extract session ID from cookies for RBAC
+            # Extract and fetch full session from cookies (single Redis fetch per request)
             session_id = request.cookies.get('sessionId')
-            RequestContext.set_session_id(session_id)
+            if session_id:
+                RequestContext.set_session_id(session_id)
+                # Fetch and cache full session in RC for gating/update_response
+                from app.services.services import ServiceManager
+                authn_svc = ServiceManager.get_service_instance("authn")
+                if authn_svc:
+                    await authn_svc.authorized()  # Fetches from Redis, caches in RC
 
         return await handler(*args, **kwargs)
     return wrapper
@@ -148,13 +154,10 @@ async def update_response(data: Any, records: Optional[int] = None) -> Dict[str,
     # warnings = notifications.get('warnings', {})
     result["status"] = notification_response.get('status', "missing")
 
-    # Add user permissions to response for UI consumption
-    from app.services.services import ServiceManager
-    from app.core.metadata import MetadataService
-
-    authz_service = ServiceManager.get_service_instance("authz")
-    permissions = await authz_service.get_permissions() or {}
-
-    result["permissions"] = permissions
+    # Add user permissions to response (from session cached in RequestContext)
+    # Only include permissions key if they exist
+    session = RequestContext.get_session()
+    if session and session.get("permissions"):
+        result["permissions"] = session["permissions"]
 
     return result

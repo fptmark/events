@@ -8,7 +8,7 @@ from fastapi import Request, Response
 from pydantic import BaseModel
 from app.services.framework import decorators
 from app.core.metadata import MetadataService
-from app.core.notify import Notification
+from app.core.notify import Notification, HTTP
 from app.services.services import ServiceManager
 
 # Request/Response models
@@ -215,6 +215,9 @@ class Authn:
         Returns:
             dict with success status and message
         """
+        # Initialize notification system (same as CRUD endpoints)
+        Notification.start()
+
         # Extract credentials from request body
         credentials = await request.json()
 
@@ -305,6 +308,9 @@ class Authn:
 
     @decorators.expose_endpoint(method="POST", route="/logout", summary="Logout")
     async def logout(self, request: Request, response: Response) -> Dict[str, any]:
+        # Initialize notification system (same as CRUD endpoints)
+        Notification.start()
+
         # Set up RequestContext with session from cookie
         from app.core.request_context import RequestContext
         from app.routers.endpoint_handlers import update_response
@@ -324,6 +330,9 @@ class Authn:
 
     @decorators.expose_endpoint(method="POST", route="/refresh", summary="Refresh session")
     async def refresh(self, request: Request, response: Response) -> Dict[str, any]:
+        # Initialize notification system (same as CRUD endpoints)
+        Notification.start()
+
         # Set up RequestContext with session from cookie
         from app.core.request_context import RequestContext
         from app.routers.endpoint_handlers import update_response
