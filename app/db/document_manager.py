@@ -96,7 +96,8 @@ class DocumentManager(ABC):
         try:
             id = filter.get('id') or filter.get('Id') if filter else None
             if id:
-                doc, count = await self._get_impl(entity, str(filter[id]))
+                doc, count = await self._get_impl(entity, str(id))
+                docs = [doc]
             else:
                 docs, count = await self._get_all_impl(entity, sort, filter, page, pageSize, substring_match)
 
