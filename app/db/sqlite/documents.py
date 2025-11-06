@@ -12,6 +12,7 @@ from ..document_manager import DocumentManager
 from ..core_manager import CoreManager
 from app.core.exceptions import DocumentNotFound, DatabaseError, DuplicateConstraintError
 from app.core.metadata import MetadataService
+from app.core.config import Config
 
 
 class SqliteDocuments(DocumentManager):
@@ -247,12 +248,28 @@ class SqliteDocuments(DocumentManager):
                     has_enum_values = enum_values is not None
 
                     if field_type == 'String' and not has_enum_values:
+                        # Handle all 4 combinations of case_sensitive and substring_match
+                        case_sensitive = Config.get("case_sensitive", False)
+
                         if substring_match:
-                            where_parts.append(f'"{proper_field}" LIKE ? COLLATE NOCASE')
-                            params.append(f"%{value}%")
+                            # Substring matching: partial match with LIKE
+                            if case_sensitive:
+                                # SQLite LIKE is case-insensitive by default, use GLOB for case-sensitive
+                                where_parts.append(f'"{proper_field}" GLOB ?')
+                                params.append(f"*{value}*")
+                            else:
+                                where_parts.append(f'"{proper_field}" LIKE ? COLLATE NOCASE')
+                                params.append(f"%{value}%")
                         else:
-                            where_parts.append(f'"{proper_field}" = ? COLLATE NOCASE')
-                            params.append(value)
+                            # Exact matching: anchored comparison for case control
+                            if case_sensitive:
+                                # Case-sensitive exact: simple equality
+                                where_parts.append(f'"{proper_field}" = ?')
+                                params.append(value)
+                            else:
+                                # Case-insensitive exact: use COLLATE NOCASE
+                                where_parts.append(f'"{proper_field}" = ? COLLATE NOCASE')
+                                params.append(value)
                     else:
                         # Exact match for enums, numbers, booleans, dates
                         # Convert date/datetime values for filters
@@ -400,7 +417,6 @@ class SqliteDocuments(DocumentManager):
             # Unknown integrity error
             raise DatabaseError(f"SQLite integrity error: {error_msg}")
         except Exception as e:
-            print(f"Database error during update: {str(e)}")
             raise DatabaseError(f"Database error during update: {str(e)}")
 
     async def _delete_impl(self, entity: str, id: str) -> Tuple[Dict[str, Any], int]:

@@ -159,7 +159,7 @@ class ElasticsearchDocuments(DocumentManager):
             # Delete with optional refresh for consistency
             # This ensures deleted documents are immediately removed from search results,
             # preventing false duplicate errors when re-creating with same unique values
-            refresh_mode = 'wait_for' if (Config.elasticsearch_strict_consistency() and not RequestContext.no_consistency) else False
+            refresh_mode = 'wait_for' if (Config.elasticsearch_strict_consistency() and not RequestContext.get_no_consistency()) else False
             delete_response = await es.delete(index=index, id=id, refresh=refresh_mode)
             if delete_response.get("result") == "deleted":
                 return doc, 1
@@ -189,7 +189,7 @@ class ElasticsearchDocuments(DocumentManager):
         # Can be disabled via:
         #   1. elasticsearch_strict_consistency=false config (global)
         #   2. ?no_consistency=true query param (per-request, for bulk loads)
-        refresh_mode = 'wait_for' if (Config.elasticsearch_strict_consistency() and not RequestContext.no_consistency) else False
+        refresh_mode = 'wait_for' if (Config.elasticsearch_strict_consistency() and not RequestContext.get_no_consistency()) else False
         await es.index(index=index, id=id, body=data, refresh=refresh_mode)
 
         # Return with 'id' for API response
@@ -226,14 +226,26 @@ class ElasticsearchDocuments(DocumentManager):
                 has_enum_values = 'enum' in field_meta
 
                 if field_type == 'String' and not has_enum_values:
+                    # Handle all 4 combinations of case_sensitive and substring_match
+                    case_sensitive = Config.get("case_sensitive", False)
+
                     if substring_match:
                         # Substring matching: wildcard match (anywhere in string)
-                        # Lowercase value since fields use lc normalizer
-                        value_lower = str(value).lower()
-                        must_clauses.append({"wildcard": {field: f"*{value_lower}*"}})
+                        if case_sensitive:
+                            # Case-sensitive: use value as-is
+                            must_clauses.append({"wildcard": {field: f"*{str(value)}*"}})
+                        else:
+                            # Case-insensitive: lowercase value (fields use lowercase normalizer)
+                            value_lower = str(value).lower()
+                            must_clauses.append({"wildcard": {field: f"*{value_lower}*"}})
                     else:
-                        # Full string matching
-                        must_clauses.append({"term": {field: value}})
+                        # Exact matching: anchored comparison for case control
+                        if case_sensitive:
+                            # Case-sensitive exact: use match query with keyword
+                            must_clauses.append({"term": {field: value}})
+                        else:
+                            # Case-insensitive exact: use term with lowercase
+                            must_clauses.append({"term": {field: str(value).lower()}})
                 else:
                     # Enum fields and non-strings: always exact match
                     must_clauses.append({"term": {field: value}})

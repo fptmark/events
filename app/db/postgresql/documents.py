@@ -10,6 +10,7 @@ from ..document_manager import DocumentManager
 from ..core_manager import CoreManager
 from app.core.exceptions import DocumentNotFound, DatabaseError, DuplicateConstraintError
 from app.core.metadata import MetadataService
+from app.core.config import Config
 
 
 class PostgreSQLDocuments(DocumentManager):
@@ -226,12 +227,26 @@ class PostgreSQLDocuments(DocumentManager):
                         has_enum_values = enum_values is not None
 
                         if field_type == 'String' and not has_enum_values:
+                            # Handle all 4 combinations of case_sensitive and substring_match
+                            case_sensitive = Config.get("case_sensitive", False)
+
                             if substring_match:
-                                where_parts.append(f'"{proper_field}" ILIKE ${param_idx}')
+                                # Substring matching: partial match with ILIKE/LIKE
+                                if case_sensitive:
+                                    where_parts.append(f'"{proper_field}" LIKE ${param_idx}')
+                                else:
+                                    where_parts.append(f'"{proper_field}" ILIKE ${param_idx}')
                                 params.append(f"%{value}%")
                             else:
-                                where_parts.append(f'"{proper_field}" ILIKE ${param_idx}')
-                                params.append(value)
+                                # Exact matching: anchored comparison for case control
+                                if case_sensitive:
+                                    # Case-sensitive exact: simple equality is faster
+                                    where_parts.append(f'"{proper_field}" = ${param_idx}')
+                                    params.append(value)
+                                else:
+                                    # Case-insensitive exact: use ILIKE without wildcards
+                                    where_parts.append(f'"{proper_field}" ILIKE ${param_idx}')
+                                    params.append(value)
                         else:
                             # Exact match for enums, numbers, booleans, dates
                             # Convert date/datetime values for filters
