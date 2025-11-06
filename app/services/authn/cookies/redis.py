@@ -278,11 +278,16 @@ class Authn:
         if authz_service:
             roleId = session_data.get('roleId')
             if roleId:
-                permissions = await authz_service.permissions(roleId)
-                if permissions:
-                    session_data['permissions'] = permissions
-                else:
-                    Notification.error(HTTP.UNAUTHORIZED, "No permissions defined for role")
+                try:
+                    permissions = await authz_service.permissions(roleId)
+                    if permissions:
+                        session_data['permissions'] = permissions
+                    else:
+                        Notification.error(HTTP.UNAUTHORIZED, "No permissions defined for role")
+                except Exception as e:
+                    # Role not found or other error - log but allow login to proceed without permissions
+                    print(f"Warning: Could not fetch permissions for role {roleId}: {e}")
+                    # Continue without permissions (user will have no access)
 
         await self.cookie_store.set_session(session_id, session_data, SESSION_TTL)
 
