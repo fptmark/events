@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from app.services.framework import decorators
 from app.core.metadata import MetadataService
 from app.core.notify import Notification
+from app.services.services import ServiceManager
 
 # Request/Response models
 class AuthResponse(BaseModel):
@@ -75,7 +76,7 @@ class RedisCookieStore:
 @decorators.service_config(
     entity=True,
     inputs={"login": str, "password": str},
-    store=["roleId"]
+    outputs=["roleId"]
 )
 class Authn:
     # Default cookie configuration; can be overridden via config.
@@ -144,6 +145,10 @@ class Authn:
         if remaining_ttl > 0 and remaining_ttl < NEAR_EXPIRY_THRESHOLD:
             # TTL is getting low - renew the sliding window
             await cls.cookie_store.renew_session(session_id, session, SESSION_TTL)
+
+        # Add session_id to session dict and cache in RequestContext
+        session['_session_id'] = session_id
+        RequestContext.set_session(session)
 
         return session
 
@@ -246,7 +251,7 @@ class Authn:
         db = DatabaseFactory.get_instance()
 
         try:
-            output = ['Id', *self.service_config.get(decorators.SCHEMA_STORE, [])]
+            output = ['Id', *self.service_config.get(decorators.SCHEMA_OUTPUTS, [])]
             doc = await db.documents.bypass(entity_name, input_query, output)
         except Exception as e:
             print(f"Error during user lookup: {str(e)}")
@@ -260,17 +265,21 @@ class Authn:
         current_time = time.time()
         session_data = {
             **doc,       # Include all returned fields from doc
-            "login_value": list(input_query.values())[0],  # First value is the username
+            "login_value": list(input_query.values())[0],  # First credential value
             "created": current_time,
             "absolute_expiry": current_time + ABSOLUTE_SESSION_MAX  # Force re-login after absolute max
         }
 
-        # Ask authz service to enrich session with permissions (if running)
-        from app.services.services import ServiceManager
-        if ServiceManager.isServiceStarted("authz"):
-            authz_service = ServiceManager.get_service_instance("authz")
-            if authz_service:
-                await authz_service.add_permissions(session_data)
+        # Get permissions from authz service if running
+        authz_service = ServiceManager.get_service_instance("authz")
+        if authz_service:
+            roleId = session_data.get('roleId')
+            if roleId:
+                permissions = await authz_service.permissions(roleId)
+                if permissions:
+                    session_data['permissions'] = permissions
+                else:
+                    Notification.error(HTTP.UNAUTHORIZED, "No permissions defined for role")
 
         await self.cookie_store.set_session(session_id, session_data, SESSION_TTL)
 
@@ -281,12 +290,25 @@ class Authn:
             **self.cookie_options
         )
 
-        return {"success": True, "message": "Login successful"}
+        # Cache session in RequestContext for update_response (same as models do)
+        from app.core.request_context import RequestContext
+        session_data['_session_id'] = session_id
+        RequestContext.set_session(session_data)
+
+        # Return data through update_response (same pattern as model endpoints)
+        from app.routers.endpoint_handlers import update_response
+        login_data = {
+            "sessionId": session_id,
+            "login": session_data.get("login_value")
+        }
+        return await update_response(login_data)
 
     @decorators.expose_endpoint(method="POST", route="/logout", summary="Logout")
     async def logout(self, request: Request, response: Response) -> Dict[str, any]:
         # Set up RequestContext with session from cookie
         from app.core.request_context import RequestContext
+        from app.routers.endpoint_handlers import update_response
+
         session_id = request.cookies.get(self.cookie_name)
         RequestContext.set_session_id(session_id)
 
@@ -294,13 +316,18 @@ class Authn:
             await self.cookie_store.delete_session(session_id)
             # Delete cookie from response
             response.delete_cookie(key=self.cookie_name)
-            return {"success": True, "message": "Logout successful"}
-        return {"success": False, "message": "No active session"}
+            # Return through update_response (no session, so no permissions)
+            return await update_response({"logout": "successful"})
+
+        # No session - return error via Notification
+        Notification.error(HTTP.UNAUTHORIZED, "No active session")
 
     @decorators.expose_endpoint(method="POST", route="/refresh", summary="Refresh session")
     async def refresh(self, request: Request, response: Response) -> Dict[str, any]:
         # Set up RequestContext with session from cookie
         from app.core.request_context import RequestContext
+        from app.routers.endpoint_handlers import update_response
+
         session_id = request.cookies.get(self.cookie_name)
         RequestContext.set_session_id(session_id)
 
@@ -308,5 +335,11 @@ class Authn:
             session = await self.cookie_store.get_session(session_id)
             if session:
                 await self.cookie_store.renew_session(session_id, session, SESSION_TTL)
-                return {"success": True, "message": "Session refreshed"}
-        return {"success": False, "message": "No active session"}
+                # Cache session in RC for update_response to access permissions
+                session['_session_id'] = session_id
+                RequestContext.set_session(session)
+                # Return through update_response (includes permissions from session)
+                return await update_response({"refresh": "successful"})
+
+        # No session - return error via Notification
+        Notification.error(HTTP.UNAUTHORIZED, "No active session")

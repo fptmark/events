@@ -27,7 +27,7 @@ _pageSize: ContextVar[int] = ContextVar('pageSize', default=25)
 _view_spec: ContextVar[Dict[str, Any]] = ContextVar('view_spec', default={})
 _substring_match: ContextVar[bool] = ContextVar('substring_match', default=True)
 _no_consistency: ContextVar[bool] = ContextVar('no_consistency', default=False)
-_session_id: ContextVar[Optional[str]] = ContextVar('session_id', default=None)
+_session: ContextVar[Optional[Dict[str, Any]]] = ContextVar('session', default=None)
 
 
 class RequestContext:
@@ -79,13 +79,27 @@ class RequestContext:
 
     @staticmethod
     def get_session_id() -> Optional[str]:
-        """Get session ID from request context"""
-        return _session_id.get()
+        """Get session ID from session dict in request context"""
+        session = _session.get()
+        return session.get("_session_id") if session else None
 
     @staticmethod
     def set_session_id(session_id: Optional[str]) -> None:
-        """Set session ID in request context"""
-        _session_id.set(session_id)
+        """Set session ID in request context (stores minimal session dict with just ID)"""
+        if session_id:
+            _session.set({"_session_id": session_id})
+        else:
+            _session.set(None)
+
+    @staticmethod
+    def get_session() -> Optional[Dict[str, Any]]:
+        """Get session data from request context (cached from Redis)"""
+        return _session.get()
+
+    @staticmethod
+    def set_session(session: Optional[Dict[str, Any]]) -> None:
+        """Set session data in request context (cache from Redis)"""
+        _session.set(session)
 
     @staticmethod
     def parse_request(path: str, query_params: Dict[str, str]) -> None:
@@ -121,7 +135,7 @@ class RequestContext:
         _view_spec.set({})
         _substring_match.set(True)
         _no_consistency.set(False)
-        _session_id.set(None)
+        _session.set(None)
 
     
     @staticmethod
@@ -245,6 +259,7 @@ class RequestContext:
     @staticmethod
     def to_dict() -> Dict[str, Any]:
         """Convert RequestContext to dictionary for serialization/debugging."""
+        session = _session.get()
         return {
             'entity': _entity.get(),
             'entity_id': _entity_id.get(),
@@ -255,7 +270,7 @@ class RequestContext:
             'pageSize': _pageSize.get(),
             'view_spec': _view_spec.get(),
             'has_metadata': bool(_entity_metadata.get()),
-            'session_id': _session_id.get()
+            'session_id': session.get('_session_id') if session else None
         }
 
     @staticmethod
