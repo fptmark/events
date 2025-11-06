@@ -5,32 +5,20 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"validate/pkg/types"
 )
 
-// RoleData defines a role to be bootstrapped
-type RoleData struct {
-	ID          string
-	Role        string
-	Permissions string
-}
-
-// AuthData defines an auth record to be bootstrapped
-type AuthData struct {
-	ID       string
-	Name     string
-	Password string
-	RoleID   string
-}
-
 // Bootstrap data - parameterized for easy expansion
-var roles = []RoleData{
+// Uses entity types from types package as single source of truth
+var roles = []types.Role{
 	{ID: "role_test", Role: "TestRole", Permissions: `{"*": "cruds"}`},
 	{ID: "role_admin", Role: "Admin", Permissions: `{"*": "cruds"}`},
 	{ID: "role_mgr", Role: "Manager", Permissions: `{"*": "cru"}`},
 	{ID: "role_rep", Role: "Representative", Permissions: `{"*": "ru"}`},
 }
 
-var auths = []AuthData{
+var auths = []types.Auth{
 	{ID: "auth_test", Name: "test_auth", Password: "12345678", RoleID: "role_test"},
 	{ID: "auth_admin", Name: "Admin", Password: "12345678", RoleID: "role_admin"},
 	{ID: "auth_mgr", Name: "Mgr", Password: "12345678", RoleID: "role_mgr"},
@@ -87,17 +75,21 @@ func bootstrapAuthMongoDB() error {
 
 func bootstrapAuthPostgreSQL() error {
 	// Upsert Role records (replace if exists, insert if not)
+	// Note: Role table only has: id, role, permissions (no timestamps)
 	for _, role := range roles {
-		roleCmd := fmt.Sprintf(`psql -d %s -c "INSERT INTO Role (id, role, permissions, \"createdAt\", \"updatedAt\") VALUES ('%s', '%s', '%s', NOW(), NOW()) ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, permissions = EXCLUDED.permissions, \"updatedAt\" = NOW()"`,
-			DatabaseName, role.ID, role.Role, role.Permissions)
+		// Escape double quotes in permissions JSON for shell command
+		escapedPermissions := strings.ReplaceAll(role.Permissions, `"`, `\"`)
+		roleCmd := fmt.Sprintf(`psql -d %s -c "INSERT INTO \"Role\" (id, role, permissions) VALUES ('%s', '%s', '%s') ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, permissions = EXCLUDED.permissions"`,
+			DatabaseName, role.ID, role.Role, escapedPermissions)
 		if err := executeSystemCommand(roleCmd); err != nil {
 			return fmt.Errorf("failed to upsert Role %s in PostgreSQL: %w", role.ID, err)
 		}
 	}
 
 	// Upsert Auth records (replace if exists, insert if not)
+	// Note: Auth table only has: id, name, password, roleId (no timestamps)
 	for _, auth := range auths {
-		authCmd := fmt.Sprintf(`psql -d %s -c "INSERT INTO Auth (id, name, password, \"roleId\", \"createdAt\", \"updatedAt\") VALUES ('%s', '%s', '%s', '%s', NOW(), NOW()) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, password = EXCLUDED.password, \"roleId\" = EXCLUDED.\"roleId\", \"updatedAt\" = NOW()"`,
+		authCmd := fmt.Sprintf(`psql -d %s -c "INSERT INTO \"Auth\" (id, name, password, \"roleId\") VALUES ('%s', '%s', '%s', '%s') ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, password = EXCLUDED.password, \"roleId\" = EXCLUDED.\"roleId\""`,
 			DatabaseName, auth.ID, auth.Name, auth.Password, auth.RoleID)
 		if err := executeSystemCommand(authCmd); err != nil {
 			return fmt.Errorf("failed to upsert Auth %s in PostgreSQL: %w", auth.ID, err)
@@ -114,17 +106,21 @@ func bootstrapAuthSQLite() error {
 	dbFile := fmt.Sprintf("%s.db", DatabaseName)
 
 	// Upsert Role records (replace if exists, insert if not)
+	// Note: Role table only has: id, role, permissions (no timestamps)
 	for _, role := range roles {
-		roleCmd := fmt.Sprintf(`sqlite3 %s "REPLACE INTO Role (id, role, permissions, createdAt, updatedAt) VALUES ('%s', '%s', '%s', datetime('now'), datetime('now'))"`,
-			dbFile, role.ID, role.Role, role.Permissions)
+		// Escape double quotes in permissions JSON for shell command
+		escapedPermissions := strings.ReplaceAll(role.Permissions, `"`, `\"`)
+		roleCmd := fmt.Sprintf(`sqlite3 %s "REPLACE INTO Role (id, role, permissions) VALUES ('%s', '%s', '%s')"`,
+			dbFile, role.ID, role.Role, escapedPermissions)
 		if err := executeSystemCommand(roleCmd); err != nil {
 			return fmt.Errorf("failed to upsert Role %s in SQLite: %w", role.ID, err)
 		}
 	}
 
 	// Upsert Auth records (replace if exists, insert if not)
+	// Note: Auth table only has: id, name, password, roleId (no timestamps)
 	for _, auth := range auths {
-		authCmd := fmt.Sprintf(`sqlite3 %s "REPLACE INTO Auth (id, name, password, roleId, createdAt, updatedAt) VALUES ('%s', '%s', '%s', '%s', datetime('now'), datetime('now'))"`,
+		authCmd := fmt.Sprintf(`sqlite3 %s "REPLACE INTO Auth (id, name, password, roleId) VALUES ('%s', '%s', '%s', '%s')"`,
 			dbFile, auth.ID, auth.Name, auth.Password, auth.RoleID)
 		if err := executeSystemCommand(authCmd); err != nil {
 			return fmt.Errorf("failed to upsert Auth %s in SQLite: %w", auth.ID, err)
@@ -141,17 +137,21 @@ func bootstrapAuthElasticsearch() error {
 	timestamp := getCurrentTimestamp()
 
 	// Upsert Role documents (PUT replaces if exists, creates if not)
+	// Use refresh=wait_for to ensure documents are searchable immediately
 	for _, role := range roles {
-		roleCmd := fmt.Sprintf(`curl -s -X PUT "localhost:9200/role/_doc/%s" -H 'Content-Type: application/json' -d'{"id":"%s","role":"%s","permissions":"%s","createdAt":"%s","updatedAt":"%s"}'`,
-			role.ID, role.ID, role.Role, role.Permissions, timestamp, timestamp)
+		// Escape double quotes in permissions JSON for curl -d'...' syntax
+		escapedPermissions := strings.ReplaceAll(role.Permissions, `"`, `\"`)
+		roleCmd := fmt.Sprintf(`curl -s -X PUT "localhost:9200/role/_doc/%s?refresh=wait_for" -H 'Content-Type: application/json' -d'{"id":"%s","role":"%s","permissions":"%s","createdAt":"%s","updatedAt":"%s"}'`,
+			role.ID, role.ID, role.Role, escapedPermissions, timestamp, timestamp)
 		if err := executeSystemCommand(roleCmd); err != nil {
 			return fmt.Errorf("failed to upsert Role %s in Elasticsearch: %w", role.ID, err)
 		}
 	}
 
 	// Upsert Auth documents (PUT replaces if exists, creates if not)
+	// Use refresh=wait_for to ensure documents are searchable immediately
 	for _, auth := range auths {
-		authCmd := fmt.Sprintf(`curl -s -X PUT "localhost:9200/auth/_doc/%s" -H 'Content-Type: application/json' -d'{"id":"%s","name":"%s","password":"%s","roleId":"%s","createdAt":"%s","updatedAt":"%s"}'`,
+		authCmd := fmt.Sprintf(`curl -s -X PUT "localhost:9200/auth/_doc/%s?refresh=wait_for" -H 'Content-Type: application/json' -d'{"id":"%s","name":"%s","password":"%s","roleId":"%s","createdAt":"%s","updatedAt":"%s"}'`,
 			auth.ID, auth.ID, auth.Name, auth.Password, auth.RoleID, timestamp, timestamp)
 		if err := executeSystemCommand(authCmd); err != nil {
 			return fmt.Errorf("failed to upsert Auth %s in Elasticsearch: %w", auth.ID, err)

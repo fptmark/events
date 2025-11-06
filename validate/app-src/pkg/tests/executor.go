@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -76,14 +74,14 @@ func (e *HTTPExecutor) executeTestCase(testCase *types.TestCase) (*types.TestRes
 		return nil, err
 	}
 
-	// Reshape response to TestResult format
-	result, err := reshapeToTestResult(resp, responseBody, testCase.URL)
+	// Parse response to TestResult format
+	result, err := parseHTTPResponse(resp, responseBody, testCase.URL)
 	if err != nil {
 		return nil, err
 	}
 
 	// Parse URL parameters from the full URL
-	params, err := parseTestURL(fullURL)
+	params, err := ParseTestURL(fullURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse URL parameters: %w", err)
 	}
@@ -92,187 +90,8 @@ func (e *HTTPExecutor) executeTestCase(testCase *types.TestCase) (*types.TestRes
 	return result, nil
 }
 
-// parseTestURL extracts test parameters from a URL string (simplified version)
-func parseTestURL(urlStr string) (*types.TestParams, error) {
-	u, err := url.Parse(urlStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid URL: %w", err)
-	}
-
-	params := &types.TestParams{
-		Sort:        []types.SortField{},
-		Filter:      make(map[string][]types.FilterValue),
-		FilterMatch: "substring", // default to substring matching
-		View:        make(map[string][]string),
-		Page:        1,
-		PageSize:    25,
-	}
-
-	query := u.Query()
-
-	// For duplicate parameters, last value wins
-	for key, values := range query {
-		lastValue := values[len(values)-1]
-
-		switch strings.ToLower(key) {
-		case "page":
-			if page, err := strconv.Atoi(lastValue); err == nil {
-				params.Page = page
-			}
-		case "pagesize":
-			if pageSize, err := strconv.Atoi(lastValue); err == nil {
-				params.PageSize = pageSize
-			}
-		case "sort":
-			params.Sort = parseSortParam(lastValue)
-		case "filter":
-			params.Filter = parseFilterParam(lastValue)
-		case "filter_match":
-			if lastValue == "" || lastValue == "substring" || lastValue == "full" {
-				if lastValue == "" {
-					params.FilterMatch = "substring"
-				} else {
-					params.FilterMatch = lastValue
-				}
-			}
-		case "view":
-			params.View = parseViewParam(lastValue)
-		}
-	}
-
-	return params, nil
-}
-
-// parseSortParam parses sort parameter like "firstName:desc,lastName:asc"
-func parseSortParam(sortStr string) []types.SortField {
-	var sortFields []types.SortField
-
-	for _, fieldSpec := range strings.Split(sortStr, ",") {
-		fieldSpec = strings.TrimSpace(fieldSpec)
-		if fieldSpec == "" {
-			continue
-		}
-
-		// Check for field:direction format
-		parts := strings.Split(fieldSpec, ":")
-		field := strings.TrimSpace(parts[0])
-		direction := "asc" // default
-
-		if len(parts) > 1 {
-			dir := strings.ToLower(strings.TrimSpace(parts[1]))
-			if dir == "desc" || dir == "asc" {
-				direction = dir
-			}
-		}
-
-		if field != "" {
-			sortFields = append(sortFields, types.SortField{
-				Field:     field,
-				Direction: direction,
-			})
-		}
-	}
-
-	return sortFields
-}
-
-// parseFilterParam parses filter parameter like "lastName:Smith,age:gte:21"
-func parseFilterParam(filterStr string) map[string][]types.FilterValue {
-	filters := make(map[string][]types.FilterValue)
-
-	for _, filterPart := range strings.Split(filterStr, ",") {
-		filterPart = strings.TrimSpace(filterPart)
-		if filterPart == "" {
-			continue
-		}
-
-		// Split by colon - minimum 2 parts (field:value)
-		parts := strings.SplitN(filterPart, ":", 3)
-		if len(parts) < 2 {
-			continue
-		}
-
-		field := strings.TrimSpace(parts[0])
-		if field == "" {
-			continue
-		}
-
-		var operator string
-		var value string
-
-		if len(parts) == 2 {
-			// Simple format: field:value
-			operator = "eq"
-			value = strings.TrimSpace(parts[1])
-		} else {
-			// Extended format: field:operator:value
-			operator = strings.ToLower(strings.TrimSpace(parts[1]))
-			value = strings.TrimSpace(parts[2])
-		}
-
-		// Convert value to appropriate type
-		var typedValue interface{} = value
-		if intVal, err := strconv.Atoi(value); err == nil {
-			typedValue = intVal
-		} else if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
-			typedValue = floatVal
-		} else if boolVal, err := strconv.ParseBool(value); err == nil {
-			typedValue = boolVal
-		}
-
-		filters[field] = append(filters[field], types.FilterValue{
-			Operator: operator,
-			Value:    typedValue,
-		})
-	}
-
-	return filters
-}
-
-// parseViewParam parses view parameter like "account(id,name),profile(firstName,lastName)"
-func parseViewParam(viewStr string) map[string][]string {
-	viewSpec := make(map[string][]string)
-
-	// Find all entity(field1,field2) patterns
-	parts := strings.Split(viewStr, ")")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-
-		// Find the opening parenthesis
-		parenIndex := strings.Index(part, "(")
-		if parenIndex == -1 {
-			continue
-		}
-
-		entity := strings.TrimSpace(part[:parenIndex])
-		fieldsStr := strings.TrimSpace(part[parenIndex+1:])
-
-		if entity == "" || fieldsStr == "" {
-			continue
-		}
-
-		// Parse fields
-		var fields []string
-		for _, field := range strings.Split(fieldsStr, ",") {
-			field = strings.TrimSpace(field)
-			if field != "" {
-				fields = append(fields, field)
-			}
-		}
-
-		if len(fields) > 0 {
-			viewSpec[entity] = fields
-		}
-	}
-
-	return viewSpec
-}
-
-// reshapeToTestResult converts raw HTTP response to TestResult format
-func reshapeToTestResult(resp *http.Response, responseBody []byte, url string) (*types.TestResult, error) {
+// parseHTTPResponse converts raw HTTP response to TestResult format
+func parseHTTPResponse(resp *http.Response, responseBody []byte, url string) (*types.TestResult, error) {
 	// Parse the response body as JSON
 	var responseData interface{}
 	if err := json.Unmarshal(responseBody, &responseData); err != nil {
@@ -331,34 +150,23 @@ func ExecuteTests(testNumbers []int) ([]*types.TestResult, error) {
 		}
 	}
 
-	// Check if database is Elasticsearch to determine if pause is needed
-	// dbType := core.GetDatabaseType()
-	// usePause := (dbType == "elasticsearch") && (core.PauseMs > 0)
-
 	results := make([]*types.TestResult, len(testNumbers))
 
 	lastUpdate := time.Now()
 	showing_progress := false
 
 	for i, testNum := range testNumbers {
-		// Show progress update if using pause and more than 1 second since last update
-		// if usePause {
+		// Show progress update if more than 1 second since last update
 		now := time.Now()
 		if now.Sub(lastUpdate) > 1*time.Second {
 			fmt.Fprintf(os.Stderr, "\rRunning test %d  ", testNum)
 			lastUpdate = now
 			showing_progress = true
 		}
-		// }
 
 		// Execute test
 		result, err := ExecuteTest(testNum)
 		results[i] = result
-
-		// Pause between tests if using Elasticsearch (for eventual consistency)
-		// if usePause && i < len(testNumbers)-1 {
-		// 	time.Sleep(time.Duration(core.PauseMs) * time.Millisecond)
-		// }
 
 		if err != nil || result == nil {
 			continue
