@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 )
 
 // Global config for all packages
@@ -27,6 +29,98 @@ func SetConfig(serverURL string, verbose bool, numUsers int, numAccounts int, pa
 	Verbose = verbose
 	NumUsers = numUsers
 	NumAccounts = numAccounts
+}
+
+// defaultClient is a shared HTTP client for all requests (enables connection pooling)
+var defaultClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
+
+// ExecuteURL abstracts HTTP calls - hides all HTTP internals from callers
+// This is the single HTTP execution function used by all tests (static and dynamic)
+func ExecuteURL(fullURL, method string, body interface{}) (*http.Response, []byte, error) {
+	// Use shared HTTP client for connection pooling
+	client := defaultClient
+
+	// Prepare request body if present
+	var requestBody io.Reader
+	var jsonBody []byte
+	if body != nil {
+		var err error
+		jsonBody, err = json.Marshal(body)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		requestBody = bytes.NewReader(jsonBody)
+	}
+
+	// Verbose logging: Request details
+	if Verbose {
+		// Extract path from full URL for cleaner display
+		path := strings.TrimPrefix(fullURL, ServerURL)
+		fmt.Fprintf(os.Stderr, "\n[HTTP REQUEST] %s %s\n", method, path)
+		if body != nil {
+			// Pretty-print JSON body
+			var prettyBody interface{}
+			if json.Unmarshal(jsonBody, &prettyBody) == nil {
+				prettyJSON, _ := json.MarshalIndent(prettyBody, "  ", "  ")
+				fmt.Fprintf(os.Stderr, "  Body: %s\n", string(prettyJSON))
+			} else {
+				fmt.Fprintf(os.Stderr, "  Body: %s\n", string(jsonBody))
+			}
+		}
+		if SessionID != "" {
+			fmt.Fprintf(os.Stderr, "  SessionID: %s\n", SessionID)
+		}
+	}
+
+	// Execute the HTTP request
+	req, err := http.NewRequest(method, fullURL, requestBody)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set content type for POST/PUT requests with body
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	// Add session cookie if authenticated
+	if SessionID != "" {
+		req.Header.Set("Cookie", "sessionId="+SessionID)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Verbose logging: Response details
+	if Verbose {
+		fmt.Fprintf(os.Stderr, "[HTTP RESPONSE] Status: %d\n", resp.StatusCode)
+		if len(responseBody) > 0 {
+			// Try to pretty-print JSON response
+			var jsonData map[string]interface{}
+			if json.Unmarshal(responseBody, &jsonData) == nil {
+				prettyJSON, _ := json.MarshalIndent(jsonData, "  ", "  ")
+				fmt.Fprintf(os.Stderr, "  Body: %s\n", string(prettyJSON))
+			} else {
+				// Not JSON, print as-is
+				fmt.Fprintf(os.Stderr, "  Body: %s\n", string(responseBody))
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "  Body: (empty)\n")
+		}
+	}
+
+	return resp, responseBody, nil
 }
 
 // Login authenticates with the API and stores the session cookie

@@ -34,7 +34,7 @@ func testAdminEndpoint(url string, dataType string) (*types.TestResult, error) {
 	}
 
 	fullURL := core.ServerURL + url
-	resp, body, err := executeUrl(fullURL, "GET", nil)
+	resp, body, err := core.ExecuteURL(fullURL, "GET", nil)
 	if err != nil {
 		return result, fmt.Errorf("failed to execute request: %w", err)
 	}

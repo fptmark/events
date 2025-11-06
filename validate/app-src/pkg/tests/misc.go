@@ -1,10 +1,8 @@
 package tests
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,11 +14,6 @@ import (
 	"validate/pkg/tests/dynamic"
 	"validate/pkg/types"
 )
-
-// defaultClient is a shared HTTP client for all requests (enables connection pooling)
-var defaultClient = &http.Client{
-	Timeout: 10 * time.Second,
-}
 
 // HTTPExecutor executes API tests in real-time
 type HTTPExecutor struct {
@@ -77,8 +70,8 @@ func (e *HTTPExecutor) executeTestCase(testCase *types.TestCase) (*types.TestRes
 	// Build full URL using GlobalConfig.ServerURL
 	fullURL := core.ServerURL + testCase.URL
 
-	// Use the new executeUrl function to perform the HTTP request
-	resp, responseBody, err := executeUrl(fullURL, testCase.Method, testCase.RequestBody)
+	// Use the ExecuteURL function to perform the HTTP request
+	resp, responseBody, err := core.ExecuteURL(fullURL, testCase.Method, testCase.RequestBody)
 	if err != nil {
 		return nil, err
 	}
@@ -276,52 +269,6 @@ func parseViewParam(viewStr string) map[string][]string {
 	}
 
 	return viewSpec
-}
-
-// executeUrl abstracts HTTP calls - hides all HTTP internals from callers
-func executeUrl(fullURL, method string, body interface{}) (*http.Response, []byte, error) {
-	// Use shared HTTP client for connection pooling
-	client := defaultClient
-
-	// Prepare request body if present
-	var requestBody io.Reader
-	if body != nil {
-		jsonBody, err := json.Marshal(body)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal request body: %w", err)
-		}
-		requestBody = bytes.NewReader(jsonBody)
-	}
-
-	// Execute the HTTP request
-	req, err := http.NewRequest(method, fullURL, requestBody)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Set content type for POST/PUT requests with body
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	// Add session cookie if authenticated
-	if core.SessionID != "" {
-		req.Header.Set("Cookie", "sessionId="+core.SessionID)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read response body
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	return resp, responseBody, nil
 }
 
 // reshapeToTestResult converts raw HTTP response to TestResult format

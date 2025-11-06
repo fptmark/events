@@ -26,7 +26,7 @@ type AuthData struct {
 var roles = []RoleData{
 	{ID: "role_test", Role: "TestRole", Permissions: `{"*": "cruds"}`},
 	{ID: "role_admin", Role: "Admin", Permissions: `{"*": "cruds"}`},
-	{ID: "role_mgr", Role: "Manager", Permissions: `{"*": "crus"}`},
+	{ID: "role_mgr", Role: "Manager", Permissions: `{"*": "cru"}`},
 	{ID: "role_rep", Role: "Representative", Permissions: `{"*": "ru"}`},
 }
 

@@ -3,21 +3,12 @@ package dynamic
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"time"
 
 	"validate/pkg/types"
 )
 
 // testAuth validates the complete Redis authentication workflow
 func testAuth() (*types.TestResult, error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Don't follow redirects
-		},
-	}
-
 	result := &types.TestResult{
 		StatusCode: 200,
 		Data:       []map[string]interface{}{},
@@ -27,11 +18,7 @@ func testAuth() (*types.TestResult, error) {
 	}
 
 	// Step 1: Login with valid credentials
-	loginBody := map[string]interface{}{
-		"login":    "test_auth",
-		"password": "12345678",
-	}
-	loginResp, loginRespBody, err := executeAuthRequest(client, "/api/login", "POST", loginBody, "")
+	sessionID, loginResp, loginRespBody, err := LoginAs("test_auth", "12345678")
 	if err != nil {
 		return result, fmt.Errorf("login request failed: %w", err)
 	}
@@ -39,15 +26,6 @@ func testAuth() (*types.TestResult, error) {
 	if loginResp.StatusCode != 200 {
 		result.Issues = append(result.Issues, fmt.Sprintf("Login failed: expected 200, got %d", loginResp.StatusCode))
 		return result, nil
-	}
-
-	// Extract session cookie
-	var sessionID string
-	for _, cookie := range loginResp.Cookies() {
-		if cookie.Name == "sessionId" {
-			sessionID = cookie.Value
-			break
-		}
 	}
 
 	if sessionID == "" {
@@ -66,7 +44,7 @@ func testAuth() (*types.TestResult, error) {
 	}
 
 	// Step 2: Test refresh with session cookie
-	refreshResp, refreshRespBody, err := executeAuthRequest(client, "/api/refresh", "POST", nil, sessionID)
+	refreshResp, refreshRespBody, err := ExecuteHTTP("/api/refresh", "POST", nil, sessionID)
 	if err != nil {
 		return result, fmt.Errorf("refresh request failed: %w", err)
 	}
@@ -85,7 +63,7 @@ func testAuth() (*types.TestResult, error) {
 	}
 
 	// Step 3: Logout with session cookie
-	logoutResp, logoutRespBody, err := executeAuthRequest(client, "/api/logout", "POST", nil, sessionID)
+	logoutResp, logoutRespBody, err := ExecuteHTTP("/api/logout", "POST", nil, sessionID)
 	if err != nil {
 		return result, fmt.Errorf("logout request failed: %w", err)
 	}
@@ -104,7 +82,7 @@ func testAuth() (*types.TestResult, error) {
 	}
 
 	// Step 4: Try refresh after logout (should fail)
-	postLogoutResp, postLogoutRespBody, err := executeAuthRequest(client, "/api/refresh", "POST", nil, sessionID)
+	postLogoutResp, postLogoutRespBody, err := ExecuteHTTP("/api/refresh", "POST", nil, sessionID)
 	if err != nil {
 		return result, fmt.Errorf("post-logout refresh request failed: %w", err)
 	}
@@ -120,11 +98,7 @@ func testAuth() (*types.TestResult, error) {
 	}
 
 	// Step 5: Test invalid credentials
-	badLoginBody := map[string]interface{}{
-		"login":    "test_auth",
-		"password": "wrongpassword",
-	}
-	badLoginResp, badLoginRespBody, err := executeAuthRequest(client, "/api/login", "POST", badLoginBody, "")
+	_, badLoginResp, badLoginRespBody, err := LoginAs("test_auth", "wrongpassword")
 	if err != nil {
 		return result, fmt.Errorf("bad login request failed: %w", err)
 	}

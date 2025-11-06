@@ -1,45 +1,46 @@
 package dynamic
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"validate/pkg/core"
 )
 
-// executeUrl executes an HTTP request and returns response and body
-func executeUrl(url string, method string, body io.Reader) (*http.Response, []byte, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest(method, url, body)
+// LoginAs performs login and returns sessionID from cookie
+// This is the single login helper used by all dynamic tests (auth, authz, etc.)
+//
+// Parameters:
+//   - username: Login username
+//   - password: Login password
+//
+// Returns:
+//   - sessionID: Session cookie value (empty string if not found)
+//   - resp: HTTP response object (for status code checking)
+//   - body: Response body bytes (for further validation)
+//   - error: Any error that occurred
+func LoginAs(username, password string) (string, *http.Response, []byte, error) {
+	loginBody := map[string]interface{}{
+		"login":    username,
+		"password": password,
+	}
+
+	resp, body, err := ExecuteHTTP("/api/login", "POST", loginBody, "")
 	if err != nil {
-		return nil, nil, err
+		return "", nil, nil, err
 	}
 
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	// Extract session cookie
+	var sessionID string
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "sessionId" {
+			sessionID = cookie.Value
+			break
+		}
 	}
 
-	// Add session cookie if authenticated
-	if core.SessionID != "" {
-		req.Header.Set("Cookie", "sessionId="+core.SessionID)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	respBody, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return resp, nil, err
-	}
-
-	return resp, respBody, nil
+	return sessionID, resp, body, nil
 }
 
 // compareValues compares two values for sorting validation (respects core.CaseSensitive)
@@ -77,63 +78,4 @@ func compareValues(a, b interface{}) int {
 	}
 	// Case-insensitive comparison
 	return strings.Compare(strings.ToLower(aStr), strings.ToLower(bStr))
-}
-
-// executeAuthRequest helper for auth endpoints with cookie handling
-func executeAuthRequest(client *http.Client, path string, method string, body map[string]interface{}, sessionID string) (*http.Response, []byte, error) {
-	url := core.ServerURL + path
-
-	var bodyReader io.Reader
-	if body != nil {
-		bodyBytes, err := json.Marshal(body)
-		if err != nil {
-			return nil, nil, err
-		}
-		bodyReader = &jsonReader{data: bodyBytes}
-	}
-
-	req, err := http.NewRequest(method, url, bodyReader)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	// Add session cookie if provided
-	if sessionID != "" {
-		req.AddCookie(&http.Cookie{
-			Name:  "sessionId",
-			Value: sessionID,
-		})
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	respBody, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return resp, nil, err
-	}
-
-	return resp, respBody, nil
-}
-
-// jsonReader wraps a byte slice to provide io.Reader interface
-type jsonReader struct {
-	data []byte
-	pos  int
-}
-
-func (r *jsonReader) Read(p []byte) (n int, err error) {
-	if r.pos >= len(r.data) {
-		return 0, io.EOF
-	}
-	n = copy(p, r.data[r.pos:])
-	r.pos += n
-	return n, nil
 }

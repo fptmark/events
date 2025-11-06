@@ -3,9 +3,6 @@ package dynamic
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"time"
 
 	"validate/pkg/core"
 	"validate/pkg/types"
@@ -30,8 +27,6 @@ func testPaginationAggregation(key string) (*types.TestResult, error) {
 		key = "id"
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-
 	// Create result that will be returned in all cases
 	result := &types.TestResult{
 		StatusCode: 200,
@@ -46,7 +41,7 @@ func testPaginationAggregation(key string) (*types.TestResult, error) {
 
 	// Step 2: Fetch all pages with pageSize=8
 	pageSize := 8
-	allRecords, pageCount, err := fetchAllPages(client, pageSize, key)
+	allRecords, pageCount, err := fetchAllPages(pageSize, key)
 	if err != nil {
 		// Return error for execution failures (can't connect, etc.)
 		return result, fmt.Errorf("failed to fetch all pages: %w", err)
@@ -110,7 +105,7 @@ func testPaginationAggregation(key string) (*types.TestResult, error) {
 }
 
 // fetchAllPages fetches all user pages with the given pageSize
-func fetchAllPages(client *http.Client, pageSize int, key string) ([]map[string]interface{}, int, error) {
+func fetchAllPages(pageSize int, key string) ([]map[string]interface{}, int, error) {
 	var allRecords []map[string]interface{}
 	page := 1
 	totalPages := 0
@@ -122,23 +117,9 @@ func fetchAllPages(client *http.Client, pageSize int, key string) ([]map[string]
 		} else {
 			url = fmt.Sprintf("%s/api/User?sort=%s&page=%d&pageSize=%d", core.ServerURL, key, page, pageSize)
 		}
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return nil, 0, err
-		}
 
-		// Add session cookie if available
-		if core.SessionID != "" {
-			req.Header.Set("Cookie", "sessionId="+core.SessionID)
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		// Use the single HTTP executor (enables verbose logging)
+		_, body, err := core.ExecuteURL(url, "GET", nil)
 		if err != nil {
 			return nil, 0, err
 		}

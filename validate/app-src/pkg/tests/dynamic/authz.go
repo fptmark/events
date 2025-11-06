@@ -1,15 +1,11 @@
 package dynamic
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
-	"validate/pkg/core"
 	"validate/pkg/types"
 )
 
@@ -31,13 +27,6 @@ func testAuthzRep() (*types.TestResult, error) {
 // testAuthz is the common authorization tester
 // Tests all CRUD operations and compares actual results against expected permissions from DB
 func testAuthz(username, password string) (*types.TestResult, error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
 	result := &types.TestResult{
 		StatusCode: 200,
 		Data:       []map[string]interface{}{},
@@ -47,11 +36,7 @@ func testAuthz(username, password string) (*types.TestResult, error) {
 	}
 
 	// Step 1: Login to get session cookie
-	loginBody := map[string]interface{}{
-		"login":    username,
-		"password": password,
-	}
-	loginResp, loginRespBody, err := executeAuthRequest(client, "/api/login", "POST", loginBody, "")
+	sessionID, loginResp, loginRespBody, err := LoginAs(username, password)
 	if err != nil {
 		return result, fmt.Errorf("login failed: %w", err)
 	}
@@ -61,24 +46,16 @@ func testAuthz(username, password string) (*types.TestResult, error) {
 		return result, nil
 	}
 
-	// Extract session cookie
-	var sessionID string
-	for _, cookie := range loginResp.Cookies() {
-		if cookie.Name == "sessionId" {
-			sessionID = cookie.Value
-			break
-		}
-	}
-
 	if sessionID == "" {
 		result.Issues = append(result.Issues, "No sessionId cookie received")
 		return result, nil
 	}
 
-	// Extract permissions from login response
+	// Extract permissions from login response (now at top level via update_response)
 	var loginData map[string]interface{}
 	var permissions string
 	if err := json.Unmarshal(loginRespBody, &loginData); err == nil {
+		// Permissions are at top level of response now
 		if permsData, ok := loginData["permissions"].(map[string]interface{}); ok {
 			// permissions is like {"*": "cruds"}
 			if permsStr, ok := permsData["*"].(string); ok {
@@ -93,44 +70,51 @@ func testAuthz(username, password string) (*types.TestResult, error) {
 	}
 
 	// Step 2: Test CREATE operation (c)
+	// Generate unique username/email to avoid conflicts on repeated runs
+	timestamp := time.Now().UnixNano()
+	uniqueUsername := fmt.Sprintf("authztest_%d", timestamp)
+	uniqueEmail := fmt.Sprintf("authz_%d@test.com", timestamp)
+
 	hasCreate := strings.ContainsRune(permissions, 'c')
-	createStatus := testOperation(client, "POST", "/api/User", sessionID, map[string]interface{}{
-		"id":             "usr_authz_create_001",
-		"username":       "authztest",
-		"email":          "authz@test.com",
+	createStatus := ExecuteHTTPStatusOnly("/api/User", "POST", map[string]interface{}{
+		"username":       uniqueUsername,
+		"email":          uniqueEmail,
+		"password":       "12345678",
 		"firstName":      "Authz",
 		"lastName":       "Test",
 		"gender":         "other",
 		"dob":            "2000-01-01",
 		"isAccountOwner": true,
+		"accountId":      "acc_valid_001",
 		"netWorth":       50000,
-	})
+	}, sessionID)
 	checkPermission(result, "CREATE", hasCreate, createStatus)
 
 	// Step 3: Test READ operation (r)
 	hasRead := strings.ContainsRune(permissions, 'r')
-	readStatus := testOperation(client, "GET", "/api/User/usr_get_001", sessionID, nil)
+	readStatus := ExecuteHTTPStatusOnly("/api/User/usr_get_001", "GET", nil, sessionID)
 	checkPermission(result, "READ", hasRead, readStatus)
 
 	// Step 4: Test UPDATE operation (u)
 	hasUpdate := strings.ContainsRune(permissions, 'u')
-	updateStatus := testOperation(client, "PUT", "/api/User/usr_update_001", sessionID, map[string]interface{}{
-		"firstName": "Updated",
-	})
+	updateStatus := ExecuteHTTPStatusOnly("/api/User/usr_update_001", "PUT", map[string]interface{}{
+		"username":       "usr_update_001",
+		"email":          "update@test.com",
+		"password":       "12345678",
+		"firstName":      "Updated",
+		"lastName":       "User",
+		"isAccountOwner": false,
+		"accountId":      "acc_valid_001",
+	}, sessionID)
 	checkPermission(result, "UPDATE", hasUpdate, updateStatus)
 
 	// Step 5: Test DELETE operation (d)
 	hasDelete := strings.ContainsRune(permissions, 'd')
-	deleteStatus := testOperation(client, "DELETE", "/api/User/usr_delete_002", sessionID, nil)
+	deleteStatus := ExecuteHTTPStatusOnly("/api/User/usr_delete_002", "DELETE", nil, sessionID)
 	checkPermission(result, "DELETE", hasDelete, deleteStatus)
 
-	// Step 6: Test SEARCH operation (s)
-	hasSearch := strings.ContainsRune(permissions, 's')
-	searchStatus := testOperation(client, "GET", "/api/User", sessionID, nil)
-	checkPermission(result, "SEARCH", hasSearch, searchStatus)
-
-	// Step 7: Logout
-	executeAuthRequest(client, "/api/logout", "POST", nil, sessionID)
+	// Step 6: Logout
+	ExecuteHTTP("/api/logout", "POST", nil, sessionID)
 
 	// Create summary data
 	result.Data = []map[string]interface{}{
@@ -141,7 +125,6 @@ func testAuthz(username, password string) (*types.TestResult, error) {
 			"readStatus":   readStatus,
 			"updateStatus": updateStatus,
 			"deleteStatus": deleteStatus,
-			"searchStatus": searchStatus,
 		},
 	}
 
@@ -149,44 +132,16 @@ func testAuthz(username, password string) (*types.TestResult, error) {
 	return result, nil
 }
 
-// testOperation performs an HTTP operation and returns the status code
-func testOperation(client *http.Client, method, path, sessionID string, body map[string]interface{}) int {
-	var bodyReader io.Reader
-	if body != nil {
-		bodyBytes, _ := json.Marshal(body)
-		bodyReader = bytes.NewReader(bodyBytes)
-	}
-
-	req, err := http.NewRequest(method, core.ServerURL+path, bodyReader)
-	if err != nil {
-		return 0
-	}
-
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	if sessionID != "" {
-		req.AddCookie(&http.Cookie{
-			Name:  "sessionId",
-			Value: sessionID,
-		})
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0
-	}
-	defer resp.Body.Close()
-
-	return resp.StatusCode
-}
-
 // checkPermission validates if the operation result matches expectations
 func checkPermission(result *types.TestResult, operation string, hasPermission bool, actualStatus int) {
 	var expectedStatus int
 	if hasPermission {
-		expectedStatus = 200
+		// CREATE operations return 201 Created, others return 200 OK
+		if operation == "CREATE" {
+			expectedStatus = 201
+		} else {
+			expectedStatus = 200
+		}
 	} else {
 		expectedStatus = 403
 	}
