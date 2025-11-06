@@ -48,9 +48,10 @@ class Auth(BaseModel):
                                           'show': {   'displayInfo': [   {   'fields': [   'role',
                                                                                            'permissions']}]}}}},
     'ui': {},
-    'services': {   'auth.cookies.redis': {   'inputs': {   'login': 'name',
-                                                            'password': 'password'},
-                                              'store': ['roleId']}},
+    'services': {   'authn.cookies.redis': {   'inputs': {   'login': 'name',
+                                                             'password': 'password'},
+                                               'outputs': ['roleId'],
+                                               'entity': 'Auth'}},
     'uniques': [['name']]}
 
     class Settings:

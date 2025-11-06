@@ -37,9 +37,10 @@ class Role(BaseModel):
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'role': {'type': 'String', 'required': True},
                   'permissions': {'type': 'String', 'required': True}},
     'ui': {},
-    'services': {   'authz.rbac': {   'depends': ['auth'],
-                                      'inputs': {'roleId': 'Id'},
-                                      'outputs': ['permissions']}},
+    'services': {   'authz.rbac': {   'depends': ['authn'],
+                                      'inputs': {'Id': 'roleId'},
+                                      'outputs': ['permissions'],
+                                      'entity': 'Role'}},
     'uniques': [['role']]}
 
     class Settings:
