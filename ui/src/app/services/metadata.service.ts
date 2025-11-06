@@ -21,6 +21,15 @@ export interface EntityMetadata {
   fields: {
     [key: string]: FieldMetadata;
   };
+  services?: {
+    [key: string]: ServiceMetadata;
+  };
+}
+
+export interface ServiceMetadata {
+  entity: string;
+  inputs: { [key: string]: string };
+  outputs: string[];
 }
 
 interface DisplayInfo {
@@ -254,5 +263,30 @@ export class MetadataService {
     return '';
   }
 
-  
+  /**
+   * Search all entities for a service by name (e.g., "authn")
+   * Matches service names that start with the search string
+   * e.g., searching for "authn" will match "authn.cookies.redis"
+   * Returns the service metadata if found, null otherwise
+   */
+  getService(serviceName: string): ServiceMetadata | null {
+    for (const entityName of Object.keys(this.metadata.entities)) {
+      const entity = this.metadata.entities[entityName];
+      if (entity.services) {
+        // Check for exact match first
+        if (entity.services[serviceName]) {
+          return entity.services[serviceName];
+        }
+
+        // Check for services that start with the search string
+        for (const serviceKey of Object.keys(entity.services)) {
+          if (serviceKey.startsWith(serviceName + '.') || serviceKey === serviceName) {
+            return entity.services[serviceKey];
+          }
+        }
+      }
+    }
+    return null;
+  }
+
 }

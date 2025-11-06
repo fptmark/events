@@ -1,0 +1,47 @@
+<!-- Login Modal Overlay - Don't allow dismissing by clicking backdrop when auth is required -->
+<div class="modal-backdrop" *ngIf="showModal"></div>
+
+<div class="modal fade" [class.show]="showModal" [style.display]="showModal ? 'block' : 'none'" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Login Required</h5>
+      </div>
+      <div class="modal-body">
+        <form (ngSubmit)="onSubmit()" #loginForm="ngForm">
+          <!-- Dynamic form fields based on authn config -->
+          <div *ngFor="let field of getInputFields()" class="mb-3">
+            <label [for]="field" class="form-label">{{ formatFieldName(field) }}</label>
+            <input
+              [type]="getInputType(field)"
+              class="form-control"
+              [id]="field"
+              [name]="field"
+              [(ngModel)]="credentials[field]"
+              required
+              [disabled]="isLoading"
+            />
+          </div>
+
+          <!-- Error message -->
+          <div *ngIf="errorMessage" class="error-message">
+            {{ errorMessage }}
+          </div>
+
+          <!-- Submit button -->
+          <button
+            type="submit"
+            class="btn btn-primary w-100"
+            [disabled]="isLoading || !loginForm.form.valid"
+          >
+            <span *ngIf="!isLoading">Login</span>
+            <span *ngIf="isLoading">
+              <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+              Logging in...
+            </span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

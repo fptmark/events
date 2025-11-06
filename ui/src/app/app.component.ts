@@ -6,12 +6,14 @@ import { NavigationService } from './services/navigation.service';
 import { ConfigService } from './services/config.service';
 import { RestService } from './services/rest.service';
 import { EntityService } from './services/entity.service';
+import { AuthService } from './services/auth.service';
 import { NotificationComponent } from './components/notification.component';
+import { LoginModalComponent } from './components/login-modal.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, CommonModule, NotificationComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, CommonModule, NotificationComponent, LoginModalComponent],
   template: `
     <!-- App Loading State -->
     <div *ngIf="!initialized" class="loading-container">
@@ -45,8 +47,11 @@ import { NotificationComponent } from './components/notification.component';
               </li>
             </ul>
             <span class="navbar-text text-light">
+              <span *ngIf="authService.getUserSession() as session">
+                <a href="#" class="text-light" (click)="logout($event)">{{ session.login }}</a> |
+              </span>
               <span *ngIf="entityService.getCurrentRecordCount() !== null && router.url.startsWith('/entity/') && router.url.split('/').length === 3">
-                Records: {{ entityService.getCurrentRecordCount() }} | 
+                Records: {{ entityService.getCurrentRecordCount() }} |
               </span>
               Database: {{ metadataService.getDatabaseType() }}
             </span>
@@ -55,6 +60,7 @@ import { NotificationComponent } from './components/notification.component';
       </nav>
       
       <div class="container-fluid py-3">
+        <app-login-modal></app-login-modal>
         <app-notification></app-notification>
         <router-outlet></router-outlet>
       </div>
@@ -88,6 +94,12 @@ import { NotificationComponent } from './components/notification.component';
       font-size: 0.9rem;
       opacity: 0.9;
     }
+    .navbar-text a {
+      text-decoration: none;
+    }
+    .navbar-text a:hover {
+      text-decoration: underline;
+    }
   `]
 })
 export class AppComponent implements OnInit {
@@ -100,11 +112,23 @@ export class AppComponent implements OnInit {
     private configService: ConfigService,
     private restService: RestService,
     public entityService: EntityService,
-    public router: Router
+    public router: Router,
+    public authService: AuthService
   ) { }
 
   redirectToServerRoute(route: string) {
     window.open(`${this.configService.config.server_url}/${route}`);
+  }
+
+  async logout(event: Event) {
+    event.preventDefault();
+    try {
+      await this.authService.logout();
+      // Navigate to dashboard after logout
+      this.router.navigate(['/']);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   }
 
   ngOnInit() {
@@ -133,6 +157,16 @@ export class AppComponent implements OnInit {
     this.metadataService.initialize().subscribe({
       next: () => {
         console.log('AppComponent: Metadata loaded');
+
+        // Check for authn service in metadata and configure AuthService
+        const authnService = this.metadataService.getService('authn');
+        if (authnService) {
+          console.log('AppComponent: Authn service found in metadata');
+          this.authService.setAuthnConfig(authnService);
+        } else {
+          console.log('AppComponent: No authn service found - public API mode');
+        }
+
         this.initialized = true;
         // Set the document title
         document.title = `${this.metadataService.getProjectName()} Management`;
