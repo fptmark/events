@@ -366,3 +366,66 @@ class Authn:
 
         # No session - return error via Notification
         Notification.error(HTTP.UNAUTHORIZED, "No active session")
+
+    @decorators.expose_endpoint(method="GET", route="/session", summary="Get current session")
+    async def get_session(self, request: Request, response: Response) -> Dict[str, any]:
+        """
+        Get current session data if valid session exists.
+        Used by UI on page refresh to restore permissions without re-login.
+
+        Returns:
+            dict with login, roleId, and permissions if valid session exists
+            401 error if no valid session
+        """
+        # Initialize notification system (same as CRUD endpoints)
+        Notification.start()
+
+        # Set up RequestContext with session from cookie
+        from app.core.request_context import RequestContext
+        from app.routers.endpoint_handlers import update_response
+
+        session_id = request.cookies.get(self.cookie_name)
+        RequestContext.set_session_id(session_id)
+
+        if not session_id or not self.cookie_store:
+            Notification.error(HTTP.UNAUTHORIZED, "No active session")
+
+        session = await self.cookie_store.get_session(session_id)
+        if not session:
+            Notification.error(HTTP.UNAUTHORIZED, "No active session")
+
+        # Check absolute expiry (same as authorized() method)
+        absolute_expiry = session.get('absolute_expiry', 0)
+        if time.time() > absolute_expiry:
+            await self.cookie_store.delete_session(session_id)
+            Notification.error(HTTP.UNAUTHORIZED, "Session expired")
+
+        # Get expanded permissions from authz service if running (same as login)
+        permissions = None
+        authz_service = ServiceManager.get_service_instance("authz")
+        if authz_service:
+            roleId = session.get('roleId')
+            if roleId:
+                try:
+                    # Get expanded permissions (cached in RBAC)
+                    permissions = await authz_service.get_permissions(roleId)
+                    if permissions and permissions.get("entity"):
+                        print(f"Session: Retrieved permissions for roleId {roleId}: {permissions}")
+                    else:
+                        print(f"ERROR: get_permissions returned empty for roleId {roleId}: {permissions}")
+                except Exception as e:
+                    print(f"ERROR: Could not fetch permissions for role {roleId}: {e}")
+                    # Don't fail session fetch - return session without permissions
+
+        # Cache session in RequestContext for update_response
+        session['_session_id'] = session_id
+        RequestContext.set_session(session)
+
+        # Return session data through update_response (same pattern as login)
+        session_data = {
+            "sessionId": session_id,
+            "login": session.get("login_value"),
+            "roleId": session.get("roleId"),
+            "permissions": permissions  # Expanded permissions for UI
+        }
+        return await update_response(session_data)

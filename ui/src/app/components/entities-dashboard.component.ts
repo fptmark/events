@@ -72,6 +72,13 @@ export class EntitiesDashboardComponent implements OnInit, OnDestroy {
       // Check if authn service is configured
       this.hasAuthnService = this.authService.getAuthnConfig() !== null;
 
+      // If authn configured but no permissions in memory (page refresh), fetch session
+      // This will restore permissions from server if session is still valid
+      // If session invalid (401), fetchSession will trigger login modal
+      if (this.hasAuthnService && !this.authService.getPermissions()) {
+        await this.authService.fetchSession();
+      }
+
       // Subscribe to permissions changes
       this.permissionsSubscription = this.authService.permissions.subscribe(() => {
         this.updateVisibleEntities();
@@ -93,45 +100,27 @@ export class EntitiesDashboardComponent implements OnInit, OnDestroy {
 
   /**
    * Filter entities based on permissions
-   * If no authn service configured, show all entities (public mode)
-   * If authn configured but no permissions yet, trigger login automatically
-   * If permissions available, show entities based on permission rules:
-   *   - Wildcard "*" means show all entities with those permissions
-   *   - Otherwise show only entities with non-empty permission strings
+   * Two modes:
+   * 1. No authn service → show all entities (public mode)
+   * 2. Authn configured → filter using permissions.dashboard array
+   *    - No permissions in memory (page refresh) → show all entities
+   *    - First API call will trigger 401 → login modal if session invalid
+   *    - After login → permissions cached in memory → dashboard filters
    */
   private updateVisibleEntities(): void {
     const allEntities = this.metadataService.getAvailableEntityTypes();
 
+    // Mode 1: No auth service - show all entities (public mode)
     if (!this.hasAuthnService) {
-      // No auth service - show all entities (public mode)
       this.entityTypes = allEntities;
       return;
     }
 
-    const permissions = this.authService.getPermissions();
-    if (!permissions) {
-      // Auth service exists but no permissions yet - trigger login
-      this.entityTypes = [];
-      // Automatically show login modal
-      this.authService.requestLogin();
-      return;
-    }
-
-    // Check for wildcard - show all entities if wildcard has permissions
-    if (permissions['*'] && permissions['*'] !== '') {
-      this.entityTypes = allEntities;
-      return;
-    }
-
-    // Filter based on entity-specific permissions (case-insensitive)
-    this.entityTypes = allEntities.filter(entity => {
-      // Case-insensitive lookup in permissions
-      const permKey = Object.keys(permissions).find(
-        key => key.toLowerCase() === entity.toLowerCase()
-      );
-      // Show if permission exists and is not empty string
-      return permKey && permissions[permKey] && permissions[permKey] !== '';
-    });
+    // Mode 2: Auth configured - filter by permissions
+    // isEntityOnDashboard returns true if no permissions (allows all until login)
+    this.entityTypes = allEntities.filter(entity =>
+      this.authService.isEntityOnDashboard(entity)
+    );
   }
 
   navigateToEntity(entityType: string): void {

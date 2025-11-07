@@ -4,10 +4,16 @@ import { BehaviorSubject, Subject, firstValueFrom } from 'rxjs';
 import { ConfigService } from './config.service';
 import { ServiceMetadata } from './metadata.service';
 
+export interface ExpandedPermissions {
+  dashboard: string[];              // List of entities to show in dashboard
+  entity: { [key: string]: string }; // Entity -> operations map (e.g., {"User": "cru"})
+  reports: any[];                    // Future: navbar reports with location
+}
+
 export interface UserSession {
   login: string;
   roleId?: string;
-  permissions?: any;
+  permissions?: ExpandedPermissions;
 }
 
 @Injectable({
@@ -80,31 +86,49 @@ export class AuthService {
   }
 
   /**
+   * Check if entity should appear in dashboard
+   * @param entity Entity name (e.g., "User")
+   * @returns true if entity has permissions or if authz not configured (allow all)
+   */
+  isEntityOnDashboard(entity: string): boolean {
+    const perms = this.permissions$.value;
+
+    // No permissions object = authz not configured = allow all
+    if (!perms) return true;
+
+    // No dashboard array = malformed permissions = deny
+    if (!perms.dashboard) return false;
+
+    // Case-insensitive lookup in dashboard array
+    return perms.dashboard.some(
+      (dashEntity: string) => dashEntity.toLowerCase() === entity.toLowerCase()
+    );
+  }
+
+  /**
    * Check if user has permission for entity operation
    * @param entity Entity name (e.g., "User")
    * @param operation Operation character (e.g., "c", "r", "u", "d")
+   * @returns true if operation permitted or if authz not configured (allow all)
    */
   hasPermission(entity: string, operation: string): boolean {
     const perms = this.permissions$.value;
-    if (!perms) return false;
 
-    // Check wildcard first - applies to all entities
-    if (perms['*']) {
-      const wildcardPerms = perms['*'];
-      if (wildcardPerms && wildcardPerms !== '') {
-        return wildcardPerms.includes(operation);
-      }
-    }
+    // No permissions object = authz not configured = allow all
+    if (!perms) return true;
 
-    // Case-insensitive entity lookup
-    const entityKey = Object.keys(perms).find(
+    // No entity map = malformed permissions = deny
+    if (!perms.entity) return false;
+
+    // Case-insensitive entity lookup in entity map
+    const entityKey = Object.keys(perms.entity).find(
       key => key.toLowerCase() === entity.toLowerCase()
     );
 
     if (!entityKey) return false;
-    const entityPerms = perms[entityKey];
+    const entityPerms = perms.entity[entityKey];
 
-    // Empty string means no permissions
+    // Empty string means no permissions for this entity
     if (!entityPerms || entityPerms === '') return false;
 
     return entityPerms.includes(operation);
@@ -150,16 +174,17 @@ export class AuthService {
       );
 
       // Extract user session from response
+      // Permissions are in response.data.permissions (expanded format from server)
       const session: UserSession = {
         login: credentials[Object.keys(credentials)[0]], // First input field value
         roleId: response.data?.roleId || response.roleId,
-        permissions: response.permissions
+        permissions: response.data?.permissions
       };
 
       this.updateUserSession(session);
       this.loginComplete$.next();
 
-      console.log('AuthService: Login successful');
+      console.log('AuthService: Login successful, permissions:', session.permissions);
       return session;
 
     } catch (error: any) {
@@ -190,6 +215,42 @@ export class AuthService {
 
     } catch (error) {
       console.error('AuthService: Logout failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch current session from server
+   * Used on page refresh to restore permissions without re-login
+   */
+  async fetchSession(): Promise<UserSession | null> {
+    const url = this.configService.getApiUrl('session');
+
+    try {
+      const response = await firstValueFrom(
+        this.http.get<any>(url, { withCredentials: true })
+      );
+
+      // Extract user session from response
+      const session: UserSession = {
+        login: response.data?.login || response.login,
+        roleId: response.data?.roleId || response.roleId,
+        permissions: response.data?.permissions || response.permissions
+      };
+
+      this.updateUserSession(session);
+
+      console.log('AuthService: Session fetched successfully, permissions:', session.permissions);
+      return session;
+
+    } catch (error: any) {
+      // 401 = no valid session, trigger login
+      if (error.status === 401) {
+        console.log('AuthService: No valid session, requesting login');
+        this.requestLogin();
+        return null;
+      }
+      console.error('AuthService: Session fetch failed:', error);
       throw error;
     }
   }

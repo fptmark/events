@@ -50,9 +50,6 @@ import { LoginModalComponent } from './components/login-modal.component';
               <span *ngIf="authService.getUserSession() as session">
                 <a href="#" class="text-light" (click)="logout($event)">{{ session.login }}</a> |
               </span>
-              <span *ngIf="entityService.getCurrentRecordCount() !== null && router.url.startsWith('/entity/') && router.url.split('/').length === 3">
-                Records: {{ entityService.getCurrentRecordCount() }} |
-              </span>
               Database: {{ metadataService.getDatabaseType() }}
             </span>
           </div>
@@ -122,6 +119,13 @@ export class AppComponent implements OnInit {
 
   async logout(event: Event) {
     event.preventDefault();
+
+    // Show confirmation dialog
+    const confirmed = confirm('Are you sure you want to logout?');
+    if (!confirmed) {
+      return; // User cancelled
+    }
+
     try {
       await this.authService.logout();
       // Navigate to dashboard after logout

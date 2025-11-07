@@ -3,6 +3,7 @@ import { MetadataService, FieldMetadata, ShowConfig } from './metadata.service';
 import { ModeService, ViewMode, DETAILS, EDIT, CREATE } from './mode.service';
 import { FieldOrderService } from './field-order.service';
 import { Router } from '@angular/router';
+import { AuthService } from './auth.service';
 // import { HttpClient } from '@angular/common/http';
 // import { Observable, of, forkJoin } from 'rxjs';
 // import { map, catchError } from 'rxjs/operators';
@@ -26,6 +27,7 @@ export class EntityService {
     private metadataService: MetadataService,
     private router: Router,
     private modeService: ModeService,
+    private authService: AuthService
     // private http: HttpClient,
     // private sanitizer: DomSanitizer,
     // private restService: RestService
@@ -190,16 +192,44 @@ export class EntityService {
     return `${month}/${day}/${year}`;
   }
 
+  /**
+   * Check if user can read this entity
+   * Checks BOTH metadata operations (schema capability) AND auth permissions (user authorization)
+   */
   canRead(entityType: string): boolean {
-    return this.metadataService.isValidOperation(entityType, 'r');
+    const metadataAllows = this.metadataService.isValidOperation(entityType, 'r');
+    const authAllows = this.authService.hasPermission(entityType, 'r');
+    return metadataAllows && authAllows;
   }
 
+  /**
+   * Check if user can update this entity
+   * Checks BOTH metadata operations (schema capability) AND auth permissions (user authorization)
+   */
   canUpdate(entityType: string): boolean {
-    return this.metadataService.isValidOperation(entityType, 'u');
+    const metadataAllows = this.metadataService.isValidOperation(entityType, 'u');
+    const authAllows = this.authService.hasPermission(entityType, 'u');
+    return metadataAllows && authAllows;
   }
 
+  /**
+   * Check if user can delete this entity
+   * Checks BOTH metadata operations (schema capability) AND auth permissions (user authorization)
+   */
   canDelete(entityType: string): boolean {
-    return this.metadataService.isValidOperation(entityType, 'd');
+    const metadataAllows = this.metadataService.isValidOperation(entityType, 'd');
+    const authAllows = this.authService.hasPermission(entityType, 'd');
+    return metadataAllows && authAllows;
+  }
+
+  /**
+   * Check if user can create this entity
+   * Checks BOTH metadata operations (schema capability) AND auth permissions (user authorization)
+   */
+  canCreate(entityType: string): boolean {
+    const metadataAllows = this.metadataService.isValidOperation(entityType, 'c');
+    const authAllows = this.authService.hasPermission(entityType, 'c');
+    return metadataAllows && authAllows;
   }
 
   // Custom actions are not currently implemented in the stateless approach

@@ -33,8 +33,8 @@ import { OperationResultService } from '../services/operation-result.service';
         (dismissed)="onBannerDismissed()">
       </operation-result-banner>
       
-      <!-- Create button - permission checked once per page -->
-      <div *ngIf="metadataService.isValidOperation(entityType, 'c')">
+      <!-- Create button - checks both metadata operations and auth permissions -->
+      <div *ngIf="entityService.canCreate(entityType)">
         <div class="mb-3">
           <button class="btn btn-entity-create" (click)="this.entityService.navigateToCreate(entityType)">Create {{ entityType }}</button>
         </div>

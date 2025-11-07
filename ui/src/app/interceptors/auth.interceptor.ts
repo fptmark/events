@@ -9,7 +9,7 @@ import { AuthService } from '../services/auth.service';
  *
  * Responsibilities:
  * 1. Add withCredentials to all requests (send cookies)
- * 2. Extract permissions from successful responses
+ * 2. Extract permissions from login response ONLY (client caches for session)
  * 3. Handle 401 Unauthorized - trigger login and retry
  * 4. Handle 403 Forbidden - show error (already authenticated)
  */
@@ -22,27 +22,28 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   });
 
   return next(authReq).pipe(
-    // Extract permissions from successful responses
+    // Extract permissions from login response only
     tap(event => {
       if (event instanceof HttpResponse) {
         const body = event.body as any;
 
-        // Update permissions if present in response (optional - authz may not be running)
-        if (body && typeof body === 'object') {
-          if (body.permissions) {
-            authService.updatePermissions(body.permissions);
-          }
-
-          // For login responses, extract full session data
-          if (req.url.includes('/api/login') && body.data) {
-            const sessionData = body.data;
-            if (sessionData.login || sessionData.sessionId) {
-              authService.updateUserSession({
-                login: sessionData.login || 'user',
-                roleId: sessionData.roleId,
-                permissions: body.permissions || sessionData.permissions
-              });
-            }
+        // Only extract session data from login response
+        // Both authn and authz are optional services:
+        // - No authn: no login endpoint, everything public
+        // - Authn without authz: login exists but no permissions, everything permitted
+        // - Authn with authz: login with permissions, filter by permissions
+        if (req.url.includes('/api/login') && body && body.data) {
+          const sessionData = body.data;
+          // Extract whatever fields are present - missing permissions means "allow all"
+          authService.updateUserSession({
+            login: sessionData.login,
+            roleId: sessionData.roleId,
+            permissions: sessionData.permissions  // May be undefined if authz not configured
+          });
+          if (sessionData.permissions) {
+            console.log('AuthInterceptor: Cached permissions from login:', sessionData.permissions);
+          } else {
+            console.log('AuthInterceptor: No permissions in login (authz not configured - allow all)');
           }
         }
       }
