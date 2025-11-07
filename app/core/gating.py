@@ -33,15 +33,17 @@ class GatingService:
         """
         session = RequestContext.get_session()
         if session:
-            permissions = session.get('permissions') or None
             authz_svc = ServiceManager.get_service_instance("authz")
-            if authz_svc and permissions:   # should not have permissions w/o authz
-                if authz_svc.has_permission(permissions, entity, operation):
+            if authz_svc:
+                # Ask authz service to check permission (handles cache lookup internally)
+                roleId = session.get('roleId')
+                if not roleId:
+                    Notification.error(HTTP.INTERNAL_ERROR, "Missing roleId in session")
+
+                if await authz_svc.permitted(roleId, entity, operation):
                     return
                 else:
                     Notification.error(HTTP.FORBIDDEN, "Unauthorized operation")
-            elif authz_svc:
-                Notification.error(HTTP.INTERNAL_ERROR, "Missing permissions")
         else:
             authn_svc = ServiceManager.get_service_instance("authn")
             if authn_svc:

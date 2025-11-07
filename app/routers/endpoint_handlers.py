@@ -154,10 +154,7 @@ async def update_response(data: Any, records: Optional[int] = None) -> Dict[str,
     # warnings = notifications.get('warnings', {})
     result["status"] = notification_response.get('status', "missing")
 
-    # Add user permissions to response (from session cached in RequestContext)
-    # Only include permissions key if they exist
-    session = RequestContext.get_session()
-    if session and session.get("permissions"):
-        result["permissions"] = session["permissions"]
+    # NOTE: Permissions are only sent at login, not on every response
+    # Client caches them after login for UI filtering
 
     return result

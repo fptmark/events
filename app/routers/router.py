@@ -26,12 +26,12 @@ def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[
     entity = entity_cls.__name__
     
     # Create response models using class-based approach for better type safety
+    # NOTE: permissions field removed - only sent at login, not in CRUD responses
     class EntityResponse(BaseModel):
         data: Optional[Dict[str, Any]] = None
         notifications: Optional[Dict[str, Any]] = None
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
-        permissions: Optional[Dict[str, str]] = Field(default_factory=dict)
 
     class EntityAllResponse(BaseModel):
         data: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
@@ -39,7 +39,6 @@ def create_response_models(entity_cls: Type[EntityModelProtocol]) -> tuple[Type[
         status: Optional[str] = None
         summary: Optional[Dict[str, Any]] = None
         pagination: Optional[Dict[str, Any]]
-        permissions: Optional[Dict[str, str]] = Field(default_factory=dict)
     
     # Dynamically set the class names for better OpenAPI docs
     EntityResponse.__name__ = f"{entity}Response"

@@ -258,10 +258,10 @@ class Authn:
             doc = await db.documents.bypass(entity_name, input_query, output)
         except Exception as e:
             print(f"Error during user lookup: {str(e)}")
-            return {"success": False, "message": "Database error"}
+            Notification.error(HTTP.UNAUTHORIZED, "Invalid credentials")
 
         if doc is None:
-            return {"success": False, "message": "Invalid credentials"}
+            Notification.error(HTTP.UNAUTHORIZED, "Invalid credentials")
 
         # Create session
         session_id = str(uuid.uuid4())
@@ -273,21 +273,29 @@ class Authn:
             "absolute_expiry": current_time + ABSOLUTE_SESSION_MAX  # Force re-login after absolute max
         }
 
-        # Get permissions from authz service if running
+        # Get expanded permissions from authz service if running (for login response only)
+        permissions = None
         authz_service = ServiceManager.get_service_instance("authz")
         if authz_service:
             roleId = session_data.get('roleId')
             if roleId:
                 try:
-                    permissions = await authz_service.permissions(roleId)
-                    if permissions:
-                        session_data['permissions'] = permissions
+                    # Get expanded permissions (cached in RBAC, returned to client at login)
+                    permissions = await authz_service.get_permissions(roleId)
+                    if permissions and permissions.get("entity"):
+                        print(f"Login: Retrieved permissions for roleId {roleId}: {permissions}")
                     else:
+                        print(f"ERROR: get_permissions returned empty for roleId {roleId}: {permissions}")
                         Notification.error(HTTP.UNAUTHORIZED, "No permissions defined for role")
                 except Exception as e:
-                    # Role not found or other error - log but allow login to proceed without permissions
-                    print(f"Warning: Could not fetch permissions for role {roleId}: {e}")
-                    # Continue without permissions (user will have no access)
+                    # Role not found or other error - FAIL login since authz is configured
+                    print(f"ERROR: Could not fetch permissions for role {roleId}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    Notification.error(HTTP.UNAUTHORIZED, f"Failed to load permissions: {str(e)}")
+
+        # NOTE: Permissions NOT stored in session - RBAC caches them by roleId
+        # Session only stores roleId, gating will fetch permissions from RBAC cache
 
         await self.cookie_store.set_session(session_id, session_data, SESSION_TTL)
 
@@ -307,7 +315,8 @@ class Authn:
         from app.routers.endpoint_handlers import update_response
         login_data = {
             "sessionId": session_id,
-            "login": session_data.get("login_value")
+            "login": session_data.get("login_value"),
+            "permissions": permissions  # Expanded permissions for UI (sent only at login)
         }
         return await update_response(login_data)
 
