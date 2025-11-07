@@ -25,7 +25,7 @@ var allTests = []TestEntry{
 	// Auth tests
 	{"testAuth", "Redis authentication workflow (login, refresh, logout)", "dynamic", testAuth},
 
-	// Authz tests
+	// Authz tests (include permissions verification)
 	{"testAuthzAdmin", "Authorization test - Admin role (cruds)", "authz", testAuthzAdmin},
 	{"testAuthzMgr", "Authorization test - Manager role (crus)", "authz", testAuthzMgr},
 	{"testAuthzRep", "Authorization test - Representative role (ru)", "authz", testAuthzRep},

@@ -14,8 +14,8 @@ import (
 var roles = []types.Role{
 	{ID: "role_test", Role: "TestRole", Permissions: `{"*": "cruds"}`},
 	{ID: "role_admin", Role: "Admin", Permissions: `{"*": "cruds"}`},
-	{ID: "role_mgr", Role: "Manager", Permissions: `{"*": "cru"}`},
-	{ID: "role_rep", Role: "Representative", Permissions: `{"*": "ru"}`},
+	{ID: "role_mgr", Role: "Manager", Permissions: `{"*": "cru", "Role": "", "Auth": ""}`},
+	{ID: "role_rep", Role: "Representative", Permissions: `{"*": "ru", "Role": "", "Auth": ""}`},
 }
 
 var auths = []types.Auth{

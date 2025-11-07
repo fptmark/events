@@ -41,6 +41,32 @@ func testAuth() (*types.TestResult, error) {
 		if status, ok := loginData["status"].(string); !ok || status != "success" {
 			result.Issues = append(result.Issues, fmt.Sprintf("Login response status not 'success': got %v", status))
 		}
+
+		// Verify permissions structure in login response
+		if data, ok := loginData["data"].(map[string]interface{}); ok {
+			if permissions, ok := data["permissions"].(map[string]interface{}); ok {
+				// Verify dashboard field (array of entity names)
+				if dashboard, ok := permissions["dashboard"].([]interface{}); !ok {
+					result.Issues = append(result.Issues, "Login response permissions.dashboard is not an array")
+				} else if len(dashboard) == 0 {
+					result.Issues = append(result.Issues, "Login response permissions.dashboard is empty (expected entities)")
+				}
+
+				// Verify entity field (map of entity -> permissions string)
+				if entity, ok := permissions["entity"].(map[string]interface{}); !ok {
+					result.Issues = append(result.Issues, "Login response permissions.entity is not an object")
+				} else if len(entity) == 0 {
+					result.Issues = append(result.Issues, "Login response permissions.entity is empty (expected entity permissions)")
+				}
+
+				// Verify reports field (array, may be empty)
+				if _, ok := permissions["reports"].([]interface{}); !ok {
+					result.Issues = append(result.Issues, "Login response permissions.reports is not an array")
+				}
+			} else {
+				result.Issues = append(result.Issues, "Login response missing permissions field")
+			}
+		}
 	}
 
 	// Step 2: Test refresh with session cookie
@@ -59,6 +85,13 @@ func testAuth() (*types.TestResult, error) {
 	} else {
 		if status, ok := refreshData["status"].(string); !ok || status != "success" {
 			result.Issues = append(result.Issues, fmt.Sprintf("Refresh response status not 'success': got %v", status))
+		}
+
+		// Verify permissions NOT included in refresh response (only sent at login)
+		if data, ok := refreshData["data"].(map[string]interface{}); ok {
+			if _, hasPermissions := data["permissions"]; hasPermissions {
+				result.Issues = append(result.Issues, "Refresh response should NOT include permissions (only sent at login)")
+			}
 		}
 	}
 
