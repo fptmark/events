@@ -5,7 +5,9 @@ import (
 	"hash/fnv"
 	"strings"
 	"time"
+
 	"validate/pkg/core"
+	"validate/pkg/types"
 )
 
 // Data arrays for fixture generation (shared with random.go)
@@ -52,7 +54,7 @@ func CreateFixtureAccount(id string, overrides map[string]interface{}) error {
 	// Generate account name from ID
 	accountName := fmt.Sprintf("Account %s", id)
 
-	account := map[string]interface{}{
+	accountFields := map[string]interface{}{
 		"id":        id,
 		"name":      accountName,
 		"createdAt": now,
@@ -63,15 +65,21 @@ func CreateFixtureAccount(id string, overrides map[string]interface{}) error {
 	if hash%3 == 0 {
 		// Generate an expired date in the past for some accounts
 		expiredDate := time.Now().AddDate(0, 0, -int(hash%365)).Format("2006-01-02")
-		account["expireDate"] = expiredDate
+		accountFields["expireDate"] = expiredDate
 	}
 
 	// Apply overrides
 	for key, value := range overrides {
-		account[key] = value
+		accountFields[key] = value
 	}
 
-	if err := core.CreateEntity("Account", account); err != nil {
+	// Use NewEntity to auto-populate required fields
+	account, err := types.NewEntity("Account", accountFields)
+	if err != nil {
+		return fmt.Errorf("failed to create account entity %s: %w", id, err)
+	}
+
+	if err := core.CreateEntity("Account", account.ToJSON()); err != nil {
 		return fmt.Errorf("failed to create fixture account %s: %w", id, err)
 	}
 
@@ -113,7 +121,7 @@ func CreateFixtureUser(id string, accountId string, overrides map[string]interfa
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	// Build user with REQUIRED fields only
-	user := map[string]interface{}{
+	userFields := map[string]interface{}{
 		"id":             id,
 		"firstName":      firstName,
 		"lastName":       lastName,
@@ -130,7 +138,7 @@ func CreateFixtureUser(id string, accountId string, overrides map[string]interfa
 
 	// Include gender ~66% of the time (hash % 3 != 0)
 	if hash%3 != 0 {
-		user["gender"] = genders[hash%uint32(len(genders))]
+		userFields["gender"] = genders[hash%uint32(len(genders))]
 	}
 
 	// Include dob ~50% of the time (hash % 2 == 0)
@@ -138,20 +146,26 @@ func CreateFixtureUser(id string, accountId string, overrides map[string]interfa
 		year := birthYears[hash%uint32(len(birthYears))]
 		month := birthMonths[(hash/3)%uint32(len(birthMonths))]
 		day := birthDays[(hash/5)%uint32(len(birthDays))]
-		user["dob"] = fmt.Sprintf("%d-%02d-%02d", year, month, day)
+		userFields["dob"] = fmt.Sprintf("%d-%02d-%02d", year, month, day)
 	}
 
 	// Include netWorth ~75% of the time (hash % 4 != 0)
 	if hash%4 != 0 {
-		user["netWorth"] = netWorthValues[hash%uint32(len(netWorthValues))]
+		userFields["netWorth"] = netWorthValues[hash%uint32(len(netWorthValues))]
 	}
 
 	// Apply overrides
 	for key, value := range overrides {
-		user[key] = value
+		userFields[key] = value
 	}
 
-	if err := core.CreateEntity("User", user); err != nil {
+	// Use NewEntity to auto-populate required fields like roleId
+	user, err := types.NewEntity("User", userFields)
+	if err != nil {
+		return fmt.Errorf("failed to create user entity %s: %w", id, err)
+	}
+
+	if err := core.CreateEntity("User", user.ToJSON()); err != nil {
 		return fmt.Errorf("failed to create fixture user %s: %w", id, err)
 	}
 

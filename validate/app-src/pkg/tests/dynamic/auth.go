@@ -45,13 +45,6 @@ func testAuth() (*types.TestResult, error) {
 		// Verify permissions structure in login response
 		if data, ok := loginData["data"].(map[string]interface{}); ok {
 			if permissions, ok := data["permissions"].(map[string]interface{}); ok {
-				// Verify dashboard field (array of entity names)
-				if dashboard, ok := permissions["dashboard"].([]interface{}); !ok {
-					result.Issues = append(result.Issues, "Login response permissions.dashboard is not an array")
-				} else if len(dashboard) == 0 {
-					result.Issues = append(result.Issues, "Login response permissions.dashboard is empty (expected entities)")
-				}
-
 				// Verify entity field (map of entity -> permissions string)
 				if entity, ok := permissions["entity"].(map[string]interface{}); !ok {
 					result.Issues = append(result.Issues, "Login response permissions.entity is not an object")

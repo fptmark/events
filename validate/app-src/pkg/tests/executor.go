@@ -68,8 +68,30 @@ func (e *HTTPExecutor) executeTestCase(testCase *types.TestCase) (*types.TestRes
 	// Build full URL using GlobalConfig.ServerURL
 	fullURL := core.ServerURL + testCase.URL
 
+	// Prepare request body - use dynamic entity builder for POST/PUT
+	var requestBody interface{}
+	if (testCase.Method == "POST" || testCase.Method == "PUT") && testCase.RequestBody != nil {
+		// Extract entity type from URL (e.g., "/api/User" -> "User", "/api/User/usr_001" -> "User")
+		entityType := extractEntityFromURL(testCase.URL)
+
+		if entityType != "" {
+			// Use dynamic entity builder to auto-populate required fields
+			entity, err := types.NewEntity(entityType, testCase.RequestBody, testCase.OmitFields...)
+			if err != nil {
+				// If entity building fails, fall back to original RequestBody
+				requestBody = testCase.RequestBody
+			} else {
+				requestBody = entity.ToJSON()
+			}
+		} else {
+			requestBody = testCase.RequestBody
+		}
+	} else {
+		requestBody = testCase.RequestBody
+	}
+
 	// Use the ExecuteURL function to perform the HTTP request
-	resp, responseBody, err := core.ExecuteURL(fullURL, testCase.Method, testCase.RequestBody)
+	resp, responseBody, err := core.ExecuteURL(fullURL, testCase.Method, requestBody)
 	if err != nil {
 		return nil, err
 	}

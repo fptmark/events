@@ -56,6 +56,7 @@ type TestCase struct {
 	TestClass      string                 `json:"test_class"`              // Test category (basic, view, sort, etc.)
 	ExpectedStatus int                    `json:"expected_status"`         // Expected HTTP status code
 	RequestBody    map[string]interface{} `json:"request_body,omitempty"`  // Request payload for POST/PUT/DELETE
+	OmitFields     []string               `json:"omit_fields,omitempty"`   // Fields to omit from auto-population (for validation testing)
 	ExpectedData   *CRUDExpectation       `json:"expected_data,omitempty"` // Expected result data for CRUD operations
 }
 

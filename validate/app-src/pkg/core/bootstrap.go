@@ -5,24 +5,23 @@ import (
 	"os/exec"
 	"strings"
 	"time"
-
-	"validate/pkg/types"
 )
 
 // Bootstrap data - parameterized for easy expansion
-// Uses entity types from types package as single source of truth
-var roles = []types.Role{
-	{ID: "role_test", Role: "TestRole", Permissions: `{"*": "cruds"}`},
-	{ID: "role_admin", Role: "Admin", Permissions: `{"*": "cruds"}`},
-	{ID: "role_mgr", Role: "Manager", Permissions: `{"*": "cru", "Role": "", "Auth": ""}`},
-	{ID: "role_rep", Role: "Representative", Permissions: `{"*": "ru", "Role": "", "Auth": ""}`},
+// Uses map[string]interface{} for dynamic entity creation
+// Exported so tests can reference bootstrap permissions
+var Roles = []map[string]interface{}{
+	{"id": "role_test", "role": "TestRole", "permissions": `{"*": "cruds"}`},
+	{"id": "role_admin", "role": "Admin", "permissions": `{"*": "cruds"}`},
+	{"id": "role_mgr", "role": "Manager", "permissions": `{"*": "cru", "Role": "r", "Auth": "", "Account": "r", "Crawl": ""}`},
+	{"id": "role_rep", "role": "Representative", "permissions": `{"*": "ru", "Role": "r", "Auth": "", "Account": "r", "Crawl": ""}`},
 }
 
-var auths = []types.Auth{
-	{ID: "auth_test", Name: "test_auth", Password: "12345678", RoleID: "role_test"},
-	{ID: "auth_admin", Name: "Admin", Password: "12345678", RoleID: "role_admin"},
-	{ID: "auth_mgr", Name: "Mgr", Password: "12345678", RoleID: "role_mgr"},
-	{ID: "auth_rep", Name: "Rep", Password: "12345678", RoleID: "role_rep"},
+var Auths = []map[string]interface{}{
+	{"id": "auth_test", "name": "test_auth", "password": "12345678", "roleId": "role_test"},
+	{"id": "auth_admin", "name": "Admin", "password": "12345678", "roleId": "role_admin"},
+	{"id": "auth_mgr", "name": "Mgr", "password": "12345678", "roleId": "role_mgr"},
+	{"id": "auth_rep", "name": "Rep", "password": "12345678", "roleId": "role_rep"},
 }
 
 // BootstrapAuthData creates Role and Auth entities using database-specific CLI tools
@@ -48,27 +47,34 @@ func BootstrapAuthData() error {
 
 func bootstrapAuthMongoDB() error {
 	// Upsert Role documents (replace if exists, insert if not)
-	for _, role := range roles {
+	for _, role := range Roles {
 		// Escape double quotes in permissions JSON for shell command
-		escapedPermissions := strings.ReplaceAll(role.Permissions, `"`, `\"`)
+		roleID := role["id"].(string)
+		roleName := role["role"].(string)
+		permissions := role["permissions"].(string)
+		escapedPermissions := strings.ReplaceAll(permissions, `"`, `\"`)
 		roleCmd := fmt.Sprintf(`mongosh %s --quiet --eval 'db.Role.replaceOne({_id: "%s"}, {_id: "%s", id: "%s", role: "%s", permissions: "%s", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()}, {upsert: true})'`,
-			DatabaseName, role.ID, role.ID, role.ID, role.Role, escapedPermissions)
+			DatabaseName, roleID, roleID, roleID, roleName, escapedPermissions)
 		if err := executeSystemCommand(roleCmd); err != nil {
-			return fmt.Errorf("failed to upsert Role %s in MongoDB: %w", role.ID, err)
+			return fmt.Errorf("failed to upsert Role %s in MongoDB: %w", roleID, err)
 		}
 	}
 
 	// Upsert Auth documents (replace if exists, insert if not)
-	for _, auth := range auths {
+	for _, auth := range Auths {
+		authID := auth["id"].(string)
+		name := auth["name"].(string)
+		password := auth["password"].(string)
+		roleID := auth["roleId"].(string)
 		authCmd := fmt.Sprintf(`mongosh %s --quiet --eval 'db.Auth.replaceOne({_id: "%s"}, {_id: "%s", id: "%s", name: "%s", password: "%s", roleId: "%s", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()}, {upsert: true})'`,
-			DatabaseName, auth.ID, auth.ID, auth.ID, auth.Name, auth.Password, auth.RoleID)
+			DatabaseName, authID, authID, authID, name, password, roleID)
 		if err := executeSystemCommand(authCmd); err != nil {
-			return fmt.Errorf("failed to upsert Auth %s in MongoDB: %w", auth.ID, err)
+			return fmt.Errorf("failed to upsert Auth %s in MongoDB: %w", authID, err)
 		}
 	}
 
 	if Verbose {
-		fmt.Printf("  ✓ Created %d Roles and %d Auth records in MongoDB\n", len(roles), len(auths))
+		fmt.Printf("  ✓ Created %d Roles and %d Auth records in MongoDB\n", len(Roles), len(Auths))
 	}
 	return nil
 }
@@ -76,28 +82,35 @@ func bootstrapAuthMongoDB() error {
 func bootstrapAuthPostgreSQL() error {
 	// Upsert Role records (replace if exists, insert if not)
 	// Note: Role table only has: id, role, permissions (no timestamps)
-	for _, role := range roles {
+	for _, role := range Roles {
 		// Escape double quotes in permissions JSON for shell command
-		escapedPermissions := strings.ReplaceAll(role.Permissions, `"`, `\"`)
+		roleID := role["id"].(string)
+		roleName := role["role"].(string)
+		permissions := role["permissions"].(string)
+		escapedPermissions := strings.ReplaceAll(permissions, `"`, `\"`)
 		roleCmd := fmt.Sprintf(`psql -d %s -c "INSERT INTO \"Role\" (id, role, permissions) VALUES ('%s', '%s', '%s') ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, permissions = EXCLUDED.permissions"`,
-			DatabaseName, role.ID, role.Role, escapedPermissions)
+			DatabaseName, roleID, roleName, escapedPermissions)
 		if err := executeSystemCommand(roleCmd); err != nil {
-			return fmt.Errorf("failed to upsert Role %s in PostgreSQL: %w", role.ID, err)
+			return fmt.Errorf("failed to upsert Role %s in PostgreSQL: %w", roleID, err)
 		}
 	}
 
 	// Upsert Auth records (replace if exists, insert if not)
 	// Note: Auth table only has: id, name, password, roleId (no timestamps)
-	for _, auth := range auths {
+	for _, auth := range Auths {
+		authID := auth["id"].(string)
+		name := auth["name"].(string)
+		password := auth["password"].(string)
+		roleID := auth["roleId"].(string)
 		authCmd := fmt.Sprintf(`psql -d %s -c "INSERT INTO \"Auth\" (id, name, password, \"roleId\") VALUES ('%s', '%s', '%s', '%s') ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, password = EXCLUDED.password, \"roleId\" = EXCLUDED.\"roleId\""`,
-			DatabaseName, auth.ID, auth.Name, auth.Password, auth.RoleID)
+			DatabaseName, authID, name, password, roleID)
 		if err := executeSystemCommand(authCmd); err != nil {
-			return fmt.Errorf("failed to upsert Auth %s in PostgreSQL: %w", auth.ID, err)
+			return fmt.Errorf("failed to upsert Auth %s in PostgreSQL: %w", authID, err)
 		}
 	}
 
 	if Verbose {
-		fmt.Printf("  ✓ Created %d Roles and %d Auth records in PostgreSQL\n", len(roles), len(auths))
+		fmt.Printf("  ✓ Created %d Roles and %d Auth records in PostgreSQL\n", len(Roles), len(Auths))
 	}
 	return nil
 }
@@ -107,28 +120,35 @@ func bootstrapAuthSQLite() error {
 
 	// Upsert Role records (replace if exists, insert if not)
 	// Note: Role table only has: id, role, permissions (no timestamps)
-	for _, role := range roles {
+	for _, role := range Roles {
 		// Escape double quotes in permissions JSON for shell command
-		escapedPermissions := strings.ReplaceAll(role.Permissions, `"`, `\"`)
+		roleID := role["id"].(string)
+		roleName := role["role"].(string)
+		permissions := role["permissions"].(string)
+		escapedPermissions := strings.ReplaceAll(permissions, `"`, `\"`)
 		roleCmd := fmt.Sprintf(`sqlite3 %s "REPLACE INTO Role (id, role, permissions) VALUES ('%s', '%s', '%s')"`,
-			dbFile, role.ID, role.Role, escapedPermissions)
+			dbFile, roleID, roleName, escapedPermissions)
 		if err := executeSystemCommand(roleCmd); err != nil {
-			return fmt.Errorf("failed to upsert Role %s in SQLite: %w", role.ID, err)
+			return fmt.Errorf("failed to upsert Role %s in SQLite: %w", roleID, err)
 		}
 	}
 
 	// Upsert Auth records (replace if exists, insert if not)
 	// Note: Auth table only has: id, name, password, roleId (no timestamps)
-	for _, auth := range auths {
+	for _, auth := range Auths {
+		authID := auth["id"].(string)
+		name := auth["name"].(string)
+		password := auth["password"].(string)
+		roleID := auth["roleId"].(string)
 		authCmd := fmt.Sprintf(`sqlite3 %s "REPLACE INTO Auth (id, name, password, roleId) VALUES ('%s', '%s', '%s', '%s')"`,
-			dbFile, auth.ID, auth.Name, auth.Password, auth.RoleID)
+			dbFile, authID, name, password, roleID)
 		if err := executeSystemCommand(authCmd); err != nil {
-			return fmt.Errorf("failed to upsert Auth %s in SQLite: %w", auth.ID, err)
+			return fmt.Errorf("failed to upsert Auth %s in SQLite: %w", authID, err)
 		}
 	}
 
 	if Verbose {
-		fmt.Printf("  ✓ Created %d Roles and %d Auth records in SQLite\n", len(roles), len(auths))
+		fmt.Printf("  ✓ Created %d Roles and %d Auth records in SQLite\n", len(Roles), len(Auths))
 	}
 	return nil
 }
@@ -138,28 +158,35 @@ func bootstrapAuthElasticsearch() error {
 
 	// Upsert Role documents (PUT replaces if exists, creates if not)
 	// Use refresh=wait_for to ensure documents are searchable immediately
-	for _, role := range roles {
+	for _, role := range Roles {
 		// Escape double quotes in permissions JSON for curl -d'...' syntax
-		escapedPermissions := strings.ReplaceAll(role.Permissions, `"`, `\"`)
+		roleID := role["id"].(string)
+		roleName := role["role"].(string)
+		permissions := role["permissions"].(string)
+		escapedPermissions := strings.ReplaceAll(permissions, `"`, `\"`)
 		roleCmd := fmt.Sprintf(`curl -s -X PUT "localhost:9200/role/_doc/%s?refresh=wait_for" -H 'Content-Type: application/json' -d'{"id":"%s","role":"%s","permissions":"%s","createdAt":"%s","updatedAt":"%s"}'`,
-			role.ID, role.ID, role.Role, escapedPermissions, timestamp, timestamp)
+			roleID, roleID, roleName, escapedPermissions, timestamp, timestamp)
 		if err := executeSystemCommand(roleCmd); err != nil {
-			return fmt.Errorf("failed to upsert Role %s in Elasticsearch: %w", role.ID, err)
+			return fmt.Errorf("failed to upsert Role %s in Elasticsearch: %w", roleID, err)
 		}
 	}
 
 	// Upsert Auth documents (PUT replaces if exists, creates if not)
 	// Use refresh=wait_for to ensure documents are searchable immediately
-	for _, auth := range auths {
+	for _, auth := range Auths {
+		authID := auth["id"].(string)
+		name := auth["name"].(string)
+		password := auth["password"].(string)
+		roleID := auth["roleId"].(string)
 		authCmd := fmt.Sprintf(`curl -s -X PUT "localhost:9200/auth/_doc/%s?refresh=wait_for" -H 'Content-Type: application/json' -d'{"id":"%s","name":"%s","password":"%s","roleId":"%s","createdAt":"%s","updatedAt":"%s"}'`,
-			auth.ID, auth.ID, auth.Name, auth.Password, auth.RoleID, timestamp, timestamp)
+			authID, authID, name, password, roleID, timestamp, timestamp)
 		if err := executeSystemCommand(authCmd); err != nil {
-			return fmt.Errorf("failed to upsert Auth %s in Elasticsearch: %w", auth.ID, err)
+			return fmt.Errorf("failed to upsert Auth %s in Elasticsearch: %w", authID, err)
 		}
 	}
 
 	if Verbose {
-		fmt.Printf("  ✓ Created %d Roles and %d Auth records in Elasticsearch\n", len(roles), len(auths))
+		fmt.Printf("  ✓ Created %d Roles and %d Auth records in Elasticsearch\n", len(Roles), len(Auths))
 	}
 	return nil
 }

@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
-	"validate/pkg/core"
 
 	"events-shared/schema"
+	"validate/pkg/core"
+	"validate/pkg/types"
 )
 
 // CreateBulkData creates random bulk test accounts and users for get_all testing
@@ -24,14 +25,19 @@ func CreateBulkData(numAccounts int, numUsers int) error {
 	for i := 1; i <= numAccounts; i++ {
 		accountID := fmt.Sprintf("acc_r%03d", i)
 		accountName := fmt.Sprintf("Account %s", accountID)
-		account := map[string]interface{}{
+
+		// Use NewEntity to auto-populate required fields
+		account, err := types.NewEntity("Account", map[string]interface{}{
 			"id":        accountID,
 			"name":      accountName,
 			"createdAt": time.Now().UTC().Format(time.RFC3339),
 			"updatedAt": time.Now().UTC().Format(time.RFC3339),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create account entity %s: %w", accountID, err)
 		}
 
-		if err := core.CreateEntity("Account", account); err != nil {
+		if err := core.CreateEntity("Account", account.ToJSON()); err != nil {
 			return fmt.Errorf("failed to create account %s: %w", accountID, err)
 		}
 
@@ -78,7 +84,8 @@ func CreateBulkData(numAccounts int, numUsers int) error {
 		// Generate password with constraints
 		password := generateConstrainedString(r, schemaCache, "User", "password", "TestPass"+generateRandomString(r, 6)+"!")
 
-		user := map[string]interface{}{
+		// Use NewEntity to auto-populate required fields like roleId
+		user, err := types.NewEntity("User", map[string]interface{}{
 			"id":             userID,
 			"firstName":      firstName,
 			"lastName":       lastName,
@@ -92,9 +99,12 @@ func CreateBulkData(numAccounts int, numUsers int) error {
 			"password":       password,
 			"createdAt":      time.Now().UTC().Format(time.RFC3339),
 			"updatedAt":      time.Now().UTC().Format(time.RFC3339),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create user entity %s: %w", userID, err)
 		}
 
-		if err := core.CreateEntity("User", user); err != nil {
+		if err := core.CreateEntity("User", user.ToJSON()); err != nil {
 			return fmt.Errorf("failed to create user %s: %w", userID, err)
 		}
 

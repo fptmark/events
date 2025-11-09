@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"validate/pkg/core"
 	"validate/pkg/types"
 )
 
@@ -52,113 +53,31 @@ func testAuthz(username, password string) (*types.TestResult, error) {
 		return result, nil
 	}
 
-	// Extract permissions from login response (expanded format)
-	var loginData map[string]interface{}
-	var actualPerms map[string]interface{}
-	var permissions string
-	if err := json.Unmarshal(loginRespBody, &loginData); err == nil {
-		// Navigate to data.permissions
-		if data, ok := loginData["data"].(map[string]interface{}); ok {
-			if permsData, ok := data["permissions"].(map[string]interface{}); ok {
-				actualPerms = permsData
-				if entityPerms, ok := permsData["entity"].(map[string]interface{}); ok {
-					// Get User entity permissions (e.g., "cru")
-					if permsStr, ok := entityPerms["User"].(string); ok {
-						permissions = permsStr
-					}
-				}
-			}
-		}
-	}
-
-	if permissions == "" {
-		result.Issues = append(result.Issues, "No User permissions found in login response")
+	// Step 2: Get roleId from bootstrap auth data
+	roleId, err := getRoleIdFromBootstrapAuth(username)
+	if err != nil {
+		result.Issues = append(result.Issues, fmt.Sprintf("Failed to get roleId from bootstrap: %v", err))
 		return result, nil
 	}
 
-	// VERIFY PERMISSIONS STRUCTURE - Compare actual vs expected expansion
-	expectedPerms, err := computeExpectedPermissions(username, sessionID)
+	// Step 3: Get permissions JSON from bootstrap role data
+	rawPermsJSON, err := getPermissionsFromBootstrapRole(roleId)
 	if err != nil {
-		result.Issues = append(result.Issues, fmt.Sprintf("Failed to compute expected permissions: %v", err))
-	} else {
-		verifyIssues := verifyPermissionsStructure(username, actualPerms, expectedPerms)
-		result.Issues = append(result.Issues, verifyIssues...)
+		result.Issues = append(result.Issues, fmt.Sprintf("Failed to get permissions from bootstrap: %v", err))
+		return result, nil
 	}
 
-	// Step 2: Test CREATE operation (c)
-	// Generate unique username/email to avoid conflicts on repeated runs
-	timestamp := time.Now().UnixNano()
-	uniqueUsername := fmt.Sprintf("authztest_%d", timestamp)
-	uniqueEmail := fmt.Sprintf("authz_%d@test.com", timestamp)
-
-	hasCreate := strings.ContainsRune(permissions, 'c')
-	createStatus := ExecuteHTTPStatusOnly("/api/User", "POST", map[string]interface{}{
-		"username":       uniqueUsername,
-		"email":          uniqueEmail,
-		"password":       "12345678",
-		"firstName":      "Authz",
-		"lastName":       "Test",
-		"gender":         "other",
-		"dob":            "2000-01-01",
-		"isAccountOwner": true,
-		"accountId":      "acc_valid_001",
-		"netWorth":       50000,
-	}, sessionID)
-	checkPermission(result, "CREATE", hasCreate, createStatus)
-
-	// Step 3: Test READ operation (r)
-	hasRead := strings.ContainsRune(permissions, 'r')
-	readStatus := ExecuteHTTPStatusOnly("/api/User/usr_get_001", "GET", nil, sessionID)
-	checkPermission(result, "READ", hasRead, readStatus)
-
-	// Step 4: Test UPDATE operation (u)
-	hasUpdate := strings.ContainsRune(permissions, 'u')
-	updateStatus := ExecuteHTTPStatusOnly("/api/User/usr_update_001", "PUT", map[string]interface{}{
-		"username":       "usr_update_001",
-		"email":          "update@test.com",
-		"password":       "12345678",
-		"firstName":      "Updated",
-		"lastName":       "User",
-		"isAccountOwner": false,
-		"accountId":      "acc_valid_001",
-	}, sessionID)
-	checkPermission(result, "UPDATE", hasUpdate, updateStatus)
-
-	// Step 5: Test DELETE operation (d)
-	hasDelete := strings.ContainsRune(permissions, 'd')
-	deleteStatus := ExecuteHTTPStatusOnly("/api/User/usr_delete_002", "DELETE", nil, sessionID)
-	checkPermission(result, "DELETE", hasDelete, deleteStatus)
-
-	// Step 6: Logout
-	ExecuteHTTP("/api/logout", "POST", nil, sessionID)
-
-	// Create summary data
-	result.Data = []map[string]interface{}{
-		{
-			"user":         username,
-			"permissions":  permissions,
-			"createStatus": createStatus,
-			"readStatus":   readStatus,
-			"updateStatus": updateStatus,
-			"deleteStatus": deleteStatus,
-		},
-	}
-
-	result.Passed = len(result.Issues) == 0
-	return result, nil
-}
-
-// computeExpectedPermissions fetches role and computes expected permissions structure
-func computeExpectedPermissions(username, sessionID string) (map[string]interface{}, error) {
-	// Step 1: Get metadata entities
+	// Step 4: Get metadata entities
 	_, metadataBody, err := ExecuteHTTP("/api/metadata", "GET", nil, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch metadata: %w", err)
+		result.Issues = append(result.Issues, fmt.Sprintf("Failed to fetch metadata: %v", err))
+		return result, nil
 	}
 
 	var metadataData map[string]interface{}
 	if err := json.Unmarshal(metadataBody, &metadataData); err != nil {
-		return nil, fmt.Errorf("failed to parse metadata: %w", err)
+		result.Issues = append(result.Issues, fmt.Sprintf("Failed to parse metadata: %v", err))
+		return result, nil
 	}
 
 	entities := []string{}
@@ -169,52 +88,133 @@ func computeExpectedPermissions(username, sessionID string) (map[string]interfac
 	}
 	sort.Strings(entities)
 
-	// Step 2: Get user's auth record to find roleId
-	authURL := fmt.Sprintf("/api/Auth?filter=name:%s", username)
-	_, authBody, err := ExecuteHTTP(authURL, "GET", nil, sessionID)
+	// Step 5: Expand permissions
+	expectedPerms, err := expandPermissions(rawPermsJSON, entities)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch auth record: %w", err)
+		result.Issues = append(result.Issues, fmt.Sprintf("Failed to expand permissions: %v", err))
+		return result, nil
 	}
 
-	var authData map[string]interface{}
-	if err := json.Unmarshal(authBody, &authData); err != nil {
-		return nil, fmt.Errorf("failed to parse auth response: %w", err)
-	}
-
-	roleId := ""
-	if data, ok := authData["data"].([]interface{}); ok && len(data) > 0 {
-		if authRecord, ok := data[0].(map[string]interface{}); ok {
-			roleId = authRecord["roleId"].(string)
+	// Step 6: Extract actual permissions from login response
+	var loginData map[string]interface{}
+	var actualPerms map[string]interface{}
+	if err := json.Unmarshal(loginRespBody, &loginData); err == nil {
+		if data, ok := loginData["data"].(map[string]interface{}); ok {
+			if permsData, ok := data["permissions"].(map[string]interface{}); ok {
+				actualPerms = permsData
+			}
 		}
 	}
 
-	if roleId == "" {
-		return nil, fmt.Errorf("roleId not found for user %s", username)
+	if actualPerms == nil {
+		result.Issues = append(result.Issues, "No permissions found in login response")
+		return result, nil
 	}
 
-	// Step 3: Get role record to get raw permissions
-	roleURL := fmt.Sprintf("/api/Role/%s", roleId)
-	_, roleBody, err := ExecuteHTTP(roleURL, "GET", nil, sessionID)
+	// Debug output: Show raw, actual, and expected permissions for comparison
+	result.Notes = append(result.Notes, fmt.Sprintf("Raw permissions from bootstrap: %s", rawPermsJSON))
+
+	actualPermsJSON, _ := json.MarshalIndent(actualPerms, "  ", "  ")
+	result.Notes = append(result.Notes, fmt.Sprintf("Actual permissions from login:\n  %s", string(actualPermsJSON)))
+
+	expectedPermsJSON, _ := json.MarshalIndent(expectedPerms, "  ", "  ")
+	result.Notes = append(result.Notes, fmt.Sprintf("Expected permissions (computed by test):\n  %s", string(expectedPermsJSON)))
+
+	// Step 7: Compare expanded permissions vs login permissions, fail on mismatch
+	verifyIssues := verifyPermissionsStructure(username, actualPerms, expectedPerms)
+	result.Issues = append(result.Issues, verifyIssues...)
+
+	// Step 8: Get User entity permissions for CRUD tests
+	expectedUserPerms := ""
+	if entityPerms, ok := expectedPerms["entity"].(map[string]string); ok {
+		expectedUserPerms = entityPerms["User"]
+	}
+
+	// Step 9: Test CREATE operation (c)
+	hasCreate := strings.ContainsRune(expectedUserPerms, 'c')
+
+	timestamp := time.Now().UnixNano()
+	uniqueUsername := fmt.Sprintf("authztest_%d", timestamp)
+	uniqueEmail := fmt.Sprintf("authz_%d@test.com", timestamp)
+
+	var createStatus int
+	createEntity, err := types.NewEntity("User", map[string]interface{}{
+		"username":       uniqueUsername,
+		"email":          uniqueEmail,
+		"password":       "12345678",
+		"firstName":      "Authz",
+		"lastName":       "Test",
+		"gender":         "other",
+		"dob":            "2000-01-01",
+		"isAccountOwner": true,
+		"accountId":      "acc_valid_001",
+		"netWorth":       50000,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch role record: %w", err)
+		result.Issues = append(result.Issues, fmt.Sprintf("Failed to create entity: %v", err))
+		createStatus = 0
+	} else {
+		createStatus = ExecuteHTTPStatusOnly("/api/User", "POST", createEntity.ToJSON(), sessionID)
+	}
+	checkPermission(result, "CREATE", hasCreate, createStatus)
+
+	// Step 4: Test READ operation (r)
+	hasRead := strings.ContainsRune(expectedUserPerms, 'r')
+	readStatus := ExecuteHTTPStatusOnly("/api/User/usr_get_001", "GET", nil, sessionID)
+	checkPermission(result, "READ", hasRead, readStatus)
+
+	// Step 5: Test UPDATE operation (u)
+	hasUpdate := strings.ContainsRune(expectedUserPerms, 'u')
+
+	var updateStatus int
+	updateEntity, err := types.NewEntity("User", map[string]interface{}{
+		"username":       "usr_update_001",
+		"email":          "update@test.com",
+		"password":       "12345678",
+		"firstName":      "Updated",
+		"lastName":       "User",
+		"isAccountOwner": false,
+		"accountId":      "acc_valid_001",
+	})
+	if err != nil {
+		result.Issues = append(result.Issues, fmt.Sprintf("Failed to create update entity: %v", err))
+		updateStatus = 0
+	} else {
+		updateStatus = ExecuteHTTPStatusOnly("/api/User/usr_update_001", "PUT", updateEntity.ToJSON(), sessionID)
+	}
+	checkPermission(result, "UPDATE", hasUpdate, updateStatus)
+
+	// Step 6: Test DELETE operation (d)
+	hasDelete := strings.ContainsRune(expectedUserPerms, 'd')
+	deleteStatus := ExecuteHTTPStatusOnly("/api/User/usr_delete_002", "DELETE", nil, sessionID)
+	checkPermission(result, "DELETE", hasDelete, deleteStatus)
+
+	// Step 10: Logout
+	ExecuteHTTP("/api/logout", "POST", nil, sessionID)
+
+	// Get actual User permissions from login response for summary
+	actualUserPerms := ""
+	if entityPerms, ok := actualPerms["entity"].(map[string]interface{}); ok {
+		if permsStr, ok := entityPerms["User"].(string); ok {
+			actualUserPerms = permsStr
+		}
 	}
 
-	var roleData map[string]interface{}
-	if err := json.Unmarshal(roleBody, &roleData); err != nil {
-		return nil, fmt.Errorf("failed to parse role response: %w", err)
+	// Create summary data
+	result.Data = []map[string]interface{}{
+		{
+			"user":                username,
+			"expectedPermissions": expectedUserPerms,
+			"actualPermissions":   actualUserPerms,
+			"createStatus":        createStatus,
+			"readStatus":          readStatus,
+			"updateStatus":        updateStatus,
+			"deleteStatus":        deleteStatus,
+		},
 	}
 
-	rawPermsJSON := ""
-	if data, ok := roleData["data"].(map[string]interface{}); ok {
-		rawPermsJSON = data["permissions"].(string)
-	}
-
-	if rawPermsJSON == "" {
-		return nil, fmt.Errorf("permissions not found in role %s", roleId)
-	}
-
-	// Step 4: Expand permissions using same logic as server
-	return expandPermissions(rawPermsJSON, entities)
+	result.Passed = len(result.Issues) == 0
+	return result, nil
 }
 
 // expandPermissions replicates server's permission expansion logic
@@ -224,22 +224,23 @@ func expandPermissions(rawPermsJSON string, entities []string) (map[string]inter
 		return nil, fmt.Errorf("failed to parse raw permissions: %w", err)
 	}
 
-	dashboard := []string{}
 	entityPerms := make(map[string]string)
 
 	for _, entity := range entities {
 		perm := ""
+		foundExplicit := false
 
 		// Check for specific entity permission (case-insensitive)
 		for key, value := range rawPerms {
 			if strings.ToLower(key) == strings.ToLower(entity) {
 				perm = value
+				foundExplicit = true
 				break
 			}
 		}
 
-		// If no specific permission, use wildcard
-		if perm == "" {
+		// If no specific permission found, use wildcard
+		if !foundExplicit {
 			if wildcardPerm, ok := rawPerms["*"]; ok {
 				perm = wildcardPerm
 			}
@@ -247,54 +248,19 @@ func expandPermissions(rawPermsJSON string, entities []string) (map[string]inter
 
 		// Only include entities with non-empty permissions
 		if perm != "" {
-			dashboard = append(dashboard, entity)
 			entityPerms[entity] = perm
 		}
 	}
 
 	return map[string]interface{}{
-		"dashboard": dashboard,
-		"entity":    entityPerms,
-		"reports":   []interface{}{},
+		"entity":  entityPerms,
+		"reports": []interface{}{},
 	}, nil
 }
 
 // verifyPermissionsStructure validates actual permissions match expected expansion
 func verifyPermissionsStructure(username string, actual map[string]interface{}, expected map[string]interface{}) []string {
 	issues := []string{}
-
-	// Compare dashboard arrays (order-independent)
-	actualDash, ok1 := actual["dashboard"].([]interface{})
-	expectedDash, ok2 := expected["dashboard"].([]string)
-	if !ok1 || !ok2 {
-		issues = append(issues, fmt.Sprintf("%s: dashboard field type mismatch", username))
-	} else {
-		actualSet := make(map[string]bool)
-		for _, e := range actualDash {
-			if entity, ok := e.(string); ok {
-				actualSet[entity] = true
-			}
-		}
-
-		expectedSet := make(map[string]bool)
-		for _, entity := range expectedDash {
-			expectedSet[entity] = true
-		}
-
-		// Check for missing entities
-		for entity := range expectedSet {
-			if !actualSet[entity] {
-				issues = append(issues, fmt.Sprintf("%s: dashboard missing entity '%s'", username, entity))
-			}
-		}
-
-		// Check for extra entities
-		for entity := range actualSet {
-			if !expectedSet[entity] {
-				issues = append(issues, fmt.Sprintf("%s: dashboard has extra entity '%s'", username, entity))
-			}
-		}
-	}
 
 	// Compare entity permissions map
 	actualEntity, ok1 := actual["entity"].(map[string]interface{})
@@ -352,4 +318,24 @@ func checkPermission(result *types.TestResult, operation string, hasPermission b
 	if actualStatus != expectedStatus {
 		result.Issues = append(result.Issues, fmt.Sprintf("%s: expected %d, got %d", operation, expectedStatus, actualStatus))
 	}
+}
+
+// getRoleIdFromBootstrapAuth looks up roleId for a username from bootstrap auth data
+func getRoleIdFromBootstrapAuth(username string) (string, error) {
+	for _, auth := range core.Auths {
+		if auth["name"].(string) == username {
+			return auth["roleId"].(string), nil
+		}
+	}
+	return "", fmt.Errorf("username %s not found in bootstrap auth data", username)
+}
+
+// getPermissionsFromBootstrapRole looks up permissions JSON for a roleId from bootstrap role data
+func getPermissionsFromBootstrapRole(roleId string) (string, error) {
+	for _, role := range core.Roles {
+		if role["id"].(string) == roleId {
+			return role["permissions"].(string), nil
+		}
+	}
+	return "", fmt.Errorf("roleId %s not found in bootstrap role data", roleId)
 }

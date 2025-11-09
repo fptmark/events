@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"validate/pkg/core"
-	"validate/pkg/metadata"
 	"validate/pkg/types"
 )
 
@@ -217,7 +216,7 @@ func (v *verifier) checkFilterMatch(value interface{}, filter types.FilterValue,
 			filterLower := strings.ToLower(filterStr)
 
 			// Check if this is an enum field - enum fields use exact matching
-			isEnumField := metadata.IsEnumField(v.entity, fieldName)
+			isEnumField := core.IsEnumField(v.entity, fieldName)
 			if isEnumField {
 				// Enum fields: exact match (case-insensitive)
 				return strings.EqualFold(valueStr, filterStr)

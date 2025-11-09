@@ -1,6 +1,8 @@
 package core
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,17 +42,27 @@ func LoadReportDataFunc() {
 // Implementation should create bulk test data and fixtures
 type PopulateDataFunc func(numAccounts, numUsers int) error
 
-// CleanDatabase cleans all data via the db/init/confirmed endpoint
+// CleanDatabase cleans all data via the db/init endpoint with confirmed: true payload
 func CleanDatabase() error {
 	if Verbose {
 		fmt.Println("🧹 Cleaning database via API...")
 	}
 
+	// Prepare JSON payload {confirmed: true}
+	payload := map[string]bool{"confirmed": true}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", ServerURL+"/api/db/init/confirmed", nil)
+	req, err := http.NewRequest("POST", ServerURL+"/api/db/init", bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create database init request: %w", err)
 	}
+
+	// Set Content-Type header for JSON
+	req.Header.Set("Content-Type", "application/json")
 
 	// Add session cookie if authenticated
 	if SessionID != "" {
@@ -69,7 +81,7 @@ func CleanDatabase() error {
 	}
 
 	if Verbose {
-		fmt.Println("✅ Database cleaning completed via /api/db/init/confirmed")
+		fmt.Println("✅ Database cleaning completed via /api/db/init")
 	}
 
 	return nil

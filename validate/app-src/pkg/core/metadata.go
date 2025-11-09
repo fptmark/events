@@ -1,10 +1,8 @@
-package metadata
+package core
 
 import (
 	"encoding/json"
 	"sync"
-
-	"validate/pkg/core"
 )
 
 // Metadata cache
@@ -36,15 +34,15 @@ func LoadMetadata() error {
 	metadataMutex.Lock()
 	defer metadataMutex.Unlock()
 
-	// Fetch metadata from server using core.ExecuteGet (reuses HTTP client)
-	response, err := core.ExecuteGet("/api/metadata")
+	// Fetch metadata from server using ExecuteGet (reuses HTTP client)
+	response, err := ExecuteGet("/api/metadata")
 	if err != nil {
 		return err
 	}
 
-	// Use core.GetFromResponse to navigate to entities (reuse existing code)
+	// Use GetFromResponse to navigate to entities (reuse existing code)
 	// Pass empty string as default; if not found, GetFromResponse returns the default
-	entitiesData := core.GetFromResponse(response, "entities", "")
+	entitiesData := GetFromResponse(response, "entities", "")
 	if entitiesData == "" || entitiesData == nil {
 		return nil // No entities in response
 	}
@@ -116,4 +114,62 @@ func IsEnumField(entity string, field string) bool {
 	}
 
 	return len(fieldMeta.Enum) > 0
+}
+
+// GetAllEntities returns a list of all entity names from metadata
+func GetAllEntities() []string {
+	metadataMutex.RLock()
+	defer metadataMutex.RUnlock()
+
+	if !metadataLoaded {
+		return nil
+	}
+
+	entities := make([]string, 0, len(metadataCache))
+	for entityName := range metadataCache {
+		entities = append(entities, entityName)
+	}
+
+	return entities
+}
+
+// GetRequiredFields returns a list of required field names for an entity
+func GetRequiredFields(entity string) []string {
+	metadataMutex.RLock()
+	defer metadataMutex.RUnlock()
+
+	if !metadataLoaded {
+		return nil
+	}
+
+	entityMeta, exists := metadataCache[entity]
+	if !exists {
+		return nil
+	}
+
+	requiredFields := make([]string, 0)
+	for fieldName, fieldMeta := range entityMeta.Fields {
+		if fieldMeta.Required {
+			requiredFields = append(requiredFields, fieldName)
+		}
+	}
+
+	return requiredFields
+}
+
+// GetEntityMetadata returns the full metadata for an entity
+func GetEntityMetadata(entity string) *EntityMetadata {
+	metadataMutex.RLock()
+	defer metadataMutex.RUnlock()
+
+	if !metadataLoaded {
+		return nil
+	}
+
+	entityMeta, exists := metadataCache[entity]
+	if !exists {
+		return nil
+	}
+
+	return &entityMeta
 }

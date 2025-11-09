@@ -34,7 +34,7 @@ func GetAllTestCases() []types.TestCase {
 			RequestBody: map[string]interface{}{
 				"firstName": "Minimal", "lastName": "User", "email": "minimal@example.com",
 				"username": "minimal_user", "isAccountOwner": false,
-				"password": "TestPass123!", "accountId": "acc_valid_001"},
+				"password": "TestPass123!",  "accountId": "acc_valid_001"},
 			ExpectedData: &types.CRUDExpectation{
 				ShouldContainFields: []string{"id", "firstName", "lastName", "email", "username", "createdAt"},
 			}},
@@ -44,42 +44,49 @@ func GetAllTestCases() []types.TestCase {
 			RequestBody: map[string]interface{}{
 				"lastName": "User", "email": "test@example.com",
 				"username": "test_user", "password": "TestPass123!", "accountId": "acc_valid_001", "isAccountOwner": false},
+			OmitFields:   []string{"firstName"},
 			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "validation"}},
 
 		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - missing lastName", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"firstName": "Test", "email": "test@example.com",
 				"username": "test_user", "password": "TestPass123!", "accountId": "acc_valid_001", "isAccountOwner": false},
+			OmitFields:   []string{"lastName"},
 			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "validation"}},
 
 		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - missing email", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"firstName": "Test", "lastName": "User",
 				"username": "test_user", "password": "TestPass123!", "accountId": "acc_valid_001", "isAccountOwner": false},
+			OmitFields:   []string{"email"},
 			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "validation"}},
 
 		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - missing username", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"firstName": "Test", "lastName": "User", "email": "test@example.com",
 				"password": "TestPass123!", "accountId": "acc_valid_001", "isAccountOwner": false},
+			OmitFields:   []string{"username"},
 			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "validation"}},
 
 		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - missing password", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"firstName": "Test", "lastName": "User", "email": "test@example.com",
 				"username": "test_user", "accountId": "acc_valid_001", "isAccountOwner": false},
+			OmitFields:   []string{"password"},
 			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "validation"}},
 
 		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - missing accountId", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"firstName": "Test", "lastName": "User", "email": "test@example.com",
 				"username": "test_user", "password": "TestPass123!", "isAccountOwner": false},
+			OmitFields:   []string{"accountId"},
 			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "validation"}},
 
 		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - missing isAccountOwner", ExpectedStatus: 422,
 			RequestBody: map[string]interface{}{
 				"firstName": "Test", "lastName": "User", "email": "test@example.com",
 				"username": "test_user", "password": "TestPass123!", "accountId": "acc_valid_001"},
+			OmitFields:   []string{"isAccountOwner"},
 			ExpectedData: &types.CRUDExpectation{ExpectedErrorType: "validation"}},
 
 		{Method: "POST", URL: "/api/User", TestClass: "create", Description: "Create user - invalid gender enum", ExpectedStatus: 422,
