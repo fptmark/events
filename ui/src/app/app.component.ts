@@ -162,11 +162,11 @@ export class AppComponent implements OnInit {
       next: () => {
         console.log('AppComponent: Metadata loaded');
 
-        // Check for authn service in metadata and configure AuthService
-        const authnService = this.metadataService.getService('authn');
-        if (authnService) {
-          console.log('AppComponent: Authn service found in metadata');
-          this.authService.setAuthnConfig(authnService);
+        // Check for authn services in metadata and configure AuthService
+        const authnServices = this.metadataService.getAllServices('authn');
+        if (authnServices.length > 0) {
+          console.log(`AppComponent: Found ${authnServices.length} authn service(s) in metadata`);
+          this.authService.setAuthnConfigs(authnServices);
         } else {
           console.log('AppComponent: No authn service found - public API mode');
         }

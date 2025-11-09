@@ -71,6 +71,36 @@ export class LoginModalComponent implements OnInit {
   }
 
   /**
+   * Get the label to display (from config or default to "Login")
+   */
+  getLoginLabel(): string {
+    return this.authnConfig?.label || 'Login';
+  }
+
+  /**
+   * Check if there are multiple authn configs (show rotate icon)
+   */
+  hasMultipleConfigs(): boolean {
+    return this.authService.hasMultipleAuthnConfigs();
+  }
+
+  /**
+   * Rotate to next authn configuration
+   */
+  onRotateConfig() {
+    this.errorMessage = '';  // Clear error when switching
+    this.authService.rotateAuthnConfig();
+    // Credentials will be reinitialized via authnConfig subscription
+  }
+
+  /**
+   * Clear error message on keypress
+   */
+  onInputChange() {
+    this.errorMessage = '';
+  }
+
+  /**
    * Submit login form
    */
   async onSubmit() {

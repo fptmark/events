@@ -90,3 +90,29 @@
   opacity: 0.65;
   cursor: not-allowed;
 }
+
+/* Rotate button styling */
+.rotate-btn {
+  padding: 0.25rem 0.5rem;
+  margin-left: 0.5rem;
+  color: white;
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+.rotate-btn:hover {
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+}
+
+.rotate-btn:focus {
+  box-shadow: none;
+}
+
+.rotate-btn svg {
+  transition: transform 0.3s ease;
+}
+
+.rotate-btn:hover svg {
+  transform: rotate(180deg);
+}

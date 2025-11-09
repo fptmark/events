@@ -5,7 +5,6 @@ import { ConfigService } from './config.service';
 import { ServiceMetadata } from './metadata.service';
 
 export interface ExpandedPermissions {
-  dashboard: string[];              // List of entities to show in dashboard
   entity: { [key: string]: string }; // Entity -> operations map (e.g., {"User": "cru"})
   reports: any[];                    // Future: navbar reports with location
 }
@@ -20,6 +19,8 @@ export interface UserSession {
   providedIn: 'root'
 })
 export class AuthService {
+  private authnConfigs: ServiceMetadata[] = [];  // All authn configs
+  private currentConfigIndex = 0;                 // Current selected config
   private authnConfig$ = new BehaviorSubject<ServiceMetadata | null>(null);
   private permissions$ = new BehaviorSubject<any>(null);
   private userSession$ = new BehaviorSubject<UserSession | null>(null);
@@ -38,9 +39,22 @@ export class AuthService {
   ) {}
 
   /**
-   * Set the authn service configuration from metadata
+   * Set all authn service configurations from metadata
+   * Configs should be sorted with default first
+   */
+  setAuthnConfigs(configs: ServiceMetadata[]): void {
+    this.authnConfigs = configs;
+    this.currentConfigIndex = 0;
+    this.authnConfig$.next(configs.length > 0 ? configs[0] : null);
+    console.log('AuthService: Authn configs set:', configs);
+  }
+
+  /**
+   * Set the authn service configuration from metadata (backwards compatible)
    */
   setAuthnConfig(config: ServiceMetadata | null): void {
+    this.authnConfigs = config ? [config] : [];
+    this.currentConfigIndex = 0;
     this.authnConfig$.next(config);
     console.log('AuthService: Authn config set:', config);
   }
@@ -50,6 +64,28 @@ export class AuthService {
    */
   getAuthnConfig(): ServiceMetadata | null {
     return this.authnConfig$.value;
+  }
+
+  /**
+   * Check if there are multiple authn configs
+   */
+  hasMultipleAuthnConfigs(): boolean {
+    return this.authnConfigs.length > 1;
+  }
+
+  /**
+   * Rotate to next authn configuration
+   * Cycles through all available configs
+   */
+  rotateAuthnConfig(): void {
+    if (this.authnConfigs.length <= 1) {
+      return; // Nothing to rotate
+    }
+
+    this.currentConfigIndex = (this.currentConfigIndex + 1) % this.authnConfigs.length;
+    const newConfig = this.authnConfigs[this.currentConfigIndex];
+    this.authnConfig$.next(newConfig);
+    console.log('AuthService: Rotated to config:', newConfig.label || newConfig.route);
   }
 
   /**
@@ -96,12 +132,13 @@ export class AuthService {
     // No permissions object = authz not configured = allow all
     if (!perms) return true;
 
-    // No dashboard array = malformed permissions = deny
-    if (!perms.dashboard) return false;
+    // No entity map = malformed permissions = deny
+    if (!perms.entity) return false;
 
-    // Case-insensitive lookup in dashboard array
-    return perms.dashboard.some(
-      (dashEntity: string) => dashEntity.toLowerCase() === entity.toLowerCase()
+    // Case-insensitive lookup in entity keys (dashboard is derived from entity map)
+    const entityKeys = Object.keys(perms.entity);
+    return entityKeys.some(
+      (key: string) => key.toLowerCase() === entity.toLowerCase()
     );
   }
 
@@ -166,7 +203,11 @@ export class AuthService {
    * Perform login
    */
   async login(credentials: any): Promise<UserSession> {
-    const url = this.configService.getApiUrl('login');
+    const config = this.getAuthnConfig();
+    if (!config || !config.route) {
+      throw new Error('No authn configuration available');
+    }
+    const url = this.configService.getApiUrl(config.route);
 
     try {
       const response = await firstValueFrom(

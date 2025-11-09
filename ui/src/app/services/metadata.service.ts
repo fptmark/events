@@ -28,8 +28,12 @@ export interface EntityMetadata {
 
 export interface ServiceMetadata {
   entity: string;
+  route: string;
   inputs: { [key: string]: string };
   outputs: string[];
+  label?: string;
+  default?: boolean;
+  provider?: string;
 }
 
 interface DisplayInfo {
@@ -287,6 +291,32 @@ export class MetadataService {
       }
     }
     return null;
+  }
+
+  /**
+   * Get all instances of a service across entities (e.g., all "authn" configs)
+   * Returns array sorted by default flag (default first)
+   */
+  getAllServices(serviceName: string): ServiceMetadata[] {
+    const services: ServiceMetadata[] = [];
+
+    for (const entityName of Object.keys(this.metadata.entities)) {
+      const entity = this.metadata.entities[entityName];
+      if (entity.services) {
+        for (const serviceKey of Object.keys(entity.services)) {
+          if (serviceKey === serviceName || serviceKey.startsWith(serviceName + '.')) {
+            services.push(entity.services[serviceKey]);
+          }
+        }
+      }
+    }
+
+    // Sort by default flag (default=true first)
+    return services.sort((a, b) => {
+      if (a.default && !b.default) return -1;
+      if (!a.default && b.default) return 1;
+      return 0;
+    });
   }
 
 }
