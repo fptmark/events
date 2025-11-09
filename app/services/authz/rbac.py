@@ -22,42 +22,65 @@ import json5
 class Rbac:
     """RBAC service - utility class for permission management"""
 
-    service_config = None  # Set by decorator during initialization
+    entity_configs: Dict[str, dict] = {}  # Entity-specific configurations
     _permissions_cache: Dict[str, Dict[str, Any]] = {}  # Cache expanded permissions by roleId
 
     @classmethod
-    async def initialize(cls, config: dict):
-        """Initialize RBAC service - config comes from decorator framework"""
-        cls.service_config = config
+    async def initialize(cls, entity_configs: dict, runtime_config: dict):
+        """
+        Initialize RBAC service with multiple entity configurations.
+
+        Args:
+            entity_configs: Dict of entity configs, e.g.:
+                {'Role': {inputs: {...}, outputs: [...]}}
+            runtime_config: Runtime settings (if any)
+        """
+        cls.entity_configs = entity_configs
         cls._permissions_cache = {}  # Reset cache on initialization
-        print(f"  RBAC service configured for entity: {config.get('entity', 'Missing')}")
+
+        entities_list = list(entity_configs.keys())
+        print(f"  RBAC service configured for entities: {entities_list}")
         return cls
 
     @classmethod
-    async def permissions(cls, roleId: str) -> Optional[Dict[str, str]]:
+    def clear_cache(cls):
         """
-        Load permissions from Role entity by roleId (called at login only).
+        Clear all cached permissions.
+        Called on database reset to ensure fresh permissions are loaded from DB.
+        """
+        cls._permissions_cache = {}
+        print("  RBAC permissions cache cleared")
+
+    @classmethod
+    async def permissions(cls, roleId: str, entity: str = None) -> Optional[Dict[str, str]]:
+        """
+        Load permissions from entity by roleId.
 
         Args:
             roleId: Role ID to query
+            entity: Which entity config to use (defaults to first available)
 
         Returns:
             Permissions dict like {"*": "cruds"} or None
         """
-        if not cls.service_config:
-            print("ERROR: Rbac service not initialized - service_config is None")
+        # Determine which entity config to use
+        if not entity:
+            entity = list(cls.entity_configs.keys())[0] if cls.entity_configs else None
+
+        if not entity or entity not in cls.entity_configs:
+            print(f"ERROR: Rbac entity config not found for entity: {entity}")
             return None
 
-        # Get actual entity name and field mappings from service_config (not decorator schema)
-        entity = cls.service_config.get(decorators.SCHEMA_ENTITY)
-        input_mappings = cls.service_config.get(decorators.SCHEMA_INPUTS, {})
-        output_fields = cls.service_config.get(decorators.SCHEMA_OUTPUTS, [])
+        config = cls.entity_configs[entity]
+        input_mappings = config.get('inputs', {})
+        output_fields = config.get('outputs', [])
 
-        if not entity or not input_mappings or not output_fields:
-            print(f"ERROR: Rbac service_config missing required fields: entity={entity}, inputs={input_mappings}, outputs={output_fields}")
+        if not input_mappings or not output_fields:
+            print(f"ERROR: Rbac config missing fields for {entity}: inputs={input_mappings}, outputs={output_fields}")
             return None
 
         # Get field names from mappings
+        # Key is field name in entity (e.g., "Id" from {"Id": "roleId"})
         input_field = list(input_mappings.keys())[0]
         output_field = output_fields[0]
 
@@ -69,7 +92,7 @@ class Rbac:
         return None
 
     @classmethod
-    async def get_permissions(cls, roleId: str) -> Optional[dict]:
+    async def get_permissions(cls, roleId: str, entity: str = None) -> Optional[dict]:
         """
         Get expanded permissions for roleId (cached).
 
@@ -77,7 +100,6 @@ class Rbac:
         Cache is cleared on service initialization (server restart).
 
         Expanded format: {
-            "dashboard": ["User", "Account", "Auth"],
             "entity": {"User": "cru", "Account": "cru", "Auth": "r"},
             "reports": [
                 {"name": "text", "link": "/api/report...", "location": 1},
@@ -103,9 +125,9 @@ class Rbac:
 
         # Cache miss - compute and cache
         # Get raw permissions from database
-        raw_permissions = await cls.permissions(roleId)
+        raw_permissions = await cls.permissions(roleId, entity=entity)
         if not raw_permissions:
-            result = {"dashboard": [], "entity": {}, "reports": []}
+            result = {"entity": {}, "reports": []}
             cls._permissions_cache[roleId] = result
             return result
 
@@ -114,7 +136,6 @@ class Rbac:
 
         # Build entity permissions (specific overrides wildcard)
         entity_perms = {}
-        dashboard_entities = []
 
         for entity in all_entities:
             # Check for specific entity permission (case-insensitive)
@@ -131,10 +152,8 @@ class Rbac:
             # Only include entities with non-empty permissions
             if perm and perm != "":
                 entity_perms[entity] = perm
-                dashboard_entities.append(entity)
 
         result = {
-            "dashboard": dashboard_entities,
             "entity": entity_perms,
             "reports": []  # TODO: Populate based on role/permissions
         }
@@ -144,20 +163,21 @@ class Rbac:
         return result
 
     @classmethod
-    async def permitted(cls, roleId: str, entity: str, operation: str) -> bool:
+    async def permitted(cls, roleId: str, entity: str, operation: str, authz_entity: str = None) -> bool:
         """
         Check if role has permission for entity operation (main authorization check).
 
         Args:
             roleId: Role ID from session
-            entity: Entity name
+            entity: Entity name to check permission for
             operation: Single char operation ('c', 'r', 'u', 'd', 's')
+            authz_entity: Which authz entity config to use (e.g., "Role")
 
         Returns:
             True if permission granted, False otherwise
         """
         # Get cached permissions for role
-        permissions = await cls.get_permissions(roleId)
+        permissions = await cls.get_permissions(roleId, entity=authz_entity)
         if not permissions:
             return False
 

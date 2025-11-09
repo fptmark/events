@@ -115,48 +115,50 @@ def service_config(
         original_init = cls.initialize
 
         @wraps(original_init.__func__ if isinstance(original_init, classmethod) else original_init)
-        async def validated_init(cls_or_self, config: dict, *args, **kwargs):
-            # Validate config matches schema
+        async def validated_init(cls_or_self, entity_configs: dict, *args, **kwargs):
+            # Validate entity_configs matches schema
+            # New format: entity_configs = {'Auth': {inputs: {...}, outputs: [...]}, 'User': {...}}
             errors = []
             service_name = f"{cls.__module__}.{cls.__name__}"
 
-            # Check entity field
-            if cls._service_schema[SCHEMA_ENTITY] and SCHEMA_ENTITY not in config:
-                errors.append(f"Missing required field: '{SCHEMA_ENTITY}'")
+            # Validate it's a dict of entity configurations
+            if not isinstance(entity_configs, dict):
+                errors.append(f"First parameter must be a dict of entity configs")
+            else:
+                # Validate each entity's configuration
+                for entity_name, entity_config in entity_configs.items():
+                    if not isinstance(entity_config, dict):
+                        errors.append(f"Entity '{entity_name}' config must be a dict")
+                        continue
 
-            # Check inputs structure
-            if cls._service_schema[SCHEMA_INPUTS]:
-                if SCHEMA_INPUTS not in config:
-                    errors.append(f"Missing required field: '{SCHEMA_INPUTS}'")
-                else:
-                    config_inputs = config.get(SCHEMA_INPUTS, {})
-                    for field in cls._service_schema[SCHEMA_INPUTS].keys():
-                        if field not in config_inputs:
-                            errors.append(f"Missing required input field: '{field}'")
+                    # Check inputs structure
+                    if cls._service_schema[SCHEMA_INPUTS]:
+                        if SCHEMA_INPUTS not in entity_config:
+                            errors.append(f"Entity '{entity_name}': Missing required field '{SCHEMA_INPUTS}'")
+                        elif not isinstance(entity_config[SCHEMA_INPUTS], dict):
+                            errors.append(f"Entity '{entity_name}': Field '{SCHEMA_INPUTS}' must be a dict")
+                        else:
+                            config_inputs = entity_config[SCHEMA_INPUTS]
+                            # Validate that schema's required input fields are present
+                            for field in cls._service_schema[SCHEMA_INPUTS].keys():
+                                if field not in config_inputs:
+                                    errors.append(f"Entity '{entity_name}': Missing required input field '{field}'")
 
-            # Check outputs
-            if cls._service_schema[SCHEMA_OUTPUTS]:
-                if SCHEMA_OUTPUTS not in config:
-                    errors.append(f"Missing required field: '{SCHEMA_OUTPUTS}'")
-                elif not isinstance(config[SCHEMA_OUTPUTS], list):
-                    errors.append(f"Field '{SCHEMA_OUTPUTS}' must be a list")
-                else:
-                    config_outputs = config[SCHEMA_OUTPUTS]
-                    for field in cls._service_schema[SCHEMA_OUTPUTS]:
-                        if field not in config_outputs:
-                            errors.append(f"Output field '{field}' not found in config outputs list")
+                    # Check outputs
+                    if cls._service_schema[SCHEMA_OUTPUTS]:
+                        if SCHEMA_OUTPUTS not in entity_config:
+                            errors.append(f"Entity '{entity_name}': Missing required field '{SCHEMA_OUTPUTS}'")
+                        elif not isinstance(entity_config[SCHEMA_OUTPUTS], list):
+                            errors.append(f"Entity '{entity_name}': Field '{SCHEMA_OUTPUTS}' must be a list")
+                        # Note: We don't validate output field names match schema exactly
+                        # because different entities may return different output fields
 
-            # Check store fields
-            if cls._service_schema[SCHEMA_STORE]:
-                if SCHEMA_STORE not in config:
-                    errors.append(f"Missing required field: '{SCHEMA_STORE}'")
-                elif not isinstance(config[SCHEMA_STORE], list):
-                    errors.append(f"Field '{SCHEMA_STORE}' must be a list")
-                else:
-                    config_store = config[SCHEMA_STORE]
-                    for field in cls._service_schema[SCHEMA_STORE]:
-                        if field not in config_store:
-                            errors.append(f"Store field '{field}' not found in config store list")
+                    # Check store fields if specified
+                    if cls._service_schema[SCHEMA_STORE]:
+                        if SCHEMA_STORE in entity_config:
+                            config_store = entity_config[SCHEMA_STORE]
+                            if not isinstance(config_store, list):
+                                errors.append(f"Entity '{entity_name}': Field '{SCHEMA_STORE}' must be a list")
 
             if errors:
                 error_msg = f"Service '{service_name}' configuration validation failed:\n"
@@ -165,7 +167,7 @@ def service_config(
                 raise ValueError(error_msg)
 
             # Config is valid - call original initialize
-            return await original_init.__func__(cls_or_self, config, *args, **kwargs)
+            return await original_init.__func__(cls_or_self, entity_configs, *args, **kwargs)
 
         # Replace with validated version
         cls.initialize = classmethod(validated_init)

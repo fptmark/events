@@ -28,6 +28,27 @@ logger = logging.getLogger(__name__)
 _module_cache: Dict[str, Any] = {}
 
 
+def normalize_route(route: str) -> str:
+    """
+    Normalize route and prepend /api prefix.
+
+    Args:
+        route: Route string (with or without leading slash)
+
+    Returns:
+        Normalized route with /api prefix
+
+    Examples:
+        "login" -> "/api/login"
+        "/login" -> "/api/login"
+        "login/user" -> "/api/login/user"
+    """
+    # Strip leading/trailing slashes
+    route = route.strip('/')
+    # Prepend /api
+    return f"/api/{route}"
+
+
 def get_service_module(service_name: str):
     """
     Load service module (lazy cached).
@@ -64,78 +85,99 @@ def find_service_class(module):
 
 
 class ServiceRouter:
-    """Handles service route registration from @expose_endpoint decorators"""
+    """Handles service route registration from entity configs"""
 
     @staticmethod
     def create_router(service_name: str, module=None, app=None):
         """
-        Create a router for a service using decorator routes.
-        Scans module for any @expose_endpoint decorated methods - class-agnostic.
+        Create routes for a service using entity configs.
+        Reads routes from ServiceManager entity configs.
 
         Args:
-            service_name: Service name like "authn.cookies.redis"
+            service_name: Service provider like "cookies.redis"
             module: Optional pre-loaded module (avoids re-loading)
-            app: Optional FastAPI app to register router with
+            app: Optional FastAPI app to register routes with
         """
-        # Load service module if not provided
-        if module is None:
-            module = get_service_module(service_name)
+        if not app:
+            return  # No app to register with
 
-        # Use /api prefix - decorator's route is appended as-is
-        router = APIRouter(prefix="/api", tags=[service_name.split('.')[0].capitalize()])
+        # Extract service type from full module path
+        # e.g., "authn.cookies.redis" -> service_type = "authn"
+        parts = service_name.split('.')
+        if len(parts) < 2:
+            return  # Invalid service name format
 
-        routes_found = False
+        service_type = parts[0]  # First part is the service type
 
-        # Scan module for any objects with @expose_endpoint decorators
-        for attr_name in dir(module):
-            attr = getattr(module, attr_name)
+        if service_type not in ServiceManager._service_instances:
+            return  # No matching service found
 
-            # Check if it's a class
-            if inspect.isclass(attr) and hasattr(attr, '__module__') and attr.__module__ == module.__name__:
-                # Instantiate and check its methods
-                try:
-                    instance = attr()
-                    for method_name in dir(instance):
-                        method = getattr(instance, method_name)
+        # Get service data from ServiceManager
+        service_data = ServiceManager._service_instances.get(service_type)
+        if not service_data:
+            return
 
-                        if hasattr(method, '_endpoint_metadata'):
-                            routes_found = True
-                            metadata = method._endpoint_metadata
-                            http_method = metadata['method'].upper()
-                            route = metadata['route']
-                            summary = metadata.get('summary', method_name)
+        service_instance = service_data.get('instance')
+        entity_configs = service_data.get('entity_configs', {})
 
-                            # Create endpoint handler
-                            def create_handler(svc_method):
-                                async def handler(request: Request, response: Response):
-                                    return await svc_method(request, response)
+        if not service_instance or not entity_configs:
+            return
 
-                                return handler
+        # Find methods with @expose_endpoint decorator
+        for method_name in dir(service_instance):
+            method = getattr(service_instance, method_name)
 
-                            # Register route with HTTP method
-                            handler_func = create_handler(method)
+            if hasattr(method, '_endpoint_metadata'):
+                metadata = method._endpoint_metadata
+                base_summary = metadata.get('summary', method_name)
+                decorator_route = metadata.get('route', '')
 
-                            if http_method == "POST":
-                                router.post(route, summary=summary)(handler_func)
-                            elif http_method == "GET":
-                                router.get(route, summary=summary)(handler_func)
-                            elif http_method == "PUT":
-                                router.put(route, summary=summary)(handler_func)
-                            elif http_method == "DELETE":
-                                router.delete(route, summary=summary)(handler_func)
-                except Exception:
-                    # Skip classes that can't be instantiated
-                    pass
+                # Hard-coded: login is entity-specific, others are service-level
+                if method_name == 'login' and entity_configs:
+                    # Register one POST route per entity config
+                    for entity, config in entity_configs.items():
+                        route_path = config.get('route')
+                        if not route_path:
+                            continue
 
-        # Register router with app if routes found and app provided
-        if routes_found and app:
-            app.include_router(router)
+                        normalized_route = normalize_route(route_path)
+                        summary = f"{base_summary} ({entity})"
+
+                        # Fix closure bug: capture method using default parameter
+                        async def handler(request: Request, response: Response, m=method):
+                            return await m(request, response)
+
+                        app.post(normalized_route, summary=summary)(handler)
+                        print(f"  Registered route: POST {normalized_route} -> {service_type}.{method_name} (entity={entity})")
+
+                elif method_name in ['logout', 'refresh'] and decorator_route:
+                    # Service-level POST endpoints
+                    normalized_route = normalize_route(decorator_route)
+
+                    # Fix closure bug: capture method using default parameter
+                    async def handler(request: Request, response: Response, m=method):
+                        return await m(request, response)
+
+                    app.post(normalized_route, summary=base_summary)(handler)
+                    print(f"  Registered route: POST {normalized_route} -> {service_type}.{method_name}")
+
+                elif method_name == 'get_session' and decorator_route:
+                    # Service-level GET endpoint
+                    normalized_route = normalize_route(decorator_route)
+
+                    # Fix closure bug: capture method using default parameter
+                    async def handler(request: Request, response: Response, m=method):
+                        return await m(request, response)
+
+                    app.get(normalized_route, summary=base_summary)(handler)
+                    print(f"  Registered route: GET {normalized_route} -> {service_type}.{method_name}")
 
 
 class ServiceManager:
     """Handles service lifecycle - initialization and shutdown"""
     _services: List[str] = []
-    _service_instances: Dict[str, Any] = {}  # Cache service instances by type
+    # New structure: { 'authn': {'provider': 'cookies.redis', 'instance': <class>, 'entity_configs': {...}} }
+    _service_instances: Dict[str, Any] = {}
 
     @staticmethod
     async def initialize(app=None):
@@ -147,23 +189,19 @@ class ServiceManager:
             app: FastAPI app instance (optional, for router registration)
         """
         # Get all services from metadata (parsed from schema.mmd)
+        # New format: { 'authn': {'provider': 'cookies.redis', 'entity_configs': {'Auth': {...}, 'User': {...}}} }
         services = MetadataService.get_services()
         if not services:
             return
 
-        # Find all independent services and start them before any dependent services
+        # Initialize all services (dependency handling removed for now - can add back if needed)
         for service_type, service_data in services.items():
-            if 'depends' not in service_data.get('settings'):
-                await ServiceManager._start_service(service_type, service_data, app)
-
-        for service_type, service_data in services.items():
-            if 'depends' in service_data.get('settings'):
-                await ServiceManager._start_service(service_type, service_data, app)
+            await ServiceManager._start_service(service_type, service_data, app)
 
         print(f"✓ Initialized {ServiceManager._services}")
 
         if len(services) != len(ServiceManager._services):
-            msg = f"Some services failed to initialize.  Services configured: {list(services.keys())}" 
+            msg = f"Some services failed to initialize.  Services configured: {list(services.keys())}"
             print(f"⚠ {msg}")
             Notification.error(HTTP.INTERNAL_ERROR, msg)
 
@@ -174,50 +212,68 @@ class ServiceManager:
 
     @staticmethod
     def get_service_instance(service_type: str) -> Any:
-        """Get service instance by type (e.g., 'authn', 'rbac')"""
-        return ServiceManager._service_instances.get(service_type)
+        """Get service instance by type (e.g., 'authn', 'authz')"""
+        service_data = ServiceManager._service_instances.get(service_type)
+        return service_data.get('instance') if service_data else None
+
+    @staticmethod
+    def get_service_config(service_type: str, entity: str) -> Dict[str, Any]:
+        """Get entity-specific config for a service"""
+        service_data = ServiceManager._service_instances.get(service_type)
+        if service_data:
+            return service_data.get('entity_configs', {}).get(entity, {})
+        return {}
 
     @staticmethod
     async def _start_service(service_type: str, service_data: Dict[str, Any], app=None):
         """Initialize a single service and register its routes"""
         service_provider = service_data.get('provider')
+        entity_configs = service_data.get('entity_configs', {})
 
         try:
+            # Construct full module path: service_type.provider
+            # e.g., "authn" + "cookies.redis" -> "authn.cookies.redis"
+            full_module_path = f"{service_type}.{service_provider}"
+
             # Load service module
-            module = get_service_module(service_provider)
+            module = get_service_module(full_module_path)
 
             # Find service class with initialize method
             service_class = find_service_class(module)
 
             if service_class:
-                # Get config from Config (e.g., Redis connection settings) and merge with service-specific settings
-                settings = service_data.get('settings', {}).copy()
+                # Merge runtime config (Redis host/port/etc) into each entity config
+                # Config keys use full module path (e.g., "authn.cookies.redis")
+                runtime_config = Config.get(full_module_path, {})
 
-                # Add entity from top-level of service_data
-                if 'entity' in service_data:
-                    settings['entity'] = service_data['entity']
+                # Pass entity_configs to initialize method
+                await service_class.initialize(entity_configs, runtime_config)
 
-                # Merge in runtime config (Redis host/port/etc)
-                for key, value in Config.get(service_provider, {}).items():
-                    settings.setdefault(key, value)
+                # Create service instance for endpoint handlers
+                service_instance = service_class()
 
-                # Initialize the service
-                await service_class.initialize(settings)
+                # Cache the service data (provider, instance, entity_configs)
+                ServiceManager._service_instances[service_type] = {
+                    'provider': service_provider,
+                    'instance': service_instance,
+                    'entity_configs': entity_configs
+                }
 
-                # Cache the service class for later access
-                ServiceManager._service_instances[service_type] = service_class
-                print(f"✓ {service_provider} initialized")
+                entities_list = list(entity_configs.keys())
+                print(f"✓ {full_module_path} initialized for entities: {entities_list}")
             else:
                 # No initialize method - still report the service
-                print(f"✓ {service_provider} loaded (no initialization required)")
+                print(f"✓ {full_module_path} loaded (no initialization required)")
 
             ServiceManager._services.append(service_type)
 
             # Register routes (create_router handles registration internally)
-            ServiceRouter.create_router(service_provider, module=module, app=app)
+            ServiceRouter.create_router(full_module_path, module=module, app=app)
 
         except Exception as e:
-            print(f"⚠ Failed to initialize {service_provider}: {e}")
+            import traceback
+            print(f"⚠ Failed to initialize {full_module_path}: {e}")
+            traceback.print_exc()
 
     @staticmethod
     async def shutdown():

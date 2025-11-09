@@ -88,24 +88,31 @@ class Authn:
     }
     # The backing store will be set via the asynchronous initialize() class method.
     cookie_store: Optional[RedisCookieStore] = None
-    # Service configuration (entity and field mappings)
-    service_config: Optional[dict] = None
+    # Entity-specific configurations: {'Auth': {route, inputs, outputs, delegates}, 'User': {...}}
+    entity_configs: Dict[str, dict] = {}
 
     @classmethod
-    async def initialize(cls, config: dict):
+    async def initialize(cls, entity_configs: dict, runtime_config: dict):
         """
-        Initialize the authn service using settings from config.
-        Expected config keys: host, port, db (for Redis), entity, fields, etc.
+        Initialize the authn service with multiple entity configurations.
+
+        Args:
+            entity_configs: Dict of entity configs, e.g.:
+                {'Auth': {route: '/login', inputs: {...}, outputs: [...], delegates: [...]},
+                 'User': {route: '/login/user', inputs: {...}, outputs: [...], delegates: [...]}}
+            runtime_config: Runtime settings (Redis host, port, db, etc.)
         """
+        # Initialize Redis store (shared across all entity configs)
         store = RedisCookieStore(
-            host=config.get("host", "127.0.0.1"),
-            port=config.get("port", 6379),
-            db=config.get("db", 0)
+            host=runtime_config.get("host", "127.0.0.1"),
+            port=runtime_config.get("port", 6379),
+            db=runtime_config.get("db", 0)
         )
         await store.connect()
         cls.cookie_store = store
-        cls.service_config = config
-        print(f"  Authn service configured for entity: {config.get('entity', 'Missing')}")
+        cls.entity_configs = entity_configs
+
+        print(f"  Authn service configured for entities: {list(entity_configs.keys())}")
         return cls
 
     @classmethod
@@ -221,28 +228,33 @@ class Authn:
         # Extract credentials from request body
         credentials = await request.json()
 
-        # Get entity and field mappings from service config
-        if not self.service_config:
-            print("ERROR: Authn service not configured properly")
-            return {"success": False, "message": "Authn service not configured"}
+        # Determine which entity config to use by matching request path
+        path = request.url.path
+        entity = None
 
-        # Get config values using constants
-        entity_name = self.service_config.get(decorators.SCHEMA_ENTITY, "")
-        field_mappings = self.service_config.get(decorators.SCHEMA_INPUTS, {})
+        for ent, config in self.entity_configs.items():
+            config_route = config.get('route', '')
+            normalized_route = f"/api/{config_route.strip('/')}"
+            if path == normalized_route:
+                entity = ent
+                break
 
-        if not entity_name:
-            print("ERROR: Authn service config error - entity not specified")
-            return {"success": False, "message": "Authn service entity not specified"}
+        if not entity or entity not in self.entity_configs:
+            print(f"ERROR: No entity config found for path: {path}")
+            Notification.error(HTTP.UNAUTHORIZED, "Invalid credentials")
 
-        # Build input query dynamically from decorator schema
+        # Get entity-specific config
+        config = self.entity_configs[entity]
+
+        # Build input query from entity-specific input mappings
         input_query = {}
-        for semantic_field in self._service_schema[decorators.SCHEMA_INPUTS].keys():
-            entity_field = field_mappings.get(semantic_field)
+        field_mappings = config.get('inputs', {})
+
+        for semantic_field, entity_field in field_mappings.items():
             credential_value = credentials.get(semantic_field)
 
-            if not entity_field or not credential_value:
+            if not credential_value:
                 Notification.error(HTTP.UNAUTHORIZED, "Invalid credentials")
-                return {"success": False, "message": "Invalid credentials"}
 
             input_query[entity_field] = credential_value
 
@@ -254,8 +266,8 @@ class Authn:
         db = DatabaseFactory.get_instance()
 
         try:
-            output = ['Id', *self.service_config.get(decorators.SCHEMA_OUTPUTS, [])]
-            doc = await db.documents.bypass(entity_name, input_query, output)
+            output_fields = ['id', *config.get('outputs', [])]
+            doc = await db.documents.bypass(entity, input_query, output_fields)
         except Exception as e:
             print(f"Error during user lookup: {str(e)}")
             Notification.error(HTTP.UNAUTHORIZED, "Invalid credentials")
@@ -270,32 +282,45 @@ class Authn:
             **doc,       # Include all returned fields from doc
             "login_value": list(input_query.values())[0],  # First credential value
             "created": current_time,
-            "absolute_expiry": current_time + ABSOLUTE_SESSION_MAX  # Force re-login after absolute max
+            "absolute_expiry": current_time + ABSOLUTE_SESSION_MAX,  # Force re-login after absolute max
+            "_authn_entity": entity  # Store which entity was used for login
         }
 
-        # Get expanded permissions from authz service if running (for login response only)
+        # Handle delegates (e.g., authz)
         permissions = None
-        authz_service = ServiceManager.get_service_instance("authz")
-        if authz_service:
-            roleId = session_data.get('roleId')
-            if roleId:
-                try:
-                    # Get expanded permissions (cached in RBAC, returned to client at login)
-                    permissions = await authz_service.get_permissions(roleId)
-                    if permissions and permissions.get("entity"):
-                        print(f"Login: Retrieved permissions for roleId {roleId}: {permissions}")
-                    else:
-                        print(f"ERROR: get_permissions returned empty for roleId {roleId}: {permissions}")
-                        Notification.error(HTTP.UNAUTHORIZED, "No permissions defined for role")
-                except Exception as e:
-                    # Role not found or other error - FAIL login since authz is configured
-                    print(f"ERROR: Could not fetch permissions for role {roleId}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    Notification.error(HTTP.UNAUTHORIZED, f"Failed to load permissions: {str(e)}")
+        delegates = config.get('delegates', [])
+
+        for delegate in delegates:
+            # Delegate format: {"authz": "Role"} or {"authz": null}
+            delegate_type = list(delegate.keys())[0]  # e.g., "authz"
+            delegate_entity = delegate[delegate_type]  # e.g., "Role" or null
+
+            if delegate_type == "authz":
+                # Call authz delegate
+                authz_service = ServiceManager.get_service_instance("authz")
+                if authz_service:
+                    roleId = session_data.get('roleId')
+                    if roleId:
+                        try:
+                            # Get expanded permissions (cached in RBAC, returned to client at login)
+                            # Pass delegate_entity so authz knows which entity to use
+                            permissions = await authz_service.get_permissions(roleId, entity=delegate_entity)
+                            if permissions and permissions.get("entity"):
+                                print(f"Login: Retrieved permissions for roleId {roleId} from {delegate_entity}: {permissions}")
+                                # Store authz entity in session for future requests
+                                session_data["_authz_entity"] = delegate_entity
+                            else:
+                                print(f"ERROR: get_permissions returned empty for roleId {roleId}: {permissions}")
+                                Notification.error(HTTP.UNAUTHORIZED, "No permissions defined for role")
+                        except Exception as e:
+                            # Role not found or other error - FAIL login since authz is configured
+                            print(f"ERROR: Could not fetch permissions for role {roleId}: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            Notification.error(HTTP.UNAUTHORIZED, f"Failed to load permissions: {str(e)}")
 
         # NOTE: Permissions NOT stored in session - RBAC caches them by roleId
-        # Session only stores roleId, gating will fetch permissions from RBAC cache
+        # Session only stores roleId and entity context, gating will fetch permissions from RBAC cache
 
         await self.cookie_store.set_session(session_id, session_data, SESSION_TTL)
 
@@ -405,12 +430,13 @@ class Authn:
         authz_service = ServiceManager.get_service_instance("authz")
         if authz_service:
             roleId = session.get('roleId')
+            authz_entity = session.get('_authz_entity')  # Get authz entity from session
             if roleId:
                 try:
                     # Get expanded permissions (cached in RBAC)
-                    permissions = await authz_service.get_permissions(roleId)
+                    permissions = await authz_service.get_permissions(roleId, entity=authz_entity)
                     if permissions and permissions.get("entity"):
-                        print(f"Session: Retrieved permissions for roleId {roleId}: {permissions}")
+                        print(f"Session: Retrieved permissions for roleId {roleId} from {authz_entity}: {permissions}")
                     else:
                         print(f"ERROR: get_permissions returned empty for roleId {roleId}: {permissions}")
                 except Exception as e:

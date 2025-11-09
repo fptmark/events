@@ -4,12 +4,15 @@ from app.core.utils import merge_overrides
 
 class MetadataService:
     _metadata: Dict[str, Dict[str, Any]] = {}
-    _entity_services : Dict[str, Any] = {}   ## { 'type' : 'auth', 'provider': 'auth.cookies.redis', 'entity': '<entity>', 'settings': { ... } }
+    # New structure: { 'authn': { 'provider': 'cookies.redis', 'entity_configs': {'Auth': {...}, 'User': {...}} } }
+    _entity_services : Dict[str, Any] = {}
 
     @staticmethod
     def initialize(entities: List[str]) -> None:
         """Initialize the metadata service with entity list."""
         MetadataService._metadata = {}
+        MetadataService._entity_services = {}  # Reset on each initialization
+
         for entity in entities:
             md = MetadataService._get_raw_metadata(entity)
             if not md:
@@ -19,11 +22,27 @@ class MetadataService:
             merged_md['fields']['id'] = {'type': 'ObjectId', 'required': True}
             MetadataService._metadata[entity] = merged_md
 
+            # Process services for this entity
             for svc_name, svc_info in md.get('services', {}).items():
-                words = svc_name.split('.')
-                svc_info['entity'] = entity
-                # svc = { svc_name : { 'entity': entity, 'settings': svc_info } }
-                MetadataService._entity_services[words[0]] = { 'provider': svc_name, 'entity': entity, 'settings': svc_info }
+                # Service type is the key (e.g., "authn" from service definition)
+                service_type = svc_name
+                provider = svc_info.get('provider')
+
+                # Initialize service entry if not exists
+                if service_type not in MetadataService._entity_services:
+                    MetadataService._entity_services[service_type] = {
+                        'provider': provider,
+                        'entity_configs': {}
+                    }
+
+                # Add entity-specific config
+                MetadataService._entity_services[service_type]['entity_configs'][entity] = {
+                    'route': svc_info.get('route'),
+                    'inputs': svc_info.get('inputs', {}),
+                    'outputs': svc_info.get('outputs', []),
+                    'delegates': svc_info.get('delegates', []),
+                    'settings': svc_info  # Keep full settings for backward compat
+                }
      
     @staticmethod
     def get_services() -> Dict[str, Any]:
@@ -31,12 +50,12 @@ class MetadataService:
         return MetadataService._entity_services
 
     @staticmethod
-    def get_service(service_type: str) -> Tuple[str, str, Any]:     # provider, entity, settings
-        """Get service (provider, entity, settings) by service name."""
-        for svc_type, svc_data in MetadataService._entity_services.items():
-            if svc_type == service_type:
-                return svc_data['provider'], svc_data.get('entity', ''), svc_data['settings']
-        return '', '', None
+    def get_service(service_type: str) -> Dict[str, Any]:
+        """
+        Get service configuration by service type.
+        Returns dict with 'provider' and 'entity_configs'.
+        """
+        return MetadataService._entity_services.get(service_type, {})
 
     @staticmethod
     def list_entities() -> List[str]:
