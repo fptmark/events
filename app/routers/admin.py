@@ -3,7 +3,7 @@ Admin endpoints for database management and system health.
 """
 
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from app.db import DatabaseFactory
 
@@ -60,16 +60,40 @@ async def db_init_confirmation():
         </div>
 
         <div class="buttons">
-            <form method="post" action="/api/db/init/confirmed" style="display: inline;">
-                <button type="submit" class="btn btn-danger"
-                        onclick="return confirm('Are you absolutely sure? This will delete ALL data!')">
-                    YES - Delete All Data
-                </button>
-            </form>
+            <button class="btn btn-danger" onclick="confirmDbInit()">
+                YES - Delete All Data
+            </button>
             <a href="/api/db/report" class="btn btn-secondary">
                Cancel - Show Status Instead
             </a>
         </div>
+
+        <script>
+        async function confirmDbInit() {{
+            if (!confirm('Are you absolutely sure? This will delete ALL data!')) {{
+                return;
+            }}
+
+            try {{
+                const response = await fetch('/api/db/init', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ confirmed: true }})
+                }});
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {{
+                    alert('Database reinitialized successfully!');
+                    window.location.href = '/api/db/report';
+                }} else {{
+                    alert('Database init failed: ' + (data.message || 'Unknown error'));
+                }}
+            }} catch (error) {{
+                alert('Database init failed: ' + error.message);
+            }}
+        }}
+        </script>
 
         <p><em>Tip: Use <a href="/api/db/report">GET /api/db/report</a> to check database status before proceeding.</em></p>
     </body>
@@ -79,16 +103,33 @@ async def db_init_confirmation():
     return HTMLResponse(content=html_content)
 
 
-@router.post('/init/confirmed')
-async def db_init_confirmed():
+@router.post('/init')
+async def db_init(request: Request):
     """Complete wipe and reinitialize database with correct mappings"""
     try:
+        # Require confirmed: true in request body to prevent accidental wipes
+        body = await request.json()
+        if not body.get("confirmed"):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": "Database init requires confirmed: true in request body"
+                }
+            )
+
         db_instance = DatabaseFactory.get_instance()
 
         # Call the wipe and reinit method
         success = await db_instance.core.wipe_and_reinit()
 
         if success:
+            # Clear RBAC permissions cache to ensure fresh permissions are loaded from DB
+            from app.services.services import ServiceManager
+            authz_service = ServiceManager.get_service_instance("authz")
+            if authz_service:
+                authz_service.clear_cache()
+
             return {
                 "status": "success",
                 "message": "Database wiped and reinitialized successfully"
