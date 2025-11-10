@@ -102,7 +102,7 @@ async def get_entity_handler(entity_cls: Type[EntityModelProtocol], entity_id: s
     # Notification.set(entity=entity_cls.__name__, operation="get")
 
     # Model handles notifications internally, just call and return
-    response, _, _ = await entity_cls.get(entity_id, RequestContext.get_view_spec())
+    response, _ = await entity_cls.get(entity_id, RequestContext.get_view_spec())
 
     return await update_response(response)
 
