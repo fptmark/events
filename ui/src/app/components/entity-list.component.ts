@@ -21,39 +21,39 @@ import { OperationResultService } from '../services/operation-result.service';
   selector: 'app-entity-list',
   standalone: true,
   imports: [CommonModule, OperationResultBannerComponent],
-  styleUrls: ['../common.css'],
+  styleUrls: ['../common.css', './entity-list.component.css'],
   template: `
     <div class="mt-4">
       <h2>{{ metadataService.getTitle(entityType) }}</h2>
-      
+
       <!-- Operation Result Banner -->
       <operation-result-banner
         [message]="operationMessage"
         [type]="operationType"
         (dismissed)="onBannerDismissed()">
       </operation-result-banner>
-      
+
       <!-- Create button - checks both metadata operations and auth permissions -->
       <div *ngIf="entityService.canCreate(entityType)">
         <div class="mb-3">
           <button class="btn btn-entity-create" (click)="this.entityService.navigateToCreate(entityType)">Create {{ entityType }}</button>
         </div>
       </div>
-      
+
       <div *ngIf="loading" class="text-center">
         <p>Loading...</p>
       </div>
-      
+
       <div *ngIf="error" class="alert alert-danger">
         {{ error }}
       </div>
-      
+
       <div *ngIf="!loading && !error">
         <!-- Check if there are any entities to display -->
         <div *ngIf="data.length === 0" class="alert alert-info">
           No {{ entityType }} records found.
         </div>
-        
+
         <!-- Table layout with one row per entity -->
         <div *ngIf="data.length > 0" class="custom-table-container">
           <table class="table table-striped table-hover">
@@ -87,66 +87,7 @@ import { OperationResultService } from '../services/operation-result.service';
         </div>
       </div>
     </div>
-  `,
-  styles: [`
-    .container-fluid { 
-      padding-left: 10px;
-      padding-right: 10px;
-    }
-    
-    /* Make table fill available space */
-    .table-responsive {
-      width: 100%;
-      overflow-x: auto;
-      margin-bottom: 20px; /* Add space below table */
-      padding-bottom: 5px; /* Ensure bottom of table is visible */
-    }
-    
-    /* Use auto table layout for more natural column sizing */
-    .table {
-      table-layout: auto;
-    }
-    
-    /* Fix action buttons visibility */
-    .btn-group {
-      white-space: nowrap;
-      display: flex;
-    }
-    
-    /* Ensure text truncation starts at beginning, not end */
-    td {
-      max-width: 300px; /* Larger max-width for data cells */
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      /* direction: rtl;  /* Right-to-left to truncate start of text */
-      text-align: left; /* Keep text aligned left */
-    }
-    
-    /* Actions column should not truncate and should have enough space */
-    .actions-column {
-      direction: ltr;
-      white-space: nowrap;
-      width: 200px !important; /* Force minimum width with !important */
-      min-width: 200px !important;
-      padding-right: 15px !important; /* Add some extra padding */
-    }
-    
-    /* Ensure headers match cell widths */
-    th {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    
-    /* Tighten up table row heights */
-    .table td,
-    .table th {
-      padding-top: 0.25rem;
-      padding-bottom: 0.25rem;
-      vertical-align: middle;
-    }
-  `]
+  `
 })
 export class EntityListComponent implements OnInit, OnDestroy {
   entityType: string = '';

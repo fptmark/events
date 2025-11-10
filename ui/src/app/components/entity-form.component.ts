@@ -22,28 +22,7 @@ import { OperationResultService } from '../services/operation-result.service';
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule, EntitySelectorModalComponent, OperationResultBannerComponent],
   templateUrl: './entity-form.component.html',
-  styleUrls: ['./entity-form.component.css'],
-  styles: [`
-    /* Hide spinners by default */
-    input::-webkit-outer-spin-button,
-    input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-    input[type=number] {
-      -moz-appearance: textfield;
-    }
-
-    /* Show spinners only when the class is present */
-    .show-spinner::-webkit-outer-spin-button,
-    .show-spinner::-webkit-inner-spin-button {
-      -webkit-appearance: inner-spin-button;
-      margin: 0;
-    }
-    .show-spinner {
-      -moz-appearance: spinner-textfield;
-    }
-  `]
+  styleUrls: ['./entity-form.component.css']
 })
 
 export class EntityFormComponent implements OnInit {

@@ -41,14 +41,7 @@ import { Subscription } from 'rxjs';
       </div>
     </div>
   `,
-  styles: [`
-    .container-fluid { 
-      padding-left: 10px;
-      padding-right: 10px;
-    }
-    .card { transition: transform 0.2s; }
-    .card:hover { transform: translateY(-5px); }
-  `]
+  styleUrls: ['./entities-dashboard.component.css']
 })
 export class EntitiesDashboardComponent implements OnInit, OnDestroy {
   entityTypes: string[] = [];

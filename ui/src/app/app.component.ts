@@ -30,7 +30,7 @@ import { LoginModalComponent } from './components/login-modal.component';
       <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
           <!-- <a class="navbar-brand" routerLink="/">Events Management</a> -->
-          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
             aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
           </button>
@@ -55,7 +55,7 @@ import { LoginModalComponent } from './components/login-modal.component';
           </div>
         </div>
       </nav>
-      
+
       <div class="container-fluid py-3">
         <app-login-modal></app-login-modal>
         <app-notification></app-notification>
@@ -63,41 +63,7 @@ import { LoginModalComponent } from './components/login-modal.component';
       </div>
     </ng-container>
   `,
-  styles: [`
-    .container-fluid { 
-      padding-left: 15px;
-      padding-right: 15px; 
-    }
-    .loading-container {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      background-color: #f8f9fa;
-      z-index: 9999;
-    }
-    .loading-content {
-      text-align: center;
-    }
-    .loading-content h2 {
-      margin-bottom: 1rem;
-      color: #212529;
-    }
-    .navbar-text {
-      font-size: 0.9rem;
-      opacity: 0.9;
-    }
-    .navbar-text a {
-      text-decoration: none;
-    }
-    .navbar-text a:hover {
-      text-decoration: underline;
-    }
-  `]
+  styleUrls: ['./app.component.css']
 })
 export class AppComponent implements OnInit {
   initialized = false;
