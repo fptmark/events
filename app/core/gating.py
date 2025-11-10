@@ -38,7 +38,8 @@ class GatingService:
                 # Ask authz service to check permission (handles cache lookup internally)
                 roleId = session.get('roleId')
                 if not roleId:
-                    Notification.error(HTTP.INTERNAL_ERROR, "Missing roleId in session")
+                    # Session exists but is invalid/corrupted - require re-login
+                    Notification.error(HTTP.UNAUTHORIZED, "Invalid session - authentication required")
 
                 if await authz_svc.permitted(roleId, entity, operation):
                     return
