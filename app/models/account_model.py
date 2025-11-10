@@ -86,9 +86,9 @@ class Account(BaseModel):
         return await db.documents.get_all("Account", sort, filter, page, pageSize, view_spec, filter_matching)
         
     @classmethod
-    async def get(cls, id: str, view_spec: Dict[str, Any], top_level: bool = True) -> Tuple[Dict[str, Any], int, Optional[BaseException]]:
+    async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         db = DatabaseFactory.get_instance()
-        return await db.documents.get("Account", id, view_spec, top_level)
+        return await db.documents.get("Account", id, view_spec)
 
     @classmethod
     async def create(cls, data: AccountCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:

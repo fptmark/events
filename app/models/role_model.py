@@ -37,10 +37,10 @@ class Role(BaseModel):
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'role': {'type': 'String', 'required': True},
                   'permissions': {'type': 'String', 'required': True}},
     'ui': {},
-    'services': {   'authz.rbac': {   'depends': ['authn'],
-                                      'inputs': {'Id': 'roleId'},
-                                      'outputs': ['permissions'],
-                                      'entity': 'Role'}},
+    'services': {   'authz': {   'provider': 'rbac',
+                                 'inputs': {'Id': 'roleId'},
+                                 'outputs': ['permissions'],
+                                 'entity': 'Role'}},
     'uniques': [['role']]}
 
     class Settings:
@@ -66,9 +66,9 @@ class Role(BaseModel):
         return await db.documents.get_all("Role", sort, filter, page, pageSize, view_spec, filter_matching)
         
     @classmethod
-    async def get(cls, id: str, view_spec: Dict[str, Any], top_level: bool = True) -> Tuple[Dict[str, Any], int, Optional[BaseException]]:
+    async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         db = DatabaseFactory.get_instance()
-        return await db.documents.get("Role", id, view_spec, top_level)
+        return await db.documents.get("Role", id, view_spec)
 
     @classmethod
     async def create(cls, data: RoleCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:

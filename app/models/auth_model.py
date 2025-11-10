@@ -48,10 +48,14 @@ class Auth(BaseModel):
                                           'show': {   'displayInfo': [   {   'fields': [   'role',
                                                                                            'permissions']}]}}}},
     'ui': {},
-    'services': {   'authn.cookies.redis': {   'inputs': {   'login': 'name',
-                                                             'password': 'password'},
-                                               'outputs': ['roleId'],
-                                               'entity': 'Auth'}},
+    'services': {   'authn': {   'provider': 'cookies.redis',
+                                 'route': 'login',
+                                 'inputs': {   'login': 'name',
+                                               'password': 'password'},
+                                 'delegates': [{'authz': 'Role'}],
+                                 'outputs': ['roleId'],
+                                 'label': 'Internal Login',
+                                 'entity': 'Auth'}},
     'uniques': [['name']]}
 
     class Settings:
@@ -77,9 +81,9 @@ class Auth(BaseModel):
         return await db.documents.get_all("Auth", sort, filter, page, pageSize, view_spec, filter_matching)
         
     @classmethod
-    async def get(cls, id: str, view_spec: Dict[str, Any], top_level: bool = True) -> Tuple[Dict[str, Any], int, Optional[BaseException]]:
+    async def get(cls, id: str, view_spec: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         db = DatabaseFactory.get_instance()
-        return await db.documents.get("Auth", id, view_spec, top_level)
+        return await db.documents.get("Auth", id, view_spec)
 
     @classmethod
     async def create(cls, data: AuthCreate, validate: bool = True) -> Tuple[Dict[str, Any], int]:
