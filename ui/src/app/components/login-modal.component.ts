@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../services/auth.service';
+import { NotificationService } from '../services/notification.service';
 import { ServiceMetadata } from '../services/metadata.service';
 
 @Component({
@@ -18,7 +19,10 @@ export class LoginModalComponent implements OnInit {
   errorMessage = '';
   isLoading = false;
 
-  constructor(public authService: AuthService) {}
+  constructor(
+    public authService: AuthService,
+    private notificationService: NotificationService
+  ) {}
 
   ngOnInit() {
     // Subscribe to auth config changes
@@ -112,6 +116,8 @@ export class LoginModalComponent implements OnInit {
       // Login successful
       this.showModal = false;
       this.clearCredentials();
+      // Clear all notifications from before login
+      this.notificationService.clear();
     } catch (error: any) {
       // Show error message - keep modal open
       console.error('Login error:', error);

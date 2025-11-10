@@ -14,7 +14,8 @@ var (
 
 // EntityMetadata represents metadata for an entity
 type EntityMetadata struct {
-	Fields map[string]FieldMetadata `json:"fields"`
+	Fields   map[string]FieldMetadata           `json:"fields"`
+	Services map[string]map[string]interface{} `json:"services,omitempty"`
 }
 
 // FieldMetadata represents metadata for a field
@@ -172,4 +173,74 @@ func GetEntityMetadata(entity string) *EntityMetadata {
 	}
 
 	return &entityMeta
+}
+
+// GetServiceOutputs returns the outputs array from a service for an entity
+// Returns nil if entity has no such service
+func GetServiceOutputs(entity string, serviceType string) []string {
+	metadataMutex.RLock()
+	defer metadataMutex.RUnlock()
+
+	if !metadataLoaded {
+		return nil
+	}
+
+	entityMeta, exists := metadataCache[entity]
+	if !exists {
+		return nil
+	}
+
+	// Get service from entity services
+	service, hasService := entityMeta.Services[serviceType]
+	if !hasService {
+		return nil
+	}
+
+	// Extract outputs array
+	if outputs, ok := service["outputs"].([]interface{}); ok {
+		result := make([]string, 0, len(outputs))
+		for _, output := range outputs {
+			if outputStr, ok := output.(string); ok {
+				result = append(result, outputStr)
+			}
+		}
+		return result
+	}
+
+	return nil
+}
+
+// GetServiceDelegates returns the delegates array from a service for an entity
+// Returns nil if entity has no such service or no delegates
+func GetServiceDelegates(entity string, serviceType string) []map[string]interface{} {
+	metadataMutex.RLock()
+	defer metadataMutex.RUnlock()
+
+	if !metadataLoaded {
+		return nil
+	}
+
+	entityMeta, exists := metadataCache[entity]
+	if !exists {
+		return nil
+	}
+
+	// Get service from entity services
+	service, hasService := entityMeta.Services[serviceType]
+	if !hasService {
+		return nil
+	}
+
+	// Extract delegates array
+	if delegates, ok := service["delegates"].([]interface{}); ok {
+		result := make([]map[string]interface{}, 0, len(delegates))
+		for _, delegate := range delegates {
+			if delegateMap, ok := delegate.(map[string]interface{}); ok {
+				result = append(result, delegateMap)
+			}
+		}
+		return result
+	}
+
+	return nil
 }

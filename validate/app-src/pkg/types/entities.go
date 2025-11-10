@@ -3,6 +3,7 @@ package types
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"validate/pkg/core"
@@ -100,23 +101,47 @@ func generatePlaceholderID() string {
 
 // getValidForeignKeyID returns a valid ID for foreign key fields based on entity and field name
 // This ensures that auto-populated foreign keys reference actual records in the database
+// Uses metadata-driven approach: checks authn service delegates to find authz entity
 func getValidForeignKeyID(entityName string, fieldName string) string {
-	// Map of entity.field -> valid ID to use
-	// These IDs correspond to bootstrap data created during database reset
-	switch entityName {
-	case "User":
-		if fieldName == "roleId" {
-			return "role_test" // Use test role for all auto-generated users
-		}
-	case "Auth":
-		if fieldName == "roleId" {
-			return "role_test" // Use test role for all auto-generated auth
-		}
+	// Check if entity has authn service
+	delegates := core.GetServiceDelegates(entityName, "authn")
+	if delegates == nil {
+		return generatePlaceholderID()
+	}
+
+	// Get authz entity from delegates
+	authzEntity := getAuthzEntityFromDelegates(delegates)
+	if authzEntity == "" {
+		return generatePlaceholderID()
+	}
+
+	// Derive FK field name from authz entity: "Role" -> "roleId"
+	expectedFKField := strings.ToLower(authzEntity) + "Id"
+
+	// Check if this field matches the expected FK field
+	if strings.ToLower(fieldName) == strings.ToLower(expectedFKField) {
+		// Return bootstrap test ID: <entity_lowercase>_test
+		return fmt.Sprintf("%s_test", strings.ToLower(authzEntity))
 	}
 
 	// For unknown foreign keys, generate a placeholder
 	// Tests should explicitly provide valid IDs for these fields
 	return generatePlaceholderID()
+}
+
+// getAuthzEntityFromDelegates extracts authz entity name from delegates list
+func getAuthzEntityFromDelegates(delegates []map[string]interface{}) string {
+	if len(delegates) == 0 {
+		return ""
+	}
+
+	// delegates format: [{authz: Role}]
+	for _, delegate := range delegates {
+		if authzEntity, ok := delegate["authz"].(string); ok {
+			return authzEntity
+		}
+	}
+	return ""
 }
 
 // ToJSON converts entity to JSON-serializable map
