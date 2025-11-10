@@ -7,9 +7,8 @@ Handles permission extraction from sessions and permission checking for CRUD ope
 from typing import Dict, Optional, Any
 from app.core.notify import Notification, HTTP
 from app.core.metadata import MetadataService
-from app.core.request_context import RequestContext
-from app.services.services import ServiceManager
 from app.services.framework import decorators
+from app.core.hook import HookService
 
 from app.db.factory import DatabaseFactory
 import json5
@@ -36,20 +35,24 @@ class Rbac:
             runtime_config: Runtime settings (if any)
         """
         cls.entity_configs = entity_configs
-        cls._permissions_cache = {}  # Reset cache on initialization
+        cls._permissions_cache = {}
+
+        entity_name = next(iter(entity_configs))
+        HookService.register(entity_name, False, ['create', 'update', 'delete'], Rbac.clear_cache)   # clear the rbac cache on changes to the rbac entity
 
         entities_list = list(entity_configs.keys())
         print(f"  RBAC service configured for entities: {entities_list}")
         return cls
 
     @classmethod
-    def clear_cache(cls):
+    def clear_cache(cls, doc: Any, count: int, **context):
         """
         Clear all cached permissions.
         Called on database reset to ensure fresh permissions are loaded from DB.
         """
         cls._permissions_cache = {}
         print("  RBAC permissions cache cleared")
+        return doc, count
 
     @classmethod
     async def permissions(cls, roleId: str, entity: str = None) -> Optional[Dict[str, str]]:

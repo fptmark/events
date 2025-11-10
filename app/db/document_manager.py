@@ -9,6 +9,7 @@ import warnings as python_warnings
 from pydantic import ValidationError as PydanticValidationError
 from ulid import ULID
 
+from app.core.hook import HookService
 from app.core.notify import Notification, Warning, HTTP
 from app.db.core_manager import CoreManager
 from app.core.exceptions import DocumentNotFound, DuplicateConstraintError
@@ -49,22 +50,23 @@ class DocumentManager(ABC):
             docs, count = await self._get_all_impl(proper_name, filter=inputs, page=1, pageSize=1, substring_match=False)
             doc = docs[0] if docs else None
 
-        if count == 0 or count > 1:
+        if count == 1 and doc:
+
+            # Success - return userId + stored fields
+            core = self._get_core_manager()
+
+            user_id = doc.get(core.id_field)
+
+            result = {"Id": str(user_id)}
+
+            # Add any stored fields (like roleId)
+            for store_field in outputs:
+                if store_field != 'Id' and store_field in doc:
+                    result[store_field] = doc[store_field]
+
+            return result
+        else:
             return None
-
-        # Success - return userId + stored fields
-        core = self._get_core_manager()
-
-        user_id = doc.get(core.id_field)
-
-        result = {"Id": str(user_id)}
-
-        # Add any stored fields (like roleId)
-        for store_field in outputs:
-            if store_field != 'Id' and store_field in doc:
-                result[store_field] = doc[store_field]
-
-        return result
 
     async def get_all(
         self,
@@ -92,6 +94,8 @@ class DocumentManager(ABC):
             Tuple of (documents, total_count)
         """
         await GatingService.permitted(entity, 'r')  # check for bypass, login and rbac
+        if not await HookService.call_preflight(entity, 'get_all'):
+            return [], 0
 
         try:
             id = filter.get('id') or filter.get('Id') if filter else None
@@ -113,7 +117,7 @@ class DocumentManager(ABC):
                 for i in range(len(docs)):
                     docs[i] = await self._normalize_document(entity, docs[i], model_class, view_spec, unique_constraints, validate)
 
-            return docs, count
+            return await HookService.call_postflight(entity, 'get_all', docs, count)
         except Exception as e:
             Notification.error(HTTP.INTERNAL_ERROR, f"Database get_all error: {str(e)}")
             raise  # Unreachable but satisfies type checker
@@ -135,9 +139,8 @@ class DocumentManager(ABC):
         self,
         entity: str,
         id: str,
-        view_spec: Dict[str, Any] = {},
-        top_level: bool = True
-    ) -> Tuple[Dict[str, Any], int, Optional[BaseException]]:
+        view_spec: Dict[str, Any] = {}
+    ) -> Tuple[Dict[str, Any], int]:
         """
         Get single document by ID.
 
@@ -145,12 +148,13 @@ class DocumentManager(ABC):
             entity: Entity type (e.g., "user", "account")
             id: Document ID
             view_spec: View specification for field selection
-            top_level: Whether this is a top-level call (affects error handling)
 
         Returns:
-            Tuple of (document, count, error) where count is 1 if found, 0 if not found
+            Tuple of (document, count) where count is 1 if found, 0 if not found
         """
         await GatingService.permitted(entity, 'r')  # check for bypass, login and rbac
+        if not await HookService.call_preflight(entity, 'get'):
+            return {}, 0
 
         try:
             doc, count = await self._get_impl(entity, id)
@@ -161,20 +165,16 @@ class DocumentManager(ABC):
                 unique_constraints = metadata.get('uniques', []) if metadata else []
 
                 doc = await self._normalize_document(entity, doc, model_class, view_spec, unique_constraints, validate)
-            return doc, count, None
+
+            docs, count = await HookService.call_postflight(entity, 'get', [doc], count)
+            return docs[0] if docs else {}, count
         except DocumentNotFound as e:
-            if top_level:
-                msg = str(e.message) if e.message else str(e.error)
-                Notification.warning(Warning.NOT_FOUND, message=msg, entity=entity, entity_id=id)
-                Notification.error(HTTP.NOT_FOUND, msg, entity=entity, entity_id=id)
-            else:
-                return {}, 0, e
+            msg = str(e.message) if e.message else str(e.error)
+            Notification.warning(Warning.NOT_FOUND, message=msg, entity=entity, entity_id=id)
+            Notification.error(HTTP.NOT_FOUND, msg, entity=entity, entity_id=id)
             raise  # Unreachable
         except Exception as e:
-            if top_level:
-                Notification.error(HTTP.INTERNAL_ERROR, f"Database get error: {str(e)}", entity=entity, entity_id=id)
-            else:
-                return {}, 0, e
+            Notification.error(HTTP.INTERNAL_ERROR, f"Database get error: {str(e)}", entity=entity, entity_id=id)
             raise  # Unreachable
 
     async def _normalize_document(self, entity: str, doc: Dict[str, Any], model_class: Any, view_spec: Dict[str, Any], 
@@ -238,7 +238,10 @@ class DocumentManager(ABC):
             Tuple of (saved_document, count) where count is 1 if created, 0 if failed
         """
         # Check create or update permission (unless bypassed by @no_permission_required)
-        await GatingService.permitted(entity, 'u' if is_update else 'c')
+        operation = 'update' if is_update else 'create'
+        await GatingService.permitted(entity, operation)
+        if not await HookService.call_preflight(entity, operation):
+            return {}, 0
 
         # Remove the id from the data and normalize to lowercase
         id = (data.pop('id', '') or '').strip().lower()
@@ -283,23 +286,19 @@ class DocumentManager(ABC):
             # Remove any sub-objects so we don't store them in the db
             prepared_data = self._remove_sub_objects(entity, prepared_data)
 
-            # Add ID to prepared_data (databases will convert to their native field)
-            # prepared_data['id'] = id
-
             # Save in database (database-specific implementation)
             try:
                 if is_update:
                     doc = await self._update_impl(entity, id, prepared_data)
-                    return doc, 1
                 else:
                     doc = await self._create_impl(entity, id, prepared_data)
-                    return doc, 1
+                docs, count = await HookService.call_postflight(entity, operation, [doc], 1)
+                return (docs[0], count) if docs else ({}, 0)
             except DuplicateConstraintError as e:
                 # Use handle_duplicate_constraint which includes field info
                 Notification.handle_duplicate_constraint(e, is_validation=False)
                 raise  # Unreachable
             except Exception as e:
-                operation = "update" if is_update else "create"
                 Notification.error(HTTP.INTERNAL_ERROR, f"{operation} error: {str(e)}", entity=entity, entity_id=id)
                 raise  # Unreachable
         else:
@@ -346,11 +345,16 @@ class DocumentManager(ABC):
             Tuple of (deleted_document, count) where count is 1 if deleted, 0 if not found
         """
         await GatingService.permitted(entity, 'd')
+        if not await HookService.call_preflight(entity, 'delete', id=id):
+            return {}, 0
 
         try:
-            return await self._delete_impl(entity, id)
+            doc, count = await self._delete_impl(entity, id)
+            docs, count = await HookService.call_postflight(entity, 'delete', [doc] if doc else [], count)
+            return (docs[0], count) if docs else ({}, 0)
         except DocumentNotFound:
             # Idempotent DELETE: already gone = success
+            docs, count = await HookService.call_postflight(entity, 'delete', [], 0)
             return {}, 0
 
     @abstractmethod
@@ -535,7 +539,7 @@ async def process_fks(entity: str, data: Dict[str, Any], validate: bool, view_sp
                     if fk_cls:
                         # Fetch FK record
                         with Notification.suppress_warnings():  # suppress warnings when fetching a fk as the code below has a better warning (it includes the offending field)
-                            related_data, count, excpt = await fk_cls.get(fk_field_id, None, False)
+                            related_data, count = await fk_cls.get(fk_field_id, None)
                         if count == 0:
                             # FK record not found - validation warning if validating
                             entity_id = data.get('id', 'general')
