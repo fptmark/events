@@ -298,8 +298,19 @@ export class EntityFormComponent implements OnInit {
       }
       // Other fields: include all non-empty values
       else if (value !== null && value !== undefined && value !== '') {
+        // Convert JSON fields to objects before sending to server
+        if ((fieldMeta?.type === 'JSON' || fieldMeta?.type === 'Json') && typeof value === 'string') {
+          try {
+            // Parse JSON string to object
+            formData[fieldName] = JSON.parse(value);
+          } catch (error) {
+            console.warn(`Failed to parse JSON value for ${fieldName}:`, value, error);
+            // If parsing fails, send the original value and let server handle validation
+            formData[fieldName] = value;
+          }
+        }
         // Convert currency fields to numbers before sending to server
-        if (fieldMeta?.type === 'Currency' && typeof value === 'string') {
+        else if (fieldMeta?.type === 'Currency' && typeof value === 'string') {
           try {
             // Use currency.js to parse currency string to number
             const currencyValue = currency(value);
@@ -579,24 +590,36 @@ export class EntityFormComponent implements OnInit {
    */
   getFieldValidationError(fieldName: string): string | null {
     if (!this.entityForm) return null;
-    
+
     const control = this.entityForm.get(fieldName);
     if (!control) return null;
-    
+
     // In create mode, don't show validation errors until user has interacted with field
     // or form has been submitted. In edit/details mode, always show validation errors.
     if (this.isCreateMode() && !control.dirty && !control.touched && !this.submitting) {
       return null;
     }
-    
+
+    // Check Angular form control errors first (from validators like jsonValidator)
+    if (control.errors) {
+      if (control.errors['required']) {
+        const fieldMeta = this.metadataService.getFieldMetadata(this.entityType, fieldName);
+        const displayName = fieldMeta?.ui?.displayName || fieldName;
+        return `${displayName} is required.`;
+      }
+      if (control.errors['invalidJson']) {
+        return control.errors['invalidJson'];
+      }
+    }
+
     const currentValue = control.value;
-    
+
     // Use P5 function for unified real-time validation
     return this.entityFormService.performRealtimeValidation(
-      this.entityType, 
-      fieldName, 
-      currentValue, 
-      this.entity, 
+      this.entityType,
+      fieldName,
+      currentValue,
+      this.entity,
       this.mode,
       this.validationErrors
     );

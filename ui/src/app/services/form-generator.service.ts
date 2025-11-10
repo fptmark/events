@@ -94,6 +94,12 @@ export class FormGeneratorService {
         return null; // Dates can start as null
       case 'ObjectId':
         return ''; // Empty string prevents required validation
+      case 'JSON':
+      case 'Json':
+        return '{}'; // Valid empty JSON object
+      case 'Array':
+      case 'Array[String]':
+        return '[]'; // Valid empty array
       default:
         // For enums and other types, use empty string
         return '';
@@ -150,30 +156,65 @@ export class FormGeneratorService {
       validators.push(this.currencyValidator);
     }
 
+    // JSON type validation
+    if (type === 'JSON' || type === 'Json') {
+      validators.push(this.jsonValidator);
+    }
+
     return validators;
   }
 
   private currencyValidator(control: AbstractControl): ValidationErrors | null {
     const value = control.value;
-    
+
     // Skip validation if empty for optional fields
-    if ((value === null || value === undefined || value === '' || 
-         (typeof value === 'string' && value.trim() === '')) && 
+    if ((value === null || value === undefined || value === '' ||
+         (typeof value === 'string' && value.trim() === '')) &&
         !control.hasValidator(Validators.required)) {
       return null;
     }
-    
+
     // Required validation only - anything non-empty passes
-    if (control.hasValidator(Validators.required) && 
-        (value === null || value === undefined || value === '' || 
+    if (control.hasValidator(Validators.required) &&
+        (value === null || value === undefined || value === '' ||
          (typeof value === 'string' && value.trim() === ''))) {
       return { 'required': true };
     }
-    
+
     // No real-time validation - allow any input
     return null;
   }
-  
+
+  private jsonValidator(control: AbstractControl): ValidationErrors | null {
+    const value = control.value;
+
+    // Skip validation if empty for optional fields
+    if ((value === null || value === undefined || value === '' ||
+         (typeof value === 'string' && value.trim() === '')) &&
+        !control.hasValidator(Validators.required)) {
+      return null;
+    }
+
+    // Required validation
+    if (control.hasValidator(Validators.required) &&
+        (value === null || value === undefined || value === '' ||
+         (typeof value === 'string' && value.trim() === ''))) {
+      return { 'required': true };
+    }
+
+    // Validate JSON syntax
+    if (typeof value === 'string' && value.trim() !== '') {
+      try {
+        JSON.parse(value);
+        return null; // Valid JSON
+      } catch (error) {
+        return { 'invalidJson': 'Invalid JSON syntax' };
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Get the appropriate input control type for a field based on its metadata and mode
    * @param entityType The type of entity
@@ -233,10 +274,11 @@ export class FormGeneratorService {
         case 'ObjectId':
           fieldType = 'ObjectId'; break
         case 'Array':
-        case 'Array[String]': 
+        case 'Array[String]':
           fieldType = 'array';
           break;
-        case 'JSON': 
+        case 'JSON':
+        case 'Json':
           fieldType = 'json';
           break;
         case 'Integer':
