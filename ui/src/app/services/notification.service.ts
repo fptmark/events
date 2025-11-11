@@ -152,9 +152,9 @@ export class NotificationService {
         messages.push('Please review the warnings highlighted below');
       }
 
-      // Filter notifications for Details section - only show non-field-specific ones
-      // (field-specific errors are already shown under the fields)
-      const detailsNotifications = allNotifications.filter(n => !n.field);
+      // Include ALL notifications in Details section
+      // Field-specific ones are useful on list pages where there's no form to show them under
+      const detailsNotifications = allNotifications;
 
       // Show notification with all collected messages
       if (messages.length > 0) {

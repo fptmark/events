@@ -51,7 +51,7 @@ export class EntityFormComponent implements OnInit {
   entitySelectorColumns: ColumnConfig[] = [];
 
   mode: ViewMode = DETAILS
-  
+
   constructor(
     private route: ActivatedRoute,
     private router: Router,
@@ -139,8 +139,6 @@ export class EntityFormComponent implements OnInit {
     
     // P2: ObjectId selector is available on-demand when user clicks Select
     // P5: Real-time validation will be handled by getFieldValidationError()
-    
-    console.log('Create mode setup complete - Form ready with Submit button');
   }
 
   /**
@@ -170,11 +168,12 @@ export class EntityFormComponent implements OnInit {
         
         // P1: Populate enums (clear out/blank enum on error)
         this.entityFormService.populateEnums(this.entityType, this.entityForm!, this.entity, this.sortedFields);
-        
+
         // P2: ObjectId selector is available on-demand when user clicks Select
         // P5: Real-time validation will be handled by getFieldValidationError()
-        
-        console.log('Edit mode setup complete - Form ready with Submit button');
+
+        // Subscribe to value changes to clear server errors when user modifies field
+        this.setupValueChangeSubscriptions();
       },
       error: (err: any) => {
         console.error('Error loading entity:', err);
@@ -206,8 +205,6 @@ export class EntityFormComponent implements OnInit {
         const validationFailures = this.validationService.convertApiErrorToValidationFailures(fullResponse, this.entityId);
         this.validationErrors = validationFailures;
         this.entityFormService.populateFieldErrors(this.validationErrors);
-        
-        console.log('Details mode setup complete - Form ready without Submit button');
       },
       error: (err: any) => {
         console.error('Error loading entity:', err);
@@ -216,6 +213,25 @@ export class EntityFormComponent implements OnInit {
     });
   }
 
+
+  /**
+   * Subscribe to form value changes to clear server validation errors when user modifies a field
+   */
+  setupValueChangeSubscriptions(): void {
+    if (!this.entityForm) return;
+
+    this.sortedFields.forEach(fieldName => {
+      const control = this.entityForm!.get(fieldName);
+      if (control) {
+        control.valueChanges.subscribe(() => {
+          // Clear server validation error for this field when user modifies it
+          if (this.validationErrors && this.validationErrors.length > 0) {
+            this.validationErrors = this.validationErrors.filter(error => error.field !== fieldName);
+          }
+        });
+      }
+    });
+  }
 
   getFieldDisplayName(fieldName: string): string {
     if (fieldName === this.ID_FIELD) return 'ID';
@@ -345,9 +361,6 @@ export class EntityFormComponent implements OnInit {
   handleApiError(err: any): void {
     // Clear any existing notifications
     this.notificationService.clear();
-    
-    console.log('API Error:', err); // Debug logging
-    
     // Extract error message with better fallback logic
     let errorMessage = 'An error occurred while processing your request.';
     
@@ -413,6 +426,27 @@ export class EntityFormComponent implements OnInit {
     });
   }
 
+  deleteEntity(): void {
+    const observable = this.restService.deleteEntity(this.entityType, this.entityId);
+
+    // User might cancel the delete confirmation dialog
+    if (!observable) {
+      return;
+    }
+
+    observable.subscribe({
+      next: () => {
+        // Set operation result message for the summary page
+        const message = `${this.entityType} was successfully deleted.`;
+        this.operationResultService.setOperationResult(message, 'success', this.entityType);
+
+        // Navigate to entity summary page
+        this.router.navigate(['/entity', this.entityType]);
+      },
+      error: (err) => this.handleApiFailure(err, 'deleting')
+    });
+  }
+
   goBack(): void {
     this.navigationService.goBack();
     // Explicitly return void to prevent potential issue with Angular event handlers
@@ -433,31 +467,23 @@ export class EntityFormComponent implements OnInit {
    */
   openLink(fieldName: string): void {
     try {
-      console.log(`openLink called for fieldName: ${fieldName}`);
-      
       // Check if field name follows the pattern <entity>Id
       if (!fieldName.endsWith('Id')) {
-        console.log(`Field ${fieldName} does not end with 'Id'`);
         return;
       }
-      
+
       const entityType = fieldName.substring(0, fieldName.length - 2);
-      console.log(`Derived entity type: ${entityType}`);
-      
+
       // In edit or create mode, show ID selector
       if (this.isEditMode() || this.isCreateMode()) {
-        console.log(`In edit/create mode, showing selector for ${entityType}`);
         this.showIdSelector(fieldName, entityType);
         return;
       }
-      
+
       // In view mode, always perform preflight check regardless of any cached state
       const objectIdValue = this.entity?.[fieldName];
       if (objectIdValue) {
-        console.log(`Always performing preflight check for ${entityType} with ID: ${objectIdValue}`);
         this.preflightCheckAndNavigate(fieldName, entityType, objectIdValue);
-      } else {
-        console.log(`No ObjectId value found for ${fieldName}`);
       }
     } catch (error) {
       console.error('Error in openLink:', error);
@@ -473,30 +499,25 @@ export class EntityFormComponent implements OnInit {
     this.restService.getEntity(entityType, objectIdValue, this.mode).subscribe({
       next: (entity) => {
         // FK entity exists - safe to navigate
-        console.log(`FK entity ${entityType}/${objectIdValue} exists, navigating`);
         this.router.navigate(['/entity', entityType, objectIdValue]);
       },
       error: (err) => {
         // FK entity doesn't exist - show error below field instead of navigating
-        console.log(`FK entity ${entityType}/${objectIdValue} does not exist, showing error`);
-        
         // Add validation error for this field to show "Entity does not exist"
         const validationError = {
           field: fieldName,
           constraint: 'Entity does not exist',
           value: objectIdValue
         };
-        
+
         // Add to existing validation errors (don't replace them)
         if (!this.validationErrors) {
           this.validationErrors = [];
         }
-        
+
         // Remove any existing error for this field and add the new one
         this.validationErrors = this.validationErrors.filter(error => error.field !== fieldName);
         this.validationErrors.push(validationError);
-        
-        console.log(`Added validation error for ${fieldName}: Entity does not exist`);
       }
     });
   }

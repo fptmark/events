@@ -51,9 +51,14 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
     // Handle errors
     catchError((error: HttpErrorResponse) => {
-      if (error.status === 401) {
-        console.log('AuthInterceptor: 401 Unauthorized - requesting login');
+      // Handle network errors (server not running, connection refused, etc.)
+      if (error.status === 0) {
+        // Don't trigger login for network errors - different issue
+        // Let it propagate to show error notification
+        return throwError(() => error);
+      }
 
+      if (error.status === 401) {
         // Don't trigger login for the /api/login endpoint itself
         if (req.url.includes('/api/login')) {
           return throwError(() => error);
@@ -65,7 +70,6 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         // Wait for login to complete, then retry original request
         return from(authService.waitForLogin()).pipe(
           switchMap(() => {
-            console.log('AuthInterceptor: Login complete, retrying request');
             // Retry the original request with new session
             return next(authReq);
           })
@@ -73,7 +77,6 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       }
 
       if (error.status === 403) {
-        console.log('AuthInterceptor: 403 Forbidden - access denied');
         // User is authenticated but not authorized
         // Let the error propagate to show via notification service
       }

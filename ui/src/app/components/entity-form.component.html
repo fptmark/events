@@ -44,176 +44,178 @@
                       <span *ngIf="isFieldRequired(fieldName)" class="text-danger">*</span>
                     </label>
                   </div>
-                  
-                  <div class="col-8">
-                    <!-- Checkbox gets special handling but within the same layout -->
-                    <ng-container *ngIf="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType === 'checkbox'; else standardInputs">
-                      <div class="checkbox-wrapper">
-                        <!-- In details mode, show a disabled but visually accurate checkbox -->
-                        <ng-container *ngIf="isDetailsMode(); else editableCheckbox">
-                          <input type="checkbox"
-                            [id]="fieldName"
-                            [checked]="entityForm.get(fieldName)?.value"
-                            disabled
-                            class="form-check-input details-mode-checkbox">
-                        </ng-container>
 
-                        <!-- In edit/create mode, show an interactive checkbox -->
-                        <ng-template #editableCheckbox>
+                  <div class="col-8">
+                    <!-- Unified field rendering with ngSwitch -->
+                    <ng-container [ngSwitch]="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType">
+
+                      <!-- Phase 4: Checkbox -->
+                      <ng-container *ngSwitchCase="'checkbox'">
+                        <div class="checkbox-wrapper">
                           <input type="checkbox"
                             [id]="fieldName"
                             [formControlName]="fieldName"
-                            class="form-check-input">
-                        </ng-template>
-                      </div>
-                    </ng-container>
-                    
-                    <!-- All other field types use standard inputs -->
-                    <ng-template #standardInputs>
-                      <ng-container [ngSwitch]="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType">
-                        <!-- Select dropdown -->
-                        <ng-container *ngSwitchCase="'select'">
-                          <!-- Dropdown for edit/create modes -->
-                          <select
-                            *ngIf="!isDetailsMode()"
+                            [disabled]="isDetailsMode()"
+                            class="form-check-input"
+                            [class.details-mode-checkbox]="isDetailsMode()">
+                        </div>
+                      </ng-container>
+
+                      <!-- Phase 2: Textarea -->
+                      <ng-container *ngSwitchCase="'textarea'">
+                        <textarea
+                          [id]="fieldName"
+                          [formControlName]="fieldName"
+                          [attr.readonly]="isDetailsMode() ? '' : null"
+                          class="form-control"
+                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
+                          rows="3">
+                        </textarea>
+                      </ng-container>
+
+                      <!-- Phase 2: JSON input -->
+                      <ng-container *ngSwitchCase="'json'">
+                        <textarea
+                          [id]="fieldName"
+                          [formControlName]="fieldName"
+                          [attr.readonly]="isDetailsMode() ? '' : null"
+                          class="form-control"
+                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
+                          rows="3"
+                          placeholder="{ }">
+                        </textarea>
+                      </ng-container>
+
+                      <!-- Phase 2: Array input -->
+                      <ng-container *ngSwitchCase="'array'">
+                        <textarea
+                          [id]="fieldName"
+                          [formControlName]="fieldName"
+                          [attr.readonly]="isDetailsMode() ? '' : null"
+                          class="form-control"
+                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
+                          rows="3"
+                          placeholder="[]">
+                        </textarea>
+                      </ng-container>
+
+                      <!-- Phase 3: Number input -->
+                      <ng-container *ngSwitchCase="'number'">
+                        <input
+                          type="number"
+                          [id]="fieldName"
+                          [formControlName]="fieldName"
+                          [attr.readonly]="isDetailsMode() ? '' : null"
+                          [class.show-spinner]="shouldShowSpinner(fieldName) && !isDetailsMode()"
+                          [step]="getSpinnerStep(fieldName)"
+                          class="form-control"
+                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
+                      </ng-container>
+
+                      <!-- Phase 3: Date input -->
+                      <ng-container *ngSwitchCase="'date'">
+                        <input
+                          type="date"
+                          [id]="fieldName"
+                          [formControlName]="fieldName"
+                          [attr.readonly]="isDetailsMode() ? '' : null"
+                          class="form-control"
+                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
+                      </ng-container>
+
+                      <!-- Phase 5: Select dropdown (enums) -->
+                      <ng-container *ngSwitchCase="'select'">
+                        <!-- Details mode: show value as readonly text -->
+                        <input
+                          *ngIf="isDetailsMode()"
+                          type="text"
+                          [id]="fieldName"
+                          [formControlName]="fieldName"
+                          [attr.readonly]="''"
+                          class="form-control">
+
+                        <!-- Edit/Create mode: show dropdown -->
+                        <select
+                          *ngIf="!isDetailsMode()"
+                          [id]="fieldName"
+                          [formControlName]="fieldName"
+                          class="form-select"
+                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
+                          <option value="">{{ isFieldRequired(fieldName) ? 'Select ' + getFieldDisplayName(fieldName) + '...' : '' }}</option>
+                          <option *ngFor="let option of getFieldOptions(fieldName)" [value]="option">
+                            {{ option }}
+                          </option>
+                        </select>
+                      </ng-container>
+
+                      <!-- Phase 6: ObjectId (FK) fields -->
+                      <ng-container *ngSwitchCase="'ObjectId'">
+                        <!-- Details mode: show as readonly input with gray background -->
+                        <div *ngIf="isDetailsMode()">
+                          <!-- Clickable link for valid FK -->
+                          <input
+                            *ngIf="!hasFieldValidationError(fieldName)"
+                            type="text"
                             [id]="fieldName"
-                            [formControlName]="fieldName"
-                            class="form-select"
-                            [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
-                            <option value="">{{ isFieldRequired(fieldName) ? 'Select ' + getFieldDisplayName(fieldName) + '...' : '' }}</option>
-                            <option *ngFor="let option of getFieldOptions(fieldName)" [value]="option">
-                              {{ option }}
-                            </option>
-                          </select>
-                          
-                          <!-- Text input only for details mode -->
-                          <input 
-                            *ngIf="isDetailsMode()"
+                            [value]="entity[fieldName]"
+                            readonly
+                            class="form-control"
+                            style="cursor: pointer; color: blue; text-decoration: underline;"
+                            (click)="openLink(fieldName)">
+
+                          <!-- Plain text for invalid FK -->
+                          <input
+                            *ngIf="hasFieldValidationError(fieldName)"
+                            type="text"
+                            [id]="fieldName"
+                            [value]="entity[fieldName]"
+                            readonly
+                            class="form-control">
+                        </div>
+
+                        <!-- Edit/Create mode: text input + Select button -->
+                        <div *ngIf="!isDetailsMode()" class="input-group">
+                          <input
                             type="text"
                             [id]="fieldName"
                             [formControlName]="fieldName"
                             class="form-control"
-                            readonly>
-                        </ng-container>
-
-                        <!-- Textarea -->
-                        <ng-container *ngSwitchCase="'textarea'">
-                          <textarea
-                            [id]="fieldName" 
-                            [formControlName]="fieldName" 
-                            class="form-control"
-                            [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
-                            rows="3"></textarea>
-                        </ng-container>
-
-                        <!-- ObjectId input -->
-                        <div *ngSwitchCase="'ObjectId'" class="input-group">
-                          <!-- Clickable link for valid ObjectIds in details mode -->
-                          <div
-                            *ngIf="isDetailsMode() && !hasFieldValidationError(fieldName)"
-                            [id]="fieldName"
-                            class="form-control"
-                            style="border: none; background: none; padding: 0;">
-                            <a href="javascript:void(0)" 
-                               (click)="openLink(fieldName)"
-                               style="cursor: pointer; color: blue; text-decoration: underline;">
-                              {{ entity[fieldName] }}
-                            </a>
-                          </div>
-                          
-                          <!-- Plain text for invalid ObjectIds in details mode -->
-                          <div
-                            *ngIf="isDetailsMode() && hasFieldValidationError(fieldName)"
-                            [id]="fieldName"
-                            class="form-control">
-                            {{ entity[fieldName] }}
-                          </div>
-                          
-                          <!-- Text input for edit/create modes -->
-                          <input
-                            *ngIf="!isDetailsMode()"
-                            type="text" 
-                            [id]="fieldName" 
-                            [formControlName]="fieldName" 
-                            class="form-control"
                             [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
                             placeholder="Enter ID or click Select">
-                          
-                          <!-- Select button only for edit/create modes -->
-                          <button *ngIf="!isDetailsMode()" 
-                            class="btn btn-outline-secondary" 
+
+                          <button
+                            class="btn btn-outline-secondary"
                             type="button"
                             (click)="openLink(fieldName)">
                             Select
                           </button>
                         </div>
-
-                        <!-- JSON input -->
-                        <textarea *ngSwitchCase="'json'" 
-                          [id]="fieldName" 
-                          [formControlName]="fieldName" 
-                          class="form-control"
-                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
-                          rows="3"
-                          placeholder="{ }"></textarea>
-                        
-                        <!-- Array input -->
-                        <textarea *ngSwitchCase="'array'" 
-                          [id]="fieldName" 
-                          [formControlName]="fieldName" 
-                          class="form-control"
-                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null"
-                          rows="3"
-                          placeholder="[]"></textarea>
-
-                        <!-- Standard inputs (date, password, email, number, text) -->
-                        <ng-container *ngSwitchCase="'date'">
-                          <input
-                            type="date"
-                            [id]="fieldName" 
-                            [formControlName]="fieldName" 
-                            class="form-control"
-                            [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
-                        </ng-container>
-
-                        <ng-container *ngSwitchCase="'number'">
-                          <input
-                            type="number"
-                            [formControlName]="fieldName"
-                            [class.show-spinner]="shouldShowSpinner(fieldName)"
-                            [step]="getSpinnerStep(fieldName)"
-                            class="form-control"
-                            [class.is-invalid]="isFieldInvalid(fieldName)">
-                        </ng-container>
-
-                        <!-- Default case for all other standard inputs -->
-                        <ng-container *ngSwitchDefault>
-                          <!-- Details mode: show as div with innerHTML for validation warnings -->
-                          <div *ngIf="isDetailsMode()"
-                               [id]="fieldName"
-                               [innerHTML]="getDisplayValue(fieldName)"
-                               class="form-control"
-                               style="min-height: 38px; white-space: nowrap; overflow-x: auto;">
-                          </div>
-                          <!-- Edit/Create mode: show as input -->
-                          <input *ngIf="!isDetailsMode()"
-                            [type]="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType"
-                            [id]="fieldName" 
-                            [formControlName]="fieldName" 
-                            class="form-control"
-                            [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
-                        </ng-container>
-                        
-                        <!-- P5: UNIFIED validation error display - handles ALL error types -->
-                        <div *ngIf="hasFieldValidationError(fieldName)" class="text-danger mt-1 small">
-                          {{ getFieldValidationError(fieldName) }}
-                        </div>
                       </ng-container>
-                    </ng-template>
+
+                      <!-- Phase 1: Default text inputs (text, email, password, etc.) -->
+                      <ng-container *ngSwitchDefault>
+                        <input
+                          [type]="formGenerator.getFieldAttributes(entityType, fieldName, mode).fieldType"
+                          [id]="fieldName"
+                          [formControlName]="fieldName"
+                          [attr.readonly]="isDetailsMode() ? '' : null"
+                          class="form-control"
+                          [class.is-invalid]="isFieldInvalid(fieldName) || getFieldValidationError(fieldName) !== null">
+                      </ng-container>
+
+                      <!-- More field types will be added in subsequent phases -->
+
+                    </ng-container>
+
+                    <!-- P5: UNIFIED validation error display -->
+                    <div *ngIf="hasFieldValidationError(fieldName)" class="text-danger mt-1 small">
+                      {{ getFieldValidationError(fieldName) }}
+                    </div>
                   </div>
                 </div>
               </div>
             </ng-container>
+
           </div>
         </div>
 
@@ -228,7 +230,7 @@
               <i class="fas fa-edit"></i>
               Edit
             </button>
-            <button *ngIf="entityService.canDelete(entityType)" type="button" class="btn btn-details-delete" (click)="restService.deleteEntity(entityType, entityId)">
+            <button *ngIf="entityService.canDelete(entityType)" type="button" class="btn btn-details-delete" (click)="deleteEntity()">
               <i class="fas fa-trash"></i>
               Delete
             </button>

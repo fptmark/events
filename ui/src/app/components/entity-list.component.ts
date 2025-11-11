@@ -87,7 +87,7 @@ import { OperationResultService } from '../services/operation-result.service';
                     <!-- Create not shown for individual rows since it applies to the entity type, not a specific row -->
                     <button *ngIf="entityService.canDelete(entityType)"
                       class="btn btn-entity-delete"
-                      (click)="this.restService.deleteEntity(entityType, row['id'])">
+                      (click)="deleteEntity(row['id'])">
                       <i class="fas fa-trash"></i>
                       Delete
                     </button>
@@ -164,11 +164,12 @@ export class EntityListComponent implements OnInit, OnDestroy {
     // Wait for entities to be loaded
     this.displayFields = this.entityService.getViewFields(this.entityType, SUMMARY);
         
-    // Use RestService instead of HttpClient directly  
+    // Use RestService instead of HttpClient directly
     this.restService.getEntityList(this.entityType, 'summary').subscribe({
       next: (response: any) => {
         // Handle new response format with metadata
         const entities = response.data || response; // Fallback for old format
+
         this.totalCount = response.metadata?.total || entities.length; // Extract count
         
         // Update the entity service with the current record count
@@ -248,5 +249,33 @@ export class EntityListComponent implements OnInit, OnDestroy {
   onBannerDismissed(): void {
     this.operationMessage = null;
   }
-  
+
+  /**
+   * Delete an entity from the summary list
+   */
+  deleteEntity(entityId: string): void {
+    const observable = this.restService.deleteEntity(this.entityType, entityId);
+
+    // User might cancel the delete confirmation dialog
+    if (!observable) {
+      return;
+    }
+
+    observable.subscribe({
+      next: () => {
+        // Show success message
+        this.operationMessage = `${this.entityType} was successfully deleted.`;
+        this.operationType = 'success';
+
+        // Reload the entity list
+        this.loadEntities();
+      },
+      error: (err) => {
+        console.error('Error deleting entity:', err);
+        this.operationMessage = 'Failed to delete entity. Please try again.';
+        this.operationType = 'error';
+      }
+    });
+  }
+
 }

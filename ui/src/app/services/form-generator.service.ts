@@ -286,6 +286,9 @@ export class FormGeneratorService {
         case 'Float':
           fieldType = 'number';
           break;
+        case 'Currency':
+          fieldType = 'text'; // Currency uses text input for formatting ($1,234.56)
+          break;
         default:
           fieldType = 'text';
       }

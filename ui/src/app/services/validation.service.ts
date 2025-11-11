@@ -71,7 +71,7 @@ export class ValidationService {
             if (error.field) {
               validationFailures.push({
                 field: error.field,
-                constraint: error.message || 'Validation error'
+                constraint: error.value || error.message || 'Validation error'
               });
             }
           });
@@ -83,7 +83,7 @@ export class ValidationService {
             if (warning.field) {
               validationFailures.push({
                 field: warning.field,
-                constraint: warning.message || 'Validation warning'
+                constraint: warning.value || warning.message || 'Validation warning'
               });
             }
           });

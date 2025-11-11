@@ -85,10 +85,14 @@ export class EntityFormService {
           entityType, fieldName, mode, rawValue, entity, showConfig
         );
         control.setValue(formattedValue);
+      } else if (type === 'Json' || type === 'JSON') {
+        // For JSON fields, stringify objects for display in text inputs
+        const jsonValue = typeof rawValue === 'object' ? JSON.stringify(rawValue, null, 2) : rawValue;
+        control.setValue(jsonValue);
       } else {
-        // For other field types, use the synchronous formatter
-        const formattedValue = this.entityService.formatFieldValue(entityType, fieldName, mode, rawValue);
-        control.setValue(formattedValue);
+        // For form controls, use raw values (no HTML formatting)
+        // HTML formatting should only be used for display in summary lists, not in form inputs
+        control.setValue(rawValue);
       }
     }
   }
@@ -98,7 +102,39 @@ export class EntityFormService {
    * Used by: Create Mode, Edit Mode, Details Mode
    */
   performRealtimeValidation(entityType: string, fieldName: string, value: any, entity: any, mode: ViewMode, validationErrors?: any[]): string | null {
-    // 1. CHECK SERVER VALIDATION ERRORS FIRST (from API responses)
+    const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
+    if (!fieldMeta) return null;
+
+    // 1. RUN CLIENT-SIDE VALIDATION ON CURRENT VALUE FIRST
+
+    // Check enum validation - CURRENT VALUE
+    if (fieldMeta.enum?.values) {
+      if (value && !fieldMeta.enum.values.includes(value)) {
+        return `value "${value}" is not a valid selection`;
+      }
+    }
+
+    // Check ObjectId validation - CURRENT VALUE (needs entity context for embedded data)
+    if (fieldMeta.type === 'ObjectId' && entity && value) {
+      const fkEntityName = fieldName.endsWith('Id') ? fieldName.slice(0, -2) : fieldName;
+      const embeddedData = entity[fkEntityName];
+      const originalValue = entity[fieldName];
+
+      // Only show embedded data error if the current value matches the original value
+      // If user has changed the value, we don't have embedded data to validate against
+      if (embeddedData?.exists === false && value === originalValue) {
+        return `Id ${originalValue} does not exist`;
+      }
+    }
+
+    // Check general field validation - CURRENT VALUE
+    const clientError = this.getFieldValidationError(entityType, fieldName, value);
+    if (clientError) {
+      return clientError;
+    }
+
+    // 2. ONLY IF CLIENT VALIDATION PASSES, CHECK SERVER ERRORS
+    // (Server errors only shown if user hasn't fixed the issue yet)
     if (validationErrors && validationErrors.length > 0) {
       const serverError = validationErrors.find(error => error.field === fieldName);
       if (serverError) {
@@ -106,29 +142,8 @@ export class EntityFormService {
       }
     }
 
-    const fieldMeta = this.metadataService.getFieldMetadata(entityType, fieldName);
-    if (!fieldMeta) return null;
-
-    // 2. ENUM VALIDATION - check if CURRENT VALUE is in allowed enum values
-    if (fieldMeta.enum?.values) {
-      if (value && !fieldMeta.enum.values.includes(value)) {
-        return `value "${value}" is not a valid selection`;
-      }
-    }
-
-    // 3. OBJECTID VALIDATION - check if referenced entity exists (needs entity context for embedded data)
-    if (fieldMeta.type === 'ObjectId' && entity && value) {
-      const fkEntityName = fieldName.endsWith('Id') ? fieldName.slice(0, -2) : fieldName;
-      const embeddedData = entity[fkEntityName];
-      if (embeddedData?.exists === false) {
-        // Use original entity value for stable error message
-        const originalValue = entity[fieldName];
-        return `Id ${originalValue} does not exist`;
-      }
-    }
-
-    // 4. GENERAL FIELD VALIDATION - all other validation rules using CURRENT VALUE
-    return this.getFieldValidationError(entityType, fieldName, value);
+    // No errors found
+    return null;
   }
 
   // =====================================================
@@ -236,8 +251,25 @@ export class EntityFormService {
     // Check number validations for numeric types (Currency, Number, Integer, Float)
     const isNumericType = ['Currency', 'Number', 'Integer', 'Float'].includes(fieldMeta.type || '');
     if (isNumericType) {
-      // Convert string to number if needed
-      const numValue = typeof value === 'number' ? value : parseFloat(value);
+      let numValue: number;
+
+      // Special handling for Currency - parse formatted strings like "$1,234.56"
+      if (fieldMeta.type === 'Currency') {
+        if (typeof value === 'number') {
+          numValue = value;
+        } else if (typeof value === 'string') {
+          try {
+            numValue = currency(value).value;
+          } catch (e) {
+            return `${this.getFieldDisplayName(entityType, fieldName)} must be a valid currency amount.`;
+          }
+        } else {
+          return `${this.getFieldDisplayName(entityType, fieldName)} must be a valid currency amount.`;
+        }
+      } else {
+        // For Number, Integer, Float - use parseFloat
+        numValue = typeof value === 'number' ? value : parseFloat(value);
+      }
 
       // Check if it's a valid number
       if (isNaN(numValue)) {

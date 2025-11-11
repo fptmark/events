@@ -69,9 +69,25 @@ export class RestService {
   }
 
   private handleError(error: any): Observable<never> {
+    // 401 Unauthorized: Let the auth interceptor handle this (show login modal)
+    // Don't show error notifications for 401 - just propagate the error
+    if (error.status === 401) {
+      return throwError(() => error);
+    }
+
+    // Network error (status 0): Server not running or connection refused
+    if (error.status === 0) {
+      this.notificationService.clear();
+      this.notificationService.showError({
+        message: 'Cannot connect to server. Please check that the server is running.',
+        level: 'error'
+      });
+      return throwError(() => error);
+    }
+
     // Clear any existing notifications and let NotificationService handle all error details
     this.notificationService.clear()
-    
+
     // Extract the response body from HTTP errors
     const errorResponse = error.error || error;
     this.notificationService.showError(errorResponse)
@@ -88,8 +104,12 @@ export class RestService {
 
   getEntityList(entityType: string, mode: string): Observable<Entity[]> {
     const args = this.metadataService.getShowViewParams(entityType, mode)
-    return this.http.get<BackendApiResponse<Entity[]>>(this.configService.getApiUrl(entityType + args)).pipe(
-      map(response => this.handleApiResponse(response)),
+    const url = this.configService.getApiUrl(entityType + args);
+
+    return this.http.get<BackendApiResponse<Entity[]>>(url).pipe(
+      map(response => {
+        return this.handleApiResponse(response);
+      }),
       catchError(error => this.handleError(error))
     )
   }
@@ -121,22 +141,20 @@ export class RestService {
     )
   }
 
-  deleteEntity(entityType: string, id: string): void {
+  deleteEntity(entityType: string, id: string): Observable<null> | null {
     if (confirm('Are you sure you want to delete this item?')) {
       const baseUrl = this.configService.getApiUrl(entityType)
-      this.http.delete<BackendApiResponse<null>>(`${baseUrl}/${id}`).pipe(
-        catchError(error => this.handleError(error))
-      ).subscribe({
-        next: (response) => {
+      return this.http.delete<BackendApiResponse<null>>(`${baseUrl}/${id}`).pipe(
+        map(response => {
           this.handleApiResponse(response)
           setTimeout(() => {
             this.refreshService.triggerRefresh(entityType)
           }, 1000)
-        },
-        error: (error) => {
-          this.handleError(error)
-        }
-      })
+          return null
+        }),
+        catchError(error => this.handleError(error))
+      )
     }
+    return null // User cancelled the delete
   }
 } 
