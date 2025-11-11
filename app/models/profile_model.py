@@ -72,7 +72,9 @@ class Profile(BaseModel):
                                    'autoUpdate': True}},
     'ui': {   'title': 'Profile',
               'buttonLabel': 'Manage User Profiles',
-              'description': 'Manage User Preferences'},
+              'description': 'Manage User Preferences',
+              'icon': 'fa-id-card',
+              'iconColor': '#1abc9c'},
     'services': {},
     'uniques': [['name', 'userId']]}
 

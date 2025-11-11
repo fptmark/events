@@ -61,7 +61,9 @@ class Crawl(BaseModel):
                                    'autoUpdate': True}},
     'ui': {   'title': 'Crawls',
               'buttonLabel': 'Manage Crawls',
-              'description': 'Manage Crawls of Event sites'},
+              'description': 'Manage Crawls of Event sites',
+              'icon': 'fa-spider',
+              'iconColor': '#34495e'},
     'services': {},
     'uniques': []}
 

@@ -57,7 +57,10 @@ class TagAffinity(BaseModel):
                                              'readOnly': True,
                                              'clientEdit': True},
                                    'autoUpdate': True}},
-    'ui': {'title': 'Tag Affinity', 'buttonLabel': 'Manage Event Affinity'},
+    'ui': {   'title': 'Tag Affinity',
+              'buttonLabel': 'Manage Event Affinity',
+              'icon': 'fa-tag',
+              'iconColor': '#9b59b6'},
     'services': {},
     'uniques': [['profileId', 'tag']]}
 

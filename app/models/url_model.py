@@ -55,7 +55,9 @@ class Url(BaseModel):
                                    'autoUpdate': True}},
     'ui': {   'title': 'Url',
               'buttonLabel': 'Manage Urls',
-              'description': 'Manage Event Urls'},
+              'description': 'Manage Event Urls',
+              'icon': 'fa-link',
+              'iconColor': '#2980b9'},
     'services': {},
     'uniques': []}
 

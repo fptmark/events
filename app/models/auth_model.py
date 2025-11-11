@@ -47,7 +47,7 @@ class Auth(BaseModel):
                                 'ui': {   'displayName': 'Role',
                                           'show': {   'displayInfo': [   {   'fields': [   'role',
                                                                                            'permissions']}]}}}},
-    'ui': {},
+    'ui': {'title': 'Admin Users', 'icon': 'fa-key', 'iconColor': '#f39c12'},
     'services': {   'authn': {   'provider': 'cookies.redis',
                                  'route': 'login',
                                  'inputs': {   'login': 'name',

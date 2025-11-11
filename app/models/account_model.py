@@ -59,7 +59,10 @@ class Account(BaseModel):
                                              'readOnly': True,
                                              'clientEdit': True},
                                    'autoUpdate': True}},
-    'ui': {'title': 'Accounts', 'buttonLabel': 'Manage Accounts'},
+    'ui': {   'title': 'Accounts',
+              'buttonLabel': 'Manage Accounts',
+              'icon': 'fa-briefcase',
+              'iconColor': '#2ecc71'},
     'services': {},
     'uniques': []}
 

@@ -101,7 +101,10 @@ class Event(BaseModel):
                                              'readOnly': True,
                                              'clientEdit': True},
                                    'autoUpdate': True}},
-    'ui': {'title': 'Events', 'buttonLabel': 'Manage Events'},
+    'ui': {   'title': 'Events',
+              'buttonLabel': 'Manage Events',
+              'icon': 'fa-calendar-alt',
+              'iconColor': '#e67e22'},
     'services': {},
     'uniques': []}
 

@@ -68,7 +68,10 @@ class UserEvent(BaseModel):
                                              'readOnly': True,
                                              'clientEdit': True},
                                    'autoUpdate': True}},
-    'ui': {'title': 'User Events', 'buttonLabel': 'Manage Event Attendance'},
+    'ui': {   'title': 'User Events',
+              'buttonLabel': 'Manage Event Attendance',
+              'icon': 'fa-ticket-alt',
+              'iconColor': '#e74c3c'},
     'services': {},
     'uniques': []}
 

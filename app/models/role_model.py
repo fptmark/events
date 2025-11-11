@@ -9,7 +9,7 @@ from app.core.metadata import MetadataService
 class RoleCreate(BaseModel):
     id: str | None = Field(default=None)
     role: str = Field(...)
-    permissions: str = Field(...)
+    permissions: Any = Field(...)
     model_config = ConfigDict(
         from_attributes=True,
         validate_by_name=True,
@@ -19,7 +19,7 @@ class RoleCreate(BaseModel):
 class RoleUpdate(BaseModel):
     id: str | None = Field(default=None)
     role: str = Field(...)
-    permissions: str = Field(...)
+    permissions: Any = Field(...)
     model_config = ConfigDict(
         from_attributes=True,
         validate_by_name=True,
@@ -30,13 +30,15 @@ class RoleUpdate(BaseModel):
 class Role(BaseModel):
     id: str | None = Field(default=None)
     role: str = Field(...)
-    permissions: str = Field(...)
+    permissions: Any = Field(...)
 
     model_config = ConfigDict()
 
     _metadata: ClassVar[Dict[str, Any]] = {   'fields': {   'role': {'type': 'String', 'required': True},
-                  'permissions': {'type': 'String', 'required': True}},
-    'ui': {},
+                  'permissions': {'type': 'Json', 'required': True}},
+    'ui': {   'title': 'Roles & Permissions',
+              'icon': 'fa-users',
+              'iconColor': '#8e44ad'},
     'services': {   'authz': {   'provider': 'rbac',
                                  'inputs': {'Id': 'roleId'},
                                  'outputs': ['permissions'],
