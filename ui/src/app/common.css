@@ -1,44 +1,82 @@
 /* Consistent button styling for all entity operations */
-.btn-entity-create {
-  color: #fff;
-  background-color: #28a745; /* Bootstrap green */
-  border-color: #28a745;
+
+/* Base styling for all entity buttons */
+.btn-entity-create,
+.btn-entity-details,
+.btn-entity-edit,
+.btn-entity-delete,
+.btn-details-create,
+.btn-details-edit,
+.btn-details-delete {
+  font-size: 0.9rem !important;
+  font-weight: 500 !important;
+  padding: 0.5rem 1.25rem !important;
+  border-radius: 6px !important;
+  border: none !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
 }
 
-.btn-entity-create:hover {
-  background-color: #218838;
-  border-color: #1e7e34;
+.btn-entity-create:hover,
+.btn-entity-details:hover,
+.btn-entity-edit:hover,
+.btn-entity-delete:hover,
+.btn-details-create:hover,
+.btn-details-edit:hover,
+.btn-details-delete:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15) !important;
 }
 
+/* Create button - Green */
+.btn-entity-create,
+.btn-details-create {
+  color: #fff !important;
+  background-color: #28a745 !important;
+}
+
+.btn-entity-create:hover,
+.btn-details-create:hover {
+  background-color: #218838 !important;
+  color: #fff !important;
+}
+
+/* Details button - Cyan */
 .btn-entity-details {
-  background-color: #17a2b8;  /* Light blue */
-  color: white;
-  border: none;
+  background-color: #17a2b8 !important;
+  color: white !important;
 }
 
 .btn-entity-details:hover {
-  background-color: #138496;  /* Darker blue on hover */
-  color: white;
+  background-color: #138496 !important;
+  color: white !important;
 }
 
-.btn-entity-edit {
-  color: #fff;
-  background-color: #007bff; /* Bootstrap primary (dark blue) */
-  border-color: #007bff;
+/* Edit button - Blue */
+.btn-entity-edit,
+.btn-details-edit {
+  color: #fff !important;
+  background-color: #007bff !important;
 }
 
-.btn-entity-edit:hover {
-  background-color: #0069d9;
-  border-color: #0062cc;
+.btn-entity-edit:hover,
+.btn-details-edit:hover {
+  background-color: #0069d9 !important;
+  color: #fff !important;
 }
 
-.btn-entity-delete {
-  color: #fff;
-  background-color: #dc3545; /* Bootstrap danger (red) */
-  border-color: #dc3545;
+/* Delete button - Red */
+.btn-entity-delete,
+.btn-details-delete {
+  color: #fff !important;
+  background-color: #dc3545 !important;
 }
 
-.btn-entity-delete:hover {
-  background-color: #c82333;
-  border-color: #bd2130;
+.btn-entity-delete:hover,
+.btn-details-delete:hover {
+  background-color: #c82333 !important;
+  color: #fff !important;
 }

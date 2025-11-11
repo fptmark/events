@@ -36,7 +36,10 @@ import { OperationResultService } from '../services/operation-result.service';
       <!-- Create button - checks both metadata operations and auth permissions -->
       <div *ngIf="entityService.canCreate(entityType)">
         <div class="mb-3">
-          <button class="btn btn-entity-create" (click)="this.entityService.navigateToCreate(entityType)">Create {{ entityType }}</button>
+          <button class="btn btn-entity-create" (click)="this.entityService.navigateToCreate(entityType)">
+            <i class="fas fa-plus"></i>
+            Create {{ entityType }}
+          </button>
         </div>
       </div>
 
@@ -55,7 +58,7 @@ import { OperationResultService } from '../services/operation-result.service';
         </div>
 
         <!-- Table layout with one row per entity -->
-        <div *ngIf="data.length > 0" class="custom-table-container">
+        <div *ngIf="data.length > 0" class="table-responsive">
           <table class="table table-striped table-hover">
             <thead>
               <tr>
@@ -70,15 +73,24 @@ import { OperationResultService } from '../services/operation-result.service';
                   <div class="btn-group btn-group-sm">
                     <!-- Consistent button order: View, Edit, Create, Delete -->
                     <button *ngIf="entityService.canRead(entityType)"
-                      class="btn btn-entity-details me-1"
-                      (click)="this.entityService.viewEntity(entityType, row['id'])">Details</button>
+                      class="btn btn-entity-details"
+                      (click)="this.entityService.viewEntity(entityType, row['id'])">
+                      <i class="fas fa-eye"></i>
+                      Details
+                    </button>
                     <button *ngIf="entityService.canUpdate(entityType)"
-                      class="btn btn-entity-edit me-1"
-                      (click)="this.entityService.editEntity(entityType, row['id'])">Edit</button>
+                      class="btn btn-entity-edit"
+                      (click)="this.entityService.editEntity(entityType, row['id'])">
+                      <i class="fas fa-edit"></i>
+                      Edit
+                    </button>
                     <!-- Create not shown for individual rows since it applies to the entity type, not a specific row -->
                     <button *ngIf="entityService.canDelete(entityType)"
                       class="btn btn-entity-delete"
-                      (click)="this.restService.deleteEntity(entityType, row['id'])">Delete</button>
+                      (click)="this.restService.deleteEntity(entityType, row['id'])">
+                      <i class="fas fa-trash"></i>
+                      Delete
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -188,7 +200,7 @@ export class EntityListComponent implements OnInit, OnDestroy {
 
           return processedEntity;
         });
-            
+
         this.loading = false;
       },
       error: (err) => {

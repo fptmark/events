@@ -64,8 +64,6 @@ export class NotificationService {
   handleApiResponse(response: any): void {
     this.clear();
 
-    console.log('handleApiResponse called with:', response);
-
     // Handle simple string errors
     if (typeof response === 'string') {
       this.showError(response);
@@ -79,7 +77,6 @@ export class NotificationService {
 
     // Handle unified entity-grouped format
     if (response.status && response.notifications) {
-      console.log('Processing unified format, notifications:', response.notifications);
       const messages: string[] = [];
       const allNotifications: any[] = [];
       let totalErrors = 0;
@@ -87,7 +84,6 @@ export class NotificationService {
 
       // Extract all errors and warnings from all entities
       Object.entries(response.notifications).forEach(([entityId, entityNotif]: [string, any]) => {
-        console.log('Processing entity:', entityId, 'notifications:', entityNotif);
         if (entityNotif.errors && Array.isArray(entityNotif.errors)) {
           entityNotif.errors.forEach((error: any) => {
             totalErrors++;

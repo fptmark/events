@@ -166,8 +166,6 @@ export class EntityFormComponent implements OnInit {
         // P3: Populate field errors below each field from payload (use FULL response)
         const validationFailures = this.validationService.convertApiErrorToValidationFailures(fullResponse, this.entityId);
         this.validationErrors = validationFailures;
-        console.log('P3: Edit mode validation errors:', this.validationErrors);
-        console.log('P3: Full server response:', fullResponse);
         this.entityFormService.populateFieldErrors(this.validationErrors);
         
         // P1: Populate enums (clear out/blank enum on error)

@@ -16,6 +16,8 @@ export interface EntityMetadata {
     title?: string;
     buttonLabel?: string;
     description?: string;
+    icon?: string;
+    iconColor?: string;
   };
   operations?: string;
   fields: {
@@ -59,6 +61,7 @@ export interface FieldMetadata {
   max_length?: number;
   enum?: {
     values?: string[];
+    colors?: string[];
     message?: string;
   };
   pattern?: {

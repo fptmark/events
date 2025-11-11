@@ -56,19 +56,14 @@ export class ValidationService {
   convertApiErrorToValidationFailures(error: any, entityId?: string): ValidationFailure[] {
     const validationFailures: ValidationFailure[] = [];
 
-    console.log('convertApiErrorToValidationFailures called with:', error, 'entityId filter:', entityId);
-
     // Handle unified entity-grouped format
     if (error.notifications && typeof error.notifications === 'object') {
       // Iterate through all entity_ids
       Object.entries(error.notifications).forEach(([notifEntityId, entityNotif]: [string, any]) => {
-        console.log('Checking entity:', notifEntityId, 'against filter:', entityId);
         // If entityId filter provided, only process matching entity
         if (entityId && notifEntityId !== entityId && notifEntityId !== 'general') {
-          console.log('Skipping entity:', notifEntityId);
           return; // Skip this entity
         }
-        console.log('Processing entity:', notifEntityId, 'notifications:', entityNotif);
 
         // Extract errors with field information
         if (entityNotif.errors && Array.isArray(entityNotif.errors)) {

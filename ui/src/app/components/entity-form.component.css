@@ -1,19 +1,72 @@
 @import '../common.css';
 
+/* CSS Variables for easy customization */
+:host {
+  --form-field-spacing: 1.5rem;
+  --form-label-width: 33.333333%;
+  --form-input-width: 66.666667%;
+  --form-input-border: #ced4da;
+  --form-input-focus: #80bdff;
+  --form-input-bg: #ffffff;
+  --form-input-disabled-bg: #f8f9fa;
+  --form-label-color: #495057;
+  --form-label-font-weight: 500;
+  --card-border-radius: 8px;
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 .container-fluid {
   padding-left: 10px;
   padding-right: 10px;
 }
 
-/* Style for disabled (read-only) form controls */
+/* Page header section */
+.d-flex.justify-content-between.align-items-center.mb-4 {
+  padding: 1rem 0;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.d-flex.justify-content-between.align-items-center.mb-4 h2 {
+  margin: 0;
+  color: #2c3e50;
+  font-weight: 600;
+  font-size: 1.75rem;
+}
+
+/* Enhanced card styling */
+.card {
+  border: none;
+  border-radius: var(--card-border-radius);
+  box-shadow: var(--card-shadow);
+  background: white;
+}
+
+.card-body {
+  padding: 2rem;
+}
+
+.card-body .row {
+  row-gap: 0;
+}
+
+/* Style for disabled (read-only) form controls in details mode */
 .form-control:disabled,
 .form-select:disabled,
 .form-check-input:disabled {
-  background-color: #f8f9fa; /* Light gray background */
-  color: #212529; /* Dark text for readability */
-  opacity: 1; /* Full opacity for better readability */
+  background-color: var(--form-input-disabled-bg);
+  color: #495057;
+  opacity: 1;
   cursor: default;
-  border: 1px solid #dee2e6;
+  border: 1px solid #e9ecef;
+  font-weight: 500;
+}
+
+/* Read-only fields in details mode should look distinct */
+.form-control[readonly] {
+  background-color: var(--form-input-disabled-bg);
+  border: 1px solid #e9ecef;
+  color: #495057;
+  cursor: default;
 }
 
 /* Style for clickable link inputs */
@@ -36,14 +89,85 @@
 
 /* Modal styles removed - now in entity-selector-modal.component.css */
 
-/* Form layout styles */
+/* Enhanced form field spacing and grouping */
+.mb-3 {
+  margin-bottom: var(--form-field-spacing) !important;
+}
+
+.col-md-6.mb-3 {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.col-md-6.mb-3:last-child,
+.col-md-6.mb-3:nth-last-child(2) {
+  border-bottom: none;
+}
+
+/* Enhanced form label styles */
 .form-label {
   margin-bottom: 0;
-  padding-right: 0.5rem;
+  padding-right: 0.75rem;
   display: flex;
-  justify-content: flex-start; /* Left-justify labels */
+  justify-content: flex-start;
   align-items: center;
-  min-height: 38px; /* Match Bootstrap default input height */
+  min-height: 38px;
+  color: var(--form-label-color);
+  font-weight: var(--form-label-font-weight);
+  font-size: 0.95rem;
+  text-transform: none;
+  letter-spacing: 0.3px;
+}
+
+/* Required field asterisk styling */
+.form-label .text-danger {
+  margin-left: 0.25rem;
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+/* Enhanced form inputs */
+.form-control,
+.form-select {
+  border: 1px solid var(--form-input-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  background-color: var(--form-input-bg);
+}
+
+.form-control:not([readonly]):not(:disabled):hover,
+.form-select:not(:disabled):hover {
+  border-color: #adb5bd;
+  transition: border-color 0.15s ease-in-out;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--form-input-focus);
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  outline: 0;
+}
+
+/* Input group styling for ObjectId fields with Select button */
+.input-group {
+  border-radius: 6px;
+}
+
+.input-group .form-control {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.input-group .btn {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: none;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
 }
 
 /* Custom checkbox styling to align with other inputs */
@@ -74,14 +198,36 @@
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e") !important;
 }
 
-/* Make textareas align with other inputs */
+/* Enhanced textarea styling */
 textarea.form-control {
+  min-height: 80px;
+  resize: vertical;
+}
+
+/* Consistent height in details mode */
+:host .form-control:disabled {
   min-height: 38px;
 }
 
-/* Make all form controls consistent height in details mode */
-:host .form-control:disabled {
-  min-height: 38px;
+/* Enhanced checkbox styling */
+.form-check-input {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0;
+  cursor: pointer;
+  border: 2px solid var(--form-input-border);
+  border-radius: 4px;
+  transition: all 0.15s ease-in-out;
+}
+
+.form-check-input:checked {
+  background-color: #007bff;
+  border-color: #007bff;
+}
+
+.form-check-input:focus {
+  border-color: var(--form-input-focus);
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
 }
 
 /* Fix alignment on smaller screens */
@@ -96,16 +242,20 @@ textarea.form-control {
   }
 }
 
-/* Better error styling */
+/* Enhanced error styling */
 .invalid-feedback.d-block {
   display: block;
   color: #dc3545;
   margin-top: 0.25rem;
+  font-size: 0.875rem;
 }
 
-/* Add a fade-in animation for error messages */
+/* Validation error messages with better visibility */
 .text-danger {
   animation: fadeIn 0.3s ease-in-out;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.25rem 0;
 }
 
 /* Style inputs with server-side validation errors */
@@ -138,4 +288,148 @@ input[type=number] {
 }
 .show-spinner {
   -moz-appearance: spinner-textfield;
+}
+
+/* Enhanced form button styling */
+.form-button-group {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.form-button-group .btn {
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.5rem 1.25rem;
+  border-radius: 6px;
+  border: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.form-button-group .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+}
+
+.form-button-group .btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Submit button - Green (success) */
+.btn-form-submit {
+  background-color: #28a745;
+  color: white;
+}
+
+.btn-form-submit:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.btn-form-submit:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+/* Cancel button - Red */
+.btn-form-cancel {
+  background-color: #dc3545;
+  color: white;
+}
+
+.btn-form-cancel:hover {
+  background-color: #c82333;
+}
+
+/* Back button - Gray */
+.btn-form-back {
+  background-color: #6c757d;
+  color: white;
+}
+
+.btn-form-back:hover {
+  background-color: #5a6268;
+}
+
+/* Spinning animation for save icon */
+.fa-spinner.fa-spin {
+  animation: fa-spin 1s infinite linear;
+}
+
+@keyframes fa-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Details page action buttons at bottom */
+.card-footer {
+  background-color: #f8f9fa;
+  border-top: 2px solid #dee2e6;
+  padding: 1.25rem 2rem;
+  border-bottom-left-radius: var(--card-border-radius);
+  border-bottom-right-radius: var(--card-border-radius);
+}
+
+.details-action-buttons {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.details-action-buttons .btn {
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.5rem 1.25rem;
+  border-radius: 6px;
+  border: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.details-action-buttons .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+}
+
+.details-action-buttons .btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Edit button - Blue */
+.btn-details-edit {
+  background-color: #007bff;
+  color: white;
+}
+
+.btn-details-edit:hover {
+  background-color: #0056b3;
+}
+
+/* Create button - Green */
+.btn-details-create {
+  background-color: #28a745;
+  color: white;
+}
+
+.btn-details-create:hover {
+  background-color: #218838;
+}
+
+/* Delete button - Red */
+.btn-details-delete {
+  background-color: #dc3545;
+  color: white;
+}
+
+.btn-details-delete:hover {
+  background-color: #c82333;
 }

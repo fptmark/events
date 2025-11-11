@@ -104,6 +104,11 @@ export class EntityService {
       return this.formatCurrency(value);
     }
 
+    // Enum handling - render as colored badge
+    if (metadata?.enum?.values && Array.isArray(metadata.enum.values)) {
+      return this.formatEnumBadge(String(value), metadata);
+    }
+
     // Default string conversion
     return String(value);
   }
@@ -121,6 +126,53 @@ export class EntityService {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     }).format(value);
+  }
+
+  /**
+   * Format enum value as a colored badge
+   * @param value Enum value to format
+   * @param metadata Field metadata containing enum configuration
+   * @returns HTML string with badge markup
+   */
+  private formatEnumBadge(value: string, metadata: FieldMetadata): string {
+    // Check if custom colors are defined in metadata
+    const enumValues = metadata?.enum?.values || [];
+    const enumColors = metadata?.enum?.colors || [];
+
+    // Find the index of this value in the enum values array
+    const valueIndex = enumValues.indexOf(value);
+
+    // If colors array exists and has a color for this value, use it
+    if (enumColors.length > 0 && valueIndex >= 0 && valueIndex < enumColors.length) {
+      const customColor = enumColors[valueIndex];
+      // Use inline style for custom color
+      return `<span class="enum-badge enum-badge-custom" style="background-color: ${customColor}; color: white; border: 1px solid ${customColor};">${value}</span>`;
+    }
+
+    // Otherwise, fall back to generic color based on hash
+    const color = this.getEnumBadgeColor(value);
+    return `<span class="enum-badge enum-badge-${color}">${value}</span>`;
+  }
+
+  /**
+   * Get color variant for enum badge based on value
+   * Uses a deterministic hash to assign consistent colors to same values
+   * @param value Enum value
+   * @returns Color name (primary, success, info, warning, danger, secondary)
+   */
+  private getEnumBadgeColor(value: string): string {
+    const colors = ['primary', 'success', 'info', 'warning', 'danger', 'secondary'];
+
+    // Simple hash function to get consistent color for same value
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) {
+      hash = ((hash << 5) - hash) + value.charCodeAt(i);
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+
+    // Map hash to color index
+    const index = Math.abs(hash) % colors.length;
+    return colors[index];
   }
 
   formatDate(value: string, mode?: ViewMode, fieldType?: string): string {

@@ -30,7 +30,12 @@ import { Subscription } from 'rxjs';
         <div *ngFor="let entity of entityTypes" class="col">
           <div class="card h-100">
             <div class="card-body">
-              <h5 class="card-title">{{ metadataService.getTitle(entity) }}</h5>
+              <div class="card-icon-title">
+                <i *ngIf="getIcon(entity)"
+                   class="fas {{ getIcon(entity) }} card-icon"
+                   [style.color]="getIconColor(entity)"></i>
+                <h5 class="card-title">{{ metadataService.getTitle(entity) }}</h5>
+              </div>
               <p class="card-text">{{ metadataService.getDescription(entity) }}</p>
               <button class="btn btn-primary" (click)="navigateToEntity(entity)">
                 {{ metadataService.getButtonLabel(entity) }}
@@ -119,5 +124,25 @@ export class EntitiesDashboardComponent implements OnInit, OnDestroy {
   navigateToEntity(entityType: string): void {
     this.metadataService.addRecent(entityType);
     this.router.navigate(['/entity', entityType]);
+  }
+
+  /**
+   * Get Font Awesome icon class from entity metadata
+   * @param entityType Entity type name
+   * @returns Icon class name (e.g., 'fa-user', 'fa-briefcase') or null if not defined
+   */
+  getIcon(entityType: string): string | null {
+    const metadata = this.metadataService.getEntityMetadata(entityType);
+    return metadata?.ui?.icon || null;
+  }
+
+  /**
+   * Get icon color from entity metadata
+   * @param entityType Entity type name
+   * @returns Color hex code (e.g., '#3498db') or default color if not defined
+   */
+  getIconColor(entityType: string): string {
+    const metadata = this.metadataService.getEntityMetadata(entityType);
+    return metadata?.ui?.iconColor || '#3498db'; // Default to blue if not specified
   }
 }

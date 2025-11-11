@@ -1,16 +1,23 @@
 <div class="container-fluid mt-4">
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>{{ mode }} {{ entityType | titlecase }}</h2>
-    <div>
+    <div class="form-button-group">
       <!-- Details mode: Show Back button -->
-      <button *ngIf="isDetailsMode()" class="btn btn-secondary" (click)="goBack()">Back</button>
-      
+      <button *ngIf="isDetailsMode()" class="btn btn-form-back" (click)="goBack()">
+        <i class="fas fa-arrow-left"></i>
+        Back
+      </button>
+
       <!-- Edit/Create mode: Show Submit and Cancel buttons -->
       <ng-container *ngIf="!isDetailsMode()">
-        <button type="submit" class="btn btn-entity-edit me-2" [disabled]="entityForm && entityForm.invalid || submitting" form="entityForm">
+        <button type="submit" class="btn btn-form-submit me-2" [disabled]="entityForm && entityForm.invalid || submitting" form="entityForm">
+          <i class="fas" [ngClass]="submitting ? 'fa-spinner fa-spin' : 'fa-check'"></i>
           {{ submitting ? 'Saving...' : 'Submit' }}
         </button>
-        <button type="button" class="btn btn-secondary" (click)="goBack()">Cancel</button>
+        <button type="button" class="btn btn-form-cancel" (click)="goBack()">
+          <i class="fas fa-times"></i>
+          Cancel
+        </button>
       </ng-container>
     </div>
   </div>
@@ -211,10 +218,20 @@
         </div>
 
         <div *ngIf="isDetailsMode()" class="card-footer">
-          <div>
-            <button *ngIf="entityService.canUpdate(entityType)" type="button" class="btn btn-entity-edit me-2" (click)="goToEdit()">Edit</button>
-            <button *ngIf="entityService.canCreate(entityType)" type="button" class="btn btn-entity-create me-2" (click)="entityService.navigateToCreate(entityType)">Create</button>
-            <button *ngIf="entityService.canDelete(entityType)" type="button" class="btn btn-entity-delete" (click)="restService.deleteEntity(entityType, entityId)">Delete</button>
+          <div class="details-action-buttons">
+            <!-- Consistent button order: Create | Edit | Delete -->
+            <button *ngIf="entityService.canCreate(entityType)" type="button" class="btn btn-details-create" (click)="entityService.navigateToCreate(entityType)">
+              <i class="fas fa-plus"></i>
+              Create
+            </button>
+            <button *ngIf="entityService.canUpdate(entityType)" type="button" class="btn btn-details-edit" (click)="goToEdit()">
+              <i class="fas fa-edit"></i>
+              Edit
+            </button>
+            <button *ngIf="entityService.canDelete(entityType)" type="button" class="btn btn-details-delete" (click)="restService.deleteEntity(entityType, entityId)">
+              <i class="fas fa-trash"></i>
+              Delete
+            </button>
           </div>
         </div>
       </div>
