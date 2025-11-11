@@ -172,10 +172,17 @@ class DocumentManager(ABC):
             msg = str(e.message) if e.message else str(e.error)
             Notification.warning(Warning.NOT_FOUND, message=msg, entity=entity, entity_id=id)
             Notification.error(HTTP.NOT_FOUND, msg, entity=entity, entity_id=id)
-            raise  # Unreachable
+            # Only re-raise if not suppressed (during FK lookups, we suppress and handle count=0 separately)
+            if not Notification._suppress_errors:
+                raise
+            # If suppressed, return empty result - caller will check count
+            return {}, 0
         except Exception as e:
-            Notification.error(HTTP.INTERNAL_ERROR, f"Database get error: {str(e)}", entity=entity, entity_id=id)
-            raise  # Unreachable
+            # Only raise general exceptions if not suppressed
+            if not Notification._suppress_errors:
+                Notification.error(HTTP.INTERNAL_ERROR, f"Database get error: {str(e)}", entity=entity, entity_id=id)
+            # If suppressed, return empty result
+            return {}, 0
 
     async def _normalize_document(self, entity: str, doc: Dict[str, Any], model_class: Any, view_spec: Dict[str, Any], 
                                   unique_constraints : List[Any], validate: bool) -> Dict[str, Any]:
@@ -203,10 +210,15 @@ class DocumentManager(ABC):
             msg = str(e.message) if e.message else str(e.error)
             Notification.warning(Warning.NOT_FOUND, message=msg, entity=entity, entity_id=id)
             Notification.error(HTTP.NOT_FOUND, msg, entity=entity, entity_id=id)
-            raise  # Unreachable
+            # Only re-raise if not suppressed (during FK lookups, we suppress and handle count=0 separately)
+            if not Notification._suppress_errors:
+                raise
+            # If suppressed, continue with empty doc (will be handled by caller)
         except Exception as e:
-            Notification.error(HTTP.INTERNAL_ERROR, f"Database retrieve error: {str(e)}", entity=entity, entity_id=id)
-            raise  # Unreachable
+            # Only raise general exceptions if not suppressed
+            if not Notification._suppress_errors:
+                Notification.error(HTTP.INTERNAL_ERROR, f"Database retrieve error: {str(e)}", entity=entity, entity_id=id)
+            # If suppressed, continue with the_doc as is
 
         return the_doc or {}
 
@@ -537,13 +549,22 @@ async def process_fks(entity: str, data: Dict[str, Any], validate: bool, view_sp
                     fk_cls = ModelService.get_model_class(fk_entity)
                     
                     if fk_cls:
-                        # Fetch FK record
-                        with Notification.suppress_warnings():  # suppress warnings when fetching a fk as the code below has a better warning (it includes the offending field)
+                        # Fetch FK record - suppress all notifications during lookup
+                        # We'll add appropriate error/warning based on validate flag below
+                        with Notification.suppress():
                             related_data, count = await fk_cls.get(fk_field_id, None)
+
                         if count == 0:
-                            # FK record not found - validation warning if validating
+                            # FK record not found - handle based on validate flag
                             entity_id = data.get('id', 'general')
-                            Notification.error(HTTP.UNPROCESSABLE, "Referenced ID does not exist", entity=entity, entity_id=entity_id, field=field)
+                            if validate:
+                                # Create/update operation - missing FK is a stop-work error
+                                Notification.error(HTTP.UNPROCESSABLE, f"Id {fk_field_id} does not exist",
+                                                 entity=entity, entity_id=entity_id, field=field)
+                            else:
+                                # Get operation - missing FK is just a warning for UI display
+                                Notification.warning(Warning.NOT_FOUND, f"Id {fk_field_id} does not exist",
+                                                   entity=entity, entity_id=entity_id, field=field)
                         # if there is more than one fk record, something is very wrong
                         elif count == 1:
                             fk_data["exists"] = True

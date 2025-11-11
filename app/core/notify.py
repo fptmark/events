@@ -52,6 +52,7 @@ class Notification:
     _warnings: Dict[str, Dict[str, List[Dict[str, str]]]] = {}  # Entity-grouped: {entity: {entity_id: [warnings]}}
     _request_warnings: List[Dict[str, str]] = []
     _suppress_warnings: bool = False
+    _suppress_errors: bool = False
     
     @classmethod
     def start(cls) -> None:
@@ -70,6 +71,20 @@ class Notification:
             yield
         finally:
             cls._suppress_warnings = old_value
+
+    @classmethod
+    @contextmanager
+    def suppress(cls):
+        """Context manager to suppress ALL notifications (errors and warnings) during FK lookups"""
+        old_suppress_warnings = cls._suppress_warnings
+        old_suppress_errors = cls._suppress_errors
+        cls._suppress_warnings = True
+        cls._suppress_errors = True
+        try:
+            yield
+        finally:
+            cls._suppress_warnings = old_suppress_warnings
+            cls._suppress_errors = old_suppress_errors
     
     @classmethod
     def get(cls) -> Dict[str, Any]:
@@ -152,16 +167,18 @@ class Notification:
         entity = entity or 'system'
         entity_id = entity_id or 'general'
 
-        if entity not in cls._errors:
-            cls._errors[entity] = {}
-        if entity_id not in cls._errors[entity]:
-            cls._errors[entity][entity_id] = []
+        # Only add error and log if not suppressed
+        if not cls._suppress_errors:
+            if entity not in cls._errors:
+                cls._errors[entity] = {}
+            if entity_id not in cls._errors[entity]:
+                cls._errors[entity][entity_id] = []
 
-        cls._errors[entity][entity_id].append(error)
+            cls._errors[entity][entity_id].append(error)
+            logging.error(f"[{status_code}] {message}")
 
-        logging.error(f"[{status_code}] {message}")
-
-        if raise_exception:
+        # Only raise exception if not suppressed and raise_exception=True
+        if raise_exception and not cls._suppress_errors:
             raise StopWorkError(message, status_code, category, entity=entity, field=field, value=value)
     
     @classmethod
