@@ -230,7 +230,7 @@ class Authn:
 
         # Determine which entity config to use by matching request path
         path = request.url.path
-        entity = None
+        entity = ''
 
         for ent, config in self.entity_configs.items():
             config_route = config.get('route', '')
@@ -304,7 +304,7 @@ class Authn:
                         try:
                             # Get expanded permissions (cached in RBAC, returned to client at login)
                             # Pass delegate_entity so authz knows which entity to use
-                            permissions = await authz_service.get_permissions(roleId, entity=delegate_entity)
+                            permissions = await authz_service.get_permissions(roleId, delegate_entity)
                             if permissions and permissions.get("entity"):
                                 print(f"Login: Retrieved permissions for roleId {roleId} from {delegate_entity}: {permissions}")
                                 # Store authz entity in session for future requests
@@ -315,8 +315,6 @@ class Authn:
                         except Exception as e:
                             # Role not found or other error - FAIL login since authz is configured
                             print(f"ERROR: Could not fetch permissions for role {roleId}: {e}")
-                            import traceback
-                            traceback.print_exc()
                             Notification.error(HTTP.UNAUTHORIZED, f"Failed to load permissions: {str(e)}")
 
         # NOTE: Permissions NOT stored in session - RBAC caches them by roleId
