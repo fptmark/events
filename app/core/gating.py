@@ -18,7 +18,7 @@ class GatingService:
     """Centralized gating logic for authn and authz checks"""
 
     @staticmethod
-    async def permitted(entity: str, operation: str) -> None:
+    def permitted(entity: str, operation: str) -> None:
         """
         Check access based on configured services and operation.
 
@@ -41,7 +41,7 @@ class GatingService:
                     # Session exists but is invalid/corrupted - require re-login
                     Notification.error(HTTP.UNAUTHORIZED, "Invalid session - authentication required")
 
-                if await authz_svc.permitted(roleId, entity, operation):
+                if authz_svc.permitted(roleId, entity, operation):
                     return
                 else:
                     Notification.error(HTTP.FORBIDDEN, "Unauthorized operation")
