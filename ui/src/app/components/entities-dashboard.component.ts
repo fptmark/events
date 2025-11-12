@@ -70,13 +70,6 @@ export class EntitiesDashboardComponent implements OnInit, OnDestroy {
       // Check if authn service is configured
       this.hasAuthnService = this.authService.getAuthnConfig() !== null;
 
-      // If authn configured but no permissions in memory (page refresh), fetch session
-      // This will restore permissions from server if session is still valid
-      // If session invalid (401), fetchSession will trigger login modal
-      if (this.hasAuthnService && !this.authService.getPermissions()) {
-        await this.authService.fetchSession();
-      }
-
       // Subscribe to permissions changes
       this.permissionsSubscription = this.authService.permissions.subscribe(() => {
         this.updateVisibleEntities();

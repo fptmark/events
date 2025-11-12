@@ -133,6 +133,12 @@ export class AppComponent implements OnInit {
         if (authnServices.length > 0) {
           console.log(`AppComponent: Found ${authnServices.length} authn service(s) in metadata`);
           this.authService.setAuthnConfigs(authnServices);
+
+          // Restore session from server if valid (handles page refresh)
+          // If session invalid (401), fetchSession will trigger login modal
+          this.authService.fetchSession().catch(err => {
+            console.log('AppComponent: No valid session on init');
+          });
         } else {
           console.log('AppComponent: No authn service found - public API mode');
         }
