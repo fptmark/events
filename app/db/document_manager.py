@@ -505,13 +505,13 @@ def validate_model(cls, data: Dict[str, Any], entity_name: str):
     """
     Worker function: Validate data with Pydantic and convert errors to notifications.
     Returns the validated instance or unvalidated instance if validation fails.
-    
+
     This handles basic model validation:
     - Enum validation (gender must be 'male', 'female', 'other')
-    - Range validation (netWorth >= 0) 
+    - Range validation (netWorth >= 0)
     - String validation (length, format, etc.)
     - Type validation (int, float, bool, etc.)
-    
+
     This does NOT handle FK validation - that's separate.
     """
     try:

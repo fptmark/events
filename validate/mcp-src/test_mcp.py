@@ -249,8 +249,11 @@ class MCPValidator:
             return {"page": 1, "pageSize": 1}
 
         elif tool_name.startswith("get_"):
-            # Use a known test ID - assume test data exists
-            return {"id": "test_001"}
+            # Check if schema actually requires id parameter
+            if "id" in schema.get("properties", {}):
+                return {"id": "test_001"}
+            else:
+                return {}  # No parameters (e.g., get_session)
 
         elif tool_name.startswith("delete_"):
             # Use a non-existent ID to avoid actually deleting
