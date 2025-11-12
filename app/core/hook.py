@@ -61,14 +61,14 @@ class HookService:
         return True
 
     @staticmethod
-    async def call_postflight(entity_name: str, operation: str, docs: List[Dict[str, Any]], doc_count: int, **context) -> Tuple[List[Dict[str, Any]], int]:
+    async def call_postflight(entity_name: str, operation: str, doc: List[Dict[str, Any]] | Dict[str, Any], doc_count: int, **context) -> Tuple[List[Dict[str, Any]] | Dict[str, Any], int]:
         """
         Call postflight hook after operation.
 
         Args:
             entity_name: Entity being operated on (e.g., "User")
             operation: Operation being performed (e.g., "create", "update")
-            docs: Result documents from operation
+            doc: Result document(s) from operation.  get_all will be List[] while other ops will be a single Dict
             doc_count: Number of documents
 
         Returns:
@@ -79,9 +79,9 @@ class HookService:
             if entity_name == hook_entity_name and not hook_preflight and operation == hook_operation:
                 # Check if callback is async before calling
                 if inspect.iscoroutinefunction(callback):
-                    return await callback(docs, doc_count, **context)
+                    return await callback(doc, doc_count, **context)
                 else:
-                    return callback(docs, doc_count, **context)
+                    return callback(doc, doc_count, **context)
 
         # No hook found - default: return unchanged
-        return docs, doc_count
+        return doc, doc_count

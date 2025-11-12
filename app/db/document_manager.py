@@ -93,7 +93,7 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (documents, total_count)
         """
-        await GatingService.permitted(entity, 'r')  # check for bypass, login and rbac
+        GatingService.permitted(entity, 'r')  # check for bypass, login and rbac
         if not await HookService.call_preflight(entity, 'get_all'):
             return [], 0
 
@@ -152,7 +152,7 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (document, count) where count is 1 if found, 0 if not found
         """
-        await GatingService.permitted(entity, 'r')  # check for bypass, login and rbac
+        GatingService.permitted(entity, 'r')  # check for bypass, login and rbac
         if not await HookService.call_preflight(entity, 'get'):
             return {}, 0
 
@@ -166,8 +166,8 @@ class DocumentManager(ABC):
 
                 doc = await self._normalize_document(entity, doc, model_class, view_spec, unique_constraints, validate)
 
-            docs, count = await HookService.call_postflight(entity, 'get', [doc], count)
-            return docs[0] if docs else {}, count
+            doc, count = await HookService.call_postflight(entity, 'get', doc, count)
+            return (doc, count) if doc else ({}, count)
         except DocumentNotFound as e:
             msg = str(e.message) if e.message else str(e.error)
             Notification.warning(Warning.NOT_FOUND, message=msg, entity=entity, entity_id=id)
@@ -251,7 +251,7 @@ class DocumentManager(ABC):
         """
         # Check create or update permission (unless bypassed by @no_permission_required)
         operation = 'update' if is_update else 'create'
-        await GatingService.permitted(entity, operation)
+        GatingService.permitted(entity, operation)
         if not await HookService.call_preflight(entity, operation):
             return {}, 0
 
@@ -304,8 +304,8 @@ class DocumentManager(ABC):
                     doc = await self._update_impl(entity, id, prepared_data)
                 else:
                     doc = await self._create_impl(entity, id, prepared_data)
-                docs, count = await HookService.call_postflight(entity, operation, [doc], 1)
-                return (docs[0], count) if docs else ({}, 0)
+                doc, count = await HookService.call_postflight(entity, operation, doc, 1)
+                return (doc, count) if doc else ({}, count)
             except DuplicateConstraintError as e:
                 # Use handle_duplicate_constraint which includes field info
                 Notification.handle_duplicate_constraint(e, is_validation=False)
@@ -356,17 +356,17 @@ class DocumentManager(ABC):
         Returns:
             Tuple of (deleted_document, count) where count is 1 if deleted, 0 if not found
         """
-        await GatingService.permitted(entity, 'd')
+        GatingService.permitted(entity, 'd')
         if not await HookService.call_preflight(entity, 'delete', id=id):
             return {}, 0
 
         try:
             doc, count = await self._delete_impl(entity, id)
-            docs, count = await HookService.call_postflight(entity, 'delete', [doc] if doc else [], count)
-            return (docs[0], count) if docs else ({}, 0)
+            doc, count = await HookService.call_postflight(entity, 'delete', doc if doc else {}, count)
+            return (doc, count) if doc else ({}, count)
         except DocumentNotFound:
             # Idempotent DELETE: already gone = success
-            docs, count = await HookService.call_postflight(entity, 'delete', [], 0)
+            _, count = await HookService.call_postflight(entity, 'delete', {}, 0)
             return {}, 0
 
     @abstractmethod
@@ -520,7 +520,7 @@ def validate_model(cls, data: Dict[str, Any], entity_name: str):
         entity_id = data.get('id', 'unknown')
         for error in e.errors():
             field = str(error['loc'][-1]) if error.get('loc') else 'unknown'
-            Notification.warning(Warning.DATA_VALIDATION, "Validation error", entity=entity_name, entity_id=entity_id, field=field, value=error.get('msg', 'Validation error'))
+            Notification.warning(Warning.DATA_VALIDATION, error.get('msg', 'Validation error'), entity=entity_name, entity_id=entity_id, field=field, value=data.get(field))
             success = False
         # Return unvalidated instance so API can continue
         return cls.model_construct(**data)
